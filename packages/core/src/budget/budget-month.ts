@@ -1,21 +1,37 @@
 /**
  * Computes one month of an envelope budget.
  *
- * Given the lists of income, assignments and activity, it computes for a month:
+ * Given the lists of income, assignments, activity and credit card payments,
+ * it computes for a month:
  * - "ready to assign": money that has come in but has no job yet;
- * - for every category: assigned, activity of the month and available.
+ * - for every category: assigned, activity of the month and available;
+ * - for every credit card: its payment category, which holds the money set
+ *   aside to pay the card.
  *
  * Rules:
  * 1. Only money that has already come in can be assigned: income dated in
  *    future months does not count.
  * 2. A category's positive available balance rolls over to the next month.
- * 3. A category that is overspent at the end of a month starts the next
- *    month at zero, and the uncovered amount is taken from "ready to assign".
- * 4. Money assigned to future months already has a job: it reduces
+ * 3. Money assigned to future months already has a job: it reduces
  *    "ready to assign" immediately.
+ * 4. Spending on a credit card, as far as the category covers it, moves the
+ *    same amount from the category to the card's payment category: the money
+ *    is set aside to pay the card. A refund on the card moves it back.
+ * 5. A card payment (a transfer from a cash account to the card) is spending
+ *    of the payment category.
+ * 6. A category still negative at the end of a month starts the next month at
+ *    zero. The overspending is split in two:
+ *    - credit overspending: the part paid with a credit card. It is new debt
+ *      on the card, not covered by the payment category, and does NOT touch
+ *      "ready to assign";
+ *    - cash overspending: the rest. That money has already left an account,
+ *      so it is taken from "ready to assign" the following month.
+ *    The overspending is attributed to credit card spending first, up to the
+ *    amount spent with cards in that category and month.
  *
- * Limitation of this first version: all spending is treated as cash or debit.
- * Credit cards, where uncovered spending becomes debt on the card, come later.
+ * Coverage is decided on the month's final numbers: assigning more money to a
+ * category later in the month also funds the credit card spending made
+ * earlier, exactly as if the money had been there from the start.
  *
  * The function is "pure": it reads no database or network, receives
  * everything as parameters and returns a result. That makes it easy to test,
@@ -34,25 +50,41 @@ export interface Income {
   readonly amount: Cents;
 }
 
-/** Money assigned to a category for a month. Negative = money taken out. */
+/** Money assigned to a category (or to a payment category) for a month. Negative = money taken out. */
 export interface Assignment {
   readonly categoryId: string;
   readonly month: Month;
   readonly amount: Cents;
 }
 
-/** Total activity of a category in a month: spending is negative, refunds positive. */
+/**
+ * Activity of a category in a month: spending is negative, refunds positive.
+ * When the money moved on a credit card, `paymentCategoryId` names that card's
+ * payment category; otherwise the activity was on a cash account.
+ */
 export interface Activity {
   readonly categoryId: string;
+  readonly month: Month;
+  readonly amount: Cents;
+  readonly paymentCategoryId?: string;
+}
+
+/** Money paid to a credit card in a month. Positive = payment; negative = cash taken from the card. */
+export interface CardPayment {
+  readonly paymentCategoryId: string;
   readonly month: Month;
   readonly amount: Cents;
 }
 
 export interface BudgetInput {
+  /** Regular categories. */
   readonly categoryIds: readonly string[];
+  /** One payment category for each on-budget credit card. */
+  readonly paymentCategoryIds?: readonly string[];
   readonly income: readonly Income[];
   readonly assignments: readonly Assignment[];
   readonly activity: readonly Activity[];
+  readonly cardPayments?: readonly CardPayment[];
 }
 
 export interface CategoryMonth {
@@ -60,9 +92,17 @@ export interface CategoryMonth {
   /** Available balance carried over from the previous month (never negative). */
   readonly carriedOver: Cents;
   readonly assigned: Cents;
+  /**
+   * Regular category: its spending and refunds.
+   * Payment category: money moved in from covered card spending, minus payments.
+   */
   readonly activity: Cents;
   /** carriedOver + assigned + activity. Negative = overspent. */
   readonly available: Cents;
+  /** Part of a negative `available` paid with credit cards (becomes card debt if left uncovered). */
+  readonly creditOverspending: Cents;
+  /** Rest of a negative `available` (taken from "ready to assign" next month if left uncovered). */
+  readonly cashOverspending: Cents;
 }
 
 export interface BudgetMonth {
@@ -70,14 +110,17 @@ export interface BudgetMonth {
   readonly readyToAssign: Cents;
   /** Money already assigned to months after this one. */
   readonly assignedInFuture: Cents;
-  /** Overspending of the previous month, taken from "ready to assign" in this month. */
+  /** Cash overspending of the previous month, taken from "ready to assign" in this month. */
   readonly overspentLastMonth: Cents;
+  /** Total credit overspending in this month's categories. */
+  readonly creditOverspending: Cents;
   readonly categories: readonly CategoryMonth[];
+  readonly paymentCategories: readonly CategoryMonth[];
 }
 
 /** Key for "category + month" maps. */
-function key(categoryId: string, month: Month): string {
-  return `${categoryId}|${month}`;
+function key(id: string, month: Month): string {
+  return `${id}|${month}`;
 }
 
 /** Adds `amount` to the value at `mapKey`, starting from zero. Like `$h{$k} += $v` in Perl. */
@@ -87,26 +130,118 @@ function addTo(map: Map<string, Cents>, mapKey: string, amount: Cents): void {
 
 function validate(input: BudgetInput, month: Month): void {
   assertMonth(month);
-  const known = new Set<string>();
-  for (const id of input.categoryIds) {
-    if (known.has(id)) {
-      throw new ValidationError("duplicate_category", `duplicate category: "${id}"`, { categoryId: id });
+  const regular = new Set<string>();
+  const payment = new Set<string>();
+  for (const [ids, set] of [
+    [input.categoryIds, regular],
+    [input.paymentCategoryIds ?? [], payment],
+  ] as const) {
+    for (const id of ids) {
+      if (regular.has(id) || payment.has(id)) {
+        throw new ValidationError("duplicate_category", `duplicate category: "${id}"`, { categoryId: id });
+      }
+      set.add(id);
     }
-    known.add(id);
   }
+  const unknown = (id: string): never => {
+    throw new ValidationError("unknown_category", `unknown category: "${id}"`, { categoryId: id });
+  };
   for (const item of input.income) {
     assertMonth(item.month);
     assertCents(item.amount, "income");
   }
-  for (const item of [...input.assignments, ...input.activity]) {
+  for (const item of input.assignments) {
     assertMonth(item.month);
     assertCents(item.amount);
-    if (!known.has(item.categoryId)) {
-      throw new ValidationError("unknown_category", `unknown category: "${item.categoryId}"`, {
-        categoryId: item.categoryId,
-      });
-    }
+    if (!regular.has(item.categoryId) && !payment.has(item.categoryId)) unknown(item.categoryId);
   }
+  for (const item of input.activity) {
+    assertMonth(item.month);
+    assertCents(item.amount);
+    if (!regular.has(item.categoryId)) unknown(item.categoryId);
+    if (item.paymentCategoryId !== undefined && !payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
+  }
+  for (const item of input.cardPayments ?? []) {
+    assertMonth(item.month);
+    assertCents(item.amount, "card payment");
+    if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
+  }
+}
+
+interface MonthState {
+  readonly categories: CategoryMonth[];
+  readonly paymentCategories: CategoryMonth[];
+}
+
+/**
+ * Computes all categories for one month, starting from the balances carried
+ * over from the previous month.
+ */
+function computeMonth(
+  input: BudgetInput,
+  m: Month,
+  carried: ReadonlyMap<string, Cents>,
+  data: {
+    assignedBy: ReadonlyMap<string, Cents>;
+    activityBy: ReadonlyMap<string, Cents>;
+    creditBy: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
+    paymentsBy: ReadonlyMap<string, Cents>;
+  },
+): MonthState {
+  const paymentIds = input.paymentCategoryIds ?? [];
+  const movedToPayment = new Map<string, Cents>(paymentIds.map((id): [string, Cents] => [id, 0]));
+
+  const categories = input.categoryIds.map((id): CategoryMonth => {
+    const carriedOver = carried.get(id) ?? 0;
+    const assigned = data.assignedBy.get(key(id, m)) ?? 0;
+    const activity = data.activityBy.get(key(id, m)) ?? 0;
+    const available = carriedOver + assigned + activity;
+    const overspent = Math.max(0, -available);
+
+    // Net credit card activity of this category, card by card, in a stable order.
+    const byCard = [...(data.creditBy.get(key(id, m)) ?? new Map<string, Cents>())].sort(([a], [b]) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    let cardOutflow = 0;
+    for (const [paymentId, net] of byCard) {
+      if (net > 0) addTo(movedToPayment, paymentId, -net); // Net refund: the money goes back to the category.
+      else cardOutflow += -net;
+    }
+
+    // Rule 6: overspending is attributed to card spending first.
+    const creditOverspending = Math.min(overspent, cardOutflow);
+    const cashOverspending = overspent - creditOverspending;
+
+    // Rule 4: the covered part of card spending moves to the payment categories.
+    let toCover = cardOutflow - creditOverspending;
+    for (const [paymentId, net] of byCard) {
+      if (net >= 0 || toCover === 0) continue;
+      const covered = Math.min(-net, toCover);
+      addTo(movedToPayment, paymentId, covered);
+      toCover -= covered;
+    }
+
+    return { categoryId: id, carriedOver, assigned, activity, available, creditOverspending, cashOverspending };
+  });
+
+  const paymentCategories = paymentIds.map((id): CategoryMonth => {
+    const carriedOver = carried.get(id) ?? 0;
+    const assigned = data.assignedBy.get(key(id, m)) ?? 0;
+    const activity = (movedToPayment.get(id) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
+    const available = carriedOver + assigned + activity;
+    // Paying more than the payment category holds spends cash that had no job: cash overspending.
+    return {
+      categoryId: id,
+      carriedOver,
+      assigned,
+      activity,
+      available,
+      creditOverspending: 0,
+      cashOverspending: Math.max(0, -available),
+    };
+  });
+
+  return { categories, paymentCategories };
 }
 
 /**
@@ -117,50 +252,50 @@ function validate(input: BudgetInput, month: Month): void {
 export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMonth {
   validate(input, month);
 
-  // 1. Group assignments and activity by category and month.
+  // 1. Group the data by category and month.
   const assignedBy = new Map<string, Cents>();
   const activityBy = new Map<string, Cents>();
+  const creditBy = new Map<string, Map<string, Cents>>();
+  const paymentsBy = new Map<string, Cents>();
   for (const a of input.assignments) addTo(assignedBy, key(a.categoryId, a.month), a.amount);
-  for (const a of input.activity) addTo(activityBy, key(a.categoryId, a.month), a.amount);
+  for (const a of input.activity) {
+    addTo(activityBy, key(a.categoryId, a.month), a.amount);
+    if (a.paymentCategoryId !== undefined) {
+      const k = key(a.categoryId, a.month);
+      const cards = creditBy.get(k) ?? new Map<string, Cents>();
+      addTo(cards, a.paymentCategoryId, a.amount);
+      creditBy.set(k, cards);
+    }
+  }
+  for (const p of input.cardPayments ?? []) addTo(paymentsBy, key(p.paymentCategoryId, p.month), p.amount);
+  const data = { assignedBy, activityBy, creditBy, paymentsBy };
 
   // 2. Find the first month with data: the computation starts there.
   let firstMonth = month;
-  for (const item of [...input.income, ...input.assignments, ...input.activity]) {
+  for (const item of [...input.income, ...input.assignments, ...input.activity, ...(input.cardPayments ?? [])]) {
     if (compareMonths(item.month, firstMonth) < 0) firstMonth = item.month;
   }
 
-  // 3. Walk the months before the requested one, carrying balances over.
-  const carried = new Map<string, Cents>(input.categoryIds.map((id): [string, Cents] => [id, 0]));
-  let overspentTotal = 0;
+  // 3. Walk the months before the requested one, closing each of them.
+  const carried = new Map<string, Cents>();
+  let cashOverspentTotal = 0;
   let overspentLastMonth = 0;
-  const previousMonths = monthRange(firstMonth, month).slice(0, -1);
-
-  for (const m of previousMonths) {
-    let overspentThisMonth = 0;
-    for (const id of input.categoryIds) {
-      const available =
-        (carried.get(id) ?? 0) + (assignedBy.get(key(id, m)) ?? 0) + (activityBy.get(key(id, m)) ?? 0);
-      if (available < 0) {
-        // Rule 3: the category restarts at zero, the overspending weighs on "ready to assign".
-        overspentThisMonth += -available;
-        carried.set(id, 0);
-      } else {
-        carried.set(id, available);
-      }
+  for (const m of monthRange(firstMonth, month).slice(0, -1)) {
+    const state = computeMonth(input, m, carried, data);
+    let cashOverspentThisMonth = 0;
+    for (const c of [...state.categories, ...state.paymentCategories]) {
+      // Rule 2 and rule 6: positive balances roll over, negative ones restart at zero.
+      carried.set(c.categoryId, Math.max(0, c.available));
+      cashOverspentThisMonth += c.cashOverspending;
     }
-    overspentTotal += overspentThisMonth;
-    overspentLastMonth = overspentThisMonth;
+    cashOverspentTotal += cashOverspentThisMonth;
+    overspentLastMonth = cashOverspentThisMonth;
   }
 
-  // 4. Compute the categories in the requested month.
-  const categories: CategoryMonth[] = input.categoryIds.map((id) => {
-    const carriedOver = carried.get(id) ?? 0;
-    const assigned = assignedBy.get(key(id, month)) ?? 0;
-    const activity = activityBy.get(key(id, month)) ?? 0;
-    return { categoryId: id, carriedOver, assigned, activity, available: carriedOver + assigned + activity };
-  });
+  // 4. The requested month, still open.
+  const current = computeMonth(input, month, carried, data);
 
-  // 5. Ready to assign = income so far − everything assigned (future too) − past overspending.
+  // 5. Ready to assign = income so far − everything assigned (future too) − past cash overspending.
   let incomeSoFar = 0;
   for (const item of input.income) {
     if (compareMonths(item.month, month) <= 0) incomeSoFar += item.amount;
@@ -172,8 +307,16 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     if (compareMonths(a.month, month) > 0) assignedInFuture += a.amount;
   }
 
-  const readyToAssign = incomeSoFar - assignedTotal - overspentTotal;
+  const readyToAssign = incomeSoFar - assignedTotal - cashOverspentTotal;
   assertCents(readyToAssign, "ready to assign");
 
-  return { month, readyToAssign, assignedInFuture, overspentLastMonth, categories };
+  return {
+    month,
+    readyToAssign,
+    assignedInFuture,
+    overspentLastMonth,
+    creditOverspending: current.categories.reduce((sum, c) => sum + c.creditOverspending, 0),
+    categories: current.categories,
+    paymentCategories: current.paymentCategories,
+  };
 }

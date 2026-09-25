@@ -11,8 +11,15 @@ export type ValidationErrorCode =
   | "invalid_amount"
   | "invalid_amount_format"
   | "invalid_month"
+  | "invalid_date"
   | "duplicate_category"
-  | "unknown_category";
+  | "unknown_category"
+  | "duplicate_account"
+  | "unknown_account"
+  | "missing_payment_category"
+  | "uncategorized_transaction"
+  | "split_mismatch"
+  | "unsupported_transaction";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

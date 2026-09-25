@@ -295,7 +295,7 @@ The queue module prevents duplicate effects by itself, without relying on whoeve
 
 ### Code quality
 
-- Unit tests and property-based tests for the core (for example: available balances plus "ready to assign" plus money assigned to future months must always equal the on-budget cash).
+- Unit tests and property-based tests for the core (for example: "ready to assign" plus every available balance, payment categories included, plus money assigned to future months plus the current credit overspending must always equal the balance of the on-budget cash accounts).
 - API integration tests against a real database and end-to-end tests with Playwright.
 - CI on GitHub Actions: lint, type check, tests, dependency scanning and image builds on every change.
 - Mandatory review of changes; releases with semantic versioning and release notes.

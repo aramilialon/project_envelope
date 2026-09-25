@@ -38,6 +38,32 @@ export function compareMonths(a: Month, b: Month): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/** A calendar date in the "YYYY-MM-DD" format, already in the workspace's time zone. */
+export type LocalDate = string;
+
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** @throws ValidationError with code "invalid_date" if the text is not a real calendar date. */
+export function assertDate(value: string): void {
+  const match = DATE_PATTERN.exec(value);
+  const valid =
+    match !== null &&
+    (() => {
+      const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+      const date = new Date(Date.UTC(year, month - 1, day));
+      return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+    })();
+  if (!valid) {
+    throw new ValidationError("invalid_date", `not a valid YYYY-MM-DD date: "${value}"`, { value });
+  }
+}
+
+/** The budget month a date belongs to: "2026-09-25" belongs to "2026-09". */
+export function monthOf(date: LocalDate): Month {
+  assertDate(date);
+  return date.slice(0, 7);
+}
+
 /** Every month from `from` to `to`, both included. Empty if `from` is after `to`. */
 export function monthRange(from: Month, to: Month): Month[] {
   const months: Month[] = [];

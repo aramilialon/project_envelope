@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertMonth, compareMonths, monthRange, nextMonth } from "./month.ts";
+import { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth } from "./month.ts";
 
 describe("months", () => {
   it("compute the next month, across the end of the year", () => {
@@ -27,6 +27,21 @@ describe("months", () => {
       assert.throws(
         () => assertMonth(text),
         (error) => isValidationError(error, "invalid_month"),
+        `"${text}" should have been rejected`,
+      );
+    }
+  });
+
+  it("derive the budget month of a date", () => {
+    assert.equal(monthOf("2026-09-25"), "2026-09");
+    assert.equal(monthOf("2028-02-29"), "2028-02"); // leap year
+  });
+
+  it("reject dates that do not exist", () => {
+    for (const text of ["2026-02-29", "2026-13-01", "2026-04-31", "2026-9-1", "26-09-01", ""]) {
+      assert.throws(
+        () => assertDate(text),
+        (error) => isValidationError(error, "invalid_date"),
         `"${text}" should have been rejected`,
       );
     }

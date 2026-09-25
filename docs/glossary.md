@@ -10,7 +10,12 @@
 | Activity | Spending (negative) and refunds (positive) of a category in the month | `activity`, `Activity` | Movimenti |
 | Available | Carried over + assigned + activity; negative = overspent | `available` | Disponibile |
 | Carried over | Positive available balance from the previous month | `carriedOver` | Riportato |
-| Overspending | A category still negative at the end of the month; taken from ready to assign the following month | `overspentLastMonth` | Spesa eccessiva |
+| Cash overspending | The part of a negative category paid from cash accounts; taken from ready to assign the following month | `cashOverspending`, `overspentLastMonth` | Spesa eccessiva in contanti |
+| Credit overspending | The part of a negative category paid with a credit card; it becomes card debt and does not touch ready to assign | `creditOverspending` | Spesa eccessiva con carta |
+| Payment category | A category per credit card holding the money set aside to pay it; covered card spending moves money into it | `paymentCategoryId`, `paymentCategories` | Pagamento carta |
+| Card payment | A transfer from a cash account to a credit card | `CardPayment` | Pagamento della carta |
+| On-budget / off-budget account | Accounts whose money is (or is not) part of the budget; investments and mortgages are usually off-budget | `onBudget` | Conto in budget / fuori budget |
+| Split | One transaction spread across several categories | `Split` | Suddivisione |
 | Minor unit | The smallest unit of a currency: the cent for EUR, the yen for JPY | `Cents` | Centesimo |
 
 ## Technical

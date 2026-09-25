@@ -8,8 +8,9 @@ The domain logic of envelope: the budget rules, and later portfolios and rebalan
 | --- | --- |
 | `src/errors.ts` | `ValidationError` with a stable `code` that the UI translates |
 | `src/money.ts` | Amounts as integer minor units: validation, sums, locale-aware parsing and formatting |
-| `src/month.ts` | "YYYY-MM" months: validation, next month, comparison, ranges |
-| `src/budget/budget-month.ts` | One budget month: ready to assign, rollover of available balances, overspending |
+| `src/month.ts` | "YYYY-MM" months and "YYYY-MM-DD" dates: validation, month of a date, next month, comparison, ranges |
+| `src/budget/transactions.ts` | From individual transactions to monthly totals: income, splits, transfers, card payments, off-budget accounts |
+| `src/budget/budget-month.ts` | One budget month: ready to assign, rollover, cash and credit overspending, credit card payment categories |
 | `src/index.ts` | What the package exposes to the apps |
 | `*.test.ts` | Tests, next to the file they check |
 
@@ -41,10 +42,11 @@ Comparisons with Perl, to find your way around the code.
 
 1. **Amounts as integer minor units.** `0.1 + 0.2` in JavaScript is `0.30000000000000004`, just like in Perl. With cents (`10 + 20 = 30`) the problem does not exist.
 2. **Pure functions.** `computeBudgetMonth` does not know where its data comes from. The server will read it from PostgreSQL, the phone from SQLite; the rule stays in one place.
-3. **Invariant tests.** Besides examples, one test generates 500 random budgets and checks that the books always balance: ready to assign + available + assigned in future = account balance. It is the safety net for future changes.
+3. **Invariant tests.** Besides examples, two tests generate hundreds of random budgets and transaction histories and check that the books always balance: ready to assign + available (payment categories included) + assigned in future + this month's credit overspending = balance of the on-budget cash accounts. They are the safety net for future changes.
 4. **No user-facing text.** The core returns data and error codes, never sentences. Words and number formats belong to the UI and depend on the user's language (see [ADR 0004](../../docs/adr/0004-internationalization.md)).
 
 ## Current limitations
 
-- All spending is treated as cash or debit. Credit cards will come with their payment category.
-- Amounts arrive already grouped by category and month: grouping individual transactions is the next step.
+- Credit card starting balances (debt that existed before the budget) and income on a credit card (for example cashback) are not supported yet.
+- Transfers between two credit cards (balance transfers) are rejected for now.
+- Uncategorized transactions are rejected: the import flow will have to ask for a category or park them in a dedicated category.
