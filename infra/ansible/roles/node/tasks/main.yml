@@ -1,0 +1,53 @@
+# Node.js is installed per user with fnm, following the project's .nvmrc,
+# because Debian's own nodejs package is older than the version we need.
+
+- name: Choose the fnm release file for this CPU
+  ansible.builtin.set_fact:
+    node_fnm_asset: "{{ {'x86_64': 'fnm-linux.zip', 'aarch64': 'fnm-arm64.zip'}[ansible_architecture] }}"
+    node_fnm_base_url: >-
+      {{ 'https://github.com/Schniz/fnm/releases/latest/download'
+         if fnm_version == 'latest'
+         else 'https://github.com/Schniz/fnm/releases/download/' ~ fnm_version }}
+
+- name: Download fnm
+  ansible.builtin.get_url:
+    url: "{{ node_fnm_base_url }}/{{ node_fnm_asset }}"
+    dest: "/tmp/{{ node_fnm_asset }}"
+    mode: "0644"
+  register: node_fnm_download
+
+- name: Install fnm in /usr/local/bin
+  ansible.builtin.unarchive:
+    src: "/tmp/{{ node_fnm_asset }}"
+    dest: /usr/local/bin
+    remote_src: true
+    mode: "0755"
+  when: node_fnm_download.changed
+
+- name: Load fnm in every interactive shell of the development user
+  ansible.builtin.lineinfile:
+    path: "/home/{{ dev_user }}/.bashrc"
+    line: 'eval "$(fnm env --use-on-cd --shell bash)"'
+    create: true
+    owner: "{{ dev_user }}"
+    group: "{{ dev_user }}"
+    mode: "0644"
+
+- name: Install Node.js {{ node_major }}
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.command: /usr/local/bin/fnm install {{ node_major }}
+  register: node_install
+  changed_when: "'already installed' not in (node_install.stdout ~ node_install.stderr)"
+
+- name: Make Node.js {{ node_major }} the default version
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.command: /usr/local/bin/fnm default {{ node_major }}
+  changed_when: false
+
+- name: Enable corepack, which provides pnpm
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.command: /usr/local/bin/fnm exec --using={{ node_major }} corepack enable
+  changed_when: false

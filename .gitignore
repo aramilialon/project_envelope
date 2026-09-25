@@ -1,0 +1,23 @@
+# Dependencies installed by pnpm: recreate them with `pnpm install`
+node_modules/
+
+# Generated files
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Secrets and local configuration: never in the repository
+.env
+.env.*
+!.env.example
+infra/ansible/inventory.ini
+infra/ansible/vars.yml
+.github-token
+*.bundle
+
+# Operating system and editors
+.DS_Store
+.idea/
+*.log

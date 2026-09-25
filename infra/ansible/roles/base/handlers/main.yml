@@ -1,0 +1,11 @@
+# Handlers run in the order they are written: validate first, then restart.
+- name: Validate the SSH configuration
+  ansible.builtin.command: sshd -t
+  changed_when: false
+  listen: Restart SSH
+
+- name: Restart the SSH server
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+  listen: Restart SSH

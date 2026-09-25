@@ -1,0 +1,36 @@
+# Copy to vars.yml and edit. vars.yml is ignored by Git: it holds personal data.
+
+# --- User ---------------------------------------------------------------
+dev_user: dev
+# Public keys allowed to sign in as dev_user (content of ~/.ssh/id_ed25519.pub on your laptop).
+dev_user_ssh_keys:
+  - "ssh-ed25519 AAAA... you@laptop"
+# The dev user has no password: sudo without a password keeps the VM usable.
+# Set to false and give the user a password with `passwd` if you prefer.
+dev_user_passwordless_sudo: true
+
+# --- Git ----------------------------------------------------------------
+dev_git_name: "Your Name"
+dev_git_email: "you@example.com"
+
+# --- System -------------------------------------------------------------
+timezone: "Europe/Rome"
+base_full_upgrade: true
+base_unattended_upgrades: true
+# Turn on only after key login works: it disables SSH passwords and root login.
+ssh_harden: false
+
+# --- Toolchain ----------------------------------------------------------
+node_major: 24
+# "latest" or a release tag such as "v1.38.1"
+fnm_version: latest
+
+# --- Project ------------------------------------------------------------
+# Generate an SSH key for the dev user, to register on the Git hosting service.
+project_generate_ssh_key: true
+# Leave empty on the first run. Once the key is registered, set the URL and run
+# the playbook again with `--tags project` to clone the repository.
+project_repo: ""
+project_dir: "/home/{{ dev_user }}/envelope"
+# Run `pnpm install --frozen-lockfile` after cloning (needs pnpm-lock.yaml in the repo).
+project_install_deps: true

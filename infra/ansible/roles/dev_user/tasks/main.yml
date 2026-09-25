@@ -1,0 +1,67 @@
+- name: Create the development user
+  ansible.builtin.user:
+    name: "{{ dev_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    state: present
+
+- name: Create ~/.ssh
+  ansible.builtin.file:
+    path: "/home/{{ dev_user }}/.ssh"
+    state: directory
+    owner: "{{ dev_user }}"
+    group: "{{ dev_user }}"
+    mode: "0700"
+
+- name: Authorize the SSH public keys
+  ansible.builtin.lineinfile:
+    path: "/home/{{ dev_user }}/.ssh/authorized_keys"
+    line: "{{ item }}"
+    create: true
+    owner: "{{ dev_user }}"
+    group: "{{ dev_user }}"
+    mode: "0600"
+  loop: "{{ dev_user_ssh_keys }}"
+  loop_control:
+    label: "{{ item | truncate(40) }}"
+
+- name: Allow sudo without a password
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ dev_user }}"
+    content: "{{ dev_user }} ALL=(ALL:ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s
+  when: dev_user_passwordless_sudo | bool
+
+- name: Remove passwordless sudo when disabled
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/90-{{ dev_user }}"
+    state: absent
+  when: not (dev_user_passwordless_sudo | bool)
+
+- name: Configure Git for the development user
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.shell: |
+    set -eu
+    changed=0
+    set_value() {
+      if [ "$(git config --global --get "$1" || true)" != "$2" ]; then
+        git config --global "$1" "$2"
+        changed=1
+      fi
+    }
+    set_value user.name {{ dev_git_name | quote }}
+    set_value user.email {{ dev_git_email | quote }}
+    set_value init.defaultBranch main
+    set_value pull.rebase true
+    echo "changed=$changed"
+  args:
+    executable: /bin/bash
+  register: dev_user_git_config
+  changed_when: "'changed=1' in dev_user_git_config.stdout"
+  when: dev_git_name | length > 0 and dev_git_email | length > 0

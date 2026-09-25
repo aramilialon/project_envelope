@@ -1,0 +1,80 @@
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    upgrade: full
+  when: base_full_upgrade | bool
+
+- name: Install base packages
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+    name:
+      - sudo
+      - acl
+      - curl
+      - ca-certificates
+      - git
+      - unzip
+      - build-essential
+      - python3-debian # needed by the deb822_repository module (Docker repository)
+      - vim
+      - nano
+      - htop
+    state: present
+
+- name: Install and start the QEMU guest agent (Proxmox and other KVM hosts)
+  when: ansible_virtualization_type == "kvm"
+  block:
+    - name: Install qemu-guest-agent
+      ansible.builtin.apt:
+        name: qemu-guest-agent
+        state: present
+
+    - name: Start qemu-guest-agent
+      ansible.builtin.service:
+        name: qemu-guest-agent
+        state: started
+
+- name: Read the current time zone
+  ansible.builtin.command: timedatectl show --property=Timezone --value
+  register: base_current_timezone
+  changed_when: false
+  check_mode: false
+
+- name: Set the time zone
+  ansible.builtin.command: timedatectl set-timezone {{ timezone | quote }}
+  when: base_current_timezone.stdout != timezone
+  changed_when: true
+
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+  when: base_unattended_upgrades | bool
+
+- name: Enable automatic security updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      // Managed by Ansible (envelope infra/ansible)
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+  when: base_unattended_upgrades | bool
+
+- name: Harden the SSH server
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/10-envelope.conf
+    content: |
+      # Managed by Ansible (envelope infra/ansible)
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin no
+    owner: root
+    group: root
+    mode: "0644"
+  when: ssh_harden | bool
+  notify: Restart SSH

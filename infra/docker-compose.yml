@@ -1,0 +1,52 @@
+# Services for local development: PostgreSQL and Keycloak.
+# Start:   docker compose up -d        (from the infra/ folder)
+# Status:  docker compose ps
+# Logs:    docker compose logs -f keycloak
+# Stop:    docker compose down         (data stays in the volume)
+# Reset:   docker compose down -v      (WARNING: also deletes the data)
+#
+# Passwords come from the .env file (a copy of .env.example). Ports are bound
+# to 127.0.0.1 only: the services cannot be reached from other computers.
+
+name: envelope
+
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: envelope
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the .env file}
+      POSTGRES_DB: envelope
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Scripts run only when the volume is first created: they create the Keycloak database.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U envelope -d envelope"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:?set KEYCLOAK_VERSION in the .env file}
+    restart: unless-stopped
+    # start-dev: development mode (HTTP, local cache). Production uses "start" with HTTPS.
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: envelope
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in the .env file}
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

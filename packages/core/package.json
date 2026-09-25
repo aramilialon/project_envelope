@@ -1,0 +1,15 @@
+{
+  "name": "@envelope/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Domain logic of envelope: budget, portfolios, rebalancing",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

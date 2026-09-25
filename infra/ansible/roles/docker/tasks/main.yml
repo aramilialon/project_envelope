@@ -1,0 +1,50 @@
+- name: Add Docker's official APT repository
+  ansible.builtin.deb822_repository:
+    name: docker
+    types: deb
+    uris: https://download.docker.com/linux/debian
+    suites: "{{ ansible_distribution_release }}"
+    components: stable
+    architectures: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+    signed_by: https://download.docker.com/linux/debian/gpg
+    state: present
+
+- name: Install Docker Engine and the Compose plugin
+  ansible.builtin.apt:
+    update_cache: true
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  # In a dry run (--check) the repository above is not really added yet,
+  # so APT cannot find the packages: that is expected on a fresh machine.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Rotate container logs so they cannot fill the disk
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "local",
+        "log-opts": { "max-size": "20m", "max-file": "5" }
+      }
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart Docker
+
+- name: Start Docker at boot
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+# Members of the docker group are effectively root on this machine.
+- name: Let the development user run Docker
+  ansible.builtin.user:
+    name: "{{ dev_user }}"
+    groups: docker
+    append: true

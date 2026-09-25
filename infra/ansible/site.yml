@@ -1,0 +1,37 @@
+# Prepares a Debian 13 development machine for envelope.
+#
+#   ansible-playbook site.yml                  # everything
+#   ansible-playbook site.yml --check --diff   # dry run: shows what would change
+#   ansible-playbook site.yml --tags docker    # one part only
+#
+# Every task is idempotent: running the playbook again changes nothing
+# unless the configuration or vars.yml changed.
+
+- name: Prepare the envelope development machine
+  hosts: devvm
+  become: true
+  vars_files:
+    - vars.yml
+
+  pre_tasks:
+    - name: Check that the target is Debian 13
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == "Debian"
+          - ansible_distribution_major_version == "13"
+        fail_msg: "This playbook targets Debian 13 (trixie); found {{ ansible_distribution }} {{ ansible_distribution_version }}."
+      tags: always
+
+    - name: Refuse to disable SSH passwords without at least one key
+      ansible.builtin.assert:
+        that:
+          - not ssh_harden or (dev_user_ssh_keys | length > 0)
+        fail_msg: "ssh_harden is true but dev_user_ssh_keys is empty: you would be locked out."
+      tags: always
+
+  roles:
+    - { role: base, tags: [base] }
+    - { role: dev_user, tags: [user] }
+    - { role: docker, tags: [docker] }
+    - { role: node, tags: [node] }
+    - { role: project, tags: [project] }

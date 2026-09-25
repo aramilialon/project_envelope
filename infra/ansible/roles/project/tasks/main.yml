@@ -1,0 +1,54 @@
+- name: Generate an SSH key for the Git hosting service
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.command: >-
+    ssh-keygen -t ed25519 -N "" -C "{{ dev_user }}@{{ ansible_hostname }}"
+    -f /home/{{ dev_user }}/.ssh/id_ed25519
+  args:
+    creates: "/home/{{ dev_user }}/.ssh/id_ed25519"
+  when: project_generate_ssh_key | bool
+
+- name: Read the public key
+  ansible.builtin.slurp:
+    src: "/home/{{ dev_user }}/.ssh/id_ed25519.pub"
+  register: project_public_key
+  when: project_generate_ssh_key | bool and not ansible_check_mode
+
+- name: Show the public key to register on the Git hosting service
+  ansible.builtin.debug:
+    msg: "Add this key to your Git hosting account: {{ project_public_key.content | b64decode | trim }}"
+  when: project_public_key.content is defined
+
+- name: Clone the repository
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.git:
+    repo: "{{ project_repo }}"
+    dest: "{{ project_dir }}"
+    key_file: "/home/{{ dev_user }}/.ssh/id_ed25519"
+    accept_newhostkey: true
+    # Never overwrite local work: after the first clone, updates are `git pull`.
+    update: false
+  register: project_clone
+  when: project_repo | length > 0
+
+- name: Check whether the repository has a lockfile
+  ansible.builtin.stat:
+    path: "{{ project_dir }}/pnpm-lock.yaml"
+  register: project_lockfile
+  when: project_repo | length > 0
+
+- name: Install the project's dependencies
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.command: /usr/local/bin/fnm exec --using={{ node_major }} pnpm install --frozen-lockfile
+  args:
+    chdir: "{{ project_dir }}"
+  environment:
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  when:
+    - project_repo | length > 0
+    - project_install_deps | bool
+    - project_lockfile.stat.exists | default(false)
+  changed_when: "'Already up to date' not in project_deps.stdout"
+  register: project_deps
