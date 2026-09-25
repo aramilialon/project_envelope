@@ -4,11 +4,16 @@
   "description": "Envelope budgeting and investment portfolios with threshold-based rebalancing",
   "license": "AGPL-3.0-only",
   "type": "module",
+  "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.3"
   }
 }

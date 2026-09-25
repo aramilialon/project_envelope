@@ -130,7 +130,7 @@ $ git clone git@github.com:YOUR-USER/envelope.git ~/envelope
 
 ## 7. pnpm, dependencies and first tests
 
-pnpm is the project's package manager, like `cpanm` for Perl. Node.js 24 ships `corepack`, which installs the pnpm version pinned in the `packageManager` field of `package.json`.
+pnpm is the project's package manager, like `cpanm` for Perl. Node.js 24 ships `corepack`, which installs the pnpm version pinned in the `packageManager` field of `package.json`. TypeScript and the Node.js types are listed in `devDependencies`.
 
 ```bash
 $ cd ~/envelope
@@ -142,12 +142,10 @@ $ pnpm typecheck
 
 `pnpm install` creates `node_modules`, ignored by Git, following the exact versions in `pnpm-lock.yaml`. The expected result of `pnpm test` is `# fail 0`; `pnpm typecheck` prints nothing when there are no errors.
 
-**Only once, if the repository has no `pnpm-lock.yaml` yet:** pin pnpm and add the development tools, then commit the result.
+**Only once, if the repository has no `pnpm-lock.yaml` yet:** the `pnpm install` above creates it. Commit and push it, so every machine and the CI install exactly the same versions:
 
 ```bash
-$ corepack use pnpm@latest                     # writes "packageManager" into package.json
-$ pnpm add -D -w typescript @types/node@24     # TypeScript and the Node.js 24 types, for the whole monorepo
-$ git add package.json pnpm-lock.yaml && git commit -m "Pin pnpm and add TypeScript" && git push
+$ git add pnpm-lock.yaml && git commit -m "Add pnpm lockfile" && git push
 ```
 
 ## 8. PostgreSQL and Keycloak
