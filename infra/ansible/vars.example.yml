@@ -34,3 +34,12 @@ project_repo: ""
 project_dir: "/home/{{ dev_user }}/envelope"
 # Run `pnpm install --frozen-lockfile` after cloning (needs pnpm-lock.yaml in the repo).
 project_install_deps: true
+
+# --- Claude Code ----------------------------------------------------------
+# Install Claude Code from its signed APT repository.
+claude_code_install: true
+# Personal instructions for Claude Code, written to ~/.claude/CLAUDE.md of the
+# development user (language, experience, preferred working style). Leave empty to skip.
+claude_code_user_instructions: |
+  # About me
+  - Reply in Italian; everything written into the repository stays in English.

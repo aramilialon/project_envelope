@@ -9,6 +9,7 @@ Prepares a fresh **Debian 13** machine for envelope: everything in sections 2–
 | `docker` | Docker's APT repository, Docker Engine and Compose plugin, log rotation, `docker` group | `docker` |
 | `node` | fnm in `/usr/local/bin`, Node.js from `node_major`, corepack (pnpm) | `node` |
 | `project` | SSH key for the Git hosting service, clone of the repository, `pnpm install` | `project` |
+| `claude_code` | Claude Code from its signed APT repository, optional personal instructions in `~/.claude/CLAUDE.md` | `claude` |
 
 ## Run it on the VM itself
 

@@ -1,0 +1,43 @@
+# Claude Code, the coding assistant used to develop the project, from its
+# signed APT repository (stable channel). Upgrades come with `apt upgrade`.
+
+- name: Install gnupg, needed to read the repository signing key
+  ansible.builtin.apt:
+    name: gnupg
+    state: present
+
+- name: Add the Claude Code APT repository
+  ansible.builtin.deb822_repository:
+    name: claude-code
+    types: deb
+    uris: https://downloads.claude.ai/claude-code/apt/stable
+    suites: stable
+    components: main
+    signed_by: https://downloads.claude.ai/keys/claude-code.asc
+    state: present
+
+- name: Install Claude Code
+  ansible.builtin.apt:
+    name: claude-code
+    update_cache: true
+    state: present
+  # In a dry run the repository is not really added yet: expected on a fresh machine.
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Create ~/.claude for the development user
+  ansible.builtin.file:
+    path: "/home/{{ dev_user }}/.claude"
+    state: directory
+    owner: "{{ dev_user }}"
+    group: "{{ dev_user }}"
+    mode: "0700"
+  when: (claude_code_user_instructions | default("")) | length > 0
+
+- name: Write the personal instructions for Claude Code
+  ansible.builtin.copy:
+    dest: "/home/{{ dev_user }}/.claude/CLAUDE.md"
+    content: "{{ claude_code_user_instructions | default('') }}"
+    owner: "{{ dev_user }}"
+    group: "{{ dev_user }}"
+    mode: "0600"
+  when: (claude_code_user_instructions | default("")) | length > 0

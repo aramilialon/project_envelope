@@ -257,7 +257,7 @@ Everything in TypeScript in a single repository (monorepo, [ADR 0001](adr/0001-m
 | Domain core | Pure TypeScript package, no network or database dependencies | Fully testable, reused everywhere |
 | API | Node.js with Fastify or NestJS, OpenAPI contract | Mature, typed, generated documentation |
 | Database | PostgreSQL with Row-Level Security per workspace | Reliable transactions, isolation between users even in case of bugs |
-| Data access | Drizzle ORM with versioned migrations | Explicit SQL, reviewable migrations |
+| Data access | Plain SQL migrations and parameterized queries with node-postgres ([ADR 0005](adr/0005-plain-sql-and-node-postgres.md)) | What runs on the database is exactly what is in the repository |
 | Background jobs | PostgreSQL queue (pg-boss) behind a replaceable interface | Price updates, threshold notifications, imports |
 | Push notifications | APNs (iOS), FCM (Android) and Web Push, sent by a queue job | Instant budget alerts and the monthly portfolio summary |
 | Web | React with Vite (single-page app, installable as a PWA) | Fast, works offline |

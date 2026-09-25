@@ -20,6 +20,7 @@
 | [0002](adr/0002-amounts-in-minor-units.md) | Amounts as integer minor units |
 | [0003](adr/0003-core-tests-with-node-test.md) | Core tests with `node:test`, no dependencies |
 | [0004](adr/0004-internationalization.md) | English source, translatable UI, locale-aware formatting |
+| [0005](adr/0005-plain-sql-and-node-postgres.md) | Plain SQL migrations and node-postgres |
 
 ## Rule
 
