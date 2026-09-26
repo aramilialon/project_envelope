@@ -1,16 +1,18 @@
-# Adds every new issue and pull request to the project board automatically,
-# so it never falls behind (it did once: 64 items tracked out of 203 issues).
+# Adds every new issue to the project board automatically, so it never falls
+# behind (it did once: 64 items tracked out of 203 issues).
+#
+# Deliberately issues only, not pull requests: a pull request that closes an
+# issue already on the board would get its own card with the same title,
+# which reads as a duplicate (#230) — the linked issue's card already
+# carries the work through the board and closes when the PR merges.
 name: Add to project
 
 on:
   issues:
     types: [opened]
-  pull_request:
-    types: [opened]
 
 permissions:
   issues: read
-  pull-requests: read
 
 jobs:
   add-to-project:
