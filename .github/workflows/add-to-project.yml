@@ -16,7 +16,12 @@ jobs:
   add-to-project:
     runs-on: ubuntu-latest
     steps:
+      - name: Skip if PROJECT_BOARD_TOKEN is not configured yet
+        if: ${{ secrets.PROJECT_BOARD_TOKEN == '' }}
+        run: echo "::warning::PROJECT_BOARD_TOKEN is not set (see the how-to guide); skipping."
+
       - uses: actions/add-to-project@v2
+        if: ${{ secrets.PROJECT_BOARD_TOKEN != '' }}
         with:
           project-url: https://github.com/users/aramilialon/projects/3
           github-token: ${{ secrets.PROJECT_BOARD_TOKEN }}
