@@ -70,7 +70,7 @@ These rules belong in `packages/core`, with tests; the mockup's `plan()` functio
 
 - CSV files need a column mapping: date, description, and either one amount column or separate outflow and inflow columns, plus an optional memo; the date format, the decimal separator and whether the first row holds column names. The mapping is remembered per account. OFX, QIF and CAMT.053 need no mapping.
 - A row is a duplicate of a transaction already in the same account when the bank's own transaction id matches (formats that carry one, such as OFX), or otherwise when the amount is the same and the dates are at most 3 days apart; each existing transaction matches at most one row. Duplicates are not imported again; a matched *pending* transaction becomes *cleared*.
-- New rows are imported as cleared. Payee and category are suggested from the user's rules and history; rows without a category are imported as "to categorize" and listed with their own filter in the register.
+- New rows go into a staging area, not into `transactions` directly. Payee and category are suggested from the user's rules and history. A staged row is confirmed into `transactions` (as cleared) only once every row included in the confirmation has a category, or is recognized as a transfer or as income; `transactions` itself has no "to categorize" state (`packages/core` rejects an uncategorized transaction outright). Unconfirmed staged rows expire after 7 days.
 - The file is read to extract its rows and is not stored. The import summary compares the file's closing balance, when it has one, with the account's balance.
 
 **Reconciliation.**
@@ -82,6 +82,26 @@ These rules belong in `packages/core`, with tests; the mockup's `plan()` functio
 - When a real difference remains (a forgotten fee, a bank correction), the user can add an adjustment transaction for it, dated on the statement date; its category is chosen by the user, unassigned money by default, so the budget and the accounts stay equal.
 - Reconciled transactions cannot be edited or deleted. Unlocking one is an explicit action, recorded in the audit log, and it marks the account's last reconciliation as broken until it is redone.
 - Credit cards and every other on-budget or off-budget cash account reconcile the same way.
+
+### Credit cards
+
+An on-budget credit card gets an automatic payment category, which holds the money set aside to pay it (`packages/core`, "Credit card handling").
+
+- **Starting balance.** Creating a card with existing debt also creates a "Starting balance" transaction on the card's account, categorized to the card's own payment category. Card purchases keep going to their own spending categories, as always; only this one transaction is categorized directly to the payment category.
+- **Uncovered debt is derived, never stored.** `computeBudgetMonth` is given each on-budget card's real balance and returns, per card, `uncovered = max(0, cardBalance − paymentCategory.available)`: the part of what is owed that no assigned money covers yet. The payment category's own `available` behaves exactly like every other category (rolls over, never swept to zero by itself) — nothing new to persist. Assigning money to the payment category reduces `uncovered` directly.
+- **Credit vs. cash, for the payment category too.** A negative available caused by spending categorized to the payment category itself (the starting balance, or any future case) is credit: it does not touch unassigned money. A negative available caused by paying the card more than the payment category held is cash: it is taken from next month's unassigned, exactly as an ordinary cash overspend is today.
+- **Income on a card** (cashback, a card-issuer bonus — nothing tied to a specific purchase) is recorded as the composition of two things that already exist: a normal income entry (unassigned money +X) and a card payment (spending the payment category by X, per the existing card-payment rule). If the payment category does not hold X, the excess behaves like an ordinary payment beyond what was set aside (cash overspending). A merchant refund credited to the card stays a refund to its original spending category, as today — this rule is only for inflows with no category of their own.
+- **A transfer between two cards A → B** moves the *available* part of A's payment category into B's, up to what A's payment category actually holds; any remainder stays as A's uncovered debt, exactly like ordinary card overspending — the debt itself does not silently move to B.
+
+### Scheduled transactions
+
+A scheduled transaction (rent, salary, a subscription) reserves money ahead of being recorded, rather than only appearing once it happens.
+
+- `computeBudgetMonth` is given the month's scheduled items not yet recorded and returns `reserved` per category; `available` is net of its category's reservations. Recording the scheduled expense turns the reservation into ordinary activity, so `available` does not change at that moment.
+- A reservation beyond what a category can cover is a warning, not overspending: nothing has actually happened yet.
+- Reservations do not carry over to the next month. An overdue scheduled item (past its date, still not recorded) stays reserved, marked "to record" — it does not silently disappear or convert into activity on its own.
+- A scheduled expense on a credit card reserves money in its spending category, the same as a cash one; it becomes card activity, not a payment category concern, only once actually recorded.
+- At the start of a month, a summary shows what is already reserved against that month's income. A scheduled item can suggest its own category's target amount.
 
 ## Portfolio module
 
@@ -248,7 +268,8 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Transaction | account, date, amount, payee, status (pending, cleared, reconciled) | Corrections become new rows or tracked versions |
 | Split | transaction, category, amount | One transaction across several categories |
 | Category / Group | name, order, archived | |
-| MonthlyBudget | category, month, assigned | Spent and available are computed, never stored |
+| AssignmentEntry | month, source category (null = unassigned), destination category (null = unassigned), amount, author, reverses (another entry, optional) | Append-only ledger, never a mutable total: assigning is null→category, unassigning is category→null, moving money is one entry from A to B; a category's assigned amount in a month is incoming minus outgoing entries. Undo is a new entry with `reverses` set, never an edit ([ADR 0008](adr/0008-assignment-ledger.md)) |
+| Scheduled | account, category, payee, amount, next due date, every N days/months/years | Reserves money ahead of being recorded (see "Scheduled transactions") |
 | Goal | category, type, amount, due date | |
 | Instrument | ISIN, ticker, exchange, type, currency, asset class | Shared across users; private data kept separate |
 | Price | instrument, date, close, source | Daily time series |
@@ -393,9 +414,10 @@ Each change is a small record:
 
 1. Every change has a UUID and a hybrid logical clock (HLC) timestamp generated on the device; sending it again never creates duplicates.
 2. Offline, changes go into a local SQLite queue and are sent as soon as the network is back.
-3. The server resolves conflicts by looking at the clock only: for each field, the most recent change wins. It never needs to read the value, so it works the same way in both kinds of workspace.
-4. Reconciled transactions carry a plaintext "locked" flag: the server rejects later changes.
-5. Each device downloads the changes that arrived after the last clock value it has seen.
+3. The server resolves conflicts by looking at the clock only: for each field, the most recent change wins. It never needs to read the value, so it works the same way in both kinds of workspace. Deletion is a field like any other (`deleted = true`), resolved by the same rule — never a special case.
+4. Whoever loses a conflict sees a notice on that field, with the option to restore their own value (which is itself just a new, later change).
+5. Reconciled transactions carry a plaintext "locked" flag: the server rejects later changes.
+6. Each device downloads the changes that arrived after the last clock value it has seen.
 
 The protocol is our own rather than a ready-made engine: engines that sync PostgreSQL tables with SQLite work on plaintext data and would force a second system for encrypted workspaces. The phase 0 prototype validates it with two devices, offline changes and conflicts.
 
@@ -419,6 +441,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 - **Budget, encrypted workspace.** The server sends only a silent notification ("there are updates"); the device syncs, computes and shows the alert. On iOS silent notifications can be delayed: this must be measured.
 - **Portfolio.** Monthly rebalancing check: a server job for plaintext workspaces, a scheduled notification on the device for encrypted ones.
 - **Channels and preferences.** Push on iOS and Android, Web Push in the browser; users choose which alerts they receive and on which devices.
+- **Storage.** A notification → destination table (the notification's content plus which device tokens it goes to) is enough; wording and where each one links to are designed later, when notifications are actually built (0.1.5).
 
 ### Mobile-specific features
 
@@ -565,6 +588,7 @@ Ideas kept for after the whole product is complete, each off by default and opti
 | --- | --- | --- |
 | Place-aware suggestions (mobile) | With the user's permission, the phone remembers where expenses are recorded and, back at the same place, proposes the payee and category used there | Opt-in per device; a place is stored as an approximate area, never as a track; the list of places can be viewed and deleted |
 | Receipt reading | A photo of a receipt becomes a draft transaction with date, amount, merchant and, where present, the VAT number; the reading service is configured by the administrator (a self-hosted engine or an external provider with their own key) | No service is enabled by default; the photo is discarded after reading unless the user attaches it to the transaction |
+| Foreign-currency budget accounts | An on-budget account in a currency other than the workspace's base currency | Portfolio instruments in other currencies already work today (see Multi-currency); this is only about budget accounts |
 
 The field-level sync protocol is designed here (this section) but only ships, as its own milestone, once the API surfaces it needs (queue, authenticated multi-workspace requests) exist — see `CLAUDE.md`'s numbered step list for the exact within-phase sequencing, which is more detailed than the phase table above and takes precedence where the two seem to disagree. Targets, reports and broker import each carry their own `Phase` tag where they are first described (budget MVP, budget phase 2 and portfolio phase 2 respectively); phase 4 here is only about packaging what by then already exists. End-to-end encryption and local tax rules are each described once, where most specific (this section's "End-to-end encryption: a future, optional module" and the Portfolio module table), not repeated in phase 6.
 
@@ -591,3 +615,8 @@ The field-level sync protocol is designed here (this section) but only ships, as
 | Days of buffer | Amount-weighted average over the outflows of the last 30 days, first in first out; monthly history in reports |
 | Timeline | No deadlines; phases only have an order |
 | Interface | Ledger-like visual language where colour marks problems; Archivo, self-hosted; the budget month mockup in `docs/ux/mockups/` is the reference (see "User interface") |
+| Monthly assignments | An append-only ledger of debit/credit entries, never a mutable per-category total, so concurrent offline edits never conflict ([ADR 0008](adr/0008-assignment-ledger.md)) |
+| Credit card debt | Uncovered debt is derived (card balance minus the payment category's available), never persisted; the payment category behaves like every other category otherwise (see "Credit cards") |
+| Scheduled transactions | Reserve money ahead of being recorded; reservations never carry over to the next month (see "Scheduled transactions") |
+| Import | Staged until every row is categorized, a transfer or income; unconfirmed staging expires after 7 days (see "Import and reconciliation") |
+| Foreign-currency budget accounts | After 1.0.0 (see "After 1.0.0") |
