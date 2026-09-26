@@ -51,6 +51,21 @@ Every rule of the method has at least one MVP feature that makes it practical.
 | 3. Roll with the punches | Moving money between categories, overspending handling, instant notifications |
 | 4. Age your money | Age of money, assigning to future months |
 
+### Target calculation
+
+A target tells the budget how much a category asks for in the current month. There are four kinds. In the formulas, *carried* is the available balance brought over from the previous month, *assigned* is what the user assigned this month and *available* is the category's balance now.
+
+| Kind | Settings | Asks this month | Still missing this month | Progress shown |
+| --- | --- | --- | --- | --- |
+| Monthly amount | amount | the amount | amount − assigned, at least 0 | assigned ÷ amount |
+| Amount by a date | total, due month | (total − carried) ÷ months left, rounded up to the cent, at least 0 | asked − assigned, at least 0 | available ÷ total |
+| Repeating expense | amount, every 2, 3, 4, 6, 12 or 24 months, next due month | as "amount by a date" until the due month; then the due month moves forward by the interval | asked − assigned, at least 0 | available ÷ amount |
+| Balance to keep | threshold | threshold − available, at least 0 | the same | available ÷ threshold |
+
+"Months left" counts the current month and the due month. Example: €3,600 for holidays by June 2027, with €1,250 carried into September 2026, asks (3,600 − 1,250) ÷ 10 = €235 a month; with €200 assigned in September, €35 is still missing. "Fund the targets" assigns the missing amounts from ready to assign, never more than it holds. Payment categories of credit cards have no targets.
+
+These rules belong in `packages/core`, with tests; the mockup's `plan()` function is a reference implementation in plain JavaScript.
+
 ## Portfolio module
 
 The user records every instrument they own and every transaction. The app derives positions, value and month-by-month performance from historical prices.
@@ -395,6 +410,59 @@ In an encrypted workspace the server sees which fields change and when, but not 
 - Instant budget notifications (negative category, purchase exceeds the available balance, money to assign); for the portfolio, only the monthly rebalancing summary.
 - Widget with the available amounts of favorite categories (phase 3).
 
+## User interface
+
+The interactive mockup [docs/ux/mockups/budget-month.html](ux/mockups/budget-month.html) (open it in a browser) is the reference for the budget month on desktop and phone: layout, states, interactions and copy. It shows the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request.
+
+### Principles
+
+- **Colour marks problems.** A category with money is plain ink, because that is the normal state; zero is grey. Only what needs attention gets colour: red for cash overspending, amber for credit overspending and for targets still missing money, blue for actions and selection.
+- **Form as well as colour.** Every state is recognizable without colour: cash overspending is a solid red block, credit overspending amber hatching with a "card" label, missing target money a label with an amber meter.
+- **A ledger, not a dashboard.** Rules and hairlines instead of cards, shadows and pills; corners of 2 to 3 px at most; icons only where they carry meaning (month arrows, group chevrons, warnings, the phone's tab bar).
+- **Summary before detail.** The month's table fills the width; detail opens in a side panel only when asked for, and closes again.
+- **Numbers line up.** Tabular figures, right-aligned columns, amounts formatted for the user's locale with a real minus sign.
+- **No envelope pictures.** "envelope" is a code name; the interface does not draw envelopes.
+- **Neutral wording, never advice**, as everywhere in the app.
+
+### Visual language
+
+| Token | Light | Dark | Use |
+| --- | --- | --- | --- |
+| `desk` | `#ECECE8` | `#131418` | Page ground, sidebar |
+| `paper` | `#FFFFFF` | `#1B1D22` | Working surfaces: table, panel |
+| `ink` | `#1A1C22` | `#ECEDF0` | Text and positive amounts |
+| `muted` | `#686C76` | `#979BA6` | Secondary text, zero amounts |
+| `rule` | `#D3D4CF` | `#343740` | Lines between rows and sections |
+| `pen` | `#2340A0` | `#93A8F4` | Buttons, links, selection (`pen-soft` for selected rows) |
+| `red` | `#B3241B` | `#D2392E` | Cash overspending, errors |
+| `amber` / `warn` | `#E2A62C` / `#8C5300` | `#D9A23A` / `#EBB765` | Credit overspending, targets still missing money |
+
+Type is **Archivo**, one family with a width axis: condensed (72 to 78 %) for the month, panel titles, group names and uppercase labels; normal width for text and figures, with tabular lining numbers. Sizes: 40 px month title, 26 px panel title, 14 to 15 px body, 12 px labels (uppercase, 0.5 px tracking). The app self-hosts the font files: a self-hosted install must not call third-party servers.
+
+Both themes follow the operating system setting and can be forced in the user's preferences. Text meets WCAG 2.2 AA contrast, every control is reachable by keyboard with a visible focus ring, and touch targets are at least 44 px.
+
+### Budget month on the desktop
+
+- **Sidebar:** workspace switcher; navigation (Budget, Accounts, Portfolio); on-budget accounts as a ledger with dotted leaders and their total; off-budget accounts; "Add account"; the user and settings.
+- **Header:** the month with previous and next arrows, age of money, money already assigned to future months, and the "ready to assign" box with its Assign button (its amount turns red when negative).
+- **Toolbar:** filter tabs with a count badge each: All, Underfunded (amber), Overspent (red), With money; a zero count is shown outlined. Buttons: Summary, Targets, Quick assign, Move money, Undo.
+- **Notice:** one line when categories are overspent, with their count and total and a "Show" link that applies the Overspent filter.
+- **Table:** columns Category, Assigned, Activity, Available, with totals in the header. A group row has a chevron that collapses it, a name that selects it, a red badge with the number of overspent categories it holds, and the group's totals. A category row shows its name, its target meter with a short status ("€35.00 still needed this month", "target reached", "on track, €42.86 a month") and its amounts.
+- **Side panel:** hidden when nothing is selected. It closes with "× Close", by clicking the selected item again, or with Esc. It shows one of:
+  - *Category:* state, available amount and a sentence explaining what happens at the end of the month; covering overspending by choosing the category to take money from (preselected: the smallest one that covers the whole amount, never a balance-to-keep target); the month's ledger (carried over, assigned, activity, available); the target with Edit, or "Add a target", and "Assign €X from ready to assign" when money is missing; quick assign (as assigned last month, as spent last month); the month's transactions.
+  - *Group:* available in the group; categories, overspent and targets reached; the group's ledger; "Fund the targets" for the group; its categories, each opening its own detail.
+  - *Summary:* ready to assign with a sentence for its state (money without a job, every euro has a job, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that ready to assign + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
+  - *Targets:* every target grouped by kind, what the targets ask this month and what is still missing, "Fund all targets", and the categories without a target, each with "Add".
+  - *Target editor:* the four kinds, each with a one-line explanation; amount (typed in the user's locale), due month, repeat interval; a live preview of what the target asks and what is missing this month; Save, Cancel and Remove.
+
+### Budget month on the phone
+
+One column: month, ready to assign, age of money, and a link with the number and total of overspent categories. Groups collapse by tapping their name; groups with overspending come first. A category row shows only its name, its target status and the available amount; tapping it opens a full-screen detail with a back link, the same content as the desktop panel, and the same target editor. The tab bar has Budget, Accounts, a central button for quick expense entry, Portfolio and More. Groups have no summary screen on the phone.
+
+### Screens still to design
+
+Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: account register and transaction entry (splits, transfers), move money, quick assign, categories and groups management, scheduled transactions, import with column mapping and duplicates, reconciliation, settings (workspace, members and roles, language, locale and time zone, theme), first run and sign-in, notification preferences; for later milestones, the portfolio (dashboard, trades, allocation editor, rebalancing, prices), reports and the phone's quick entry.
+
 ## Open source, hosting and market data
 
 The code is licensed under AGPL-3.0 and identical for self-hosting and any hosted version. The only difference would be the services that cost money, such as market data and bank connections.
@@ -487,3 +555,4 @@ The field-level sync protocol is designed here (this section) but only ships, as
 | Budget notifications | Instant, from the server to every member, and locally on the device making the change |
 | Age of money | Amount-weighted average over the outflows of the last 30 days, first in first out; monthly history in reports |
 | Timeline | No deadlines; phases only have an order |
+| Interface | Ledger-like visual language where colour marks problems; Archivo, self-hosted; the budget month mockup in `docs/ux/mockups/` is the reference (see "User interface") |
