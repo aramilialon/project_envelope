@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Protects the default branch with a repository ruleset:
-# - changes reach main only through pull requests;
-# - the CI job "test" must pass before merging;
+# - changes reach main only through pull requests, merged with "Squash and merge";
+# - the CI jobs "test" and "conventional-title" must pass before merging;
 # - no force pushes and no deletion of main.
 # Nobody can bypass it, the repository owner included: merging happens in the pull request.
-#
-# On a private repository this needs a paid GitHub plan; GitHub answers 403 otherwise.
 set -euo pipefail
 
 name="Protect main"
@@ -31,14 +29,15 @@ gh api --method POST "repos/{owner}/{repo}/rulesets" --input - <<'JSON'
         "dismiss_stale_reviews_on_push": false,
         "require_code_owner_review": false,
         "require_last_push_approval": false,
-        "required_review_thread_resolution": false
+        "required_review_thread_resolution": false,
+        "allowed_merge_methods": ["squash"]
       }
     },
     {
       "type": "required_status_checks",
       "parameters": {
         "strict_required_status_checks_policy": false,
-        "required_status_checks": [{ "context": "test" }]
+        "required_status_checks": [{ "context": "test" }, { "context": "conventional-title" }]
       }
     }
   ]

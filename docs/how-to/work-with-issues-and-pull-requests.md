@@ -22,11 +22,10 @@ Every change reaches `main` through a pull request that a person reviews and mer
    ```bash
    scripts/github/bootstrap.sh
    ```
-3. Protect `main` on GitHub (pull requests only, CI must pass, no force push):
+3. Protect `main` on GitHub (pull requests only, squash merge only, CI and the commit-convention check must pass, no force push):
    ```bash
    scripts/github/protect-main.sh
    ```
-   On a private repository this needs a paid GitHub plan. Without it, GitHub answers `403` and the local safeguards below are the only protection.
 4. Activate the Git hooks in each clone (they refuse pushes to `main` and check commit messages):
    ```bash
    git config core.hooksPath scripts/git-hooks
@@ -116,7 +115,7 @@ When every issue of a milestone is closed:
 
 | Layer | What it does | Limit |
 | --- | --- | --- |
-| Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request | Needs a public repository or a paid plan |
+| Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request, only "Squash and merge" allowed, requires the `test` and `conventional-title` checks | The repository is public, so this works on the free plan |
 | Git hooks (`scripts/git-hooks/`) | `pre-push` refuses `git push` to `main`; `commit-msg` checks the commit convention | Local: must be activated in each clone |
 | Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, merging and approving pull requests, skipping hooks; ask before force pushes, tags, releases and raw API calls | Match the usual command forms, not every possible variant |
 
