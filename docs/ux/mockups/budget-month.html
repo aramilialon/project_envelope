@@ -627,7 +627,7 @@ button{cursor:pointer}
     if (x.c.payment) explain = 'Soldi messi da parte per pagare la carta. Crescono quando spendi con la carta da una categoria che ha disponibile, calano quando paghi la carta.';
     else if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
     else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la Visa. Se non lo copri, diventa debito sulla carta non coperto dalla categoria di pagamento.';
-    else if (st === 'pos') explain = 'Questi soldi hanno già un lavoro. Quello che resta a fine mese passa a ottobre.';
+    else if (st === 'pos') explain = 'Questi soldi sono già assegnati. Quello che resta a fine mese passa a ottobre.';
     else explain = 'Nessun disponibile: una spesa qui renderebbe la categoria sforata.';
 
     var cover = '';
@@ -704,7 +704,7 @@ button{cursor:pointer}
     var todo = overspent.concat(under.filter(function (k) { return overspent.indexOf(k) < 0; }));
     return CLOSE + '<div><span class="where">Famiglia \u00b7 settembre 2026</span><h4>Riepilogo del mese</h4></div>' +
       '<div class="sec" style="gap:8px"><span class="state-l">Da assegnare</span><span class="big n' + (r < 0 ? ' cash' : '') + '">' + f(r) + '</span>' +
-      '<p class="explain">' + (r > 0 ? 'Soldi arrivati che non hanno ancora un lavoro. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Ogni euro ha un lavoro.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
+      '<p class="explain">' + (r > 0 ? 'Soldi arrivati e non ancora assegnati. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Tutti i soldi arrivati sono assegnati.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
       '<div class="gstats"><div><small>Categorie</small><b class="n">' + keys.length + '</b></div>' +
       '<div><small>Sforate</small><b class="n' + (overspent.length ? ' bad' : '') + '">' + overspent.length + '</b></div>' +
       '<div><small>Da finanziare</small><b class="n' + (under.length ? ' warn' : '') + '">' + under.length + '</b></div></div>' +

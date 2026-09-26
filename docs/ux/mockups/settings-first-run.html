@@ -615,8 +615,8 @@ table.nt small{display:block;color:var(--muted)}
   function renderOnb() {
     var total = 5, h = '<div class="onb-top"><b>envelope</b><div class="dots-steps" aria-label="Passo ' + O.step + ' di ' + total + '">' + [1, 2, 3, 4, 5].map(function (i) { return '<i class="' + (i <= O.step ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
     if (O.step === 1) {
-      h += '<h2>Benvenuto. Diamo un lavoro a ogni euro.</h2><p>Il budget funziona così: assegni ai tuoi obiettivi solo i soldi che hai già, non quelli che arriveranno.</p>' +
-        '<ol class="rules4"><li>Dai un lavoro a ogni euro.</li><li>Metti da parte ogni mese per le spese che arrivano di rado.</li><li>Se sfori, sposti soldi da un’altra categoria: nessun senso di colpa.</li><li>Col tempo spendi i soldi del mese scorso, non quelli di questo.</li></ol>' +
+      h += '<h2>Benvenuto in envelope.</h2><p>Qui assegni alle categorie solo i soldi che sono già arrivati sui tuoi conti. Ogni spesa scala dalla sua categoria, e quello che avanza passa al mese dopo.</p>' +
+        '<ul class="rules4"><li>Ogni categoria mostra quanto resta da spendere questo mese.</li><li>Le spese rare, come l\u2019assicurazione, si preparano un po\u2019 alla volta con gli obiettivi.</li><li>Il budget e i conti tornano sempre al centesimo.</li></ul>' +
         '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('olang', O.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>';
     } else if (O.step === 2) {
       h += '<h2>Crea il tuo workspace</h2><p>Un workspace contiene un budget e i suoi conti. Puoi invitare altre persone più avanti.</p>' +

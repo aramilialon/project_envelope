@@ -1,6 +1,6 @@
 # envelope
 
-**A self-hosted budget and investment app for households.** Give every euro a job, keep your portfolios on the targets you chose, and keep your data on your own server.
+**A self-hosted budget and investment app for households.** Budget the money you already have, keep your portfolios on the targets you chose, and keep your data on your own server.
 
 [![CI](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml)
 
@@ -9,11 +9,11 @@
   <img alt="The budget month: categories with assigned, activity and available amounts, overspent categories in red and amber, and the detail of the selected category on the right" src="docs/ux/screenshots/budget-month-light.png">
 </picture>
 
-> `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. The screens on this page come from the [interactive mockups](docs/ux/mockups/), shown in their Italian translation.
+> `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. The screens on this page come from the [interactive mockups](docs/ux/mockups/); the mockups themselves show the Italian translation.
 
 ## What it does
 
-**Envelope budgeting.** Money that comes in lands in *ready to assign*; you give it a job by assigning it to categories, and you only ever assign money you already have.
+**Envelope budgeting.** Money that comes in lands in *ready to assign*; you assign it to categories, and you only ever assign money you already have.
 
 - Categories with rollover, credit cards with their own payment category, overspending that is handled differently for cash and for cards.
 - Targets for monthly bills, for a sum by a date, for expenses that repeat every few months, and for a balance to keep.
@@ -42,7 +42,7 @@
 
 ## Principles
 
-- **Every euro has a job.** The budget assigns only money that is already available.
+- **Only money that has arrived.** The budget assigns money already in the accounts, never future income.
 - **Your rules, not advice.** Targets, thresholds and rebalancing rules are yours; the app does the arithmetic.
 - **Always verifiable.** Amounts are integers in minor units, and the money in the budget always matches the money in the accounts: the core's tests prove it on hundreds of random histories.
 - **The data belongs to you.** No tracking, no selling of data, and a self-hosted install talks only to the services you configure.

@@ -6,7 +6,7 @@ Last updated: 2026-09-25. This is the reference design; decisions with lasting t
 
 One app, web and mobile, that combines envelope budgeting with portfolio management, target allocation and threshold-based rebalancing. The current goal is personal and family use, self-hosted. Open source distribution and a hosted version for others remain possible later, which is why the architecture is multi-user from day one: it costs little to do it now.
 
-- **Every euro has a job.** The budget assigns only money that is already available, never future income.
+- **Only money that has arrived.** The budget assigns money already in the accounts, never future income.
 - **One net worth.** Budget cash and investments add up to the same net worth.
 - **User rules, not advice.** The app only computes what is needed to respect the targets and thresholds the user has set. It never suggests instruments to buy and never judges the user's choices.
 - **Always verifiable.** Every balance, position and return can be rebuilt from the recorded transactions.
@@ -15,7 +15,7 @@ One app, web and mobile, that combines envelope budgeting with portfolio managem
 
 ## Budget module
 
-The budget follows the envelope method: money comes into "ready to assign" and the user distributes it across categories until nothing is left without a job.
+The budget follows the envelope method: money comes into "ready to assign" and the user distributes it across categories until all of it is assigned.
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
@@ -40,16 +40,14 @@ The budget follows the envelope method: money comes into "ready to assign" and t
 | Bank connection | Automatic sync through a PSD2 provider | Phase 3 |
 | Shared budgets | Several people on the same budget with different roles | Phase 3 |
 
-### The four rules of the method
+### What the budget is for
 
-Every rule of the method has at least one MVP feature that makes it practical.
+The features above serve a few practical goals of a household budget:
 
-| Rule | Where it lives in envelope |
-| --- | --- |
-| 1. Give every euro a job | Ready to assign, monthly assignment, warning when assigning more than is available |
-| 2. Plan for true expenses (irregular but predictable: car, vet, gifts) | Targets for expenses repeating every N months or years, quick assign |
-| 3. Roll with the punches | Moving money between categories, overspending handling, instant notifications |
-| 4. Age your money | Age of money, assigning to future months |
+- **Money is never counted twice.** Only money that has arrived can be assigned; the warning when assigning more than is available, and reconciliation with the bank, keep the budget equal to the accounts.
+- **Rare bills are not a surprise.** Targets spread an insurance premium or a car tax over the months before it is due, and quick assign funds them in one step.
+- **Overspending is fixed in the open.** A negative category stays visible, and notified, until money is moved to cover it; cash and card overspending are handled apart, so card debt never hides.
+- **Income can arrive before it is needed.** Assigning to future months, and the age of money, show how far ahead of its spending the household is.
 
 ### Target calculation
 
@@ -471,7 +469,7 @@ Both themes follow the operating system setting and can be forced in the user's 
 - **Side panel:** hidden when nothing is selected. It closes with "× Close", by clicking the selected item again, or with Esc. It shows one of:
   - *Category:* state, available amount and a sentence explaining what happens at the end of the month; covering overspending by choosing the category to take money from (preselected: the smallest one that covers the whole amount, never a balance-to-keep target); the month's ledger (carried over, assigned, activity, available); the target with Edit, or "Add a target", and "Assign €X from ready to assign" when money is missing; quick assign (as assigned last month, as spent last month); the month's transactions.
   - *Group:* available in the group; categories, overspent and targets reached; the group's ledger; "Fund the targets" for the group; its categories, each opening its own detail.
-  - *Summary:* ready to assign with a sentence for its state (money without a job, every euro has a job, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that ready to assign + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
+  - *Summary:* ready to assign with a sentence for its state (money not assigned yet, everything assigned, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that ready to assign + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
   - *Targets:* every target grouped by kind, what the targets ask this month and what is still missing, "Fund all targets", and the categories without a target, each with "Add".
   - *Target editor:* the four kinds, each with a one-line explanation; amount (typed in the user's locale), due month, repeat interval; a live preview of what the target asks and what is missing this month; Save, Cancel and Remove.
 
@@ -484,7 +482,7 @@ One column: month, ready to assign, age of money, and a link with the number and
 - **Account register.** Desktop: the account's cleared, pending and total balance; filters by state with counts; search; transactions newest first with a running balance, splits shown under their row; a round control on each row switches pending and cleared, reconciled rows show a padlock. A row opens in the side panel: outflow, inflow or transfer; the payee proposes the category used last time; the category's available amount before and after; splitting across categories with the amount still to split; transfers to a credit card are card payments, transfers to an off-budget account ask for a category. Phone: accounts list, register grouped by day, full-screen transaction form, and quick entry (amount keypad, place, category with its available amount, account).
 - **Import and reconciliation.** Import in four steps (file, columns, check, done) and reconciliation with the statement balance, the difference, clues and locking, as described in "Import and reconciliation".
 - **Settings.** Two separate places. *Your account*, from the user menu, holds what belongs to the person and applies in every workspace: profile, language, number and date format, personal time zone, theme, notifications and devices, sign-in and security. *Workspace settings*, from the workspace switcher, hold what every member shares: name, currency and the workspace time zone, members and roles, categories and groups, accounts, data export and deletion. Changing workspace settings needs the owner role, except categories, which editors can manage.
-- **First run.** Five steps: the method in four lines, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the amount ready to assign.
+- **First run.** Five steps: a short introduction to how the budget works, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the amount ready to assign.
 - **Portfolio.** Overview (value, contributions, gain, 12-month return, out-of-threshold notice, value against contributions over time, month-by-month table, allocation bars, positions), allocation editor (targets per level adding up to 100%, threshold rule, rebalancing presets), rebalancing (mode, contribution, minimum trade, whole or fractional units, "To get back to your targets:"), trade entry, and linked accounts showing how each brokerage account is split across portfolios, with holdings not assigned yet. A new portfolio is created with a short guided setup: name and purpose, accounts, which holdings of each account belong to it, a starting allocation. Phone: value chart, allocation bars and the monthly check.
 
 ### Screens still to design
