@@ -19,6 +19,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: an append-only `audit_log` table (workspace-scoped, Row-Level Security, no `UPDATE`/`DELETE` grant to `envelope_app`) and a single `recordAuditLog` write helper other repositories can call (`#216`).
 - `apps/api`: token verification and user mapping are now global preHandlers, applied to every route except `/health`, so a new route rejects a missing or foreign token without repeating the preHandler wiring itself (`#10`).
 - `scripts/keycloak/bootstrap.sh`: creates the real `envelope` realm and its `envelope-api` client (public, PKCE, an audience mapper) in the development Keycloak, idempotently, replacing manual console setup (`#71`).
+- `apps/api`: `GET /me` returns the caller's local user id, protected by the existing global preHandlers; registered only outside production, since it exists to give tests a real route ahead of the Budget API's own (`#235`).
 
 ### Changed
 
