@@ -23,6 +23,7 @@ pnpm test
 | `apps/` | Coming next: `api` (server), `web` (browser), `mobile` (Expo) |
 | `infra/` | `docker-compose` for local development (PostgreSQL, Keycloak) and the Ansible playbook for the development VM |
 | `docs/` | Getting started, how-to guides, architecture decision records (ADR), glossary |
+| `scripts/` | GitHub setup (labels, milestones, protected main) and Git hooks |
 
 ## Languages
 

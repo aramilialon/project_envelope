@@ -175,25 +175,25 @@ Any editor works. Two common options:
 
 ## 10. Daily workflow
 
-Changes reach the VM through the repository:
+Changes reach `main` only through pull requests: see [Work with issues, pull requests and releases](how-to/work-with-issues-and-pull-requests.md). Once per clone, activate the hook that refuses direct pushes to `main`:
 
 ```bash
-$ cd ~/envelope
-$ git pull                 # get the latest changes
-$ pnpm install             # only when package.json or pnpm-lock.yaml changed
+$ git config core.hooksPath scripts/git-hooks
+```
+
+Then, for each change:
+
+```bash
+$ git switch main && git pull               # start from the latest main
+$ git switch -c feat/12-short-description   # one branch per issue
+$ pnpm install                              # only when package.json or pnpm-lock.yaml changed
 $ pnpm test && pnpm typecheck
+$ git add -A && git commit                  # message in English, with "Refs #12"
+$ git push -u origin feat/12-short-description
+$ gh pr create --fill                       # then review and merge on GitHub
 ```
 
-When you change something yourself:
-
-```bash
-$ git status
-$ git add -A
-$ git commit -m "Short description of the change"
-$ git push
-```
-
-The repository's **Actions** tab on GitHub shows the CI run for every push: install, type check, tests. It must be green.
+The repository's **Actions** tab on GitHub shows the CI run for every push and pull request: install, type check, tests. It must be green before merging.
 
 ## Common problems
 

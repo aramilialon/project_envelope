@@ -25,6 +25,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, bound to 127.0.0.1 |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary |
+| `scripts/` | GitHub setup (labels, milestones, ruleset) and Git hooks |
 
 ## Commands
 
@@ -45,9 +46,20 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 - Background jobs go through the queue module interface (`enqueue`, `schedule`, `work`) with an outbox, deduplication keys, the `processed_jobs` register and a mandatory double-delivery test (design document, "Queue module").
 - Authentication: Keycloak as identity provider; the app speaks OpenID Connect only.
 
+## Git and GitHub workflow
+
+Every change reaches `main` through a pull request that the maintainer reviews and merges. Details in [docs/how-to/work-with-issues-and-pull-requests.md](docs/how-to/work-with-issues-and-pull-requests.md).
+
+- **Never** commit on `main`, push to `main`, merge or approve a pull request, force-push, or skip hooks. `.claude/settings.json` denies these commands; do not try other forms of them.
+- Work on the issue's milestone. Create a branch `<type>/<issue>-<short-description>` from an up-to-date `main` (types: `feat`, `fix`, `chore`, `docs`).
+- Commit messages in English, imperative mood, with `Refs #<issue>` in the body.
+- When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`), then stop and report the pull request link.
+- Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
+- Releases (tags, GitHub releases) are done only when asked.
+
 ## Current focus: backend MVP
 
-Build `apps/api` in small increments, each with tests and a green CI:
+Build `apps/api` in small increments, each with tests and a green CI. Each increment is a GitHub milestone (`v0.1.0` to `v0.7.0`); split it into issues before starting:
 
 1. Skeleton: Fastify server, configuration, structured logs, health endpoint, PostgreSQL connection, migration runner, integration tests against a real PostgreSQL (CI service container).
 2. Schema: users, workspaces, memberships, accounts, categories and groups, transactions with splits and transfers, monthly assignments; Row-Level Security per workspace.

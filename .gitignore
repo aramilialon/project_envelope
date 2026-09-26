@@ -17,6 +17,9 @@ infra/ansible/vars.yml
 .github-token
 *.bundle
 
+# Personal Claude Code settings (the shared ones are in .claude/settings.json)
+.claude/settings.local.json
+
 # Operating system and editors
 .DS_Store
 .idea/

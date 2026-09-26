@@ -1,0 +1,91 @@
+# Work with issues, pull requests and releases
+
+Every change reaches `main` through a pull request that a person reviews and merges. Claude Code, like any contributor, pushes branches and opens pull requests, but never pushes to `main`, never approves and never merges.
+
+## How the pieces fit together
+
+| Piece | Role | Example |
+| --- | --- | --- |
+| Milestone | A goal with a version number and a "done when" criterion | `v0.1.0 API skeleton` |
+| Issue | One task inside a milestone, with labels | "Migration runner with checksums" |
+| Branch | The work on one issue | `feat/12-migration-runner` |
+| Pull request | The proposal to merge the branch into `main`; closes the issue when merged | "Add the migration runner", body `Closes #12` |
+| Release | A tag and release notes when a milestone is complete | `v0.1.0` |
+
+## One-time setup
+
+1. Install and authenticate the GitHub CLI (the Ansible playbook installs it with the `github` tag):
+   ```bash
+   gh auth login        # GitHub.com → SSH → use the existing key → log in with a browser
+   ```
+2. Create labels and milestones:
+   ```bash
+   scripts/github/bootstrap.sh
+   ```
+3. Protect `main` on GitHub (pull requests only, CI must pass, no force push):
+   ```bash
+   scripts/github/protect-main.sh
+   ```
+   On a private repository this needs a paid GitHub plan. Without it, GitHub answers `403` and the local safeguards below are the only protection.
+4. Refuse pushes to `main` from each clone:
+   ```bash
+   git config core.hooksPath scripts/git-hooks
+   ```
+
+## The workflow
+
+1. **Pick or create an issue** in the current milestone:
+   ```bash
+   gh issue create --title "Migration runner with checksums" --label area:api --label type:feature --milestone "v0.1.0 API skeleton"
+   ```
+2. **Create a branch** from an up-to-date `main`, named `<type>/<issue>-<short-description>`:
+   ```bash
+   git switch main && git pull
+   git switch -c feat/12-migration-runner
+   ```
+   Types: `feat`, `fix`, `chore`, `docs`.
+3. **Commit** with messages in English, imperative mood, referencing the issue:
+   ```text
+   Add the migration runner
+
+   Applies pending SQL files in order, one transaction each, and records
+   their checksums in schema_migrations.
+
+   Refs #12
+   ```
+4. **Push the branch and open the pull request**:
+   ```bash
+   git push -u origin feat/12-migration-runner
+   gh pr create --fill --milestone "v0.1.0 API skeleton"
+   ```
+   The template asks for `Closes #12`, the tests run and the checklist.
+5. **Review and merge (a person).** Read the changes on GitHub, wait for a green CI, then merge with **Squash and merge**: `main` gets one commit per pull request, and the issue closes automatically.
+6. **Clean up**:
+   ```bash
+   git switch main && git pull
+   git branch -d feat/12-migration-runner
+   ```
+
+## Releasing a milestone
+
+When every issue of a milestone is closed:
+
+1. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
+2. After merging it, tag `main` and publish the release:
+   ```bash
+   git switch main && git pull
+   git tag -a v0.1.0 -m "v0.1.0 API skeleton"
+   git push origin v0.1.0
+   gh release create v0.1.0 --title "v0.1.0 API skeleton" --generate-notes
+   ```
+3. Close the milestone on GitHub.
+
+## Safeguards against direct pushes
+
+| Layer | What it does | Limit |
+| --- | --- | --- |
+| Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request | Needs a public repository or a paid plan |
+| Pre-push hook (`scripts/git-hooks/pre-push`) | Refuses `git push` to `main` from the clone | Local: must be activated in each clone |
+| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, merging and approving pull requests, skipping hooks; ask before force pushes, tags, releases and raw API calls | Match the usual command forms, not every possible variant |
+
+Only the ruleset is a real boundary; the other two catch mistakes early.
