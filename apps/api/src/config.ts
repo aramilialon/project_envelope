@@ -32,6 +32,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   };
 }
 
+/**
+ * The migration runner only ever needs a database to connect to: loading the
+ * full Config would make it demand Keycloak settings it has no use for.
+ */
+export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return requireEnv(env, "DATABASE_URL");
+}
+
 function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
   if (!value) {

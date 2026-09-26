@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { loadConfig } from "./config.ts";
+import { loadConfig, loadDatabaseUrl } from "./config.ts";
 
 const BASE_ENV = {
   DATABASE_URL: "postgres://envelope@127.0.0.1:5432/envelope",
@@ -62,5 +62,15 @@ describe("loadConfig", () => {
 
   it("rejects a LOG_PRETTY that is not a recognized boolean", () => {
     assert.throws(() => loadConfig({ ...BASE_ENV, LOG_PRETTY: "yes" }), /LOG_PRETTY/);
+  });
+});
+
+describe("loadDatabaseUrl", () => {
+  it("reads DATABASE_URL alone, without requiring the Keycloak variables", () => {
+    assert.equal(loadDatabaseUrl({ DATABASE_URL: BASE_ENV.DATABASE_URL }), BASE_ENV.DATABASE_URL);
+  });
+
+  it("rejects a missing DATABASE_URL", () => {
+    assert.throws(() => loadDatabaseUrl({}), /DATABASE_URL/);
   });
 });
