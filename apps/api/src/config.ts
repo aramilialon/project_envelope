@@ -13,6 +13,8 @@ export interface Config {
   readonly logLevel: LogLevel;
   readonly logPretty: boolean;
   readonly nodeEnv: string;
+  readonly keycloakIssuer: string;
+  readonly keycloakAudience: string;
 }
 
 const LOG_LEVELS: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
@@ -25,6 +27,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: parseLogLevel(env, "LOG_LEVEL", "info"),
     logPretty: parseBoolean(env, "LOG_PRETTY", false),
     nodeEnv: env.NODE_ENV || "development",
+    keycloakIssuer: requireEnv(env, "KEYCLOAK_ISSUER"),
+    keycloakAudience: requireEnv(env, "KEYCLOAK_AUDIENCE"),
   };
 }
 

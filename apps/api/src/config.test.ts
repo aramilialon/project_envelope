@@ -3,10 +3,14 @@ import { describe, it } from "node:test";
 
 import { loadConfig } from "./config.ts";
 
-const BASE_ENV = { DATABASE_URL: "postgres://envelope@127.0.0.1:5432/envelope" };
+const BASE_ENV = {
+  DATABASE_URL: "postgres://envelope@127.0.0.1:5432/envelope",
+  KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
+  KEYCLOAK_AUDIENCE: "envelope-api",
+};
 
 describe("loadConfig", () => {
-  it("applies defaults when only the required variable is set", () => {
+  it("applies defaults when only the required variables are set", () => {
     const config = loadConfig(BASE_ENV);
     assert.equal(config.host, "127.0.0.1");
     assert.equal(config.port, 3000);
@@ -14,6 +18,8 @@ describe("loadConfig", () => {
     assert.equal(config.logLevel, "info");
     assert.equal(config.logPretty, false);
     assert.equal(config.nodeEnv, "development");
+    assert.equal(config.keycloakIssuer, BASE_ENV.KEYCLOAK_ISSUER);
+    assert.equal(config.keycloakAudience, BASE_ENV.KEYCLOAK_AUDIENCE);
   });
 
   it("reads every variable when set", () => {
@@ -33,7 +39,15 @@ describe("loadConfig", () => {
   });
 
   it("rejects a missing DATABASE_URL", () => {
-    assert.throws(() => loadConfig({}), /DATABASE_URL/);
+    assert.throws(() => loadConfig({ KEYCLOAK_ISSUER: "x", KEYCLOAK_AUDIENCE: "x" }), /DATABASE_URL/);
+  });
+
+  it("rejects a missing KEYCLOAK_ISSUER or KEYCLOAK_AUDIENCE", () => {
+    assert.throws(() => loadConfig({ DATABASE_URL: BASE_ENV.DATABASE_URL }), /KEYCLOAK_ISSUER/);
+    assert.throws(
+      () => loadConfig({ DATABASE_URL: BASE_ENV.DATABASE_URL, KEYCLOAK_ISSUER: "x" }),
+      /KEYCLOAK_AUDIENCE/,
+    );
   });
 
   it("rejects a PORT that is not a positive integer", () => {

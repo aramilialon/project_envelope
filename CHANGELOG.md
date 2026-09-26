@@ -9,6 +9,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Added
 
 - GitHub workflow: labels and milestones, protected main branch, pull request template, commit convention checked by a Git hook and by CI on pull request titles.
+- `apps/api`: Keycloak access token verification against the realm's JWKS (signature, issuer, audience, expiry), as a Fastify preHandler not yet wired into any route (`#6`).
 
 ### Changed
 

@@ -12,11 +12,14 @@ if (!databaseUrl) {
   );
 }
 
+// /health does not touch Keycloak: any well-formed values satisfy loadConfig's validation.
+const KEYCLOAK_ENV = { KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope", KEYCLOAK_AUDIENCE: "envelope-api" };
+
 describe("GET /health", () => {
   let app: App;
 
   before(() => {
-    app = buildApp(loadConfig({ DATABASE_URL: databaseUrl }));
+    app = buildApp(loadConfig({ DATABASE_URL: databaseUrl, ...KEYCLOAK_ENV }));
   });
 
   after(() => app.close());
@@ -28,7 +31,9 @@ describe("GET /health", () => {
   });
 
   it("reports an error when the database is unreachable", async () => {
-    const brokenApp = buildApp(loadConfig({ DATABASE_URL: "postgres://nope:nope@127.0.0.1:1/does-not-exist" }));
+    const brokenApp = buildApp(
+      loadConfig({ DATABASE_URL: "postgres://nope:nope@127.0.0.1:1/does-not-exist", ...KEYCLOAK_ENV }),
+    );
     const response = await brokenApp.fastify.inject({ method: "GET", url: "/health" });
     assert.equal(response.statusCode, 503);
     await brokenApp.close();
