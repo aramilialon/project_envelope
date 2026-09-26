@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Checks that the first line of a commit message follows the project convention:
+#   <type>(<optional scope>): <description>
+# Types: feat fix docs chore refactor test ci build perf revert. Add "!" after the
+# type or scope for a breaking change, e.g. "feat(api)!: rename the budget endpoint".
+# Activated together with pre-push by: git config core.hooksPath scripts/git-hooks
+set -euo pipefail
+
+first_line=$(head -n1 "$1")
+convention='^(feat|fix|docs|chore|refactor|test|ci|build|perf|revert)(\([a-z0-9-]+\))?!?: [^ ].*'
+generated='^(Merge|Revert|fixup!|squash!|amend!) '
+
+if [[ "$first_line" =~ $convention || "$first_line" =~ $generated ]]; then
+  exit 0
+fi
+
+cat >&2 <<MSG
+Commit message refused: the first line must look like
+  feat(api): add the migration runner
+  fix(core): keep credit overspending out of ready to assign
+  docs: explain the release process
+Types: feat fix docs chore refactor test ci build perf revert
+Scopes: core api web mobile infra deps (optional)
+Got: $first_line
+MSG
+exit 1

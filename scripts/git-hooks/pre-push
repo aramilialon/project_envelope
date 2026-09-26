@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Refuses pushes to main from this clone: changes reach main through pull requests.
-# Activate once per clone with: git config core.hooksPath scripts/git-hooks
+# Activate once per clone with: git config core.hooksPath scripts/git-hooks (also enables commit-msg)
 # A person who really needs to push to main can run: ENVELOPE_ALLOW_MAIN_PUSH=1 git push ...
 set -euo pipefail
 

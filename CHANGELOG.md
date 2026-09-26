@@ -14,4 +14,4 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - Transaction aggregation: income, splits, transfers, card payments, off-budget accounts.
 - Development environment: docker-compose for PostgreSQL and Keycloak, Ansible playbook for a Debian 13 development machine.
 - Documentation: design document, getting started, how-to guides, ADRs 0001–0005, glossary.
-- GitHub workflow: labels and milestones, protected main branch, pull request template.
+- GitHub workflow: labels and milestones, protected main branch, pull request template, commit convention checked by a Git hook and by CI on pull request titles.
