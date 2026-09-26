@@ -52,3 +52,20 @@
     - project_lockfile.stat.exists | default(false)
   changed_when: "'Already up to date' not in project_deps.stdout"
   register: project_deps
+
+- name: Refuse pushes to main from the clone (changes go through pull requests)
+  become: true
+  become_user: "{{ dev_user }}"
+  ansible.builtin.shell: |
+    set -eu
+    cd {{ project_dir | quote }}
+    [ -d scripts/git-hooks ] || { echo "no-hooks"; exit 0; }
+    if [ "$(git config --get core.hooksPath || true)" != "scripts/git-hooks" ]; then
+      git config core.hooksPath scripts/git-hooks
+      echo "changed"
+    fi
+  args:
+    executable: /bin/bash
+  register: project_hooks
+  changed_when: "'changed' in project_hooks.stdout"
+  when: project_repo | length > 0

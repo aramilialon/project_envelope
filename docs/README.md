@@ -11,6 +11,7 @@
 ## How-to guides
 
 - [Add a test to the core](how-to/add-a-core-test.md)
+- [Work with issues, pull requests and releases](how-to/work-with-issues-and-pull-requests.md)
 
 ## Decisions
 

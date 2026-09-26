@@ -35,4 +35,5 @@
     - { role: docker, tags: [docker] }
     - { role: node, tags: [node] }
     - { role: project, tags: [project] }
+    - { role: github_cli, tags: [github], when: github_cli_install | default(true) | bool }
     - { role: claude_code, tags: [claude], when: claude_code_install | default(false) | bool }

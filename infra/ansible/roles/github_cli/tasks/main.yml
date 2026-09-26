@@ -1,0 +1,21 @@
+# GitHub CLI (gh), used to manage issues, milestones and pull requests from the
+# terminal. Installed from its official APT repository; upgrades come with `apt upgrade`.
+
+- name: Add the GitHub CLI APT repository
+  ansible.builtin.deb822_repository:
+    name: github-cli
+    types: deb
+    uris: https://cli.github.com/packages
+    suites: stable
+    components: main
+    architectures: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_architecture] }}"
+    signed_by: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+    state: present
+
+- name: Install the GitHub CLI
+  ansible.builtin.apt:
+    name: gh
+    update_cache: true
+    state: present
+  # In a dry run the repository is not really added yet: expected on a fresh machine.
+  ignore_errors: "{{ ansible_check_mode }}"
