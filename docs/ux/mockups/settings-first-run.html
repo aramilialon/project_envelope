@@ -1,0 +1,638 @@
+<!doctype html>
+<!--
+  Interactive mockup of the settings and of the first run.
+  Reference for docs/design.md, "User interface". Open it in a browser; no build
+  step, no dependencies except the Archivo font from Google Fonts (the app itself
+  self-hosts its fonts). The UI copy is the Italian translation; English stays
+  the source language of the app. Sample data is fictional.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - settings and first run mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<style>
+[hidden]{display:none!important}
+html,body{margin:0}
+
+:root{
+  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
+  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
+  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
+  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
+  --amber:#E2A62C; --amber-ink:#2E2104;
+  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
+  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
+  --warn:#8C5300;
+  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+    --amber:#D9A23A; --amber-ink:#1F1602;
+    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+    --warn:#EBB765;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+  --amber:#D9A23A; --amber-ink:#1F1602;
+  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+  --warn:#EBB765;
+}
+*{box-sizing:border-box}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cond{font-stretch:78%}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* Page strip */
+.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.strip p{margin:0;color:var(--muted);max-width:70ch}
+.strip b{color:var(--ink);font-weight:600}
+.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
+.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border:1px solid var(--rule)}
+
+/* Desktop */
+.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
+.side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
+.ws{display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--ink-2)}
+.nav{display:flex;flex-direction:column}
+.nav button{padding:7px 0;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
+.nav button[aria-current]{color:var(--ink);font-weight:700}
+.nav button[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;background:var(--ink)}
+.ledger{display:flex;flex-direction:column}
+.ledger h5{margin:0 0 6px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.lr{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:13px;white-space:nowrap}
+.lr .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.lr.total{margin-top:4px;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
+.neg{color:var(--red-text)}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+.me{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-2)}
+
+.main{display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.month{display:flex;align-items:center;gap:4px}
+.month h3{margin:0 8px;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;white-space:nowrap}
+.arrow{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
+.facts b{color:var(--ink);font-weight:600}
+
+/* Ready to assign */
+.rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
+.rta .amt.low{color:var(--red-text)}
+.btn{min-height:38px;padding:0 14px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+
+.bar-tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;gap:20px}
+.tabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);white-space:nowrap}
+.tabs button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.acts{display:flex;gap:8px;padding-bottom:8px;margin-left:auto}
+.notice{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--red-text);border-bottom:1px solid var(--rule-soft)}
+.notice .plain{color:var(--red-text);text-decoration:underline;text-underline-offset:3px}
+
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 118px 118px 138px;align-items:center;column-gap:0}
+.th{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);align-items:end}
+.th .t{display:flex;flex-direction:column;align-items:flex-end;padding-right:10px;gap:1px}
+.th .t .n{font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600;font-stretch:100%}
+.gr{padding-top:18px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%;font-size:14px;letter-spacing:.2px}
+.gr button{display:flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:transparent;font-weight:700;text-align:left}
+.gr button svg{transition:transform .15s}
+.gr button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .r{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.r{text-align:right;padding-right:10px}
+.row{width:100%;min-height:46px;padding:6px 0 6px 22px;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.row:hover{background:var(--paper-2)}
+.row[aria-pressed="true"]{background:var(--pen-soft)}
+.row .r{color:var(--ink-2)}
+.cn{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn b{font-weight:500}
+.goal{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.goal.need{color:var(--warn);font-weight:600}
+.meter{display:block;width:84px;height:2px;background:var(--rule)}
+.meter i{display:block;height:2px;background:var(--pen)}
+.goal.need .meter i{background:var(--warn)}
+.av{display:flex;justify-content:flex-end}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;min-width:96px;padding:3px 10px;font-weight:600}
+.amt-cell.zero{color:var(--muted);font-weight:500}
+.amt-cell.cash{background:var(--red);color:var(--red-ink);border-radius:2px}
+.amt-cell.credit{background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 5px,color-mix(in srgb,var(--hatch) 32%,var(--hatch-bg)) 5px 7px);color:var(--hatch-ink);border:1px solid var(--hatch);border-radius:2px}
+.tag{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.empty{padding:32px 0;color:var(--muted)}
+
+.insp{display:flex;flex-direction:column;gap:20px;padding:22px 24px;border-left:1px solid var(--rule);background:var(--paper)}
+.where{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.insp h4,.ph-detail h4{margin:2px 0 0;font-size:26px;font-weight:700;font-stretch:78%;letter-spacing:-.3px;line-height:1.1}
+.big{font-size:34px;font-weight:700;font-stretch:85%;line-height:1}
+.big.cash{color:var(--red-text)} .big.credit{color:var(--warn)} .big.zero{color:var(--muted)}
+.state-l{font-weight:600}
+.explain{margin:0;color:var(--ink-2);line-height:1.55}
+.cover{display:flex;flex-direction:column;gap:8px;padding:14px;background:var(--paper-2);border:1px solid var(--rule)}
+.cover label{font-weight:600}
+.cover select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.sec{display:flex;flex-direction:column;gap:4px}
+.sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.sec h5 .plain{text-transform:none;letter-spacing:0;font-stretch:100%;font-size:13px}
+.qa{display:flex;align-items:baseline;gap:6px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left;color:var(--pen)}
+.qa .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.qa .n{color:var(--ink-2)}
+.tx{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.tx small{color:var(--muted);font-size:12px}
+.tx span small{display:block}
+.meter.wide{width:100%;height:3px}
+.meter.wide i{height:3px}
+
+/* Phone */
+.phones{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;padding:24px 0}
+.phone{position:relative;width:390px;max-width:100%;height:800px;border:1px solid var(--rule);border-radius:30px;background:var(--paper);overflow:hidden}
+.ph-in{height:100%;overflow-y:auto;padding:20px 16px 100px}
+.ph-top{display:flex;align-items:center;justify-content:space-between}
+.ph-top h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%;text-align:center}
+.ph-top small{display:block;text-align:center;color:var(--muted);font-size:12px}
+.ph-rta{margin-top:14px}
+.ph-rta .amt{font-size:26px}
+.ph-facts{display:flex;justify-content:space-between;gap:10px;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.ph-facts b{color:var(--ink)}
+.ph-facts .plain{color:var(--red-text)}
+.pg{display:flex;justify-content:space-between;padding:16px 0 6px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
+.pg .n{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.pc{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.pc .amt-cell{min-width:0}
+.pc b{font-weight:500;font-size:15px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;height:76px;padding:0 6px 14px;border-top:1px solid var(--rule);background:var(--paper)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:48px;justify-content:center;border:0;background:transparent;color:var(--muted);font-size:11px}
+.tabbar button[aria-current]{color:var(--ink);font-weight:700}
+.tabbar .add{justify-self:center;width:52px;height:44px;border-radius:4px;background:var(--pen);color:var(--pen-ink)}
+.ph-note{max-width:380px;display:flex;flex-direction:column;gap:10px;color:var(--ink-2)}
+.ph-note h3{margin:0;font-size:18px;font-weight:700;font-stretch:78%}
+.ph-note ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+
+/* Counts on the filters */
+.tabs button{display:inline-flex;align-items:center;gap:7px}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--rule-soft);color:var(--ink-2);font-size:12px;font-weight:700;font-stretch:100%}
+.count.over{background:var(--red);color:var(--red-ink)}
+.count.under{background:var(--amber);color:var(--amber-ink)}
+.count.none{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
+
+/* Selectable groups */
+.gr .gh{display:flex;align-items:center;gap:2px}
+.gr .chev{display:inline-flex;align-items:center;justify-content:center;width:28px;min-height:32px;padding:0;border:0;background:transparent}
+.gr .chev svg{transition:transform .15s}
+.gr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .gname{min-height:32px;padding:0 6px;border:0;background:transparent;font-weight:700;text-align:left;border-radius:2px}
+.gr .gname:hover{text-decoration:underline;text-underline-offset:3px}
+.gr.on{background:var(--pen-soft)}
+.gr .flag{margin-left:8px}
+.jump{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.jump:hover b{text-decoration:underline;text-underline-offset:3px}
+.jump b{font-weight:500}
+.jump .amt-cell{min-width:0}
+.gstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.gstats div{display:flex;flex-direction:column;gap:2px;padding:10px;background:var(--paper)}
+.gstats small{font-size:12px;color:var(--muted)}
+.gstats b{font-size:16px;font-stretch:85%;white-space:nowrap}
+.gstats b.bad{color:var(--red-text)} .gstats b.warn{color:var(--warn)}
+
+/* Phone: collapsible groups and detail screen */
+.pg{align-items:center;padding:12px 0 4px}
+.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-weight:700;font-stretch:78%;text-align:left}
+.pg button svg{transition:transform .15s}
+.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pc{cursor:pointer}
+.pc .go{color:var(--muted);flex-shrink:0}
+.ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
+.ph-detail{display:flex;flex-direction:column;gap:18px}
+.closer{align-self:flex-end;font-size:13px}
+.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
+.types legend{padding:0 0 6px;font-weight:600}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--pen)}
+.opt b{font-weight:600}
+.opt small{display:block;margin-top:2px;color:var(--muted);font-size:13px;line-height:1.4}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600}
+.field select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in{display:flex;align-items:center;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.money-in input{flex:1;min-width:0;min-height:40px;padding:0 10px;border:0;background:transparent;font-variant-numeric:tabular-nums;font-size:16px;outline:none}
+.money-in span{padding:0 10px;color:var(--muted)}
+.preview{padding:12px 14px;border:1px solid var(--rule);background:var(--paper-2);line-height:1.6}
+.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.danger{color:var(--red-text);margin-left:auto}
+.goal-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.goal-row > span:first-child{display:flex;flex-direction:column}
+.goal-row b{font-weight:500}
+.goal-row small{color:var(--muted);font-size:12px}
+.goal-row:hover b{text-decoration:underline;text-underline-offset:3px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+.desk.set{grid-template-columns:230px 210px minmax(0,1fr)}
+.subnav{display:flex;flex-direction:column;padding:22px 0;border-right:1px solid var(--rule);background:var(--paper)}
+.subnav h5{margin:0 18px 8px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.subnav button{padding:9px 18px;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
+.subnav button[aria-current]{color:var(--ink);font-weight:700;background:var(--pen-soft);box-shadow:inset 3px 0 0 var(--pen)}
+.form{display:flex;flex-direction:column;gap:22px;max-width:640px}
+.page-h{margin:0;font-size:36px;line-height:1.05;font-weight:700;font-stretch:72%;letter-spacing:-.5px}
+.lead{margin:6px 0 0;color:var(--ink-2);max-width:65ch}
+.field input[type=text],.field input[type=email],.field select{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.field input[readonly]{background:var(--paper-2);color:var(--ink-2)}
+.hint{font-size:13px;color:var(--muted)}
+.hint.bad{color:var(--red-text);font-weight:600}
+.segs{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden;align-self:flex-start}
+.segs label{display:flex;align-items:center;justify-content:center;min-height:38px;padding:0 16px;cursor:pointer;border-right:1px solid var(--rule);font-weight:500}
+.segs label:last-child{border-right:0}
+.segs input{position:absolute;opacity:0;pointer-events:none}
+.segs label:has(input:checked){background:var(--ink);color:var(--paper);font-weight:700}
+.segs label:has(input:focus-visible){outline:2px solid var(--pen);outline-offset:-2px}
+.sample{padding:10px 12px;border:1px solid var(--rule);background:var(--paper-2);font-variant-numeric:tabular-nums}
+.block{display:flex;flex-direction:column;gap:12px;padding-top:18px;border-top:1px solid var(--rule-strong)}
+.block h4{margin:0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.danger-zone{border-top-color:var(--red)}
+.danger-zone h4{color:var(--red-text)}
+.btn.bad{border-color:var(--red);color:var(--red-text)}
+.btn.bad.primary{background:var(--red);color:var(--red-ink)}
+.saved{color:var(--pen);font-weight:600}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) 170px 90px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.mrow small{display:block;color:var(--muted)}
+.mrow select{min-height:36px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.roles{display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 14px;font-size:14px}
+.roles b{font-weight:600}
+.inv{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:8px;align-items:end}
+.inv input,.inv select{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+table.nt{border-collapse:collapse;width:100%}
+table.nt th,table.nt td{padding:10px 8px;border-bottom:1px solid var(--rule-soft);text-align:left;vertical-align:top}
+table.nt th{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+table.nt td.c,table.nt th.c{text-align:center;width:90px}
+table.nt input{accent-color:var(--pen);width:18px;height:18px}
+table.nt small{display:block;color:var(--muted)}
+.cg{border-bottom:1px solid var(--rule)}
+.cg-h{display:flex;align-items:center;gap:8px;padding:12px 0 6px;font-weight:700;font-stretch:78%}
+.cr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0 4px 18px;border-top:1px solid var(--rule-soft)}
+.cr input{width:100%;min-height:34px;padding:0 8px;border:1px solid transparent;border-radius:3px;background:transparent}
+.cr input:hover{border-color:var(--rule)}
+.cr input:focus{border-color:var(--rule);background:var(--paper)}
+.cr .tools{display:flex;gap:4px}
+.ib{width:34px;height:34px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--ink-2)}
+.ib:disabled{opacity:.35;cursor:default}
+.tag-arch{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.dev{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-soft)}
+.dev small{display:block;color:var(--muted)}
+.kc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.kc small{display:block;color:var(--muted)}
+.st-ok{color:var(--pen);font-weight:600}
+.st-no{color:var(--warn);font-weight:600}
+
+/* First run */
+.onb{min-height:760px;display:flex;justify-content:center;padding:48px 16px;background:var(--desk)}
+.onb-card{width:100%;max-width:620px;display:flex;flex-direction:column;gap:22px;padding:34px 36px;background:var(--paper);border:1px solid var(--rule-strong)}
+.onb-top{display:flex;justify-content:space-between;align-items:baseline}
+.onb-top b{font-size:22px;font-weight:700;font-stretch:78%}
+.dots-steps{display:flex;gap:6px}
+.dots-steps i{display:block;width:26px;height:4px;background:var(--rule)}
+.dots-steps i.on{background:var(--ink)}
+.onb h2{margin:0;font-size:34px;line-height:1.05;font-weight:700;font-stretch:72%;letter-spacing:-.4px;text-wrap:balance}
+.onb p{margin:0;color:var(--ink-2);max-width:60ch}
+.types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.tp{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:3px;cursor:pointer}
+.tp:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.tp input{margin-top:3px;accent-color:var(--pen)}
+.tp small{display:block;color:var(--muted);font-size:13px}
+.catpick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 24px}
+.catpick h5{grid-column:1 / -1;margin:10px 0 2px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.onb-nav{display:flex;justify-content:space-between;gap:8px;padding-top:10px;border-top:1px solid var(--rule)}
+.bigsum{display:flex;flex-direction:column;gap:4px;padding:16px;border:1px solid var(--rule-strong)}
+.bigsum b{font-size:34px;font-stretch:85%}
+.rules4{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, settings and first run mockup. In the settings the theme and the number format really apply; the first run creates a sample budget from start to finish.</p>
+    <div class="views" role="tablist" aria-label="Schermata">
+      <button type="button" role="tab" id="tab-set" aria-controls="view-set" aria-selected="true">Settings</button>
+      <button type="button" role="tab" id="tab-onb" aria-controls="view-onb" aria-selected="false">First run</button>
+    </div>
+  </div>
+
+  <section id="view-set" role="tabpanel" aria-labelledby="tab-set">
+    <div class="scroller">
+      <div class="desk set">
+        <nav class="side" aria-label="Main (mockup)">
+          <div class="brand">
+            <b>envelope</b>
+            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          </div>
+          <div class="nav">
+            <button type="button">Budget</button>
+            <button type="button">Conti</button>
+            <button type="button">Portafoglio</button>
+          </div>
+          <div class="ledger">
+            <h5>In budget</h5>
+            <div class="lr"><span>Conto corrente</span><span class="dots"></span><span class="n">3.412,58</span></div>
+            <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
+            <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
+            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+          </div>
+          <div class="me"><span>Giorgio</span><button type="button" class="plain" aria-current="page" style="text-decoration:underline;text-underline-offset:3px">Impostazioni</button></div>
+        </nav>
+        <nav class="subnav" aria-label="Impostazioni" id="subnav"></nav>
+        <div class="main" id="settings"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-onb" role="tabpanel" aria-labelledby="tab-onb" hidden>
+    <div class="scroller"><div class="onb"><div class="onb-card" id="onb"></div></div></div>
+  </section>
+</div>
+
+<script>
+(function () {
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  function parseAmount(str) {
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
+    return Math.round(Number(clean) * 100);
+  }
+  function fmt(c, locale) { return new Intl.NumberFormat(locale || 'it-IT', { style: 'currency', currency: 'EUR' }).format(c / 100).replace('-', '−'); }
+
+  var SECTIONS = [['profile', 'Profilo'], ['workspace', 'Workspace'], ['members', 'Membri'], ['categories', 'Categorie'], ['notifications', 'Notifiche'], ['security', 'Accesso e sicurezza']];
+  var LOCALES = [['it-IT', 'Italia'], ['en-GB', 'Regno Unito'], ['en-US', 'Stati Uniti'], ['de-DE', 'Germania'], ['fr-FR', 'Francia'], ['de-CH', 'Svizzera']];
+  var ZONES = ['Europe/Rome', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'Asia/Tokyo'];
+  var S = {
+    section: 'profile', saved: null,
+    profile: { name: 'Giorgio', email: 'giorgio@example.org', lang: 'it', locale: 'it-IT', zone: 'Europe/Rome', theme: 'system' },
+    workspace: { name: 'Famiglia', currency: 'EUR', zone: 'Europe/Rome', confirmDelete: '' },
+    members: [{ id: 'm1', name: 'Giorgio', email: 'giorgio@example.org', role: 'owner', me: true }, { id: 'm2', name: 'Anna', email: 'anna@example.org', role: 'editor' }, { id: 'm3', name: 'Luca', email: 'luca@example.org', role: 'reader' }],
+    invites: [{ email: 'nonna@example.org', role: 'reader' }], invite: { email: '', role: 'editor' }, memberError: '',
+    groups: [
+      { id: 'g1', name: 'Casa e bollette', cats: [['Rata del mutuo'], ['Luce e gas'], ['Internet e telefono'], ['Manutenzione casa']] },
+      { id: 'g2', name: 'Spese di tutti i giorni', cats: [['Spesa alimentare'], ['Carburante e trasporti'], ['Ristoranti'], ['Farmacia e salute']] },
+      { id: 'g3', name: 'Spese prevedibili', cats: [['Assicurazione auto'], ['Bollo auto'], ['Regali'], ['Veterinario'], ['Palestra', true]] },
+      { id: 'g4', name: 'Svago', cats: [['Abbonamenti'], ['Hobby']] }
+    ],
+    alerts: [
+      ['over', 'Una categoria va in negativo', 'Subito, a tutti i membri', [true, true, false]],
+      ['exceed', 'Una spesa supera il disponibile', 'Subito, mentre registri la spesa', [true, false, false]],
+      ['income', 'Arrivano soldi da assegnare', 'Quando entra un’entrata', [true, true, false]],
+      ['approve', 'Transazioni importate da controllare', 'Dopo ogni import', [false, true, false]],
+      ['portfolio', 'Controllo mensile del portafoglio', 'Il primo del mese, se qualcosa è oltre la soglia', [true, false, true]]
+    ],
+    devices: [['iPhone di Giorgio', 'App envelope · ultima attività oggi'], ['Chrome su Mac', 'Browser · ultima attività ora']]
+  };
+  var ROLE = { owner: 'Proprietario', editor: 'Può modificare', reader: 'Sola lettura' };
+
+  function applyTheme() {
+    var t = S.profile.theme;
+    if (t === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+  }
+  function sample() {
+    var d = new Date(Date.UTC(2026, 8, 26, 12));
+    var loc = S.profile.locale;
+    return new Intl.DateTimeFormat(loc, { dateStyle: 'full', timeZone: 'UTC' }).format(d) + ' · ' + fmt(123456, loc) + ' · ' + fmt(-4215, loc);
+  }
+  function savedNote(key) { return S.saved === key ? '<span class="saved" role="status">Salvato</span>' : ''; }
+  function h(title, lead) { return '<div><h3 class="page-h">' + title + '</h3>' + (lead ? '<p class="lead">' + lead + '</p>' : '') + '</div>'; }
+  function segs(name, value, opts) {
+    return '<div class="segs" role="radiogroup">' + opts.map(function (o) { return '<label><input type="radio" name="' + name + '" value="' + o[0] + '" data-set="' + name + '"' + (value === o[0] ? ' checked' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>';
+  }
+
+  function renderSection() {
+    el('subnav').innerHTML = '<h5>Impostazioni</h5>' + SECTIONS.map(function (s) { return '<button type="button" data-sec="' + s[0] + '"' + (S.section === s[0] ? ' aria-current="page"' : '') + '>' + s[1] + '</button>'; }).join('');
+    var p = S.profile, w = S.workspace, out = '';
+    if (S.section === 'profile') {
+      out = h('Profilo', 'Valgono solo per te, in tutti i workspace.') +
+        '<div class="field"><label for="p-name">Nome</label><input type="text" id="p-name" data-set="name" value="' + esc(p.name) + '"></div>' +
+        '<div class="field"><label for="p-email">Email</label><input type="email" id="p-email" value="' + esc(p.email) + '" readonly><span class="hint">Si cambia da "Accesso e sicurezza".</span></div>' +
+        '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('lang', p.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>' +
+        '<div class="field"><label for="p-locale">Formato di date e numeri</label><select id="p-locale" data-set="locale">' + LOCALES.map(function (l) { return '<option value="' + l[0] + '"' + (p.locale === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
+        '<div class="sample" aria-live="polite">' + esc(sample()) + '</div></div>' +
+        '<div class="field"><label for="p-zone">Il tuo fuso orario</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Per mostrarti ore e notifiche. Il mese di una spesa lo decide il fuso del workspace.</span></div>' +
+        '<div class="field"><span style="font-weight:600">Tema</span>' + segs('theme', p.theme, [['system', 'Come il sistema'], ['light', 'Chiaro'], ['dark', 'Scuro']]) + '<span class="hint">Si applica subito: prova.</span></div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="profile">Salva</button>' + savedNote('profile') + '</div>';
+    } else if (S.section === 'workspace') {
+      out = h('Workspace', 'Il workspace è il budget di una famiglia o di una persona, con i suoi conti. Tutti i membri vedono gli stessi numeri.') +
+        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"></div>' +
+        '<div class="field"><label for="w-cur">Valuta</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Si sceglie alla creazione e non cambia: tutti i conti in altre valute vengono convertiti in questa.</span></div>' +
+        '<div class="field"><label for="w-zone">Fuso orario del workspace</label><select id="w-zone" data-set="wzone">' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
+        '<span class="hint">Decide a quale giorno e mese appartiene una spesa, uguale per tutti i membri anche se sono in viaggio: una spesa fatta alle 23 del 30 settembre a New York conta a settembre.</span></div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="workspace">Salva</button>' + savedNote('workspace') + '</div>' +
+        '<div class="block"><h4>I tuoi dati</h4><p class="hint" style="margin:0">Scarica tutto il workspace: conti, transazioni, budget, obiettivi e portafogli, in un file che puoi leggere e reimportare.</p>' +
+        '<div class="row-btns"><button type="button" class="btn">Esporta in JSON</button><button type="button" class="btn">Esporta le transazioni in CSV</button></div></div>' +
+        '<div class="block danger-zone"><h4>Elimina il workspace</h4><p class="hint" style="margin:0">Cancella per sempre il workspace e tutti i suoi dati, per tutti i membri. Scarica prima una copia.</p>' +
+        '<div class="field"><label for="w-del">Per confermare scrivi <b>' + esc(w.name) + '</b></label><input type="text" id="w-del" data-set="wdel" value="' + esc(w.confirmDelete) + '" autocomplete="off"></div>' +
+        '<div class="row-btns"><button type="button" class="btn bad primary" data-delws="1"' + (w.confirmDelete === w.name ? '' : ' disabled') + '>Elimina il workspace</button></div></div>';
+    } else if (S.section === 'members') {
+      var owners = S.members.filter(function (m) { return m.role === 'owner'; }).length;
+      out = h('Membri', 'Chi può vedere e modificare il workspace Famiglia.') +
+        '<div>' + S.members.map(function (m) {
+          var lastOwner = m.role === 'owner' && owners === 1;
+          return '<div class="mrow"><span><b style="font-weight:600">' + esc(m.name) + (m.me ? ' (tu)' : '') + '</b><small>' + esc(m.email) + '</small></span>' +
+            '<span><label class="sr" for="role-' + m.id + '">Ruolo di ' + esc(m.name) + '</label><select id="role-' + m.id + '" data-role="' + m.id + '"' + (lastOwner ? ' disabled title="Serve almeno un proprietario"' : '') + '>' +
+            ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (m.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></span>' +
+            (m.me ? '<span></span>' : '<button type="button" class="plain danger" data-rmm="' + m.id + '">Togli</button>') + '</div>';
+        }).join('') + '</div>' +
+        (S.memberError ? '<div class="hint bad" role="alert">' + esc(S.memberError) + '</div>' : '') +
+        '<div class="block"><h4>Invita qualcuno</h4><div class="inv"><div class="field"><label for="inv-email">Email</label><input type="email" id="inv-email" data-set="invemail" value="' + esc(S.invite.email) + '" placeholder="nome@esempio.it"></div>' +
+        '<div class="field"><label for="inv-role">Ruolo</label><select id="inv-role" data-set="invrole">' + ['editor', 'reader', 'owner'].map(function (r) { return '<option value="' + r + '"' + (S.invite.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></div>' +
+        '<button type="button" class="btn primary" data-invite="1">Invia l’invito</button></div>' +
+        (S.invites.length ? '<div>' + S.invites.map(function (i, k) { return '<div class="dev"><span>' + esc(i.email) + '<small>Invito in attesa · ' + ROLE[i.role] + '</small></span><button type="button" class="plain danger" data-rminv="' + k + '">Annulla l’invito</button></div>'; }).join('') + '</div>' : '') + '</div>' +
+        '<div class="block"><h4>Cosa può fare ogni ruolo</h4><div class="roles"><b>Proprietario</b><span>Tutto, compresi membri, esportazione ed eliminazione del workspace.</span>' +
+        '<b>Può modificare</b><span>Conti, transazioni, budget, obiettivi e portafogli.</span><b>Sola lettura</b><span>Vede tutto e riceve le notifiche, ma non cambia niente.</span></div></div>';
+    } else if (S.section === 'categories') {
+      out = h('Categorie', 'Gruppi e categorie del budget. Rinomina scrivendo sul nome; una categoria archiviata sparisce dal budget ma resta nelle transazioni passate.') +
+        '<div>' + S.groups.map(function (g, gi) {
+          return '<div class="cg"><div class="cg-h"><span style="flex:1">' + esc(g.name) + '</span>' +
+            '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Sposta su ' + esc(g.name) + '"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button type="button" class="ib" data-gmove="' + gi + ':1" aria-label="Sposta giù ' + esc(g.name) + '"' + (gi === S.groups.length - 1 ? ' disabled' : '') + '>↓</button></div>' +
+            g.cats.map(function (c, ci) {
+              return '<div class="cr"><span><label class="sr" for="c-' + gi + '-' + ci + '">Nome</label><input type="text" id="c-' + gi + '-' + ci + '" data-cname="' + gi + ':' + ci + '" value="' + esc(c[0]) + '"' + (c[1] ? ' style="color:var(--muted)"' : '') + '></span>' +
+                '<span class="tools">' + (c[1] ? '<span class="tag-arch" style="align-self:center;margin-right:6px">Archiviata</span>' : '') +
+                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':-1" aria-label="Sposta su"' + (ci === 0 ? ' disabled' : '') + '>↑</button>' +
+                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':1" aria-label="Sposta giù"' + (ci === g.cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
+                '<button type="button" class="btn" style="min-height:34px" data-carch="' + gi + ':' + ci + '">' + (c[1] ? 'Ripristina' : 'Archivia') + '</button></span></div>';
+            }).join('') +
+            '<div class="cr"><button type="button" class="plain" style="justify-self:start" data-cadd="' + gi + '">+ Aggiungi una categoria</button><span></span></div></div>';
+        }).join('') + '</div>' +
+        '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Aggiungi un gruppo</button></div>';
+    } else if (S.section === 'notifications') {
+      out = h('Notifiche', 'Scegli quali avvisi ricevere e dove. Valgono per te, non per gli altri membri.') +
+        '<table class="nt"><thead><tr><th>Avviso</th><th class="c">Telefono</th><th class="c">Browser</th><th class="c">Email</th></tr></thead><tbody>' +
+        S.alerts.map(function (a, ai) {
+          return '<tr><td>' + esc(a[1]) + '<small>' + esc(a[2]) + '</small></td>' + ['Telefono', 'Browser', 'Email'].map(function (ch, k) {
+            return '<td class="c"><input type="checkbox" data-alert="' + ai + ':' + k + '" aria-label="' + esc(a[1]) + ', ' + ch + '"' + (a[3][k] ? ' checked' : '') + '></td>';
+          }).join('') + '</tr>';
+        }).join('') + '</tbody></table>' +
+        '<div class="block"><h4>Dispositivi che ricevono le notifiche</h4>' + S.devices.map(function (d, k) {
+          return '<div class="dev"><span>' + esc(d[0]) + '<small>' + esc(d[1]) + '</small></span><button type="button" class="plain danger" data-rmdev="' + k + '">Scollega</button></div>';
+        }).join('') + '</div>';
+    } else {
+      out = h('Accesso e sicurezza', 'L’accesso è gestito dal servizio di autenticazione del tuo envelope. Da qui vedi lo stato; le modifiche si fanno nella sua pagina dell’account.') +
+        '<div><div class="kc"><span>Email<small>giorgio@example.org · verificata</small></span><button type="button" class="btn">Cambia</button></div>' +
+        '<div class="kc"><span>Password<small>cambiata 3 mesi fa</small></span><button type="button" class="btn">Cambia</button></div>' +
+        '<div class="kc"><span>Verifica in due passaggi <span class="st-ok">attiva</span><small>app di autenticazione</small></span><button type="button" class="btn">Gestisci</button></div>' +
+        '<div class="kc"><span>Passkey <span class="st-no">nessuna</span><small>Entra con l’impronta o il volto, senza password</small></span><button type="button" class="btn primary">Aggiungi una passkey</button></div></div>' +
+        '<div class="block"><h4>Sessioni aperte</h4>' +
+        '<div class="dev"><span>Chrome su Mac<small>questa sessione · Milano</small></span><span class="hint">In uso</span></div>' +
+        '<div class="dev"><span>App envelope su iPhone<small>ultimo accesso oggi alle 8:12</small></span><button type="button" class="plain danger">Esci</button></div>' +
+        '<div class="row-btns"><button type="button" class="btn">Esci da tutte le altre sessioni</button></div></div>';
+    }
+    el('settings').innerHTML = '<div class="form">' + out + '</div>';
+  }
+
+  // ---- First run
+  var O = { step: 1, lang: 'it', ws: 'Famiglia', zone: 'Europe/Rome', acc: 'Conto corrente', type: 'checking', balStr: '', cats: {}, err: '' };
+  var START = [
+    ['Casa e bollette', ['Affitto o mutuo', 'Luce e gas', 'Acqua', 'Internet e telefono']],
+    ['Spese di tutti i giorni', ['Spesa alimentare', 'Trasporti', 'Ristoranti', 'Salute']],
+    ['Spese prevedibili', ['Assicurazioni', 'Manutenzione auto', 'Regali', 'Vacanze']],
+    ['Risparmio', ['Fondo emergenze']],
+    ['Svago', ['Abbonamenti', 'Hobby']]
+  ];
+  START.forEach(function (g) { g[1].forEach(function (c) { O.cats[c] = c !== 'Acqua'; }); });
+  var TYPES = [['checking', 'Conto corrente', 'Stipendio, bollette, bancomat'], ['savings', 'Conto risparmio', 'Soldi messi da parte, in budget'], ['cash', 'Contanti', 'Il portafoglio'], ['offbudget', 'Fuori budget', 'Investimenti, mutuo: si vedono ma non si assegnano']];
+  function renderOnb() {
+    var total = 5, h = '<div class="onb-top"><b>envelope</b><div class="dots-steps" aria-label="Passo ' + O.step + ' di ' + total + '">' + [1, 2, 3, 4, 5].map(function (i) { return '<i class="' + (i <= O.step ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
+    if (O.step === 1) {
+      h += '<h2>Benvenuto. Diamo un lavoro a ogni euro.</h2><p>Il budget funziona così: assegni ai tuoi obiettivi solo i soldi che hai già, non quelli che arriveranno.</p>' +
+        '<ol class="rules4"><li>Dai un lavoro a ogni euro.</li><li>Metti da parte ogni mese per le spese che arrivano di rado.</li><li>Se sfori, sposti soldi da un’altra categoria: nessun senso di colpa.</li><li>Col tempo spendi i soldi del mese scorso, non quelli di questo.</li></ol>' +
+        '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('olang', O.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>';
+    } else if (O.step === 2) {
+      h += '<h2>Crea il tuo workspace</h2><p>Un workspace contiene un budget e i suoi conti. Puoi invitare altre persone più avanti.</p>' +
+        '<div class="field"><label for="o-ws">Nome</label><input type="text" id="o-ws" data-o="ws" value="' + esc(O.ws) + '" placeholder="Famiglia, Personale…"></div>' +
+        '<div class="field"><label for="o-cur">Valuta</label><select id="o-cur"><option>Euro (EUR)</option><option>Franco svizzero (CHF)</option><option>Sterlina (GBP)</option><option>Dollaro (USD)</option></select><span class="hint">Non si potrà cambiare dopo.</span></div>' +
+        '<div class="field"><label for="o-zone">Fuso orario</label><select id="o-zone" data-o="zone">' + ZONES.map(function (z) { return '<option' + (O.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Decide a quale mese appartiene una spesa, per tutti i membri.</span></div>';
+    } else if (O.step === 3) {
+      h += '<h2>Aggiungi il primo conto</h2><p>Scrivi il saldo di oggi, come lo vedi dalla banca. Carte di credito e altri conti li aggiungi dopo.</p>' +
+        '<div class="types" role="radiogroup" aria-label="Tipo di conto">' + TYPES.map(function (t) { return '<label class="tp"><input type="radio" name="otype" value="' + t[0] + '" data-o="type"' + (O.type === t[0] ? ' checked' : '') + '><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></label>'; }).join('') + '</div>' +
+        '<div class="field"><label for="o-acc">Nome del conto</label><input type="text" id="o-acc" data-o="acc" value="' + esc(O.acc) + '"></div>' +
+        '<div class="field"><label for="o-bal">Saldo di oggi</label><span class="money-in"><input type="text" inputmode="decimal" id="o-bal" data-o="balStr" value="' + esc(O.balStr) + '" placeholder="0,00"><span>€</span></span>' +
+        (O.type === 'offbudget' ? '<span class="hint">Un conto fuori budget non entra in "da assegnare".</span>' : '<span class="hint">Questo importo diventa subito "da assegnare".</span>') + '</div>' +
+        (O.err ? '<div class="hint bad" role="alert">' + esc(O.err) + '</div>' : '');
+    } else if (O.step === 4) {
+      var n = Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length;
+      h += '<h2>Scegli le categorie di partenza</h2><p>Togli quelle che non ti servono. Potrai rinominarle, aggiungerne e riordinarle quando vuoi.</p>' +
+        '<div class="catpick">' + START.map(function (g) {
+          return '<h5>' + esc(g[0]) + '</h5>' + g[1].map(function (c, k) { var id = 'oc-' + esc(g[0]).replace(/\W/g, '') + k; return '<label class="check" for="' + id + '"><input type="checkbox" id="' + id + '" data-ocat="' + esc(c) + '"' + (O.cats[c] ? ' checked' : '') + '> ' + esc(c) + '</label>'; }).join('');
+        }).join('') + '</div><span class="hint">' + n + ' categorie selezionate.</span>';
+    } else {
+      var bal = parseAmount(O.balStr) || 0;
+      var rta = O.type === 'offbudget' ? 0 : bal;
+      h += '<h2>Tutto pronto</h2><p>Il workspace <b>' + esc(O.ws) + '</b> ha il conto <b>' + esc(O.acc) + '</b> e ' + Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length + ' categorie.</p>' +
+        '<div class="bigsum"><span style="font-weight:600">Da assegnare</span><b class="n">' + fmt(rta) + '</b><span class="hint">' + (rta > 0 ? 'Il prossimo passo: distribuiscili tra le categorie, partendo dalle spese di questo mese.' : 'Quando arriva un’entrata in un conto in budget, la trovi qui.') + '</span></div>';
+    }
+    h += '<div class="onb-nav">' + (O.step > 1 && O.step < 5 ? '<button type="button" class="btn" data-onb="back">Indietro</button>' : '<span></span>') +
+      (O.step < 5 ? '<button type="button" class="btn primary" data-onb="next">' + (O.step === 4 ? 'Crea il budget' : 'Continua') + '</button>' : '<span class="row-btns"><button type="button" class="btn" data-onb="restart">Ricomincia il bozzetto</button><button type="button" class="btn primary">Vai al budget e assegna</button></span>') + '</div>';
+    el('onb').innerHTML = h;
+  }
+
+  function show(v) {
+    var s = v === 'set';
+    el('view-set').hidden = !s; el('view-onb').hidden = s;
+    el('tab-set').setAttribute('aria-selected', String(s)); el('tab-onb').setAttribute('aria-selected', String(!s));
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    var d = b.dataset;
+    if (b.id === 'tab-set') return show('set');
+    if (b.id === 'tab-onb') return show('onb');
+    if (d.sec) { S.section = d.sec; S.saved = null; S.memberError = ''; return renderSection(); }
+    if (d.save) { S.saved = d.save; return renderSection(); }
+    if (d.rmm) { S.members = S.members.filter(function (m) { return m.id !== d.rmm; }); return renderSection(); }
+    if (d.invite) {
+      var em = S.invite.email.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { S.memberError = 'Scrivi un indirizzo email valido.'; return renderSection(); }
+      if (S.members.some(function (m) { return m.email === em; }) || S.invites.some(function (i) { return i.email === em; })) { S.memberError = 'Questa persona è già membro o invitata.'; return renderSection(); }
+      S.invites.push({ email: em, role: S.invite.role }); S.invite.email = ''; S.memberError = ''; return renderSection();
+    }
+    if (d.rminv) { S.invites.splice(Number(d.rminv), 1); return renderSection(); }
+    if (d.gmove) { var q = d.gmove.split(':').map(Number), g = S.groups.splice(q[0], 1)[0]; S.groups.splice(q[0] + q[1], 0, g); return renderSection(); }
+    if (d.cmove) { var r = d.cmove.split(':').map(Number), cats = S.groups[r[0]].cats, c = cats.splice(r[1], 1)[0]; cats.splice(r[1] + r[2], 0, c); return renderSection(); }
+    if (d.carch) { var a = d.carch.split(':').map(Number), cc = S.groups[a[0]].cats[a[1]]; cc[1] = !cc[1]; return renderSection(); }
+    if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['Nuova categoria']); renderSection(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
+    if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'Nuovo gruppo', cats: [['Nuova categoria']] }); return renderSection(); }
+    if (d.rmdev) { S.devices.splice(Number(d.rmdev), 1); return renderSection(); }
+    if (d.delws) { S.workspace.confirmDelete = ''; S.saved = null; el('settings').innerHTML = '<div class="form">' + h('Workspace eliminato', 'Nel bozzetto non succede niente di irreversibile: ricarica la pagina per ricominciare.') + '</div>'; return; }
+    if (d.onb === 'next') {
+      if (O.step === 3) {
+        var v = parseAmount(O.balStr || '0');
+        if (v === null) { O.err = 'Scrivi il saldo come un importo, per esempio 1.250,00.'; return renderOnb(); }
+        if (!O.acc.trim()) { O.err = 'Dai un nome al conto.'; return renderOnb(); }
+        O.err = '';
+      }
+      O.step++; return renderOnb();
+    }
+    if (d.onb === 'back') { O.step--; O.err = ''; return renderOnb(); }
+    if (d.onb === 'restart') { O.step = 1; O.balStr = ''; return renderOnb(); }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target, d = t.dataset;
+    if (d.set === 'theme') { S.profile.theme = t.value; applyTheme(); return renderSection(); }
+    if (d.set === 'lang') { S.profile.lang = t.value; return; }
+    if (d.set === 'locale') { S.profile.locale = t.value; return renderSection(); }
+    if (d.set === 'zone') { S.profile.zone = t.value; return; }
+    if (d.set === 'wzone') { S.workspace.zone = t.value; return; }
+    if (d.set === 'invrole') { S.invite.role = t.value; return; }
+    if (d.role) {
+      var m = S.members.filter(function (x) { return x.id === d.role; })[0];
+      var owners = S.members.filter(function (x) { return x.role === 'owner'; }).length;
+      if (m.role === 'owner' && t.value !== 'owner' && owners === 1) { S.memberError = 'Serve almeno un proprietario.'; return renderSection(); }
+      m.role = t.value; S.memberError = ''; return renderSection();
+    }
+    if (d.alert) { var q = d.alert.split(':').map(Number); S.alerts[q[0]][3][q[1]] = t.checked; return; }
+    if (d.o === 'type') { O.type = t.value; if (t.value === 'offbudget' && O.acc === 'Conto corrente') O.acc = 'Broker'; return renderOnb(); }
+    if (d.o === 'zone') { O.zone = t.value; return; }
+    if (d.ocat) { O.cats[d.ocat] = t.checked; return renderOnb(); }
+    if (d.set === 'olang') { O.lang = t.value; return; }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target, d = t.dataset;
+    if (d.set === 'name') S.profile.name = t.value;
+    if (d.set === 'wname') S.workspace.name = t.value;
+    if (d.set === 'invemail') S.invite.email = t.value;
+    if (d.set === 'wdel') {
+      S.workspace.confirmDelete = t.value;
+      var btn = document.querySelector('[data-delws]'); if (btn) btn.disabled = t.value !== S.workspace.name;
+    }
+    if (d.cname) { var q = d.cname.split(':').map(Number); S.groups[q[0]].cats[q[1]][0] = t.value; }
+    if (d.o === 'ws' || d.o === 'acc' || d.o === 'balStr') O[d.o] = t.value;
+  });
+  renderSection(); renderOnb();
+})();
+</script>
+
+</body>
+</html>

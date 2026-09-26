@@ -31,8 +31,8 @@ The budget follows the envelope method: money comes into "ready to assign" and t
 | Overspending | A negative category, to be covered by moving money. If still uncovered at the end of the month: for cash and debit, the category restarts at zero and the amount is taken from next month's "ready to assign"; for credit cards, it becomes debt on the card not covered by the payment category | MVP |
 | Credit cards | Automatic payment category that sets aside the money spent with the card | MVP |
 | Scheduled transactions | Rent, salary, subscriptions | MVP |
-| Import | CSV, OFX, QIF and CAMT.053 with column mapping and duplicate detection | MVP |
-| Reconciliation | Compare with the bank balance and lock reconciled transactions | MVP |
+| Import | CSV, OFX, QIF and CAMT.053 with column mapping and duplicate detection (see "Import and reconciliation") | MVP |
+| Reconciliation | Compare the cleared balance with the bank statement, find the difference, lock reconciled transactions (see "Import and reconciliation") | MVP |
 | Instant notifications | Instant alert when a category goes negative, a purchase exceeds the available balance or money arrives to be assigned; sent by the server to every member (see Sync, Notifications) | MVP |
 | Age of money | Average number of days between a euro coming in and being spent, weighted by amount, over the outflows of the last 30 days; first in, first out, across all on-budget accounts; transfers between on-budget accounts excluded. Always visible | MVP |
 | Automatic rules | Category suggested from payee or description | Phase 2 |
@@ -66,13 +66,32 @@ A target tells the budget how much a category asks for in the current month. The
 
 These rules belong in `packages/core`, with tests; the mockup's `plan()` function is a reference implementation in plain JavaScript.
 
+### Import and reconciliation
+
+**Import.**
+
+- CSV files need a column mapping: date, description, and either one amount column or separate outflow and inflow columns, plus an optional memo; the date format, the decimal separator and whether the first row holds column names. The mapping is remembered per account. OFX, QIF and CAMT.053 need no mapping.
+- A row is a duplicate of a transaction already in the same account when the bank's own transaction id matches (formats that carry one, such as OFX), or otherwise when the amount is the same and the dates are at most 3 days apart; each existing transaction matches at most one row. Duplicates are not imported again; a matched *pending* transaction becomes *cleared*.
+- New rows are imported as cleared. Payee and category are suggested from the user's rules and history; rows without a category are imported as "to categorize" and listed with their own filter in the register.
+- The file is read to extract its rows and is not stored. The import summary compares the file's closing balance, when it has one, with the account's balance.
+
+**Reconciliation.**
+
+- A transaction is *pending* (recorded, not yet seen at the bank), *cleared* (seen on a bank statement or imported) or *reconciled* (part of a completed reconciliation).
+- The user enters the statement's closing balance and date. The *cleared balance* is the last reconciled balance plus the cleared transactions up to that date that the user keeps ticked; pending transactions are listed apart and count only once marked cleared.
+- *Difference* = statement balance − cleared balance. When it is not zero, the app looks for a pending or unticked transaction equal to the difference and offers to fix it in one step.
+- With a zero difference, the ticked transactions become reconciled, and the reconciliation (account, date, statement balance, user) is kept in the account's history.
+- When a real difference remains (a forgotten fee, a bank correction), the user can add an adjustment transaction for it, dated on the statement date; its category is chosen by the user, "ready to assign" by default, so the budget and the accounts stay equal.
+- Reconciled transactions cannot be edited or deleted. Unlocking one is an explicit action, recorded in the audit log, and it marks the account's last reconciliation as broken until it is redone.
+- Credit cards and every other on-budget or off-budget cash account reconcile the same way.
+
 ## Portfolio module
 
 The user records every instrument they own and every transaction. The app derives positions, value and month-by-month performance from historical prices.
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
-| Portfolios | One or more per user (for example "Long term", "Pension fund"), each over one or more brokerage accounts | MVP |
+| Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade belongs to one account and one portfolio, so an account's positions are split logically across its portfolios. Holdings not assigned to any portfolio are shown as such | MVP |
 | Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
 | Positions | Quantity, average cost, current value, unrealized and realized gains or losses | MVP |
@@ -236,8 +255,8 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Instrument | ISIN, ticker, exchange, type, currency, asset class | Shared across users; private data kept separate |
 | Price | instrument, date, close, source | Daily time series |
 | FxRate | currency pair, date, rate | Historical rates for multi-currency |
-| Portfolio | name, linked brokerage accounts | |
-| Trade | instrument, type, date, quantity, price, fees, taxes | Buys, sells, dividends, splits |
+| Portfolio | name, purpose, allocation | Linked to accounts through its trades: a portfolio can span several accounts and an account can hold several portfolios |
+| Trade | account, portfolio, instrument, type, date, quantity, price, fees, taxes | Buys, sells, dividends, splits; moving units between two portfolios of the same account is a transfer without cash |
 | AllocationNode | portfolio, parent, name, target, threshold | Tree of the target allocation |
 | AllocationLink | node, instrument, share | Which instrument falls in which item, and in what proportion |
 | AuditLog | who, what, when, before and after | Append-only |
@@ -409,10 +428,11 @@ In an encrypted workspace the server sees which fields change and when, but not 
 - Biometric unlock; amounts hidden when the app goes to the background.
 - Instant budget notifications (negative category, purchase exceeds the available balance, money to assign); for the portfolio, only the monthly rebalancing summary.
 - Widget with the available amounts of favorite categories (phase 3).
+- Account list and register on the phone: balances, transactions grouped by day, search, marking transactions as cleared, and editing a transaction in a full-screen form.
 
 ## User interface
 
-The interactive mockup [docs/ux/mockups/budget-month.html](ux/mockups/budget-month.html) (open it in a browser) is the reference for the budget month on desktop and phone: layout, states, interactions and copy. It shows the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request.
+The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request.
 
 ### Principles
 
@@ -459,9 +479,17 @@ Both themes follow the operating system setting and can be forced in the user's 
 
 One column: month, ready to assign, age of money, and a link with the number and total of overspent categories. Groups collapse by tapping their name; groups with overspending come first. A category row shows only its name, its target status and the available amount; tapping it opens a full-screen detail with a back link, the same content as the desktop panel, and the same target editor. The tab bar has Budget, Accounts, a central button for quick expense entry, Portfolio and More. Groups have no summary screen on the phone.
 
+### Other screens
+
+- **Account register.** Desktop: the account's cleared, pending and total balance; filters by state with counts; search; transactions newest first with a running balance, splits shown under their row; a round control on each row switches pending and cleared, reconciled rows show a padlock. A row opens in the side panel: outflow, inflow or transfer; the payee proposes the category used last time; the category's available amount before and after; splitting across categories with the amount still to split; transfers to a credit card are card payments, transfers to an off-budget account ask for a category. Phone: accounts list, register grouped by day, full-screen transaction form, and quick entry (amount keypad, place, category with its available amount, account).
+- **Import and reconciliation.** Import in four steps (file, columns, check, done) and reconciliation with the statement balance, the difference, clues and locking, as described in "Import and reconciliation".
+- **Settings.** Two separate places. *Your account*, from the user menu, holds what belongs to the person and applies in every workspace: profile, language, number and date format, personal time zone, theme, notifications and devices, sign-in and security. *Workspace settings*, from the workspace switcher, hold what every member shares: name, currency and the workspace time zone, members and roles, categories and groups, accounts, data export and deletion. Changing workspace settings needs the owner role, except categories, which editors can manage.
+- **First run.** Five steps: the method in four lines, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the amount ready to assign.
+- **Portfolio.** Overview (value, contributions, gain, 12-month return, out-of-threshold notice, value against contributions over time, month-by-month table, allocation bars, positions), allocation editor (targets per level adding up to 100%, threshold rule, rebalancing presets), rebalancing (mode, contribution, minimum trade, whole or fractional units, "To get back to your targets:"), trade entry, and linked accounts showing how each brokerage account is split across portfolios, with holdings not assigned yet. A new portfolio is created with a short guided setup: name and purpose, accounts, which holdings of each account belong to it, a starting allocation. Phone: value chart, allocation bars and the monthly check.
+
 ### Screens still to design
 
-Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: account register and transaction entry (splits, transfers), move money, quick assign, categories and groups management, scheduled transactions, import with column mapping and duplicates, reconciliation, settings (workspace, members and roles, language, locale and time zone, theme), first run and sign-in, notification preferences; for later milestones, the portfolio (dashboard, trades, allocation editor, rebalancing, prices), reports and the phone's quick entry.
+Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: move money, quick assign, scheduled transactions, sign-in; for later milestones, reports, prices and manual prices, ETF look-through, well-known allocations and the CAPE-based target.
 
 ## Open source, hosting and market data
 
@@ -530,6 +558,15 @@ Work starts from the domain core and the web app for a single workspace, already
 | 4. Public open-source beta | Docker, documentation | A self-hosted install works in under 10 minutes |
 | 5. Hosted version (optional) | End-to-end encryption module, subscriptions, licensed market data, managed backups, external security test, legal and GDPR review | Security test passed and legal documents ready |
 | 6. Evolutions | PSD2 bank connection, shared budgets, widgets | Driven by actual needs |
+
+### After 1.0.0
+
+Ideas kept for after the whole product is complete, each off by default and optional:
+
+| Idea | What it does | Privacy |
+| --- | --- | --- |
+| Place-aware suggestions (mobile) | With the user's permission, the phone remembers where expenses are recorded and, back at the same place, proposes the payee and category used there | Opt-in per device; a place is stored as an approximate area, never as a track; the list of places can be viewed and deleted |
+| Receipt reading | A photo of a receipt becomes a draft transaction with date, amount, merchant and, where present, the VAT number; the reading service is configured by the administrator (a self-hosted engine or an external provider with their own key) | No service is enabled by default; the photo is discarded after reading unless the user attaches it to the transaction |
 
 The field-level sync protocol is designed here (this section) but only ships, as its own milestone, once the API surfaces it needs (queue, authenticated multi-workspace requests) exist — see `CLAUDE.md`'s numbered step list for the exact within-phase sequencing, which is more detailed than the phase table above and takes precedence where the two seem to disagree. Targets, reports and broker import each carry their own `Phase` tag where they are first described (budget MVP, budget phase 2 and portfolio phase 2 respectively); phase 4 here is only about packaging what by then already exists. End-to-end encryption and local tax rules are each described once, where most specific (this section's "End-to-end encryption: a future, optional module" and the Portfolio module table), not repeated in phase 6.
 

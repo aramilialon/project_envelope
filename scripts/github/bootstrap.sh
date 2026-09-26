@@ -72,6 +72,8 @@ future_milestones=(
   "0.9.0 Hosted version|Subscriptions, licensed market data, managed backups, external security test, legal/GDPR review."
   "0.10.0 Shared budgets & PSD2 bank connection|Several people with different roles on one budget; automatic bank sync through a PSD2 provider."
   "0.11.0 Local tax rules|Indicative tax calculation, starting with Italy."
+  "1.1.0 Place-aware suggestions|Opt-in on the phone: payee and category proposed from the place where an expense is recorded (design.md, \"After 1.0.0\")."
+  "1.2.0 Receipt reading|Optional, administrator-configured service that turns a receipt photo into a draft transaction (design.md, \"After 1.0.0\")."
 )
 
 existing=$(gh api "repos/{owner}/{repo}/milestones?state=all&per_page=100" --jq '.[].title')

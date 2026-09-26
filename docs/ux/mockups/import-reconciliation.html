@@ -1,0 +1,732 @@
+<!doctype html>
+<!--
+  Interactive mockup of statement import (file, columns, check, done) and reconciliation.
+  Reference for docs/design.md, "User interface". Open it in a browser; no build
+  step, no dependencies except the Archivo font from Google Fonts (the app itself
+  self-hosts its fonts). The UI copy is the Italian translation; English stays
+  the source language of the app. Sample data is fictional.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - import and reconciliation mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<style>
+[hidden]{display:none!important}
+html,body{margin:0}
+
+:root{
+  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
+  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
+  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
+  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
+  --amber:#E2A62C; --amber-ink:#2E2104;
+  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
+  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
+  --warn:#8C5300;
+  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+    --amber:#D9A23A; --amber-ink:#1F1602;
+    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+    --warn:#EBB765;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+  --amber:#D9A23A; --amber-ink:#1F1602;
+  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+  --warn:#EBB765;
+}
+*{box-sizing:border-box}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cond{font-stretch:78%}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* Page strip */
+.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.strip p{margin:0;color:var(--muted);max-width:70ch}
+.strip b{color:var(--ink);font-weight:600}
+.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
+.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border:1px solid var(--rule)}
+
+/* Desktop */
+.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
+.side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
+.ws{display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--ink-2)}
+.nav{display:flex;flex-direction:column}
+.nav button{padding:7px 0;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
+.nav button[aria-current]{color:var(--ink);font-weight:700}
+.nav button[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;background:var(--ink)}
+.ledger{display:flex;flex-direction:column}
+.ledger h5{margin:0 0 6px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.lr{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:13px;white-space:nowrap}
+.lr .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.lr.total{margin-top:4px;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
+.neg{color:var(--red-text)}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+.me{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-2)}
+
+.main{display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.month{display:flex;align-items:center;gap:4px}
+.month h3{margin:0 8px;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;white-space:nowrap}
+.arrow{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
+.facts b{color:var(--ink);font-weight:600}
+
+/* Ready to assign */
+.rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
+.rta .amt.low{color:var(--red-text)}
+.btn{min-height:38px;padding:0 14px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+
+.bar-tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;gap:20px}
+.tabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);white-space:nowrap}
+.tabs button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.acts{display:flex;gap:8px;padding-bottom:8px;margin-left:auto}
+.notice{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--red-text);border-bottom:1px solid var(--rule-soft)}
+.notice .plain{color:var(--red-text);text-decoration:underline;text-underline-offset:3px}
+
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 118px 118px 138px;align-items:center;column-gap:0}
+.th{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);align-items:end}
+.th .t{display:flex;flex-direction:column;align-items:flex-end;padding-right:10px;gap:1px}
+.th .t .n{font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600;font-stretch:100%}
+.gr{padding-top:18px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%;font-size:14px;letter-spacing:.2px}
+.gr button{display:flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:transparent;font-weight:700;text-align:left}
+.gr button svg{transition:transform .15s}
+.gr button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .r{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.r{text-align:right;padding-right:10px}
+.row{width:100%;min-height:46px;padding:6px 0 6px 22px;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.row:hover{background:var(--paper-2)}
+.row[aria-pressed="true"]{background:var(--pen-soft)}
+.row .r{color:var(--ink-2)}
+.cn{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn b{font-weight:500}
+.goal{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.goal.need{color:var(--warn);font-weight:600}
+.meter{display:block;width:84px;height:2px;background:var(--rule)}
+.meter i{display:block;height:2px;background:var(--pen)}
+.goal.need .meter i{background:var(--warn)}
+.av{display:flex;justify-content:flex-end}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;min-width:96px;padding:3px 10px;font-weight:600}
+.amt-cell.zero{color:var(--muted);font-weight:500}
+.amt-cell.cash{background:var(--red);color:var(--red-ink);border-radius:2px}
+.amt-cell.credit{background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 5px,color-mix(in srgb,var(--hatch) 32%,var(--hatch-bg)) 5px 7px);color:var(--hatch-ink);border:1px solid var(--hatch);border-radius:2px}
+.tag{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.empty{padding:32px 0;color:var(--muted)}
+
+.insp{display:flex;flex-direction:column;gap:20px;padding:22px 24px;border-left:1px solid var(--rule);background:var(--paper)}
+.where{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.insp h4,.ph-detail h4{margin:2px 0 0;font-size:26px;font-weight:700;font-stretch:78%;letter-spacing:-.3px;line-height:1.1}
+.big{font-size:34px;font-weight:700;font-stretch:85%;line-height:1}
+.big.cash{color:var(--red-text)} .big.credit{color:var(--warn)} .big.zero{color:var(--muted)}
+.state-l{font-weight:600}
+.explain{margin:0;color:var(--ink-2);line-height:1.55}
+.cover{display:flex;flex-direction:column;gap:8px;padding:14px;background:var(--paper-2);border:1px solid var(--rule)}
+.cover label{font-weight:600}
+.cover select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.sec{display:flex;flex-direction:column;gap:4px}
+.sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.sec h5 .plain{text-transform:none;letter-spacing:0;font-stretch:100%;font-size:13px}
+.qa{display:flex;align-items:baseline;gap:6px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left;color:var(--pen)}
+.qa .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.qa .n{color:var(--ink-2)}
+.tx{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.tx small{color:var(--muted);font-size:12px}
+.tx span small{display:block}
+.meter.wide{width:100%;height:3px}
+.meter.wide i{height:3px}
+
+/* Phone */
+.phones{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;padding:24px 0}
+.phone{position:relative;width:390px;max-width:100%;height:800px;border:1px solid var(--rule);border-radius:30px;background:var(--paper);overflow:hidden}
+.ph-in{height:100%;overflow-y:auto;padding:20px 16px 100px}
+.ph-top{display:flex;align-items:center;justify-content:space-between}
+.ph-top h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%;text-align:center}
+.ph-top small{display:block;text-align:center;color:var(--muted);font-size:12px}
+.ph-rta{margin-top:14px}
+.ph-rta .amt{font-size:26px}
+.ph-facts{display:flex;justify-content:space-between;gap:10px;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.ph-facts b{color:var(--ink)}
+.ph-facts .plain{color:var(--red-text)}
+.pg{display:flex;justify-content:space-between;padding:16px 0 6px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
+.pg .n{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.pc{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.pc .amt-cell{min-width:0}
+.pc b{font-weight:500;font-size:15px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;height:76px;padding:0 6px 14px;border-top:1px solid var(--rule);background:var(--paper)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:48px;justify-content:center;border:0;background:transparent;color:var(--muted);font-size:11px}
+.tabbar button[aria-current]{color:var(--ink);font-weight:700}
+.tabbar .add{justify-self:center;width:52px;height:44px;border-radius:4px;background:var(--pen);color:var(--pen-ink)}
+.ph-note{max-width:380px;display:flex;flex-direction:column;gap:10px;color:var(--ink-2)}
+.ph-note h3{margin:0;font-size:18px;font-weight:700;font-stretch:78%}
+.ph-note ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+
+/* Counts on the filters */
+.tabs button{display:inline-flex;align-items:center;gap:7px}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--rule-soft);color:var(--ink-2);font-size:12px;font-weight:700;font-stretch:100%}
+.count.over{background:var(--red);color:var(--red-ink)}
+.count.under{background:var(--amber);color:var(--amber-ink)}
+.count.none{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
+
+/* Selectable groups */
+.gr .gh{display:flex;align-items:center;gap:2px}
+.gr .chev{display:inline-flex;align-items:center;justify-content:center;width:28px;min-height:32px;padding:0;border:0;background:transparent}
+.gr .chev svg{transition:transform .15s}
+.gr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .gname{min-height:32px;padding:0 6px;border:0;background:transparent;font-weight:700;text-align:left;border-radius:2px}
+.gr .gname:hover{text-decoration:underline;text-underline-offset:3px}
+.gr.on{background:var(--pen-soft)}
+.gr .flag{margin-left:8px}
+.jump{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.jump:hover b{text-decoration:underline;text-underline-offset:3px}
+.jump b{font-weight:500}
+.jump .amt-cell{min-width:0}
+.gstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.gstats div{display:flex;flex-direction:column;gap:2px;padding:10px;background:var(--paper)}
+.gstats small{font-size:12px;color:var(--muted)}
+.gstats b{font-size:16px;font-stretch:85%;white-space:nowrap}
+.gstats b.bad{color:var(--red-text)} .gstats b.warn{color:var(--warn)}
+
+/* Phone: collapsible groups and detail screen */
+.pg{align-items:center;padding:12px 0 4px}
+.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-weight:700;font-stretch:78%;text-align:left}
+.pg button svg{transition:transform .15s}
+.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pc{cursor:pointer}
+.pc .go{color:var(--muted);flex-shrink:0}
+.ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
+.ph-detail{display:flex;flex-direction:column;gap:18px}
+.closer{align-self:flex-end;font-size:13px}
+.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
+.types legend{padding:0 0 6px;font-weight:600}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--pen)}
+.opt b{font-weight:600}
+.opt small{display:block;margin-top:2px;color:var(--muted);font-size:13px;line-height:1.4}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600}
+.field select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in{display:flex;align-items:center;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.money-in input{flex:1;min-width:0;min-height:40px;padding:0 10px;border:0;background:transparent;font-variant-numeric:tabular-nums;font-size:16px;outline:none}
+.money-in span{padding:0 10px;color:var(--muted)}
+.preview{padding:12px 14px;border:1px solid var(--rule);background:var(--paper-2);line-height:1.6}
+.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.danger{color:var(--red-text);margin-left:auto}
+.goal-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.goal-row > span:first-child{display:flex;flex-direction:column}
+.goal-row b{font-weight:500}
+.goal-row small{color:var(--muted);font-size:12px}
+.goal-row:hover b{text-decoration:underline;text-underline-offset:3px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+.desk.one{grid-template-columns:230px minmax(0,1fr)}
+.lr.on{font-weight:700}
+.lr.on span:first-child::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 2px 0;background:var(--ink)}
+.crumb{color:var(--muted)}
+.crumb b{color:var(--ink);font-weight:600}
+.page-h{margin:4px 0 0;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px}
+.steps{display:flex;gap:0;margin:22px 0 0;padding:0;list-style:none;border-bottom:1px solid var(--rule)}
+.steps li{display:flex;align-items:center;gap:8px;padding:8px 18px 9px 0;margin-right:18px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.steps li .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--rule);border-radius:50%;font-size:12px;font-weight:700}
+.steps li.done{color:var(--ink-2)}
+.steps li.done .num{background:var(--ink-2);border-color:var(--ink-2);color:var(--paper)}
+.steps li.now{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.steps li.now .num{border-color:var(--ink)}
+.stage{display:flex;flex-direction:column;gap:18px;padding-top:22px;max-width:980px}
+.drop{display:flex;flex-direction:column;align-items:center;gap:10px;padding:40px 20px;border:1.5px dashed var(--rule);text-align:center;background:var(--paper-2)}
+.drop.over{border-color:var(--pen);background:var(--pen-soft)}
+.drop b{font-size:18px;font-weight:700;font-stretch:85%}
+.drop .hint{max-width:52ch}
+.file-in{position:absolute;width:1px;height:1px;opacity:0}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted)}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--rule)}
+.mapwrap{overflow-x:auto;border:1px solid var(--rule)}
+table.map{border-collapse:collapse;width:100%;font-size:13px}
+table.map th,table.map td{padding:7px 10px;border-bottom:1px solid var(--rule-soft);text-align:left;white-space:nowrap}
+table.map thead th{background:var(--paper-2);vertical-align:bottom}
+table.map select{min-height:34px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:600}
+table.map td.muted{color:var(--muted)}
+table.map .raw{color:var(--muted);font-size:12px}
+.opts{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end}
+.opts .field select{min-height:38px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.hint{font-size:13px;color:var(--muted)}
+.hint.bad{color:var(--red-text);font-weight:600}
+.ok{color:var(--pen);font-weight:600}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{accent-color:var(--pen);width:16px;height:16px}
+.sum{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper);align-self:flex-start}
+.sum div{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-right:1px solid var(--rule)}
+.sum div:last-child{border-right:0}
+.sum small{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.sum b{font-size:20px;font-stretch:85%}
+.icols{display:grid;grid-template-columns:34px 58px minmax(0,1.4fr) minmax(0,1.1fr) minmax(0,1.3fr) 100px;align-items:center;gap:0}
+.ihead{padding:10px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.irow{min-height:52px;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.irow.skip{color:var(--muted)}
+.irow.skip .n{text-decoration:line-through}
+.irow > *{padding-right:10px;min-width:0}
+.irow input[type=text],.irow select{width:100%;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.irow .raw{display:block;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{display:inline-block;padding:1px 6px;border-radius:2px;font-size:11px;font-weight:700;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.badge.dup{background:var(--rule-soft);color:var(--ink-2)}
+.badge.new{background:var(--pen-soft);color:var(--pen)}
+.badge.need{background:var(--amber);color:var(--amber-ink)}
+.badge.upd{background:var(--rule-soft);color:var(--ink-2);box-shadow:inset 0 0 0 1px var(--pen)}
+.r{text-align:right}
+.done-box{display:flex;flex-direction:column;gap:10px;padding:18px;border:1px solid var(--rule-strong)}
+.done-box h4{margin:0;font-size:24px;font-weight:700;font-stretch:78%}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* Reconciliation */
+.rec-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:28px;align-items:start}
+.rlist{display:flex;flex-direction:column}
+.rl{display:grid;grid-template-columns:28px 58px minmax(0,1fr) 110px;align-items:center;min-height:42px;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.rl input{accent-color:var(--pen);width:16px;height:16px}
+.rl.off{color:var(--muted)}
+.rl.off .n{text-decoration:line-through}
+.rl.hl{background:var(--pen-soft)}
+.recon{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px;padding:18px;border:1px solid var(--rule-strong);background:var(--paper)}
+.recon .field input{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.recon .field input[type=date]{width:100%;min-width:0;font-size:13px;padding:0 6px}
+.recon .money-in input{min-width:0}
+.diff{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--rule-strong)}
+.diff b{font-size:28px;font-stretch:85%}
+.diff b.bad{color:var(--red-text)}
+.diff b.zero{color:var(--ink)}
+.clue{padding:10px 12px;border:1px solid var(--rule);background:var(--paper-2);font-size:13px;line-height:1.5}
+.sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, statement import and reconciliation mockup. The import can use the sample file or a CSV of your own (read in the browser, never sent anywhere). In the reconciliation, try typing a different statement balance.</p>
+    <div class="views" role="tablist" aria-label="Schermata">
+      <button type="button" role="tab" id="tab-imp" aria-controls="view-imp" aria-selected="true">Import</button>
+      <button type="button" role="tab" id="tab-rec" aria-controls="view-rec" aria-selected="false">Reconciliation</button>
+    </div>
+  </div>
+
+  <div class="scroller">
+    <div class="desk one">
+      <nav class="side" aria-label="Main (mockup)">
+        <div class="brand">
+          <b>envelope</b>
+          <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+        </div>
+        <div class="nav">
+          <button type="button">Budget</button>
+          <button type="button" aria-current="page">Conti</button>
+          <button type="button">Portafoglio</button>
+        </div>
+        <div class="ledger">
+          <h5>In budget</h5>
+          <div class="lr on"><span>Conto corrente</span><span class="dots"></span><span class="n">3.412,58</span></div>
+          <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
+          <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
+          <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+        </div>
+        <div class="ledger">
+          <h5>Fuori budget</h5>
+          <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
+          <div class="lr"><span>Mutuo casa</span><span class="dots"></span><span class="n neg">−96.300,00</span></div>
+        </div>
+        <button type="button" class="plain">+ Aggiungi conto</button>
+        <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+      </nav>
+
+      <div class="main">
+        <section id="view-imp" role="tabpanel" aria-labelledby="tab-imp">
+          <div class="crumb">Conto corrente › <b>Importa movimenti</b></div>
+          <h3 class="page-h">Importa l'estratto conto</h3>
+          <ol class="steps" id="steps"></ol>
+          <div class="stage" id="stage"></div>
+        </section>
+        <section id="view-rec" role="tabpanel" aria-labelledby="tab-rec" hidden>
+          <div class="crumb">Conto corrente › <b>Riconcilia</b></div>
+          <h3 class="page-h">Riconcilia con la banca</h3>
+          <p class="hint" style="max-width:70ch;margin:10px 0 0">Confronta il saldo dell'estratto conto con quello verificato in envelope. Se tornano, le transazioni vengono bloccate: da quel momento il saldo fino a quella data non cambia più per errore.</p>
+          <div class="rec-grid" style="margin-top:22px" id="rec"></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  function f(c) { return nf.format(c / 100).replace('-', '−'); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  function el(id) { return document.getElementById(id); }
+  var MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  function dLabel(iso) { var q = iso.split('-'); return Number(q[2]) + ' ' + MONTHS[Number(q[1]) - 1]; }
+
+  // ---- Data already in the register (same example as the register mockup)
+  var REGISTER = [
+    ['2026-09-01', 'Banca, rata mutuo', -85000, 'locked'], ['2026-09-02', 'Operatore telefonico', -4500, 'locked'],
+    ['2026-09-05', 'Trasferimento verso Broker ETF', -50000, 'locked'], ['2026-09-09', 'Idraulico', -12000, 'cleared'],
+    ['2026-09-15', 'Pagamento della carta Visa', -45000, 'cleared'], ['2026-09-16', 'Fornitore energia', -9640, 'cleared'],
+    ['2026-09-17', 'Supermercato', -11205, 'cleared'], ['2026-09-18', 'Clinica veterinaria', -8500, 'cleared'],
+    ['2026-09-20', 'Grande magazzino', -6730, 'cleared'], ['2026-09-24', 'Supermercato', -8740, 'pending'],
+    ['2026-09-25', 'Stipendio', 265000, 'cleared']
+  ].map(function (r, i) { return { id: 'r' + i, date: r[0], payee: r[1], amount: r[2], status: r[3] }; });
+
+  var CATS = [['', 'Scegli una categoria'], ['rta', 'Da assegnare'], ['spesa', 'Spesa alimentare'], ['farm', 'Farmacia e salute'], ['rist', 'Ristoranti'], ['carb', 'Carburante e trasporti'], ['banca', 'Spese bancarie'], ['hobby', 'Hobby'], ['xfer:cont', 'Trasferimento verso Contanti']];
+  var RULES = [[/SUPERMERCATO/, 'Supermercato', 'spesa'], [/FARMACIA/, 'Farmacia', 'farm'], [/PRELIEVO/, 'Prelievo bancomat', 'xfer:cont'], [/STIPENDIO/, 'Stipendio', 'rta'], [/COMMISSION/, 'Banca', ''], [/LUCA/, 'Luca Bianchi', '']];
+
+  var SAMPLE = 'Data;Data valuta;Descrizione;Importo;Saldo\n' + [
+    '01/09/2026;01/09/2026;ADDEBITO RATA MUTUO N. 0042;-850,00;2.325,73',
+    '02/09/2026;02/09/2026;ADDEBITO SDD OPERATORE TELEFONICO;-45,00;2.280,73',
+    '05/09/2026;05/09/2026;BONIFICO A BROKER ETF VERSAMENTO;-500,00;1.780,73',
+    '09/09/2026;09/09/2026;BONIFICO A IDRAULICO PERDITA LAVELLO;-120,00;1.660,73',
+    '15/09/2026;15/09/2026;SALDO CARTA VISA ESTRATTO AGOSTO;-450,00;1.210,73',
+    '16/09/2026;16/09/2026;ADDEBITO SDD FORNITORE ENERGIA;-96,40;1.114,33',
+    '17/09/2026;17/09/2026;PAGAMENTO POS SUPERMERCATO 17/09;-112,05;1.002,28',
+    '18/09/2026;18/09/2026;PAGAMENTO POS CLINICA VETERINARIA;-85,00;917,28',
+    '20/09/2026;20/09/2026;PAGAMENTO POS GRANDE MAGAZZINO;-67,30;849,98',
+    '22/09/2026;22/09/2026;PRELIEVO BANCOMAT ATM 1234;-100,00;749,98',
+    '23/09/2026;24/09/2026;PAGAMENTO POS SUPERMERCATO 23/09;-87,40;662,58',
+    '25/09/2026;25/09/2026;STIPENDIO SETTEMBRE;2.650,00;3.312,58',
+    '26/09/2026;26/09/2026;PAGAMENTO POS FARMACIA;-18,90;3.293,68',
+    '26/09/2026;30/09/2026;COMMISSIONI TENUTA CONTO;-2,50;3.291,18',
+    '26/09/2026;26/09/2026;BONIFICO DA LUCA BIANCHI RIMBORSO CENA;30,00;3.321,18'
+  ].join('\n');
+
+  var ROLES = [['', 'Ignora'], ['date', 'Data'], ['desc', 'Descrizione'], ['amount', 'Importo'], ['out', 'Uscita'], ['in', 'Entrata'], ['memo', 'Nota']];
+  var imp = { step: 1, name: '', rows: [], header: true, roles: [], datefmt: 'dmy', dec: 'comma', remember: true, review: [], result: null, dragover: false };
+
+  function splitLine(line, sep) {
+    var out = [], cur = '', q = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') { q = !q; continue; }
+      if (ch === sep && !q) { out.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out.map(function (x) { return x.trim(); });
+  }
+  function load(name, text) {
+    var lines = text.replace(/\r/g, '').split('\n').filter(function (l) { return l.trim(); });
+    var sep = (lines[0].split(';').length >= lines[0].split(',').length) ? ';' : ',';
+    imp.name = name; imp.rows = lines.map(function (l) { return splitLine(l, sep); });
+    // Guess the columns from the header names.
+    var head = imp.rows[0].map(function (h) { return h.toLowerCase(); });
+    var used = {};
+    imp.roles = head.map(function (h) {
+      var r = '';
+      if (/^data$|^date|data op|booking/.test(h)) r = 'date';
+      else if (/descr|causale|payee|beneficiario|details/.test(h)) r = 'desc';
+      else if (/^importo$|amount|^importo /.test(h)) r = 'amount';
+      else if (/uscit|dare|debit/.test(h)) r = 'out';
+      else if (/entrat|avere|credit/.test(h)) r = 'in';
+      if (r && used[r]) r = '';
+      if (r) used[r] = true;
+      return r;
+    });
+    imp.step = 2;
+    renderImport();
+  }
+  function parseNum(s) {
+    if (!s) return 0;
+    var t = s.replace(/\s|€/g, '');
+    t = imp.dec === 'comma' ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
+    var n = Number(t);
+    return isNaN(n) ? null : Math.round(n * 100);
+  }
+  function parseDate(s) {
+    var m;
+    if (imp.datefmt === 'dmy' && (m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s))) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    if (imp.datefmt === 'ymd' && (m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s))) return s;
+    return null;
+  }
+  function mappingErrors() {
+    var r = imp.roles, errs = [];
+    if (r.indexOf('date') < 0) errs.push('Indica la colonna con la data.');
+    if (r.indexOf('desc') < 0) errs.push('Indica la colonna con la descrizione.');
+    if (r.indexOf('amount') < 0 && (r.indexOf('out') < 0 || r.indexOf('in') < 0)) errs.push('Indica la colonna dell’importo, oppure le due colonne uscita ed entrata.');
+    return errs;
+  }
+  function dataRows() { return imp.header ? imp.rows.slice(1) : imp.rows; }
+  function daysApart(a, b) { return Math.abs((Date.parse(a) - Date.parse(b)) / 86400000); }
+  function buildReview() {
+    var r = imp.roles, used = {};
+    imp.review = dataRows().map(function (cols, i) {
+      var get = function (role) { var k = r.indexOf(role); return k >= 0 ? cols[k] : ''; };
+      var date = parseDate(get('date'));
+      var amount = r.indexOf('amount') >= 0 ? parseNum(get('amount')) : (parseNum(get('in')) || 0) - Math.abs(parseNum(get('out')) || 0);
+      var desc = get('desc');
+      var row = { i: i, date: date, desc: desc, amount: amount, memo: get('memo'), payee: '', cat: '', status: 'new', include: true, match: null, error: null };
+      if (!date || amount === null) { row.error = !date ? 'Data non riconosciuta' : 'Importo non riconosciuto'; row.include = false; return row; }
+      // Duplicate detection: same amount, dates at most 3 days apart, not matched yet.
+      var m = REGISTER.filter(function (t) { return !used[t.id] && t.amount === amount && daysApart(t.date, date) <= 3; })[0];
+      if (m) {
+        used[m.id] = true; row.match = m; row.include = false;
+        row.status = m.status === 'pending' ? 'upd' : 'dup';
+        row.payee = m.payee;
+        return row;
+      }
+      var rule = RULES.filter(function (x) { return x[0].test(desc.toUpperCase()); })[0];
+      row.payee = rule ? rule[1] : desc.replace(/^(PAGAMENTO POS|ADDEBITO SDD|BONIFICO (A|DA))\s+/i, '').toLowerCase().replace(/(^|\s)\S/g, function (x) { return x.toUpperCase(); });
+      row.cat = rule ? rule[2] : '';
+      if (!row.cat) row.status = 'need';
+      return row;
+    });
+  }
+  function stepsHtml() {
+    var S = ['File', 'Colonne', 'Controllo', 'Fatto'];
+    return S.map(function (s, k) {
+      var n = k + 1, cls = n < imp.step ? 'done' : n === imp.step ? 'now' : '';
+      return '<li class="' + cls + '"' + (n === imp.step ? ' aria-current="step"' : '') + '><span class="num">' + (n < imp.step ? '✓' : n) + '</span>' + s + '</li>';
+    }).join('');
+  }
+  function renderImport() {
+    el('steps').innerHTML = stepsHtml();
+    var h = '';
+    if (imp.step === 1) {
+      h = '<label class="drop' + (imp.dragover ? ' over' : '') + '" id="drop" for="file-in"><b>Trascina qui l’estratto conto</b>' +
+        '<span class="hint">CSV, OFX, QIF o CAMT.053, così come lo scarichi dall’home banking. Il file viene letto e non viene conservato.</span>' +
+        '<span class="btn" style="display:inline-flex;align-items:center">Scegli un file</span></label>' +
+        '<input type="file" id="file-in" class="file-in" accept=".csv,.txt,.ofx,.qif,.xml">' +
+        '<div class="or">oppure</div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-sample="1">Usa il file d’esempio (movimenti-settembre.csv)</button>' +
+        '<span class="hint">In questo bozzetto si leggono solo i CSV; OFX, QIF e CAMT.053 non hanno bisogno della mappatura delle colonne.</span></div>';
+    } else if (imp.step === 2) {
+      var errs = mappingErrors();
+      var cols = imp.rows[0].length;
+      h = '<p style="margin:0">File <b>' + esc(imp.name) + '</b>: ' + dataRows().length + ' righe. Dimmi cosa contiene ogni colonna; le colonne che non servono si ignorano.</p>' +
+        '<div class="opts">' +
+        '<label class="check"><input type="checkbox" data-imp="header"' + (imp.header ? ' checked' : '') + '> La prima riga contiene i nomi delle colonne</label>' +
+        '<div class="field"><label for="datefmt">Formato delle date</label><select id="datefmt" data-imp="datefmt"><option value="dmy"' + (imp.datefmt === 'dmy' ? ' selected' : '') + '>gg/mm/aaaa</option><option value="ymd"' + (imp.datefmt === 'ymd' ? ' selected' : '') + '>aaaa-mm-gg</option></select></div>' +
+        '<div class="field"><label for="dec">Separatore dei decimali</label><select id="dec" data-imp="dec"><option value="comma"' + (imp.dec === 'comma' ? ' selected' : '') + '>virgola (1.234,56)</option><option value="dot"' + (imp.dec === 'dot' ? ' selected' : '') + '>punto (1,234.56)</option></select></div></div>' +
+        '<div class="mapwrap"><table class="map"><thead><tr>';
+      for (var c = 0; c < cols; c++) {
+        h += '<th><label class="sr" for="role-' + c + '">Colonna ' + (c + 1) + '</label><select id="role-' + c + '" data-role="' + c + '">' +
+          ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (imp.roles[c] === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>' +
+          (imp.header ? '<div class="raw">' + esc(imp.rows[0][c] || '') + '</div>' : '') + '</th>';
+      }
+      h += '</tr></thead><tbody>' + dataRows().slice(0, 6).map(function (row) {
+        return '<tr>' + row.map(function (v, k) { return '<td class="' + (imp.roles[k] ? '' : 'muted') + '">' + esc(v) + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+        (errs.length ? '<div class="hint bad" role="alert">' + errs.map(esc).join(' ') + '</div>' : '<div class="ok">Colonne a posto.</div>') +
+        '<label class="check"><input type="checkbox" data-imp="remember"' + (imp.remember ? ' checked' : '') + '> Ricorda queste impostazioni per il Conto corrente</label>' +
+        '<div class="row-btns"><button type="button" class="btn" data-go="1">Indietro</button><button type="button" class="btn primary" data-go="3"' + (errs.length ? ' disabled' : '') + '>Continua</button></div>';
+    } else if (imp.step === 3) {
+      var cnt = { new: 0, need: 0, dup: 0, upd: 0, err: 0 }, add = 0;
+      imp.review.forEach(function (r) { if (r.error) cnt.err++; else cnt[r.status]++; if (r.include) add++; });
+      var missing = imp.review.filter(function (r) { return r.include && !r.cat; }).length;
+      h = '<div class="sum"><div><small>Righe</small><b class="n">' + imp.review.length + '</b></div><div><small>Già nel registro</small><b class="n">' + (cnt.dup + cnt.upd) + '</b></div>' +
+        '<div><small>Nuove</small><b class="n">' + (cnt.new + cnt.need) + '</b></div><div><small>Senza categoria</small><b class="n" style="color:' + (missing ? 'var(--warn)' : 'inherit') + '">' + missing + '</b></div></div>' +
+        '<p class="hint" style="margin:0;max-width:75ch">Le righe già presenti nel registro (stesso importo, date entro 3 giorni) non vengono importate di nuovo; quelle ancora in attesa diventano verificate. Le nuove si possono correggere prima di importarle; una riga senza categoria resta da categorizzare nel registro.</p>' +
+        '<div><div class="ihead icols"><span></span><span>Data</span><span>Dalla banca</span><span>Beneficiario</span><span>Categoria</span><span class="r">Importo</span></div>' +
+        imp.review.map(function (r) {
+          var badge = r.error ? '<span class="badge need">' + esc(r.error) + '</span>' :
+            r.status === 'dup' ? '<span class="badge dup">Già presente</span>' : r.status === 'upd' ? '<span class="badge upd">In attesa → verificata</span>' :
+            r.status === 'need' && !r.cat ? '<span class="badge need">Da categorizzare</span>' : '<span class="badge new">Nuova</span>';
+          var dup = r.status === 'dup' || r.status === 'upd';
+          return '<div class="irow icols' + (r.include ? '' : ' skip') + '">' +
+            '<input type="checkbox" aria-label="Importa la riga del ' + (r.date ? dLabel(r.date) : '') + '" data-inc="' + r.i + '"' + (r.include ? ' checked' : '') + (r.error ? ' disabled' : '') + ' style="accent-color:var(--pen);width:16px;height:16px">' +
+            '<span class="n">' + (r.date ? dLabel(r.date) : '–') + '</span>' +
+            '<span><span class="raw" title="' + esc(r.desc) + '">' + esc(r.desc) + '</span>' + badge + '</span>' +
+            (dup ? '<span>' + esc(r.payee) + '</span><span class="hint">nel registro dal ' + dLabel(r.match.date) + '</span>'
+              : '<span><label class="sr" for="py-' + r.i + '">Beneficiario</label><input type="text" id="py-' + r.i + '" data-py="' + r.i + '" value="' + esc(r.payee) + '"' + (r.error ? ' disabled' : '') + '></span>' +
+                '<span><label class="sr" for="ct-' + r.i + '">Categoria</label><select id="ct-' + r.i + '" data-ct="' + r.i + '"' + (r.error ? ' disabled' : '') + '>' + CATS.map(function (c) { return '<option value="' + c[0] + '"' + (r.cat === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select></span>') +
+            '<span class="r n">' + (r.amount === null ? '' : f(r.amount)) + '</span></div>';
+        }).join('') + '</div>' +
+        '<div class="row-btns"><button type="button" class="btn" data-go="2">Indietro</button><button type="button" class="btn primary" data-go="4"' + (add || cnt.upd ? '' : ' disabled') + '>Importa ' + add + (add === 1 ? ' transazione' : ' transazioni') + (cnt.upd ? ' e verifica ' + cnt.upd : '') + '</button></div>';
+    } else {
+      var res = imp.result;
+      h = '<div class="done-box"><h4>Import completato</h4>' +
+        '<p style="margin:0">' + res.added + (res.added === 1 ? ' transazione aggiunta' : ' transazioni aggiunte') + ' come verificate' + (res.updated ? ', ' + res.updated + ' già presente segnata come verificata' : '') + ', ' + res.skipped + ' righe già presenti saltate.</p>' +
+        (res.uncat ? '<p class="hint warn" style="margin:0;color:var(--warn);font-weight:600">' + res.uncat + (res.uncat === 1 ? ' transazione è' : ' transazioni sono') + ' senza categoria: le trovi nel registro con il filtro "Da categorizzare".</p>' : '') +
+        '<p class="hint" style="margin:0">Il saldo del file (' + f(res.bankBalance) + ') e quello del Conto corrente ' + (res.bankBalance === res.appBalance ? 'coincidono.' : 'differiscono di ' + f(res.bankBalance - res.appBalance) + ': controlla con la riconciliazione.') + '</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-torec="1">Riconcilia ora</button><button type="button" class="btn" data-go="1">Importa un altro file</button></div></div>';
+    }
+    el('stage').innerHTML = h;
+  }
+  function doImport() {
+    var added = 0, updated = 0, skipped = 0, uncat = 0;
+    imp.review.forEach(function (r) {
+      if (r.status === 'upd' && r.match) { r.match.status = 'cleared'; updated++; return; }
+      if (r.status === 'dup') { skipped++; return; }
+      if (!r.include) return;
+      REGISTER.push({ id: 'n' + r.i, date: r.date, payee: r.payee || r.desc, amount: r.amount, status: 'cleared' });
+      added++; if (!r.cat) uncat++;
+    });
+    var balCol = imp.header ? imp.rows[0].map(function (x) { return x.toLowerCase(); }).indexOf('saldo') : -1;
+    var last = dataRows()[dataRows().length - 1];
+    var bank = balCol >= 0 ? parseNum(last[balCol]) : null;
+    imp.result = { added: added, updated: updated, skipped: skipped, uncat: uncat, bankBalance: bank === null ? appBalance() : bank, appBalance: appBalance() };
+    rec.statement = amountStr(imp.result.bankBalance);
+  }
+
+  // ---- Reconciliation
+  var LAST_REC = 178073, OPENING = 317573;
+  function appBalance() { return OPENING + REGISTER.reduce(function (s, t) { return s + t.amount; }, 0); }
+  function amountStr(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function parseMoney(str) {
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.').replace('−', '-');
+    if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
+    return Math.round(Number(clean) * 100);
+  }
+  var rec = { statement: '3.412,58', date: '2026-09-26', off: {}, locked: false };
+  function renderRec() {
+    if (rec.locked) {
+      el('rec').innerHTML = '<div class="done-box" style="grid-column:1 / -1"><h4>Riconciliazione fatta</h4><p style="margin:0">' + rec.locked + ' transazioni bloccate. Il saldo riconciliato al ' + dLabel(rec.date) + ' è ' + f(parseMoney(rec.statement)) + '.</p>' +
+        '<div class="row-btns"><button type="button" class="btn" data-recreset="1">Rifai il bozzetto da capo</button></div></div>';
+      return;
+    }
+    var open = REGISTER.filter(function (t) { return t.status !== 'locked'; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var cleared = open.filter(function (t) { return t.status === 'cleared'; });
+    var pending = open.filter(function (t) { return t.status === 'pending'; });
+    var ticked = LAST_REC + cleared.filter(function (t) { return !rec.off[t.id]; }).reduce(function (s, t) { return s + t.amount; }, 0);
+    var stmt = parseMoney(rec.statement);
+    var diff = stmt === null ? null : stmt - ticked;
+    // Clues: a pending transaction or an unticked one equal to the difference.
+    var clue = null;
+    if (diff) {
+      var p = pending.filter(function (t) { return t.amount === diff; })[0];
+      var u = cleared.filter(function (t) { return rec.off[t.id] && t.amount === diff; })[0];
+      if (p) clue = { t: p, text: 'La differenza è uguale a <b>' + esc(p.payee) + '</b> del ' + dLabel(p.date) + ' (' + f(p.amount) + '), ancora in attesa: forse la banca l’ha già registrata.', btn: 'Segnala come verificata' };
+      else if (u) clue = { t: u, text: 'La differenza è uguale a <b>' + esc(u.payee) + '</b> del ' + dLabel(u.date) + ', che hai tolto dal conteggio.', btn: 'Rimettila nel conteggio' };
+    }
+    function line(t, isPending) {
+      var off = isPending || rec.off[t.id];
+      return '<label class="rl' + (off ? ' off' : '') + (clue && clue.t === t ? ' hl' : '') + '"><input type="checkbox" data-rt="' + t.id + '"' + (off ? '' : ' checked') + (isPending ? ' data-pending="1"' : '') + '>' +
+        '<span class="n">' + dLabel(t.date) + '</span><span>' + esc(t.payee) + '</span><span class="n r" style="padding-right:10px">' + f(t.amount) + '</span></label>';
+    }
+    var left = '<div class="rlist"><div class="sec"><h5><span>Verificate dopo l’ultima riconciliazione</span><span class="n">' + cleared.length + '</span></h5>' +
+      '<p class="hint" style="margin:0 0 6px">Togli la spunta a quelle che non compaiono sull’estratto conto.</p>' + cleared.map(function (t) { return line(t, false); }).join('') + '</div>' +
+      (pending.length ? '<div class="sec" style="margin-top:18px"><h5><span>In attesa</span><span class="n">' + pending.length + '</span></h5><p class="hint" style="margin:0 0 6px">Non entrano nel conteggio finché non le spunti come verificate.</p>' + pending.map(function (t) { return line(t, true); }).join('') + '</div>' : '') + '</div>';
+    var right = '<aside class="recon" aria-label="Conteggio">' +
+      '<div class="two" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label for="st-amt">Saldo sull’estratto</label><span class="money-in"><input type="text" inputmode="decimal" id="st-amt" value="' + esc(rec.statement) + '"><span>€</span></span></div>' +
+      '<div class="field"><label for="st-date">Alla data</label><input type="date" id="st-date" value="' + rec.date + '"></div></div>' +
+      '<div class="sec"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Riconciliato il 5 set</span><span class="dots"></span><span class="n">' + f(LAST_REC) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink-2)"><span>Verificate spuntate</span><span class="dots"></span><span class="n">' + f(ticked - LAST_REC) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>Saldo verificato</span><span class="dots"></span><span class="n">' + f(ticked) + '</span></div></div>' +
+      '<div class="diff"><span>Differenza</span><b class="n ' + (diff === 0 ? 'zero' : 'bad') + '" aria-live="polite">' + (diff === null ? '–' : f(diff)) + '</b></div>' +
+      (stmt === null ? '<span class="hint bad">Scrivi il saldo come sull’estratto, per esempio 3.412,58.</span>' :
+        diff === 0 ? '<span class="ok">Tutto torna.</span><button type="button" class="btn primary" data-lock="1">Blocca ' + cleared.filter(function (t) { return !rec.off[t.id]; }).length + ' transazioni</button>' :
+        (clue ? '<div class="clue">' + clue.text + '<div style="margin-top:8px"><button type="button" class="btn" data-clue="' + clue.t.id + '">' + clue.btn + '</button></div></div>' : '<div class="clue">Controlla le transazioni una per una sull’estratto. Se la differenza è reale (per esempio una commissione dimenticata), aggiungila come transazione.</div>') +
+        '<button type="button" class="btn" data-adjust="1">Aggiungi una rettifica di ' + f(diff) + '</button>') +
+      '</aside>';
+    el('rec').innerHTML = left + right;
+  }
+
+  function show(view) {
+    var i = view === 'imp';
+    el('view-imp').hidden = !i; el('view-rec').hidden = i;
+    el('tab-imp').setAttribute('aria-selected', String(i)); el('tab-rec').setAttribute('aria-selected', String(!i));
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    var d = b.dataset;
+    if (b.id === 'tab-imp') return show('imp');
+    if (b.id === 'tab-rec') { renderRec(); return show('rec'); }
+    if (d.sample) return load('movimenti-settembre.csv', SAMPLE);
+    if (d.go) {
+      var n = Number(d.go);
+      if (n === 3) buildReview();
+      if (n === 4) doImport();
+      if (n === 1) { imp.rows = []; imp.result = null; }
+      imp.step = n; renderImport(); window.scrollTo(0, 0); return;
+    }
+    if (d.torec) { renderRec(); return show('rec'); }
+    if (d.clue) {
+      var t = REGISTER.filter(function (x) { return x.id === d.clue; })[0];
+      if (t.status === 'pending') t.status = 'cleared'; else delete rec.off[t.id];
+      return renderRec();
+    }
+    if (d.adjust) {
+      var ticked = LAST_REC + REGISTER.filter(function (x) { return x.status === 'cleared' && !rec.off[x.id]; }).reduce(function (s, x) { return s + x.amount; }, 0);
+      REGISTER.push({ id: 'adj', date: rec.date, payee: 'Rettifica di riconciliazione', amount: parseMoney(rec.statement) - ticked, status: 'cleared' });
+      return renderRec();
+    }
+    if (d.lock) {
+      var n2 = 0;
+      REGISTER.forEach(function (x) { if (x.status === 'cleared' && !rec.off[x.id]) { x.status = 'locked'; n2++; } });
+      rec.locked = n2; return renderRec();
+    }
+    if (d.recreset) { location.reload(); }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target, d = t.dataset;
+    if (t.id === 'file-in' && t.files && t.files[0]) {
+      var file = t.files[0], reader = new FileReader();
+      reader.onload = function () { load(file.name, String(reader.result)); };
+      reader.readAsText(file);
+      return;
+    }
+    if (d.imp) { imp[d.imp] = t.type === 'checkbox' ? t.checked : t.value; return renderImport(); }
+    if (d.role !== undefined) { imp.roles[Number(d.role)] = t.value; return renderImport(); }
+    if (d.inc !== undefined) { imp.review[Number(d.inc)].include = t.checked; return renderImport(); }
+    if (d.ct !== undefined) { var r = imp.review[Number(d.ct)]; r.cat = t.value; r.status = t.value ? 'new' : 'need'; return renderImport(); }
+    if (d.rt) {
+      var tx = REGISTER.filter(function (x) { return x.id === d.rt; })[0];
+      if (d.pending) { if (t.checked) tx.status = 'cleared'; }
+      else if (t.checked) delete rec.off[d.rt]; else rec.off[d.rt] = true;
+      return renderRec();
+    }
+    if (t.id === 'st-date') { rec.date = t.value; return; }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.dataset.py !== undefined) { imp.review[Number(t.dataset.py)].payee = t.value; return; }
+    if (t.id === 'st-amt') {
+      rec.statement = t.value;
+      var pos = t.selectionStart; renderRec();
+      var n = el('st-amt'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { /* ignore */ }
+    }
+  });
+  // Drag and drop of a file onto the drop zone.
+  document.addEventListener('dragover', function (e) { if (e.target.closest && e.target.closest('#drop')) { e.preventDefault(); if (!imp.dragover) { imp.dragover = true; el('drop').classList.add('over'); } } });
+  document.addEventListener('dragleave', function (e) { if (e.target.closest && e.target.closest('#drop')) { imp.dragover = false; el('drop').classList.remove('over'); } });
+  document.addEventListener('drop', function (e) {
+    if (!(e.target.closest && e.target.closest('#drop'))) return;
+    e.preventDefault(); imp.dragover = false;
+    var file = e.dataTransfer.files[0]; if (!file) return;
+    var reader = new FileReader(); reader.onload = function () { load(file.name, String(reader.result)); }; reader.readAsText(file);
+  });
+  renderImport();
+})();
+</script>
+
+</body>
+</html>
