@@ -6,6 +6,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation: the portfolio mockup and its "User interface" section no longer describe holdings left unassigned to any portfolio, aligning them with #219 (every trade is assigned to exactly one portfolio when it is entered).
+
 ## [0.1.2] - 2026-09-26
 
 ### Added
