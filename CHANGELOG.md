@@ -17,6 +17,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: checks the local user's role in the workspace a request names and opens the request's single database transaction with the session variables ADR 0006's Row-Level Security policies expect, as a Fastify preHandler chained after user mapping (`#8`).
 - `apps/api`: the server now connects to PostgreSQL as the restricted `envelope_app` role (`APP_DATABASE_URL`) instead of the migration runner's superuser, so Row-Level Security is enforced for the running server, not just proven in tests (`#9`).
 - `apps/api`: an append-only `audit_log` table (workspace-scoped, Row-Level Security, no `UPDATE`/`DELETE` grant to `envelope_app`) and a single `recordAuditLog` write helper other repositories can call (`#216`).
+- `apps/api`: token verification and user mapping are now global preHandlers, applied to every route except `/health`, so a new route rejects a missing or foreign token without repeating the preHandler wiring itself (`#10`).
 
 ### Changed
 
