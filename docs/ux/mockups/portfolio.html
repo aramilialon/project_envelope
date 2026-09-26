@@ -341,11 +341,8 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
 .acc-block h4{display:flex;justify-content:space-between;align-items:baseline;margin:0;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:16px;font-weight:700;font-stretch:78%}
 .split-bar{display:flex;height:14px;margin:10px 0 4px;gap:2px}
 .split-bar i{display:block;height:100%}
-.split-bar i.lt{background:var(--s1)} .split-bar i.tp{background:var(--s2)} .split-bar i.un{background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)}
+.split-bar i.lt{background:var(--s1)} .split-bar i.tp{background:var(--s2)}
 .sw2{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
-.unas{color:var(--warn);font-weight:600}
-.assign{display:flex;gap:6px;align-items:center}
-.assign select{min-height:32px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
 .wiz{display:flex;flex-direction:column;gap:22px;max-width:760px}
 .wiz h3{margin:0;font-size:36px;line-height:1.05;font-weight:700;font-stretch:72%;letter-spacing:-.4px}
 .wiz .steps{display:flex;margin:0;padding:0;list-style:none;border-bottom:1px solid var(--rule)}
@@ -453,9 +450,10 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     { id: 'oro', name: 'ETC oro fisico', code: 'ORO', qty: 83, price: 4210, avg: 3620, item: 'gold' }
   ];
   var CASH = 1995;
-  // The Broker ETF account holds several portfolios: every unit belongs to one portfolio, or is not assigned yet.
+  // The Broker ETF account holds several portfolios: every unit always belongs to exactly one (#219).
+  // INST's own qty is the Lungo termine share; HOLD holds each instrument's share in every other portfolio.
   var PF = [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro']];
-  var HOLD = { mondo: { tp: 60, un: 0 }, emerg: { tp: 0, un: 0 }, obbl: { tp: 40, un: 25 }, oro: { tp: 0, un: 20 } };
+  var HOLD = { mondo: { tp: 60 }, emerg: { tp: 0 }, obbl: { tp: 65 }, oro: { tp: 20 } };
   var OTHER_PF = [['Fondo pensione', 1892000, 'conto Fondo pensione']];
   // Allocation tree: top-level items with optional children. Targets in percent.
   var S = {
@@ -466,7 +464,7 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
       { id: 'gold', name: 'Oro', target: 10 }
     ],
     rule: '525', preset: 'bands525', mode: 'contrib', contribStr: '500,00', minTradeStr: '100,00', fractional: false,
-    trade: { type: 'buy', inst: 'obbl', date: '2026-09-26', qtyStr: '3', priceStr: '112,80', feesStr: '2,95', saved: null }
+    trade: { type: 'buy', inst: 'obbl', date: '2026-09-26', qtyStr: '3', priceStr: '112,80', feesStr: '2,95', saved: null, portfolio: 'lt' }
   };
   var PRESETS = [
     ['monthly', 'Solo controllo mensile', 'Ogni mese riporta tutto agli obiettivi, qualunque sia lo scostamento.', 'abs5', 'full'],
@@ -655,14 +653,22 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
       '<div class="row-btns"><button type="button" class="btn primary" data-trade="1">Registra un’operazione fatta</button><span class="hint">envelope non esegue ordini: fai le operazioni dal tuo broker e registrale qui con i prezzi reali.</span></div>';
   }
 
+  // Every account portfolio, as {id, name} — the two seeded ones plus any created in this session (#219: a trade always names one).
+  function accountPortfolios() {
+    return PF.map(function (p) { return { id: p[0], name: p[1] }; }).concat((S.created || []).map(function (c, k) { return { id: 'c' + k, name: c.name }; }));
+  }
   function tradePanel() {
     var t = S.trade, qty = Number(String(t.qtyStr).replace(',', '.')), price = parseAmount(t.priceStr), fees = parseAmount(t.feesStr) || 0;
     var ok = qty > 0 && price !== null;
     var gross = ok ? Math.round(qty * price) : 0, net = t.type === 'sell' ? gross - fees : gross + fees;
     var TYPES = [['buy', 'Acquisto'], ['sell', 'Vendita'], ['div', 'Dividendo o cedola'], ['fee', 'Commissione'], ['split', 'Frazionamento'], ['xfer', 'Trasferimento titoli']];
+    var portfolios = accountPortfolios();
+    if (portfolios.length === 1) t.portfolio = portfolios[0].id; // the account holds a single portfolio: preselected, nothing to ask
+    var curPf = portfolios.filter(function (p) { return p.id === t.portfolio; })[0] || portfolios[0];
     if (t.saved) return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">Operazione registrata</span><h4>' + esc(t.saved) + '</h4></div><p class="explain">Le posizioni e l’allocazione sono aggiornate. Il conto Broker ETF riflette il movimento.</p><div class="row-btns"><button type="button" class="btn" data-newtrade="1">Registrane un’altra</button></div>';
-    return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">Lungo termine</span><h4>Nuova operazione</h4></div>' +
+    return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">' + esc(curPf.name) + '</span><h4>Nuova operazione</h4></div>' +
       '<div class="field"><label for="tt">Tipo</label><select id="tt" data-tr="type">' + TYPES.map(function (x) { return '<option value="' + x[0] + '"' + (t.type === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="tpf">Portafoglio</label><select id="tpf" data-tr="portfolio"' + (portfolios.length === 1 ? ' disabled' : '') + '>' + portfolios.map(function (p) { return '<option value="' + p.id + '"' + (curPf.id === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="ti">Strumento</label><select id="ti" data-tr="inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (t.inst === i.id ? ' selected' : '') + '>' + esc(i.name) + ' (' + i.code + ')</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="td">Data</label><input type="date" id="td" data-tr="date" value="' + t.date + '"></div>' +
       '<div class="twof"><div class="field"><label for="tq">Quote</label><input type="text" inputmode="decimal" id="tq" data-tr="qtyStr" value="' + esc(t.qtyStr) + '"></div>' +
@@ -720,9 +726,8 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
 
   // ---- Sidebar, linked accounts and the new-portfolio setup
   function tpValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].tp * i.price; }, 0); }
-  function unValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].un * i.price; }, 0); }
   function sideHtml() {
-    var lt = total(), tp = tpValue(), un = unValue();
+    var lt = total(), tp = tpValue();
     var extra = (S.created || []).map(function (c) { return '<div class="lr"><span>' + esc(c.name) + '</span><span class="dots"></span><span class="n">' + (c.value / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>'; }).join('');
     return '<div class="ledger"><h5>Portafogli</h5>' +
       '<div class="lr" style="font-weight:700"><span>Lungo termine</span><span class="dots"></span><span class="n">' + (lt / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
@@ -730,29 +735,26 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
       '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div>' + extra +
       '<button type="button" class="plain" style="margin-top:6px;text-align:left" data-wiz="start">+ Nuovo portafoglio</button></div>' +
       '<div class="ledger"><h5>Conti</h5>' +
-      '<div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">' + ((lt + tp + un + createdValue()) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
-      (un ? '<div class="lr" style="padding-left:12px;font-size:12px"><span class="unas">non assegnati</span><span class="dots"></span><span class="n unas">' + (un / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' : '') +
+      '<div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">' + ((lt + tp + createdValue()) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
       '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div></div>';
   }
   function createdValue() { return (S.created || []).reduce(function (s2, c) { return s2 + c.value; }, 0); }
   function accountsPane() {
-    var lt = total() - CASH, tp = tpValue(), un = unValue(), cv = createdValue(), all = lt + tp + un + cv + CASH;
+    var lt = total() - CASH, tp = tpValue(), cv = createdValue(), all = lt + tp + cv + CASH;
     var rows = INST.map(function (i) {
       var h = HOLD[i.id], created = (S.created || []).reduce(function (s2, c) { return s2 + (c.take[i.id] || 0); }, 0);
       return '<tr><td><b style="font-weight:500">' + esc(i.name) + '</b><div class="hint">' + i.code + ' · ' + f(i.price) + '</div></td>' +
-        '<td class="r n">' + (i.qty + h.tp + h.un + created) + '</td><td class="r n">' + i.qty + '</td><td class="r n">' + (h.tp || '') + '</td>' + ((S.created || []).length ? '<td class="r n">' + (created || '') + '</td>' : '') +
-        '<td class="r n' + (h.un ? ' unas' : '') + '">' + (h.un || '') + '</td><td>' + (h.un ? '<span class="assign"><label class="sr" for="as-' + i.id + '">Assegna a</label><select id="as-' + i.id + '" data-assign="' + i.id + '"><option value="">Assegna a\u2026</option><option value="lt">Lungo termine</option><option value="tp">Terzo pilastro</option></select></span>' : '') + '</td></tr>';
+        '<td class="r n">' + (i.qty + h.tp + created) + '</td><td class="r n">' + i.qty + '</td><td class="r n">' + (h.tp || '') + '</td>' + ((S.created || []).length ? '<td class="r n">' + (created || '') + '</td>' : '') +
+        '</tr>';
     }).join('');
     var seg = function (v, cls) { return v > 0 ? '<i class="' + cls + '" style="flex:' + v + '"></i>' : ''; };
     return '<p class="hint" style="margin:0;max-width:78ch">Un portafoglio è un insieme logico di titoli, non un conto: lo stesso conto del broker può contenerne più di uno, e un portafoglio può stare su più conti. Ogni operazione appartiene a un conto e a un portafoglio; spostare quote tra due portafogli dello stesso conto è un trasferimento senza movimento di denaro.</p>' +
       '<div class="acc-block"><h4><span>Broker ETF</span><span class="n">' + f(all) + '</span></h4>' +
-      '<div class="split-bar" aria-hidden="true">' + seg(lt + CASH, 'lt') + seg(tp, 'tp') + seg(cv, 'tp') + seg(un, 'un') + '</div>' +
+      '<div class="split-bar" aria-hidden="true">' + seg(lt + CASH, 'lt') + seg(tp, 'tp') + seg(cv, 'tp') + '</div>' +
       '<div class="legend2" style="flex-wrap:wrap"><span><i class="sw2" style="background:var(--s1)"></i>Lungo termine ' + f(lt + CASH) + '</span><span><i class="sw2" style="background:var(--s2)"></i>Terzo pilastro ' + f(tp) + '</span>' +
-      (S.created || []).map(function (c) { return '<span><i class="sw2" style="background:var(--s2)"></i>' + esc(c.name) + ' ' + f(c.value) + '</span>'; }).join('') +
-      (un ? '<span><i class="sw2" style="background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)"></i><span class="unas">Non assegnati ' + f(un) + '</span></span>' : '') + '</div>' +
-      '<table class="t" style="margin-top:12px"><thead><tr><th>Strumento</th><th class="r">Nel conto</th><th class="r">Lungo termine</th><th class="r">Terzo pilastro</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '<th class="r">Non assegnate</th><th></th></tr></thead><tbody>' + rows +
-      '<tr><td>Liquidità</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '<td></td><td></td></tr></tbody></table>' +
-      (un ? '<p class="hint unas" style="margin:6px 0 0">Le quote non assegnate contano nel conto ma in nessun portafoglio: non entrano in allocazione e ribilanciamento finché non le assegni.</p>' : '') + '</div>' +
+      (S.created || []).map(function (c) { return '<span><i class="sw2" style="background:var(--s2)"></i>' + esc(c.name) + ' ' + f(c.value) + '</span>'; }).join('') + '</div>' +
+      '<table class="t" style="margin-top:12px"><thead><tr><th>Strumento</th><th class="r">Nel conto</th><th class="r">Lungo termine</th><th class="r">Terzo pilastro</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '</tr></thead><tbody>' + rows +
+      '<tr><td>Liquidità</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '</tr></tbody></table></div>' +
       '<div class="acc-block"><h4><span>Fondo pensione</span><span class="n">' + f(1892000) + '</span></h4><p class="hint" style="margin:8px 0 0">Tutto nel portafoglio Fondo pensione.</p></div>';
   }
   var WSTEPS = ['Nome', 'Conti', 'Titoli', 'Allocazione', 'Fatto'];
@@ -766,13 +768,13 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
         (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
     } else if (w.step === 2) {
       h += '<p style="margin:0;color:var(--ink-2)">In quali conti stanno i titoli di questo portafoglio? Puoi sceglierne più di uno, anche già usati da altri portafogli.</p>' +
-        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>Broker ETF</b><small>Contiene già Lungo termine e Terzo pilastro · ' + f(unValue()) + ' non assegnati</small></span></label>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>Broker ETF</b><small>Contiene già Lungo termine e Terzo pilastro</small></span></label>' +
         '<label class="opt2"><input type="checkbox" data-wacc="fp"' + (w.accounts.fp ? ' checked' : '') + '><span><b>Fondo pensione</b><small>Tutto assegnato a Fondo pensione</small></span></label>' +
         '<button type="button" class="plain" style="align-self:flex-start">+ Aggiungi un conto di investimento</button>';
     } else if (w.step === 3) {
-      h += '<p style="margin:0;color:var(--ink-2)">Scegli quante quote di ogni titolo appartengono al nuovo portafoglio. Le proponiamo dalle quote non ancora assegnate; puoi anche spostarne da un altro portafoglio.</p>' +
-        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Titolo nel Broker ETF</span><span class="r">Non assegnate</span><span class="r">In altri portafogli</span><span class="r">In questo</span></div>' +
-        INST.map(function (i) { var hh = HOLD[i.id]; return '<div class="take"><span>' + esc(i.name) + '<div class="hint">' + i.code + ' · ' + f(i.price) + '</div></span><span class="r n">' + hh.un + '</span><span class="r n">' + (i.qty + hh.tp) + '</span><span><label class="sr" for="tk-' + i.id + '">Quote di ' + i.code + '</label><input type="text" inputmode="numeric" id="tk-' + i.id + '" data-take="' + i.id + '" value="' + (w.take[i.id] || 0) + '"></span></div>'; }).join('') +
+      h += '<p style="margin:0;color:var(--ink-2)">Il portafoglio parte vuoto: se vuoi, sposta qui delle quote da un altro portafoglio dello stesso conto (0 di default). È uno spostamento senza movimento di denaro, e resta nella cronologia di entrambi i portafogli.</p>' +
+        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Titolo</span><span class="r">Portafoglio</span><span class="r">Quote lì</span><span>Sposta qui</span></div>' +
+        wizPositions().map(function (p) { return '<div class="take"><span>' + esc(p.inst.name) + '<div class="hint">' + p.inst.code + ' · ' + f(p.inst.price) + '</div></span><span class="r">' + esc(p.src.name) + '</span><span class="r n">' + p.src.qty + '</span><span><label class="sr" for="tk-' + p.inst.id + '-' + p.src.id + '">Quote di ' + p.inst.code + ' da spostare da ' + p.src.name + '</label><input type="text" inputmode="numeric" id="tk-' + p.inst.id + '-' + p.src.id + '" data-take="' + p.inst.id + ':' + p.src.id + '" value="' + wizTake(p.inst.id, p.src.id) + '"></span></div>'; }).join('') +
         '</div><div class="sumline"><span>Valore del nuovo portafoglio</span><span class="n" id="w-val">' + f(wizValue()) + '</span></div>' +
         (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
     } else if (w.step === 4) {
@@ -800,16 +802,24 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (w.step < 5) h += '<div class="row-btns" style="justify-content:space-between;padding-top:10px;border-top:1px solid var(--rule)">' + (w.step > 1 ? '<button type="button" class="btn" data-wiz="back">Indietro</button>' : '<span></span>') + '<button type="button" class="btn primary" data-wiz="next">' + (w.step === 4 ? 'Crea il portafoglio' : 'Continua') + '</button></div>';
     return h + '</div>';
   }
-  function wizValue() { var w = S.wizard; return INST.reduce(function (s2, i) { return s2 + (Number(w.take[i.id]) || 0) * i.price; }, 0); }
+  // Positions available in this wizard's account(s): one row per (instrument, source portfolio) actually holding units.
+  function wizSources(i) {
+    return [{ id: 'lt', name: 'Lungo termine', qty: i.qty }, { id: 'tp', name: 'Terzo pilastro', qty: HOLD[i.id].tp }].filter(function (s) { return s.qty > 0; });
+  }
+  function wizPositions() {
+    var rows = [];
+    INST.forEach(function (i) { wizSources(i).forEach(function (s) { rows.push({ inst: i, src: s }); }); });
+    return rows;
+  }
+  function wizTake(instId, srcId) { return (S.wizard.take[instId] && S.wizard.take[instId][srcId]) || 0; }
+  function wizValue() { return wizPositions().reduce(function (s2, p) { return s2 + (Number(wizTake(p.inst.id, p.src.id)) || 0) * p.inst.price; }, 0); }
   function wizardNext() {
     var w = S.wizard; w.err = '';
     if (w.step === 1 && !w.name.trim()) { w.err = 'Dai un nome al portafoglio.'; return; }
     if (w.step === 2 && !w.accounts.broker && !w.accounts.fp) { w.err = 'Scegli almeno un conto.'; return; }
     if (w.step === 3) {
-      var bad = INST.filter(function (i) { var q = Number(w.take[i.id]) || 0; return q < 0 || q !== Math.floor(q) || q > HOLD[i.id].un + i.qty + HOLD[i.id].tp; })[0];
-      if (bad) { w.err = 'Le quote di ' + bad.code + ' non sono valide.'; return; }
-      var more = INST.filter(function (i) { return (Number(w.take[i.id]) || 0) > HOLD[i.id].un; })[0];
-      if (more) { w.err = 'Per ' + more.code + ' chiedi più quote di quelle non assegnate: nel bozzetto si prendono solo quelle libere.'; return; }
+      var bad = wizPositions().filter(function (p) { var q = Number(wizTake(p.inst.id, p.src.id)) || 0; return q < 0 || q !== Math.floor(q) || q > p.src.qty; })[0];
+      if (bad) { w.err = 'Le quote di ' + bad.inst.code + ' da ' + bad.src.name + ' non sono valide.'; return; }
     }
     if (w.step === 4) {
       var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
@@ -818,8 +828,14 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     }
     w.step++;
     if (w.step === 5) {
-      INST.forEach(function (i) { HOLD[i.id].un -= Number(w.take[i.id]) || 0; });
-      S.created = (S.created || []).concat([{ name: w.name.trim(), value: wizValue(), take: Object.assign({}, w.take) }]);
+      var take = {};
+      wizPositions().forEach(function (p) {
+        var q = Number(wizTake(p.inst.id, p.src.id)) || 0;
+        if (!q) return;
+        if (p.src.id === 'lt') p.inst.qty -= q; else HOLD[p.inst.id].tp -= q;
+        take[p.inst.id] = (take[p.inst.id] || 0) + q;
+      });
+      S.created = (S.created || []).concat([{ name: w.name.trim(), value: wizValue(), take: take }]);
     }
   }
 
@@ -874,7 +890,7 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (b.id === 'tab-desk') return show('desk');
     if (b.id === 'tab-phone') return show('phone');
     if (d.tab) { S.tab = d.tab; return render(); }
-    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: { mondo: 0, emerg: 0, obbl: 25, oro: 20 }, start: 'own', items: [{ name: 'Obbligazioni', t: 75, inst: 'obbl' }, { name: 'Oro', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
+    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: {}, start: 'own', items: [{ name: 'Obbligazioni', t: 75, inst: 'obbl' }, { name: 'Oro', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
     if (d.wiz === 'cancel') { S.wizard = null; return render(); }
     if (d.wiz === 'back') { S.wizard.step--; S.wizard.err = ''; return render(); }
     if (d.wiz === 'next') { wizardNext(); return render(); }
@@ -890,8 +906,15 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (d.savetrade) {
       var t = S.trade, inst = INST.filter(function (i) { return i.id === t.inst; })[0];
       var q = Number(String(t.qtyStr).replace(',', '.')), price = parseAmount(t.priceStr), fees = parseAmount(t.feesStr) || 0;
-      if (t.type === 'buy') { inst.avg = Math.round((inst.avg * inst.qty + q * price) / (inst.qty + q)); inst.qty += q; CASH -= Math.round(q * price) + fees; }
-      else { inst.qty = Math.max(0, inst.qty - q); CASH += Math.round(q * price) - fees; }
+      var cm = /^c(\d+)$/.exec(t.portfolio || ''), createdPf = cm ? (S.created || [])[Number(cm[1])] : null;
+      // Average cost is tracked per instrument for the whole account, across every portfolio holding it;
+      // only the quantity moves into the chosen portfolio's own bucket (#219: a trade always names one).
+      var totalQty = inst.qty + HOLD[inst.id].tp + (S.created || []).reduce(function (s2, c) { return s2 + (c.take[inst.id] || 0); }, 0);
+      if (t.type === 'buy') { inst.avg = Math.round((inst.avg * totalQty + q * price) / (totalQty + q)); CASH -= Math.round(q * price) + fees; } else CASH += Math.round(q * price) - fees;
+      var delta = t.type === 'buy' ? q : -q;
+      if (t.portfolio === 'tp') HOLD[inst.id].tp = Math.max(0, HOLD[inst.id].tp + delta);
+      else if (createdPf) createdPf.take[inst.id] = Math.max(0, (createdPf.take[inst.id] || 0) + delta);
+      else inst.qty = Math.max(0, inst.qty + delta);
       inst.price = price;
       t.saved = (t.type === 'buy' ? 'Acquisto di ' : 'Vendita di ') + q + ' ' + inst.code;
       return render();
@@ -900,12 +923,6 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
   document.addEventListener('change', function (e) {
     var t = e.target, d = t.dataset;
     if (d.mode) { S.mode = t.value; return renderPaneOnly(); }
-    if (d.assign) {
-      if (!t.value) return;
-      var qn = HOLD[d.assign].un; HOLD[d.assign].un = 0;
-      if (t.value === 'tp') HOLD[d.assign].tp += qn; else INST.filter(function (x) { return x.id === d.assign; })[0].qty += qn;
-      return render();
-    }
     if (d.wacc) { S.wizard.accounts[d.wacc] = t.checked; return; }
     if (d.wstart) {
       S.wizard.start = t.value;
@@ -924,7 +941,7 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (d.sub) { var q = d.sub.split(':'), p = S.items.filter(function (x) { return x.id === q[0]; })[0], c = p.children.filter(function (x) { return x.id === q[1]; })[0]; c.target = Number(t.value.replace(',', '.')) || 0; return renderPaneOnly(); }
     if (d.contrib) { S.contribStr = t.value; return renderPaneOnly(); }
     if (d.w === 'name' || d.w === 'purpose') { S.wizard[d.w] = t.value; return; }
-    if (d.take) { S.wizard.take[d.take] = t.value; var wv = el('w-val'); if (wv) wv.textContent = f(wizValue()); return; }
+    if (d.take) { var kk = d.take.split(':'); S.wizard.take[kk[0]] = S.wizard.take[kk[0]] || {}; S.wizard.take[kk[0]][kk[1]] = t.value; var wv = el('w-val'); if (wv) wv.textContent = f(wizValue()); return; }
     if (d.wi && t.tagName === 'INPUT') {
       var q2 = d.wi.split(':'); S.wizard.items[Number(q2[0])][q2[1]] = t.value;
       var sm = S.wizard.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0), ws = el('w-sum');
