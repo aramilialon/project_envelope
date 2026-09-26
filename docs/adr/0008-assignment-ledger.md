@@ -11,13 +11,17 @@ A single mutable total is exactly the shape that protocol handles badly: two dev
 
 ## Decision
 
-- Replace the mutable total with an append-only ledger. Each row is immutable: `id`, `batch_id`, `workspace_id`, `month`, `source_category_id` (nullable — `NULL` means unassigned money), `destination_category_id` (nullable, same meaning), `amount_cents`, `author` (the user), `created_at`.
+- Replace the mutable total with an append-only ledger. Each row is immutable: `id`, `batch_id`, `reverses` (another row's id, nullable, unique where not null), `workspace_id`, `month`, `source_category_id` (nullable — `NULL` means unassigned money), `destination_category_id` (nullable, same meaning), `amount_cents`, `author` (the user), `created_at`.
   - **Assign** money to a category: `NULL → category`.
   - **Unassign** (take money out): `category → NULL`.
   - **Move** money between two categories: one row, `A → B` — never two separate assign/unassign rows, so it reads as one action in the ledger and can be undone as one.
 - **`batch_id`, a UUID generated on the device, same as `id`.** Every row created by one user action shares it: a single assign/unassign/move gets a batch of one; quick assign or "fund all targets" produce one row per category, all sharing the same `batch_id`, so the whole group undoes together. Being device-generated (not server-assigned) is what makes this work offline, the same reason row ids are UUIDs (design.md, "Accounting rules").
 - A category's assigned amount in a month is derived, never stored: `SUM(amount WHERE destination = category AND month = month) − SUM(amount WHERE source = category AND month = month)`. This is exactly the `Assignment` shape `packages/core`'s `computeBudgetMonth` already takes (one aggregated number per category per month) — the core does not change.
-- **Undo is new rows, never an edit or a delete.** Undoing a batch reverses every one of its rows (source and destination swapped, same amount), each new row setting `reverses` to the original row's id, and all of them sharing one new common `batch_id` of their own (the undo is itself one action, undoable as a whole in principle, though the interface does not expose undoing an undo). `reverses` is unique where not null, so a row can be undone at most once — the UI hides the undo action once every row of a batch already has a reverser.
+- **Undo is new rows, never an edit or a delete.** Undoing a batch reverses only the rows in it that do not already have a reverser (source and destination swapped, same amount), each new row setting `reverses` to the row it undoes; all the new rows share one new `batch_id` of their own. Two cases:
+  - **Undoing a whole batch** (the group action, e.g. "undo this quick assign") reverses every not-yet-reversed row in it.
+  - **Undoing a single row** from a category's own history — including one row out of a larger batch — creates a batch of one, exactly the same way a single assign/unassign/move does. Because it only reverses that one row, a later "undo the whole batch" still finds every *other* row in the original batch without a reverser and reverses those, leaving the already-undone one alone: the `reverses` unique constraint is never asked to reverse the same row twice.
+
+  `reverses` is unique where not null, so a row can be undone at most once — the UI hides the undo action on a row once it already has one.
 - **Index on `(workspace_id, month)`**, since every read aggregates by workspace and month; **index on `batch_id`**, since undoing a batch looks up every row that shares it.
 - **No separate totals table for now.** If aggregating the ledger on every read turns out too slow, the fix is a derived table (rebuildable from the ledger, not itself synced or written directly by clients) — not a return to mutable per-category rows.
 
