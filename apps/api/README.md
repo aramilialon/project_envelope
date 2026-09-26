@@ -1,6 +1,6 @@
 # @envelope/api
 
-The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL. Step 3 (authentication) is in progress: Keycloak access tokens are verified against the realm's JWKS, mapped to a local `users` row, and workspace membership is checked with the request's Row-Level Security session variables set. Token verification and user mapping are global preHandlers, applied to every route except `/health`; workspace membership stays an explicit per-route opt-in.
+The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 to 3 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, the domain schema and Row-Level Security per workspace, and authentication — Keycloak access tokens verified against the realm's JWKS, mapped to a local `users` row, workspace membership checked with the request's Row-Level Security session variables set. Token verification and user mapping are global preHandlers, applied to every route except `/health`; workspace membership stays an explicit per-route opt-in. Step 4 (Budget API) is in progress: accounts are in, with their payment category and optional starting balance for on-budget credit cards.
 
 ## Contents
 
@@ -12,6 +12,8 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of th
 | `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006) |
 | `src/routes/health.ts` | `GET /health`: reports whether the database is reachable |
 | `src/routes/me.ts` | `GET /me`: returns the caller's local user id; registered only outside production, to give the global auth preHandlers a real route to protect ahead of the Budget API's own routes |
+| `src/routes/accounts.ts` | `POST`/`GET /workspaces/:workspaceId/accounts`, `PATCH .../:accountId/close` |
+| `src/accounts/repository.ts` | Create (with its payment category and optional starting balance for an on-budget credit card), list, close an account (ADR 0005) |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
 | `src/auth/user-mapper.ts` | Fastify preHandler, chained after the token verifier: upserts a `users` row from the token's `sub`/`email` claims and attaches its id to `request.userId` |
 | `src/auth/workspace-membership.ts` | Fastify preHandler, chained after the user mapper: checks the local user's role in the workspace the request names, and opens the request's single database transaction with `app.user_id`/`app.workspace_id` set for ADR 0006's RLS policies; `registerWorkspaceScope` commits or rolls it back once the response is ready |
