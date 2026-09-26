@@ -28,7 +28,7 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of th
 pnpm --filter @envelope/api dev          # start with auto-restart on file changes
 pnpm --filter @envelope/api start        # start once
 pnpm --filter @envelope/api migrate      # apply pending migrations
-pnpm --filter @envelope/api test         # integration tests (needs a running PostgreSQL, see below)
+pnpm --filter @envelope/api test         # integration tests, then smoke tests, each in its own clearly separated node --test run
 pnpm --filter @envelope/api typecheck
 ```
 
