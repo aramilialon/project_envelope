@@ -31,41 +31,47 @@ done
 
 echo "== Milestones"
 # title|description (the description states when the milestone is done)
+#
+# Versioning: 1.0.0 marks the whole product (docs/design.md's full roadmap),
+# so everything here stays 0.x.y. A minor version (0.x.0) starts a milestone
+# group (Budget, Portfolio, Mobile, ...); each patch (0.x.y) closes one
+# milestone within that group. Groups from 0.4.0 onward are single-milestone
+# for now, hence ".0" throughout; they gain patch versions if split further.
 milestones=(
-  "v0.1.0 API skeleton|Fastify server, configuration, structured logs, health endpoint, PostgreSQL connection, migration runner, integration tests against PostgreSQL in CI. Done when the API starts, migrates an empty database and CI is green."
-  "v0.2.0 Schema|Users, workspaces, memberships, accounts, categories and groups, transactions with splits and transfers, monthly assignments, Row-Level Security per workspace. Done when an automated test proves that a workspace cannot read another workspace's rows."
-  "v0.3.0 Authentication|Keycloak access tokens verified through OpenID Connect and JWKS, user mapping, workspace roles. Done when every endpoint rejects missing or foreign tokens."
-  "v0.4.0 Budget API|Accounts, categories, transactions, assignments and the budget month computed by packages/core. Done when a full budget month can be driven through the API alone."
-  "v0.5.0 Import|CSV and OFX import with column mapping and duplicate detection, reconciliation with locking. Done when a real bank export imports without duplicates on a second run."
-  "v0.6.0 Queue and notifications|Queue module with outbox, deduplication and processed_jobs register, push notifications for the budget. Done when the double-delivery test passes for every job type."
-  "v0.7.0 Sync|Field-level change protocol with hybrid logical clocks and an offline queue. Done when two clients with offline changes converge without loss or duplicates."
-  "v0.8.0 Web MVP|Budget web app with English and Italian translations. Done when a month of budgeting is possible from the browser."
-  "v1.0.0 Budget MVP|A real month of a household budget managed with the app alone."
+  "0.1.0 API skeleton|Fastify server, configuration, structured logs, health endpoint, PostgreSQL connection, migration runner, integration tests against PostgreSQL in CI. Done when the API starts, migrates an empty database and CI is green."
+  "0.1.1 Schema|Users, workspaces, memberships, accounts, categories and groups, transactions with splits and transfers, monthly assignments, Row-Level Security per workspace. Done when an automated test proves that a workspace cannot read another workspace's rows."
+  "0.1.2 Authentication|Keycloak access tokens verified through OpenID Connect and JWKS, user mapping, workspace roles. Done when every endpoint rejects missing or foreign tokens."
+  "0.1.3 Budget API|Accounts, categories, transactions, assignments and the budget month computed by packages/core. Done when a full budget month can be driven through the API alone."
+  "0.1.4 Import|CSV and OFX import with column mapping and duplicate detection, reconciliation with locking. Done when a real bank export imports without duplicates on a second run."
+  "0.1.5 Queue and notifications|Queue module with outbox, deduplication and processed_jobs register, push notifications for the budget. Done when the double-delivery test passes for every job type."
+  "0.1.6 Sync|Field-level change protocol with hybrid logical clocks and an offline queue. Done when two clients with offline changes converge without loss or duplicates."
+  "0.1.7 Web MVP|Budget web app with English and Italian translations. Done when a month of budgeting is possible from the browser."
+  "0.1.8 Budget MVP|A real month of a household budget managed with the app alone."
 )
-# Beyond the Budget MVP (v1.0.0): one-line goal each, no detailed issues yet
+# Beyond the Budget MVP (0.1.8): one-line goal each, no detailed issues yet
 # (docs/design.md's roadmap phases 2 onward). Order is a backlog, not a strict
 # sequence: these are independent goals, not increments that build on each other
-# the way v0.1.0-v1.0.0 do.
+# the way 0.1.0-0.1.8 do.
 future_milestones=(
-  "v1.1.0 Portfolio schema & instruments|Record portfolios, instruments, trades and derive positions; no prices or allocation yet."
-  "v1.2.0 Price tracking & performance|Daily historical prices (manual entry plus a pluggable provider), multi-currency conversion via ECB rates, month-by-month TWR/MWR performance."
-  "v1.3.0 Target allocation & rebalancing engine|Multi-level allocation with thresholds, the three rebalancing modes, and the built-in mechanical rebalancing-rule presets."
-  "v1.4.0 Well-known allocations & CAPE dynamic target|The publicly-documented allocation library and the CAPE-linked dynamic stock-weight rule."
-  "v1.5.0 Portfolio web UI|Dashboard, trade entry, allocation editor and rebalancing view in apps/web."
-  "v1.6.0 ETF look-through|Issuer-file and manual-entry exposure breakdown by country, sector and company."
-  "v1.7.0 Reports & automatic rules|Spending/income reports, net worth over time, category suggested from payee."
-  "v2.0.0 Portfolio MVP|Acceptance: the dashboard reproduces an existing spreadsheet-based tracker."
-  "v2.1.0 Mobile app skeleton|Expo app, local SQLite database, quick expense entry, biometric unlock shell."
-  "v2.2.0 Mobile sync & notifications|On-device sync client for the v0.7.0 protocol, offline queue, push notifications."
-  "v2.3.0 Mobile MVP|Acceptance: one week of use on two devices without loss or duplicates."
-  "v2.4.0 Self-hosting packaging|Docker images, install documentation, a self-hosted install working in under 10 minutes."
-  "v2.5.0 Broker import & bonds|Broker CSV import, bond maturity/coupon tracking and calendar."
-  "v2.6.0 Momentum indicators|Six-month trend and detail indicators, informative only, on the user's own instruments."
-  "v2.7.0 In-app Keycloak administration|Manage users, external identity providers and security policies from the app's own admin pages, through Keycloak's admin API (design.md, \"Authentication with Keycloak\"), instead of Keycloak's own console."
-  "v3.0.0 End-to-end encryption module|Per-workspace optional E2EE: workspace/member keys, recovery phrase, calculations moved on-device."
-  "v3.1.0 Hosted version|Subscriptions, licensed market data, managed backups, external security test, legal/GDPR review."
-  "v3.2.0 Shared budgets & PSD2 bank connection|Several people with different roles on one budget; automatic bank sync through a PSD2 provider."
-  "v3.3.0 Local tax rules|Indicative tax calculation, starting with Italy."
+  "0.2.0 Portfolio schema & instruments|Record portfolios, instruments, trades and derive positions; no prices or allocation yet."
+  "0.2.1 Price tracking & performance|Daily historical prices (manual entry plus a pluggable provider), multi-currency conversion via ECB rates, month-by-month TWR/MWR performance."
+  "0.2.2 Target allocation & rebalancing engine|Multi-level allocation with thresholds, the three rebalancing modes, and the built-in mechanical rebalancing-rule presets."
+  "0.2.3 Well-known allocations & CAPE dynamic target|The publicly-documented allocation library and the CAPE-linked dynamic stock-weight rule."
+  "0.2.4 Portfolio web UI|Dashboard, trade entry, allocation editor and rebalancing view in apps/web."
+  "0.2.5 ETF look-through|Issuer-file and manual-entry exposure breakdown by country, sector and company."
+  "0.2.6 Reports & automatic rules|Spending/income reports, net worth over time, category suggested from payee."
+  "0.2.7 Portfolio MVP|Acceptance: the dashboard reproduces an existing spreadsheet-based tracker."
+  "0.3.0 Mobile app skeleton|Expo app, local SQLite database, quick expense entry, biometric unlock shell."
+  "0.3.1 Mobile sync & notifications|On-device sync client for the 0.1.6 protocol, offline queue, push notifications."
+  "0.3.2 Mobile MVP|Acceptance: one week of use on two devices without loss or duplicates."
+  "0.4.0 Self-hosting packaging|Docker images, install documentation, a self-hosted install working in under 10 minutes."
+  "0.5.0 Broker import & bonds|Broker CSV import, bond maturity/coupon tracking and calendar."
+  "0.6.0 Momentum indicators|Six-month trend and detail indicators, informative only, on the user's own instruments."
+  "0.7.0 In-app Keycloak administration|Manage users, external identity providers and security policies from the app's own admin pages, through Keycloak's admin API (design.md, \"Authentication with Keycloak\"), instead of Keycloak's own console."
+  "0.8.0 End-to-end encryption module|Per-workspace optional E2EE: workspace/member keys, recovery phrase, calculations moved on-device."
+  "0.9.0 Hosted version|Subscriptions, licensed market data, managed backups, external security test, legal/GDPR review."
+  "0.10.0 Shared budgets & PSD2 bank connection|Several people with different roles on one budget; automatic bank sync through a PSD2 provider."
+  "0.11.0 Local tax rules|Indicative tax calculation, starting with Italy."
 )
 
 existing=$(gh api "repos/{owner}/{repo}/milestones?state=all&per_page=100" --jq '.[].title')
