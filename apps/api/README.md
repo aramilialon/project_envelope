@@ -16,6 +16,7 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of th
 | `src/auth/workspace-membership.ts` | Fastify preHandler, chained after the user mapper: checks the local user's role in the workspace the request names, and opens the request's single database transaction with `app.user_id`/`app.workspace_id` set for ADR 0006's RLS policies; `registerWorkspaceScope` commits or rolls it back once the response is ready |
 | `src/users/repository.ts` | The `users` table's only entry point for queries (ADR 0005) |
 | `src/test-helpers/keycloak.ts` | Provisions a throwaway Keycloak realm, clients and user for tests, through the admin REST API |
+| `src/test-helpers/app-role.ts` | Grants `envelope_app` a test-only login (idempotently, cluster-wide) so tests can connect as the same restricted role the running server uses |
 | `src/app.ts` | `buildApp(config)`: assembles the Fastify instance and its routes, without opening a port (used directly by tests) |
 | `src/main.ts` | Entry point: loads the config, builds the app, starts listening |
 | `*.test.ts` | Tests, next to the file they check |
@@ -36,7 +37,8 @@ Copy `.env.example` to `.env` and adjust it; `.env` is read automatically by `de
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `DATABASE_URL` | — (required) | PostgreSQL connection string |
+| `DATABASE_URL` | — (required by `migrate`) | The migration runner's connection: needs DDL privileges, so it's the superuser (`envelope`) |
+| `APP_DATABASE_URL` | — (required by `dev`/`start`) | The running server's own connection: `envelope_app`, restricted by Row-Level Security (ADR 0006) |
 | `KEYCLOAK_ISSUER` | — (required) | The realm's issuer URL, e.g. `http://127.0.0.1:8080/realms/envelope`; also where the JWKS is fetched from |
 | `KEYCLOAK_AUDIENCE` | — (required) | The client id every access token must be issued for |
 | `HOST` | `127.0.0.1` | Address the server listens on |
@@ -45,7 +47,18 @@ Copy `.env.example` to `.env` and adjust it; `.env` is read automatically by `de
 | `LOG_PRETTY` | `false` | Human-readable logs instead of JSON; only for a terminal, never in production |
 | `NODE_ENV` | `development` | |
 
-A missing or invalid variable makes the process exit immediately with a clear error, instead of failing later somewhere unrelated.
+A missing or invalid variable makes the process exit immediately with a clear error, instead of failing later somewhere unrelated. `DATABASE_URL` and `APP_DATABASE_URL` are two different connections on purpose (ADR 0006): the first can create tables, the second cannot even see another workspace's rows.
+
+### Giving `envelope_app` a login
+
+Migrations create the `envelope_app` role but deliberately never give it `LOGIN` or a password (ADR 0006: that would mean committing a real credential to the repository). Do it once per Postgres instance, the same way `infra/.env` already holds the `envelope` and Keycloak passwords:
+
+```bash
+$ docker exec -it envelope-postgres-1 psql -U envelope -d envelope \
+  -c "ALTER ROLE envelope_app WITH LOGIN PASSWORD '<a password you pick>';"
+```
+
+Roles are shared by the whole Postgres instance (not per database), so this one command covers both the `envelope` and `envelope_test` databases. Use that password in `APP_DATABASE_URL`.
 
 ## Running the integration tests locally
 
@@ -79,4 +92,4 @@ Comparisons with Perl/CGI/DBI, to find your way around the code.
 
 ## Current limitations
 
-No repository/route code yet (step 4) beyond the users table: `/health` is still the only route, and no query touches the rest of the domain schema except in tests. Because of that, the API's own connection still uses the superuser role (`envelope`) from `infra/.env`, which bypasses the Row-Level Security policies described in [ADR 0006](../../docs/adr/0006-row-level-security.md); those policies are proven correct by `src/db/schema.test.ts` (using `SET ROLE envelope_app`) and by `src/auth/workspace-membership.test.ts` (checking the session variables are actually set), not yet enforced for the running server — that's `0.1.2`'s remaining issue (connecting as `envelope_app`). Token verification, user mapping and workspace membership all exist and are tested individually, but nothing registers them globally yet, so no real route rejects an invalid token or an unauthorized workspace today.
+No repository/route code yet (step 4) beyond the users table: `/health` is still the only route, and no query touches the rest of the domain schema except in tests. The API now connects as the restricted `envelope_app` role by default (`APP_DATABASE_URL`), so the Row-Level Security policies in [ADR 0006](../../docs/adr/0006-row-level-security.md) are enforced for real, not just proven with `SET ROLE` (`src/db/schema.test.ts`) or by inspecting session variables (`src/auth/workspace-membership.test.ts`) — `src/auth/workspace-isolation.test.ts` proves it end to end, through a real HTTP request. Token verification, user mapping and workspace membership all exist and are tested individually, but nothing registers them globally yet, so no real route rejects an invalid token or an unauthorized workspace today; that, plus the actual budget endpoints, come in step 4.
