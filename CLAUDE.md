@@ -68,7 +68,7 @@ Every change reaches `main` through a pull request that the maintainer reviews a
 
 ## Current focus: backend MVP
 
-Build `apps/api` in small increments, each with tests and a green CI. Each increment is a GitHub milestone (`v0.1.0` to `v0.7.0`); split it into issues before starting:
+Build `apps/api` in small increments, each with tests and a green CI. Each increment is a GitHub milestone (`0.1.0` to `0.1.6`); split it into issues before starting. Each milestone also gets its own smoke test against the real running process, not just `.inject()` (ADR 0007):
 
 1. Skeleton: Fastify server, configuration, structured logs, health endpoint, PostgreSQL connection, migration runner, integration tests against a real PostgreSQL (CI service container).
 2. Schema: users, workspaces, memberships, accounts, categories and groups, transactions with splits and transfers, monthly assignments; Row-Level Security per workspace.
