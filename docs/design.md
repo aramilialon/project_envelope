@@ -6,7 +6,7 @@ Last updated: 2026-09-25. This is the reference design; decisions with lasting t
 
 One app, web and mobile, that combines envelope budgeting with portfolio management, target allocation and threshold-based rebalancing. The current goal is personal and family use, self-hosted. Open source distribution and a hosted version for others remain possible later, which is why the architecture is multi-user from day one: it costs little to do it now.
 
-- **Every euro has a job.** The budget assigns only money that is already available, never future income.
+- **Only money that has arrived.** The budget assigns money already in the accounts, never future income.
 - **One net worth.** Budget cash and investments add up to the same net worth.
 - **User rules, not advice.** The app only computes what is needed to respect the targets and thresholds the user has set. It never suggests instruments to buy and never judges the user's choices.
 - **Always verifiable.** Every balance, position and return can be rebuilt from the recorded transactions.
@@ -15,41 +15,39 @@ One app, web and mobile, that combines envelope budgeting with portfolio managem
 
 ## Budget module
 
-The budget follows the envelope method: money comes into "ready to assign" and the user distributes it across categories until nothing is left without a job.
+The budget follows the envelope method: income arrives unassigned and the user distributes it across categories until all of it is assigned.
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
 | Accounts | Checking, credit card, cash, savings; "off-budget" accounts for mortgages and investments | MVP |
 | Categories and groups | Grouped categories (Home, Bills, Fun…), sortable and archivable | MVP |
 | Monthly assignment | Assigned, spent and available per category and month; a positive available balance rolls over to the next month | MVP |
-| Ready to assign | Only money already received in on-budget accounts, never expected income; warning when assigning more than is available | MVP |
+| Unassigned | Only money already received in on-budget accounts, never expected income; warning when assigning more than is available | MVP |
 | Assigning to future months | Assign money to next month and beyond, working towards living on last month's income | MVP |
 | Targets | Monthly amount, amount by a date, balance to keep, expense repeating every N months or years (a €600 insurance due in March = €50 a month); "€X still needed this month" indicator | MVP |
 | Quick assign | One click to fund this month's targets, or repeat last month's assigned or spent amounts | MVP |
 | Moving money between categories | Move money from one category to another at any time, including to cover overspending | MVP |
 | Transactions | Payee, category, memo, split across categories, transfers between accounts | MVP |
-| Overspending | A negative category, to be covered by moving money. If still uncovered at the end of the month: for cash and debit, the category restarts at zero and the amount is taken from next month's "ready to assign"; for credit cards, it becomes debt on the card not covered by the payment category | MVP |
+| Overspending | A negative category, to be covered by moving money. If still uncovered at the end of the month: for cash and debit, the category restarts at zero and the amount is taken from next month's unassigned money; for credit cards, it becomes debt on the card not covered by the payment category | MVP |
 | Credit cards | Automatic payment category that sets aside the money spent with the card | MVP |
 | Scheduled transactions | Rent, salary, subscriptions | MVP |
 | Import | CSV, OFX, QIF and CAMT.053 with column mapping and duplicate detection (see "Import and reconciliation") | MVP |
 | Reconciliation | Compare the cleared balance with the bank statement, find the difference, lock reconciled transactions (see "Import and reconciliation") | MVP |
 | Instant notifications | Instant alert when a category goes negative, a purchase exceeds the available balance or money arrives to be assigned; sent by the server to every member (see Sync, Notifications) | MVP |
-| Age of money | Average number of days between a euro coming in and being spent, weighted by amount, over the outflows of the last 30 days; first in, first out, across all on-budget accounts; transfers between on-budget accounts excluded. Always visible | MVP |
+| Days of buffer | Average number of days between a euro coming in and being spent, weighted by amount, over the outflows of the last 30 days; first in, first out, across all on-budget accounts; transfers between on-budget accounts excluded. Always visible | MVP |
 | Automatic rules | Category suggested from payee or description | Phase 2 |
-| Reports | Spending by category, income and expenses, age of money per calendar month, net worth over time | Phase 2 |
+| Reports | Spending by category, income and expenses, days of buffer per calendar month, net worth over time | Phase 2 |
 | Bank connection | Automatic sync through a PSD2 provider | Phase 3 |
 | Shared budgets | Several people on the same budget with different roles | Phase 3 |
 
-### The four rules of the method
+### What the budget is for
 
-Every rule of the method has at least one MVP feature that makes it practical.
+The features above serve a few practical goals of a household budget:
 
-| Rule | Where it lives in envelope |
-| --- | --- |
-| 1. Give every euro a job | Ready to assign, monthly assignment, warning when assigning more than is available |
-| 2. Plan for true expenses (irregular but predictable: car, vet, gifts) | Targets for expenses repeating every N months or years, quick assign |
-| 3. Roll with the punches | Moving money between categories, overspending handling, instant notifications |
-| 4. Age your money | Age of money, assigning to future months |
+- **Money is never counted twice.** Only money that has arrived can be assigned; the warning when assigning more than is available, and reconciliation with the bank, keep the budget equal to the accounts.
+- **Rare bills are not a surprise.** Targets spread an insurance premium or a car tax over the months before it is due, and quick assign funds them in one step.
+- **Overspending is fixed in the open.** A negative category stays visible, and notified, until money is moved to cover it; cash and card overspending are handled apart, so card debt never hides.
+- **Income can arrive before it is needed.** Assigning to future months, and the days of buffer, show how far ahead of its spending the household is.
 
 ### Target calculation
 
@@ -62,7 +60,7 @@ A target tells the budget how much a category asks for in the current month. The
 | Repeating expense | amount, every 2, 3, 4, 6, 12 or 24 months, next due month | as "amount by a date" until the due month; then the due month moves forward by the interval | asked − assigned, at least 0 | available ÷ amount |
 | Balance to keep | threshold | threshold − available, at least 0 | the same | available ÷ threshold |
 
-"Months left" counts the current month and the due month. Example: €3,600 for holidays by June 2027, with €1,250 carried into September 2026, asks (3,600 − 1,250) ÷ 10 = €235 a month; with €200 assigned in September, €35 is still missing. "Fund the targets" assigns the missing amounts from ready to assign, never more than it holds. Payment categories of credit cards have no targets.
+"Months left" counts the current month and the due month. Example: €3,600 for holidays by June 2027, with €1,250 carried into September 2026, asks (3,600 − 1,250) ÷ 10 = €235 a month; with €200 assigned in September, €35 is still missing. "Fund the targets" assigns the missing amounts from unassigned money, never more than it holds. Payment categories of credit cards have no targets.
 
 These rules belong in `packages/core`, with tests; the mockup's `plan()` function is a reference implementation in plain JavaScript.
 
@@ -81,7 +79,7 @@ These rules belong in `packages/core`, with tests; the mockup's `plan()` functio
 - The user enters the statement's closing balance and date. The *cleared balance* is the last reconciled balance plus the cleared transactions up to that date that the user keeps ticked; pending transactions are listed apart and count only once marked cleared.
 - *Difference* = statement balance − cleared balance. When it is not zero, the app looks for a pending or unticked transaction equal to the difference and offers to fix it in one step.
 - With a zero difference, the ticked transactions become reconciled, and the reconciliation (account, date, statement balance, user) is kept in the account's history.
-- When a real difference remains (a forgotten fee, a bank correction), the user can add an adjustment transaction for it, dated on the statement date; its category is chosen by the user, "ready to assign" by default, so the budget and the accounts stay equal.
+- When a real difference remains (a forgotten fee, a bank correction), the user can add an adjustment transaction for it, dated on the statement date; its category is chosen by the user, unassigned money by default, so the budget and the accounts stay equal.
 - Reconciled transactions cannot be edited or deleted. Unlocking one is an explicit action, recorded in the audit log, and it marks the account's last reconciliation as broken until it is redone.
 - Credit cards and every other on-budget or off-budget cash account reconcile the same way.
 
@@ -275,7 +273,7 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 Budget and portfolios live in the same workspace. Different workspaces (for example Family and Personal) are fully separate: no data belongs to two workspaces.
 
 - **One account, one workspace.** A real account, even a joint one, is added to one workspace only, so it is never counted twice.
-- **Linked transfer (phase 2).** When a user records an outflow to another workspace they belong to, the app offers to create the matching inflow there, in "ready to assign".
+- **Linked transfer (phase 2).** When a user records an outflow to another workspace they belong to, the app offers to create the matching inflow there, as unassigned money.
 - **Two independent transactions.** Each side belongs to its own workspace and can be edited only by people with permissions there. A link field keeps them paired.
 - **Bank matching.** When the bank statement is imported, the real transfer is matched to the transactions already created, without duplicates.
 - **Broken link.** If one side is deleted, the other remains with a warning.
@@ -329,7 +327,7 @@ The queue module prevents duplicate effects by itself, without relying on whoeve
 
 ### Code quality
 
-- Unit tests and property-based tests for the core (for example: "ready to assign" plus every available balance, payment categories included, plus money assigned to future months plus the current credit overspending must always equal the balance of the on-budget cash accounts).
+- Unit tests and property-based tests for the core (for example: unassigned money plus every available balance, payment categories included, plus money assigned to future months plus the current credit overspending must always equal the balance of the on-budget cash accounts).
 - API integration tests against a real database and end-to-end tests with Playwright.
 - CI on GitHub Actions: lint, type check, tests, dependency scanning and image builds on every change.
 - Mandatory review of changes; releases with semantic versioning and release notes.
@@ -464,27 +462,27 @@ Both themes follow the operating system setting and can be forced in the user's 
 ### Budget month on the desktop
 
 - **Sidebar:** workspace switcher; navigation (Budget, Accounts, Portfolio); on-budget accounts as a ledger with dotted leaders and their total; off-budget accounts; "Add account"; the user and settings.
-- **Header:** the month with previous and next arrows, age of money, money already assigned to future months, and the "ready to assign" box with its Assign button (its amount turns red when negative).
+- **Header:** the month with previous and next arrows, days of buffer, money already assigned to future months, and the "unassigned" box with its Assign button (its amount turns red when negative).
 - **Toolbar:** filter tabs with a count badge each: All, Underfunded (amber), Overspent (red), With money; a zero count is shown outlined. Buttons: Summary, Targets, Quick assign, Move money, Undo.
 - **Notice:** one line when categories are overspent, with their count and total and a "Show" link that applies the Overspent filter.
 - **Table:** columns Category, Assigned, Activity, Available, with totals in the header. A group row has a chevron that collapses it, a name that selects it, a red badge with the number of overspent categories it holds, and the group's totals. A category row shows its name, its target meter with a short status ("€35.00 still needed this month", "target reached", "on track, €42.86 a month") and its amounts.
 - **Side panel:** hidden when nothing is selected. It closes with "× Close", by clicking the selected item again, or with Esc. It shows one of:
-  - *Category:* state, available amount and a sentence explaining what happens at the end of the month; covering overspending by choosing the category to take money from (preselected: the smallest one that covers the whole amount, never a balance-to-keep target); the month's ledger (carried over, assigned, activity, available); the target with Edit, or "Add a target", and "Assign €X from ready to assign" when money is missing; quick assign (as assigned last month, as spent last month); the month's transactions.
+  - *Category:* state, available amount and a sentence explaining what happens at the end of the month; covering overspending by choosing the category to take money from (preselected: the smallest one that covers the whole amount, never a balance-to-keep target); the month's ledger (carried over, assigned, activity, available); the target with Edit, or "Add a target", and "Assign €X from unassigned money" when money is missing; quick assign (as assigned last month, as spent last month); the month's transactions.
   - *Group:* available in the group; categories, overspent and targets reached; the group's ledger; "Fund the targets" for the group; its categories, each opening its own detail.
-  - *Summary:* ready to assign with a sentence for its state (money without a job, every euro has a job, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that ready to assign + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
+  - *Summary:* unassigned money with a sentence for its state (money not assigned yet, everything assigned, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that unassigned money + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
   - *Targets:* every target grouped by kind, what the targets ask this month and what is still missing, "Fund all targets", and the categories without a target, each with "Add".
   - *Target editor:* the four kinds, each with a one-line explanation; amount (typed in the user's locale), due month, repeat interval; a live preview of what the target asks and what is missing this month; Save, Cancel and Remove.
 
 ### Budget month on the phone
 
-One column: month, ready to assign, age of money, and a link with the number and total of overspent categories. Groups collapse by tapping their name; groups with overspending come first. A category row shows only its name, its target status and the available amount; tapping it opens a full-screen detail with a back link, the same content as the desktop panel, and the same target editor. The tab bar has Budget, Accounts, a central button for quick expense entry, Portfolio and More. Groups have no summary screen on the phone.
+One column: month, unassigned money, days of buffer, and a link with the number and total of overspent categories. Groups collapse by tapping their name; groups with overspending come first. A category row shows only its name, its target status and the available amount; tapping it opens a full-screen detail with a back link, the same content as the desktop panel, and the same target editor. The tab bar has Budget, Accounts, a central button for quick expense entry, Portfolio and More. Groups have no summary screen on the phone.
 
 ### Other screens
 
 - **Account register.** Desktop: the account's cleared, pending and total balance; filters by state with counts; search; transactions newest first with a running balance, splits shown under their row; a round control on each row switches pending and cleared, reconciled rows show a padlock. A row opens in the side panel: outflow, inflow or transfer; the payee proposes the category used last time; the category's available amount before and after; splitting across categories with the amount still to split; transfers to a credit card are card payments, transfers to an off-budget account ask for a category. Phone: accounts list, register grouped by day, full-screen transaction form, and quick entry (amount keypad, place, category with its available amount, account).
 - **Import and reconciliation.** Import in four steps (file, columns, check, done) and reconciliation with the statement balance, the difference, clues and locking, as described in "Import and reconciliation".
 - **Settings.** Two separate places. *Your account*, from the user menu, holds what belongs to the person and applies in every workspace: profile, language, number and date format, personal time zone, theme, notifications and devices, sign-in and security. *Workspace settings*, from the workspace switcher, hold what every member shares: name, currency and the workspace time zone, members and roles, categories and groups, accounts, data export and deletion. Changing workspace settings needs the owner role, except categories, which editors can manage.
-- **First run.** Five steps: the method in four lines, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the amount ready to assign.
+- **First run.** Five steps: a short introduction to how the budget works, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the unassigned amount.
 - **Portfolio.** Overview (value, contributions, gain, 12-month return, out-of-threshold notice, value against contributions over time, month-by-month table, allocation bars, positions), allocation editor (targets per level adding up to 100%, threshold rule, rebalancing presets), rebalancing (mode, contribution, minimum trade, whole or fractional units, "To get back to your targets:"), trade entry, and linked accounts showing how each brokerage account is split across portfolios, with holdings not assigned yet. A new portfolio is created with a short guided setup: name and purpose, accounts, which holdings of each account belong to it, a starting allocation. Phone: value chart, allocation bars and the monthly check.
 
 ### Screens still to design
@@ -538,7 +536,7 @@ The documentation explains not only what the code does but also how to change it
 | Decision records (ADR) | Why a technology or solution was chosen, and the discarded alternatives |
 | How-to guides | Step-by-step recipes: add a database field, an endpoint, a screen, a trade type, a price source; write a test; publish a release |
 | Domain guide | The rules of envelope budgeting and rebalancing, with numeric examples |
-| Glossary | Financial terms ("ready to assign", TWR, threshold) and technical ones (migration, component, hook, endpoint) |
+| Glossary | Financial terms ("unassigned", TWR, threshold) and technical ones (migration, component, hook, endpoint) |
 | API documentation | Generated from the OpenAPI contract |
 | Code comments | Explain why, not what; every core function has a description and an example |
 | Changelog | What changed in each release |
@@ -552,7 +550,7 @@ Work starts from the domain core and the web app for a single workspace, already
 | Phase | Contents | Move on when |
 | --- | --- | --- |
 | 0. Foundations | Monorepo, CI, database, Keycloak, workspaces, domain core with tests | Sign-up, sign-in with 2FA, green CI |
-| 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, age of money, CSV/OFX/QIF/CAMT.053 import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
+| 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, days of buffer, CSV/OFX/QIF/CAMT.053 import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
 | 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing | The dashboard reproduces the results of an existing spreadsheet-based tracker |
 | 3. Mobile and offline | Expo app, local database, sync, quick entry, notifications | One week of use on two devices without loss or duplicates |
 | 4. Public open-source beta | Docker, documentation | A self-hosted install works in under 10 minutes |
@@ -590,6 +588,6 @@ The field-level sync protocol is designed here (this section) but only ships, as
 | ETF holdings data | Issuer file uploaded by the user and manual entry; a paid API adapter later |
 | Portfolio notifications | Monthly check only |
 | Budget notifications | Instant, from the server to every member, and locally on the device making the change |
-| Age of money | Amount-weighted average over the outflows of the last 30 days, first in first out; monthly history in reports |
+| Days of buffer | Amount-weighted average over the outflows of the last 30 days, first in first out; monthly history in reports |
 | Timeline | No deadlines; phases only have an order |
 | Interface | Ledger-like visual language where colour marks problems; Archivo, self-hosted; the budget month mockup in `docs/ux/mockups/` is the reference (see "User interface") |

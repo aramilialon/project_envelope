@@ -4,14 +4,14 @@
 
 | Term | Meaning | In the code | Italian UI |
 | --- | --- | --- | --- |
-| Ready to assign | Money that has come in but has no job yet | `readyToAssign` | Da assegnare |
+| Unassigned | Money that has come in but is not assigned to a category yet | `unassigned` | Da assegnare |
 | Category | An "envelope" of the budget: Groceries, Rent, Fun… | `categoryId` | Categoria |
 | Assigned | Money put into a category for a month | `assigned`, `Assignment` | Assegnato |
 | Activity | Spending (negative) and refunds (positive) of a category in the month | `activity`, `Activity` | Movimenti |
 | Available | Carried over + assigned + activity; negative = overspent | `available` | Disponibile |
 | Carried over | Positive available balance from the previous month | `carriedOver` | Riportato |
-| Cash overspending | The part of a negative category paid from cash accounts; taken from ready to assign the following month | `cashOverspending`, `overspentLastMonth` | Spesa eccessiva in contanti |
-| Credit overspending | The part of a negative category paid with a credit card; it becomes card debt and does not touch ready to assign | `creditOverspending` | Spesa eccessiva con carta |
+| Cash overspending | The part of a negative category paid from cash accounts; taken from unassigned money the following month | `cashOverspending`, `overspentLastMonth` | Spesa eccessiva in contanti |
+| Credit overspending | The part of a negative category paid with a credit card; it becomes card debt and does not touch unassigned money | `creditOverspending` | Spesa eccessiva con carta |
 | Payment category | A category per credit card holding the money set aside to pay it; covered card spending moves money into it | `paymentCategoryId`, `paymentCategories` | Pagamento carta |
 | Card payment | A transfer from a cash account to a credit card | `CardPayment` | Pagamento della carta |
 | On-budget / off-budget account | Accounts whose money is (or is not) part of the budget; investments and mortgages are usually off-budget | `onBudget` | Conto in budget / fuori budget |

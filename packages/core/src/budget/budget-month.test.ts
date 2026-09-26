@@ -15,7 +15,7 @@ function category(categories: readonly CategoryMonth[], id: string): CategoryMon
 const EMPTY: BudgetInput = { categoryIds: [], income: [], assignments: [], activity: [] };
 
 describe("computeBudgetMonth", () => {
-  it("rule 1: every euro that comes in gets a job", () => {
+  it("only money that has arrived can be assigned", () => {
     const input: BudgetInput = {
       categoryIds: ["groceries", "rent"],
       income: [{ month: "2026-09", amount: 200000 }],
@@ -28,7 +28,7 @@ describe("computeBudgetMonth", () => {
 
     const result = computeBudgetMonth(input, "2026-09");
 
-    assert.equal(result.readyToAssign, 70000); // 2000 − 400 − 900 = €700
+    assert.equal(result.unassigned, 70000); // 2000 − 400 − 900 = €700
     assert.equal(category(result.categories, "groceries").available, 5000); // 400 − 350 = €50
     assert.equal(category(result.categories, "rent").available, 90000);
   });
@@ -50,7 +50,7 @@ describe("computeBudgetMonth", () => {
     assert.equal(october.available, 45000);
   });
 
-  it("rule 3: overspending left at the end of a month is taken from ready to assign the next month", () => {
+  it("overspending left at the end of a month is taken from unassigned money the next month", () => {
     const input: BudgetInput = {
       categoryIds: ["fun"],
       income: [{ month: "2026-09", amount: 50000 }],
@@ -60,15 +60,15 @@ describe("computeBudgetMonth", () => {
 
     const september = computeBudgetMonth(input, "2026-09");
     assert.equal(category(september.categories, "fun").available, -5000); // overspent by €50
-    assert.equal(september.readyToAssign, 40000); // nothing changes yet within the month
+    assert.equal(september.unassigned, 40000); // nothing changes yet within the month
 
     const october = computeBudgetMonth(input, "2026-10");
     assert.equal(category(october.categories, "fun").available, 0); // restarts at zero
     assert.equal(october.overspentLastMonth, 5000);
-    assert.equal(october.readyToAssign, 35000); // 500 − 100 − 50 = €350
+    assert.equal(october.unassigned, 35000); // 500 − 100 − 50 = €350
   });
 
-  it("rule 4: money assigned to future months reduces ready to assign immediately", () => {
+  it("money assigned to future months reduces unassigned money immediately", () => {
     const input: BudgetInput = {
       categoryIds: ["rent"],
       income: [{ month: "2026-09", amount: 100000 }],
@@ -78,7 +78,7 @@ describe("computeBudgetMonth", () => {
 
     const september = computeBudgetMonth(input, "2026-09");
 
-    assert.equal(september.readyToAssign, 10000);
+    assert.equal(september.unassigned, 10000);
     assert.equal(september.assignedInFuture, 90000);
   });
 
@@ -91,11 +91,11 @@ describe("computeBudgetMonth", () => {
       ],
     };
 
-    assert.equal(computeBudgetMonth(input, "2026-09").readyToAssign, 100000);
-    assert.equal(computeBudgetMonth(input, "2026-10").readyToAssign, 300000);
+    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 100000);
+    assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 300000);
   });
 
-  it("assigning more than is available takes ready to assign below zero", () => {
+  it("assigning more than is available takes unassigned money below zero", () => {
     const input: BudgetInput = {
       categoryIds: ["groceries"],
       income: [{ month: "2026-09", amount: 10000 }],
@@ -103,7 +103,7 @@ describe("computeBudgetMonth", () => {
       activity: [],
     };
 
-    assert.equal(computeBudgetMonth(input, "2026-09").readyToAssign, -5000);
+    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, -5000);
   });
 
   it("rejects invalid data with a translatable error code", () => {
@@ -146,7 +146,7 @@ function randomGenerator(seed: number): () => number {
 
 describe("budget invariant", () => {
   // Whatever happens, the books must balance:
-  //   ready to assign + available of the month + assigned in future
+  //   unassigned money + available of the month + assigned in future
   //   = income so far + activity so far (that is, the account balance)
   it("balances on 500 random budgets", () => {
     const random = randomGenerator(42);
@@ -179,7 +179,7 @@ describe("budget invariant", () => {
       const activitySoFar = input.activity.filter((a) => a.month <= month).reduce((sum, a) => sum + a.amount, 0);
 
       assert.equal(
-        result.readyToAssign + availableTotal + result.assignedInFuture,
+        result.unassigned + availableTotal + result.assignedInFuture,
         incomeSoFar + activitySoFar,
         `invariant violated on run ${run}, month ${month}`,
       );

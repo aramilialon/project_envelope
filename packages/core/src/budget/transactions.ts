@@ -11,7 +11,7 @@
  * - Transactions of off-budget accounts are ignored. A transfer between an
  *   on-budget and an off-budget account is budget activity on the on-budget
  *   side, so it needs a category (for example "Investments").
- * - A transaction in the READY_TO_ASSIGN category on a cash account is income.
+ * - A transaction in the UNASSIGNED category on a cash account is income.
  * - Every other transaction on an on-budget account needs a category, or
  *   splits whose amounts add up to the transaction amount.
  * - Spending and refunds on a credit card carry the card's payment category,
@@ -33,8 +33,8 @@ import type { LocalDate } from "../month.ts";
 import { monthOf } from "../month.ts";
 import type { Activity, CardPayment, Income } from "./budget-month.ts";
 
-/** Category id that marks income: money that goes to "ready to assign". */
-export const READY_TO_ASSIGN = "ready-to-assign";
+/** Category id that marks income: money that stays unassigned until the user assigns it. */
+export const UNASSIGNED = "unassigned";
 
 export interface BudgetAccount {
   readonly id: string;
@@ -152,7 +152,7 @@ export function aggregateTransactions(
         );
       }
       for (const split of t.splits) {
-        if (split.categoryId === READY_TO_ASSIGN) {
+        if (split.categoryId === UNASSIGNED) {
           throw new ValidationError(
             "unsupported_transaction",
             `income cannot be part of a split (transaction "${t.id}")`,
@@ -170,7 +170,7 @@ export function aggregateTransactions(
       });
     }
 
-    if (t.categoryId === READY_TO_ASSIGN) {
+    if (t.categoryId === UNASSIGNED) {
       if (account.type === "credit") {
         throw new ValidationError(
           "unsupported_transaction",

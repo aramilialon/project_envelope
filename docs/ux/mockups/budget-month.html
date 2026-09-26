@@ -96,7 +96,7 @@ button{cursor:pointer}
 .facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
 .facts b{color:var(--ink);font-weight:600}
 
-/* Ready to assign */
+/* Unassigned */
 .rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
 .rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
@@ -301,7 +301,7 @@ button{cursor:pointer}
                 <button type="button" class="arrow" aria-label="Mese successivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
               </div>
               <div class="facts">
-                <span>Età del denaro <b>38 giorni</b></span>
+                <span>Giorni di margine <b>38 giorni</b></span>
                 <span>Già assegnati a ottobre <b class="n" id="future"></b></span>
               </div>
             </div>
@@ -351,7 +351,7 @@ button{cursor:pointer}
             <button type="button" class="btn primary">Assegna</button>
           </div>
           <div class="ph-facts">
-            <span>Età del denaro <b>38 giorni</b></span>
+            <span>Giorni di margine <b>38 giorni</b></span>
             <button type="button" class="plain" id="ph-over"></button>
           </div>
           <div id="ph-list"></div>
@@ -390,7 +390,7 @@ button{cursor:pointer}
   var BACK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>';
 
   // Cents. The example respects the budget invariant:
-  // ready to assign + available + assigned in future + credit overspending = cash in on-budget accounts (11.497,98 €).
+  // unassigned money + available + assigned in future + credit overspending = cash in on-budget accounts (11.497,98 €).
   var GROUPS = [
     { id: 'home', name: 'Casa e bollette', cats: [
       { id: 'mutuo', name: 'Rata del mutuo', carried: 0, assigned: 85000, activity: -85000, lastAssigned: 85000, lastSpent: 85000,
@@ -445,7 +445,7 @@ button{cursor:pointer}
   var RTA0 = 31200, FUTURE = 20000, CREDIT_BASE = 4850;
   var state = { sel: null, edit: null, targets: {}, adj: {}, collapsed: {}, filter: 'all', src: null, ph: null, phCollapsed: {} };
 
-  // Money assigned from "ready to assign" lowers it; moves between categories net to zero.
+  // Money assigned from "unassigned" lowers it; moves between categories net to zero.
   function rta() { return RTA0 - Object.keys(state.adj).reduce(function (s, k) { return s + state.adj[k]; }, 0); }
 
   function compute() {
@@ -627,7 +627,7 @@ button{cursor:pointer}
     if (x.c.payment) explain = 'Soldi messi da parte per pagare la carta. Crescono quando spendi con la carta da una categoria che ha disponibile, calano quando paghi la carta.';
     else if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
     else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la Visa. Se non lo copri, diventa debito sulla carta non coperto dalla categoria di pagamento.';
-    else if (st === 'pos') explain = 'Questi soldi hanno già un lavoro. Quello che resta a fine mese passa a ottobre.';
+    else if (st === 'pos') explain = 'Questi soldi sono già assegnati. Quello che resta a fine mese passa a ottobre.';
     else explain = 'Nessun disponibile: una spesa qui renderebbe la categoria sforata.';
 
     var cover = '';
@@ -704,7 +704,7 @@ button{cursor:pointer}
     var todo = overspent.concat(under.filter(function (k) { return overspent.indexOf(k) < 0; }));
     return CLOSE + '<div><span class="where">Famiglia \u00b7 settembre 2026</span><h4>Riepilogo del mese</h4></div>' +
       '<div class="sec" style="gap:8px"><span class="state-l">Da assegnare</span><span class="big n' + (r < 0 ? ' cash' : '') + '">' + f(r) + '</span>' +
-      '<p class="explain">' + (r > 0 ? 'Soldi arrivati che non hanno ancora un lavoro. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Ogni euro ha un lavoro.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
+      '<p class="explain">' + (r > 0 ? 'Soldi arrivati e non ancora assegnati. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Tutti i soldi arrivati sono assegnati.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
       '<div class="gstats"><div><small>Categorie</small><b class="n">' + keys.length + '</b></div>' +
       '<div><small>Sforate</small><b class="n' + (overspent.length ? ' bad' : '') + '">' + overspent.length + '</b></div>' +
       '<div><small>Da finanziare</small><b class="n' + (under.length ? ' warn' : '') + '">' + under.length + '</b></div></div>' +
@@ -714,7 +714,7 @@ button{cursor:pointer}
         return '<button type="button" class="jump" data-cat="' + k + '"><b>' + esc(byId[k].c.name) + '</b>' + right + '</button>';
       }).join('') + '</div>' : '') +
       '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(sums.carried)) + line('Assegnato a settembre', f(sums.assigned)) +
-      line('Movimenti', f(sums.activity)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(FUTURE)) + line('Età del denaro', '38 giorni') + '</div>' +
+      line('Movimenti', f(sums.activity)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(FUTURE)) + line('Giorni di margine', '38 giorni') + '</div>' +
       '<div class="sec"><h5>Quadratura</h5>' + line('Da assegnare', f(r)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(FUTURE)) +
       line('Spese con carta non coperte', f(sums.credit)) +
       '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Soldi nei conti in budget</span><span class="dots"></span><span class="n">' + f(r + sums.avail + FUTURE + sums.credit) + '</span></div>' +

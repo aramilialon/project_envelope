@@ -16,4 +16,4 @@ export type {
 } from "./budget/budget-month.ts";
 export { computeBudgetMonth } from "./budget/budget-month.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";
-export { aggregateTransactions, READY_TO_ASSIGN } from "./budget/transactions.ts";
+export { aggregateTransactions, UNASSIGNED } from "./budget/transactions.ts";

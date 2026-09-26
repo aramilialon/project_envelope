@@ -3,7 +3,7 @@
  *
  * Given the lists of income, assignments, activity and credit card payments,
  * it computes for a month:
- * - "ready to assign": money that has come in but has no job yet;
+ * - unassigned money: money that has come in but is not assigned yet;
  * - for every category: assigned, activity of the month and available;
  * - for every credit card: its payment category, which holds the money set
  *   aside to pay the card.
@@ -12,8 +12,8 @@
  * 1. Only money that has already come in can be assigned: income dated in
  *    future months does not count.
  * 2. A category's positive available balance rolls over to the next month.
- * 3. Money assigned to future months already has a job: it reduces
- *    "ready to assign" immediately.
+ * 3. Money assigned to future months is already assigned: it reduces
+ *    unassigned money immediately.
  * 4. Spending on a credit card, as far as the category covers it, moves the
  *    same amount from the category to the card's payment category: the money
  *    is set aside to pay the card. A refund on the card moves it back.
@@ -23,9 +23,9 @@
  *    zero. The overspending is split in two:
  *    - credit overspending: the part paid with a credit card. It is new debt
  *      on the card, not covered by the payment category, and does NOT touch
- *      "ready to assign";
+ *      unassigned money;
  *    - cash overspending: the rest. That money has already left an account,
- *      so it is taken from "ready to assign" the following month.
+ *      so it is taken from unassigned money the following month.
  *    The overspending is attributed to credit card spending first, up to the
  *    amount spent with cards in that category and month.
  *
@@ -44,7 +44,7 @@ import { assertCents } from "../money.ts";
 import type { Month } from "../month.ts";
 import { assertMonth, compareMonths, monthRange } from "../month.ts";
 
-/** Money that came into "ready to assign" in a month (salary, starting balance…). */
+/** Money that came into unassigned money in a month (salary, starting balance…). */
 export interface Income {
   readonly month: Month;
   readonly amount: Cents;
@@ -101,16 +101,16 @@ export interface CategoryMonth {
   readonly available: Cents;
   /** Part of a negative `available` paid with credit cards (becomes card debt if left uncovered). */
   readonly creditOverspending: Cents;
-  /** Rest of a negative `available` (taken from "ready to assign" next month if left uncovered). */
+  /** Rest of a negative `available` (taken from unassigned money next month if left uncovered). */
   readonly cashOverspending: Cents;
 }
 
 export interface BudgetMonth {
   readonly month: Month;
-  readonly readyToAssign: Cents;
+  readonly unassigned: Cents;
   /** Money already assigned to months after this one. */
   readonly assignedInFuture: Cents;
-  /** Cash overspending of the previous month, taken from "ready to assign" in this month. */
+  /** Cash overspending of the previous month, taken from unassigned money in this month. */
   readonly overspentLastMonth: Cents;
   /** Total credit overspending in this month's categories. */
   readonly creditOverspending: Cents;
@@ -295,7 +295,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   // 4. The requested month, still open.
   const current = computeMonth(input, month, carried, data);
 
-  // 5. Ready to assign = income so far − everything assigned (future too) − past cash overspending.
+  // 5. Unassigned = income so far − everything assigned (future too) − past cash overspending.
   let incomeSoFar = 0;
   for (const item of input.income) {
     if (compareMonths(item.month, month) <= 0) incomeSoFar += item.amount;
@@ -307,12 +307,12 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     if (compareMonths(a.month, month) > 0) assignedInFuture += a.amount;
   }
 
-  const readyToAssign = incomeSoFar - assignedTotal - cashOverspentTotal;
-  assertCents(readyToAssign, "ready to assign");
+  const unassigned = incomeSoFar - assignedTotal - cashOverspentTotal;
+  assertCents(unassigned, "unassigned");
 
   return {
     month,
-    readyToAssign,
+    unassigned,
     assignedInFuture,
     overspentLastMonth,
     creditOverspending: current.categories.reduce((sum, c) => sum + c.creditOverspending, 0),

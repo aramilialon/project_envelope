@@ -5,7 +5,7 @@ import { isValidationError } from "../errors.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 import type { BudgetAccount, BudgetTransaction } from "./transactions.ts";
-import { aggregateTransactions, READY_TO_ASSIGN } from "./transactions.ts";
+import { aggregateTransactions, UNASSIGNED } from "./transactions.ts";
 
 const ACCOUNTS: readonly BudgetAccount[] = [
   { id: "checking", type: "cash", onBudget: true },
@@ -22,9 +22,9 @@ function tx(fields: Omit<BudgetTransaction, "id">): BudgetTransaction {
 }
 
 describe("aggregateTransactions", () => {
-  it("turns ready-to-assign inflows into income and categorized outflows into activity", () => {
+  it("turns unassigned inflows into income and categorized outflows into activity", () => {
     const result = aggregateTransactions(ACCOUNTS, [
-      tx({ accountId: "checking", date: "2026-09-01", amount: 200000, categoryId: READY_TO_ASSIGN }),
+      tx({ accountId: "checking", date: "2026-09-01", amount: 200000, categoryId: UNASSIGNED }),
       tx({ accountId: "checking", date: "2026-09-03", amount: -4550, categoryId: "groceries" }),
     ]);
 
@@ -105,7 +105,7 @@ describe("aggregateTransactions", () => {
         }),
         "split_mismatch",
       ],
-      [tx({ accountId: "visa", date: "2026-09-01", amount: 500, categoryId: READY_TO_ASSIGN }), "unsupported_transaction"],
+      [tx({ accountId: "visa", date: "2026-09-01", amount: 500, categoryId: UNASSIGNED }), "unsupported_transaction"],
     ];
     for (const [transaction, code] of cases) {
       assert.throws(
@@ -134,7 +134,7 @@ function randomGenerator(seed: number): () => number {
 
 describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
-  //   ready to assign + available of every category and payment category
+  //   unassigned money + available of every category and payment category
   //   + assigned in future + this month's credit overspending
   //   = balance of the on-budget cash accounts
   // Credit overspending is added back because it is spending that no cash covers yet: card debt.
@@ -163,7 +163,7 @@ describe("budget invariant with accounts and credit cards", () => {
         const d = date();
         switch (Math.floor(random() * 7)) {
           case 0: // income
-            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: READY_TO_ASSIGN });
+            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: UNASSIGNED });
             break;
           case 1: // cash spending or refund
             add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(60000) * pick([-1, -1, -1, 1]), categoryId: pick(categoryIds) });
@@ -226,7 +226,7 @@ describe("budget invariant with accounts and credit cards", () => {
       const result = computeBudgetMonth(input, month);
 
       const budgeted =
-        result.readyToAssign +
+        result.unassigned +
         [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
         result.assignedInFuture +
         result.creditOverspending;
