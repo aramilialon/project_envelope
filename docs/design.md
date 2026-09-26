@@ -392,7 +392,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 
 - Quick expense entry in three taps, with suggested payee and category.
 - Biometric unlock; amounts hidden when the app goes to the background.
-- Instant budget notifications (negative category, money to assign, transactions to approve); for the portfolio, only the monthly rebalancing summary.
+- Instant budget notifications (negative category, purchase exceeds the available balance, money to assign); for the portfolio, only the monthly rebalancing summary.
 - Widget with the available amounts of favorite categories (phase 3).
 
 ## Open source, hosting and market data
