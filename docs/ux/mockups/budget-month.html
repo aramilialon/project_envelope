@@ -1,10 +1,14 @@
 <!doctype html>
 <!--
-  Interactive mockup of the budget month (desktop and phone).
+  Interactive mockup of the budget month (desktop and phone): the month's table,
+  targets, overspending, assigning and moving money through the assignment
+  ledger (ADR 0008), scheduled transactions that reserve money, and the debt of
+  credit cards (docs/design.md, "Credit cards" and "Scheduled transactions").
   Reference for docs/design.md, "User interface". Open it in a browser; it has
   no build step and no dependencies except the Archivo font from Google Fonts
   (the app itself must self-host its fonts). The UI copy is the Italian
-  translation; English stays the source language of the app.
+  translation; English stays the source language of the app. The script checks
+  the budget invariant after every change and logs an error if it breaks.
 -->
 <html lang="it">
 <head>
@@ -96,7 +100,7 @@ button{cursor:pointer}
 .facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
 .facts b{color:var(--ink);font-weight:600}
 
-/* Unassigned */
+/* Ready to assign */
 .rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
 .rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
@@ -249,13 +253,52 @@ button{cursor:pointer}
 .goal-row small{color:var(--muted);font-size:12px}
 .goal-row:hover b{text-decoration:underline;text-underline-offset:3px}
 
+/* Reservations, card debt, assigning and moving money */
+.amt-cell.short{border:1px dashed var(--warn);color:var(--warn);border-radius:2px}
+.res{display:flex;align-items:flex-start;gap:6px;font-size:12px;color:var(--muted);padding-right:12px}
+.res svg{flex-shrink:0;margin-top:2px}
+.big.short{color:var(--warn)}
+.res b{color:var(--ink-2);font-weight:600}
+.res.need{color:var(--warn);font-weight:600}
+.row.sel{background:var(--pen-soft)}
+.cnb{padding:0;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit}
+.row .asg{cursor:text;border-bottom:1px dotted transparent}
+.row:hover .asg{border-bottom-color:var(--muted)}
+.asg-in{width:104px;min-height:32px;padding:0 8px;border:1px solid var(--pen);border-radius:3px;background:var(--paper);text-align:right;font:inherit;font-weight:600;color:var(--ink)}
+.toast{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--rule-soft);color:var(--ink-2)}
+.toast span{flex:1}
+.info{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--ink-2);border-bottom:1px solid var(--rule-soft)}
+.info .plain{text-decoration:underline;text-underline-offset:3px}
+.quiet{color:var(--muted)!important;font-weight:500!important}
+.sch{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:4px 10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--rule-soft)}
+.sch > small{color:var(--muted);font-size:12px}
+.sch span small{display:block;color:var(--muted);font-size:12px}
+.sch .goal{margin-top:2px;white-space:normal}
+.sch-b{grid-column:2 / -1;display:flex;gap:16px}
+.sch.late > small{color:var(--ink);font-weight:700}
+.hist-r{display:flex;align-items:baseline;gap:10px}
+.hist.gone > span:nth-child(2), .hist.gone .n{color:var(--muted);text-decoration:line-through}
+.ba{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.ba.note{display:block;font-size:13px;color:var(--ink-2)}
+.seg{display:flex}
+.seg .btn{border-radius:0}
+.seg .btn:first-child{border-radius:3px 0 0 3px}
+.seg .btn:last-child{border-radius:0 3px 3px 0;margin-left:-1px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chk{display:flex;align-items:center;gap:8px}
+.chk input{accent-color:var(--pen)}
+.sf{gap:12px}
+.field select{width:100%}
+.ph-toast{margin-top:10px;font-size:13px}
+.pc .cn{flex:1;min-width:0}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, budget month mockup for the web MVP. The interface is shown in its Italian translation, with sample data of a household in September 2026 that matches the accounts to the cent. Select categories and groups, filter, cover overspending, create and edit targets; on the phone, tap a category to open it.</p>
+    <p><b>envelope</b>, budget month mockup for the web MVP. The interface is shown in its Italian translation, with sample data of a household on 25 September 2026 that matches the accounts to the cent. Select categories and groups, filter, cover overspending, create and edit targets; click an assigned amount to change it, and try Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -275,14 +318,7 @@ button{cursor:pointer}
             <button type="button">Conti</button>
             <button type="button">Portafoglio</button>
           </div>
-          <div class="ledger">
-            <h5>In budget</h5>
-            <div class="lr"><span>Conto corrente</span><span class="dots"></span><span class="n">3.412,58</span></div>
-            <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
-            <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
-            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
-            <div class="lr total"><span>Totale</span><span class="dots"></span><span class="n">11.497,98 €</span></div>
-          </div>
+          <div class="ledger" id="side-budget"></div>
           <div class="ledger">
             <h5>Fuori budget</h5>
             <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
@@ -303,11 +339,12 @@ button{cursor:pointer}
               <div class="facts">
                 <span>Giorni di margine <b>38 giorni</b></span>
                 <span>Già assegnati a ottobre <b class="n" id="future"></b></span>
+                <span>Prenotato per le programmate <b class="n" id="resv"></b></span>
               </div>
             </div>
             <div class="rta">
               <div><small>Da assegnare</small><span class="amt n" id="rta"></span></div>
-              <button type="button" class="btn primary">Assegna</button>
+              <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
             </div>
           </div>
 
@@ -316,9 +353,10 @@ button{cursor:pointer}
             <div class="acts">
               <button type="button" class="btn" id="show-overview" data-panel="overview" aria-pressed="false">Riepilogo</button>
               <button type="button" class="btn" id="show-goals" data-panel="goals" aria-pressed="false">Obiettivi</button>
-              <button type="button" class="btn">Assegnazione rapida</button>
-              <button type="button" class="btn">Sposta denaro</button>
-              <button type="button" class="btn" id="reset" disabled>Annulla</button>
+              <button type="button" class="btn" id="show-sched" data-panel="sched" aria-pressed="false">Programmate</button>
+              <button type="button" class="btn" id="show-quick" data-panel="quick" aria-pressed="false">Assegnazione rapida</button>
+              <button type="button" class="btn" id="show-move" data-panel="move" aria-pressed="false">Sposta denaro</button>
+              <button type="button" class="btn" id="reset" disabled title="Annulla l’ultima assegnazione">Annulla</button>
             </div>
           </div>
 
@@ -327,6 +365,12 @@ button{cursor:pointer}
             <span><b id="notice-text"></b> Coprile spostando denaro da altre categorie prima della fine del mese.</span>
             <button type="button" class="plain" id="notice-show">Mostra</button>
           </div>
+          <div class="info" role="status" id="notice2" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            <span id="notice2-text"></span>
+            <button type="button" class="plain" data-panel="sched">Apri le programmate</button>
+          </div>
+          <div class="toast" role="status" aria-live="polite" id="toast" hidden></div>
 
           <div id="table"></div>
         </div>
@@ -348,12 +392,13 @@ button{cursor:pointer}
           </div>
           <div class="rta ph-rta">
             <div style="flex:1"><small>Da assegnare</small><span class="amt n" id="ph-rta"></span></div>
-            <button type="button" class="btn primary">Assegna</button>
+            <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
           </div>
           <div class="ph-facts">
             <span>Giorni di margine <b>38 giorni</b></span>
             <button type="button" class="plain" id="ph-over"></button>
           </div>
+          <div class="toast ph-toast" role="status" aria-live="polite" id="ph-toast" hidden></div>
           <div id="ph-list"></div>
           </div>
           <div id="ph-detail" class="ph-detail" hidden></div>
@@ -372,6 +417,8 @@ button{cursor:pointer}
           <li>Only the available amount per category: tap a category to see its detail, tap a group's name to collapse or expand it.</li>
           <li>The central button opens quick expense entry, in three taps.</li>
           <li>Groups with overspending move to the top, so the problem is visible at once.</li>
+          <li>"Assign" opens the same form as the desktop, full screen: from unassigned money to a category, for this month or a future one.</li>
+          <li>A category's detail lists its scheduled transactions, with Record and Skip, and the month's assignments, each with Undo.</li>
           <li>Same data as the desktop: covering an overspend there changes it here too.</li>
         </ul>
       </div>
@@ -384,13 +431,25 @@ button{cursor:pointer}
   var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  function sum(a, fn) { return a.reduce(function (s, x) { return s + fn(x); }, 0); }
   var CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
   var NEXT = '<svg class="go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>';
-  var CLOSE = '<button type="button" class="plain closer" data-deselect="1" aria-label="Chiudi il pannello">\u00d7 Chiudi</button>';
+  var CLOSE = '<button type="button" class="plain closer" data-deselect="1" aria-label="Chiudi il pannello">× Chiudi</button>';
   var BACK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>';
+  var CLOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>';
+
+  // Today in the example: 25 September 2026.
+  var TODAY = { y: 2026, m: 9, d: 25 }, CUR = 2026 * 12 + 9;
+  var MON3 = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  var MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+  function ymOf(dt) { return dt.y * 12 + dt.m; }
+  function dLabel(dt) { return dt.d + ' ' + MON3[dt.m - 1] + (dt.y !== 2026 ? ' ' + dt.y : ''); }
+  function overdue(dt) { return ymOf(dt) < CUR || (ymOf(dt) === CUR && dt.d < TODAY.d); }
+  function monthName(n) { return MONTHS[((n - 1) % 12)]; }
 
   // Cents. The example respects the budget invariant:
-  // unassigned money + available + assigned in future + credit overspending = cash in on-budget accounts (11.497,98 €).
+  // unassigned + available + reserved + assigned to future months + credit overspending
+  // = cash in the on-budget cash accounts (11.497,98 €; card balances are debt, not cash).
   var GROUPS = [
     { id: 'home', name: 'Casa e bollette', cats: [
       { id: 'mutuo', name: 'Rata del mutuo', carried: 0, assigned: 85000, activity: -85000, lastAssigned: 85000, lastSpent: 85000,
@@ -434,54 +493,186 @@ button{cursor:pointer}
         txs: [['5 set', 'Trasferimento a Broker ETF', 'Conto corrente', -50000]] }
     ] },
     { id: 'fun', name: 'Svago', cats: [
-      { id: 'abb', name: 'Abbonamenti', carried: 0, assigned: 3000, activity: -2597, lastAssigned: 3000, lastSpent: 2597 },
-      { id: 'hobby', name: 'Hobby', carried: 0, assigned: 6000, activity: -3500, lastAssigned: 6000, lastSpent: 5100 }
+      { id: 'abb', name: 'Abbonamenti', carried: 0, assigned: 3000, activity: -2597, lastAssigned: 3000, lastSpent: 2597,
+        txs: [['8 set', 'Musica in streaming', 'Conto corrente', -1099], ['4 set', 'Cloud per le foto', 'Conto corrente', -1498]] },
+      { id: 'hobby', name: 'Hobby', carried: 0, assigned: 6000, activity: -3500, lastAssigned: 6000, lastSpent: 5100,
+        txs: [['13 set', 'Negozio di musica', 'Conto corrente', -3500]] }
     ] },
+    // A payment category holds the money set aside to pay its card. "paid" is this month's card payments;
+    // "cardBase" the card's balance (debt) before anything changes in this mockup.
     { id: 'cards', name: 'Pagamenti delle carte di credito', cats: [
-      { id: 'visa', name: 'Visa', payment: true, carried: 81660, assigned: 0, activity: -22280, lastAssigned: 0, lastSpent: 45000,
-        txs: [['15 set', 'Pagamento della carta', 'Conto corrente', -45000]] }
+      { id: 'visa', name: 'Visa', payment: true, card: 'visa', carried: 81660, assigned: 0, paid: -45000, cardBase: -64230, lastAssigned: 0, lastSpent: 45000,
+        txs: [['15 set', 'Pagamento della carta', 'Conto corrente', -45000]] },
+      { id: 'mc', name: 'Mastercard', payment: true, card: 'mc', carried: 0, assigned: 0, paid: 0, cardBase: -120000, lastAssigned: 0, lastSpent: 0,
+        start: { date: '25 set', amount: -120000 },
+        txs: [['25 set', 'Saldo iniziale', 'Mastercard', -120000, 'start']] }
     ] }
   ];
-  var RTA0 = 31200, FUTURE = 20000, CREDIT_BASE = 4850;
-  var state = { sel: null, edit: null, targets: {}, adj: {}, collapsed: {}, filter: 'all', src: null, ph: null, phCollapsed: {} };
+  var CAT = {};
+  GROUPS.forEach(function (g) { g.cats.forEach(function (c) { CAT[c.id] = { c: c, g: g }; }); });
+  var ACCTS = [
+    { id: 'cc', name: 'Conto corrente', bal: 341258 }, { id: 'risp', name: 'Conto risparmio', bal: 800000 }, { id: 'cont', name: 'Contanti', bal: 8540 },
+    { id: 'visa', name: 'Visa', card: true }, { id: 'mc', name: 'Mastercard', card: true }
+  ];
+  function acct(id) { return ACCTS.filter(function (a) { return a.id === id; })[0]; }
+  var RTA0 = 31200, FUTURE0 = 20000;
 
-  // Money assigned from "unassigned" lowers it; moves between categories net to zero.
-  function rta() { return RTA0 - Object.keys(state.adj).reduce(function (s, k) { return s + state.adj[k]; }, 0); }
+  // Scheduled transactions. Those due this month and not recorded yet reserve money in their category.
+  var SCHED = [
+    { id: 's-vet', payee: 'Clinica veterinaria', memo: 'richiamo del vaccino', cat: 'vet', acc: 'cc', amount: 4500, due: { y: 2026, m: 9, d: 22 }, every: 12 },
+    { id: 's-stream', payee: 'Film e serie in streaming', cat: 'abb', acc: 'visa', amount: 1299, due: { y: 2026, m: 9, d: 27 }, every: 1 },
+    { id: 's-stip', payee: 'Stipendio di Anna', income: true, acc: 'cc', amount: 245000, due: { y: 2026, m: 9, d: 27 }, every: 1 },
+    { id: 's-cald', payee: 'Tecnico caldaia', memo: 'revisione annuale', cat: 'manut', acc: 'cc', amount: 9000, due: { y: 2026, m: 9, d: 29 }, every: 12 },
+    { id: 's-mutuo', payee: 'Banca, rata mutuo', cat: 'mutuo', acc: 'cc', amount: 85000, due: { y: 2026, m: 10, d: 1 }, every: 1 },
+    { id: 's-net', payee: 'Operatore telefonico', cat: 'net', acc: 'cc', amount: 4500, due: { y: 2026, m: 10, d: 2 }, every: 1 },
+    { id: 's-pac', payee: 'Trasferimento a Broker ETF', cat: 'pac', acc: 'cc', amount: 50000, due: { y: 2026, m: 10, d: 5 }, every: 1 },
+    { id: 's-music', payee: 'Musica in streaming', cat: 'abb', acc: 'cc', amount: 1099, due: { y: 2026, m: 10, d: 8 }, every: 1 }
+  ];
+  function everyLabel(n) { return !n ? 'una volta' : n === 1 ? 'ogni mese' : n === 12 ? 'ogni anno' : n === 24 ? 'ogni 2 anni' : 'ogni ' + n + ' mesi'; }
 
+  // Monthly assignments are an append-only ledger (docs/adr/0008-assignment-ledger.md): null is "unassigned".
+  // BASE is what was entered before today; state.entries what is entered in this mockup.
+  var BASE = [
+    { id: 'b-spesa-1', date: '1 set', from: null, to: 'spesa', amount: 58000, who: 'Giorgio' },
+    { id: 'b-spesa-2', date: '12 set', from: null, to: 'spesa', amount: 2000, who: 'Anna' },
+    { id: 'b-rist-1', date: '1 set', from: null, to: 'rist', amount: 10000, who: 'Giorgio' },
+    { id: 'b-rist-2', date: '14 set', from: 'hobby', to: 'rist', amount: 2000, who: 'Anna' },
+    { id: 'b-hobby', date: '1 set', from: null, to: 'hobby', amount: 8000, who: 'Giorgio' }
+  ];
+  (function () {
+    Object.keys(CAT).forEach(function (k) {
+      var net = sum(BASE, function (e) { return (e.to === k ? e.amount : 0) - (e.from === k ? e.amount : 0); });
+      var rest = CAT[k].c.assigned - net;
+      if (rest > 0) BASE.push({ id: 'b-' + k, date: '1 set', from: null, to: k, amount: rest, who: k === 'vac' || k === 'regali' ? 'Anna' : 'Giorgio' });
+    });
+    BASE.forEach(function (e) { e.month = CUR; e.base = true; });
+  })();
+
+  var state = {
+    sel: null, edit: null, targets: {}, collapsed: {}, filter: 'all', src: null, ph: null, phCollapsed: {},
+    entries: [], seq: 0, batch: 0, income: 0, cashD: {}, cardD: {}, rec: {}, sched: SCHED.map(function (s) { return Object.assign({}, s, { due: Object.assign({}, s.due) }); }),
+    mv: null, qa: { kind: 'targets', scope: 'all' }, sf: null, toast: null, focusAsg: null
+  };
+
+  // ---- Ledger ----
+  function allEntries() { return BASE.concat(state.entries); }
+  function reversedIds() { var r = {}; allEntries().forEach(function (e) { if (e.reverses) r[e.reverses] = true; }); return r; }
+  function delta(cat, month) { return sum(state.entries, function (e) { return e.month !== month ? 0 : (e.to === cat ? e.amount : 0) - (e.from === cat ? e.amount : 0); }); }
+  function rta() { return RTA0 + state.income + sum(state.entries, function (e) { return (e.to === null ? e.amount : 0) - (e.from === null ? e.amount : 0); }); }
+  function future() { return FUTURE0 + sum(state.entries, function (e) { return e.month <= CUR ? 0 : (e.from === null ? e.amount : 0) - (e.to === null ? e.amount : 0); }); }
+  function nm(id) { return id === null ? 'Da assegnare' : CAT[id].c.name; }
+  function addBatch(list, text) {
+    var b = ++state.batch;
+    list.forEach(function (e) {
+      state.entries.push({ id: 'e' + (++state.seq), date: '25 set', from: e.from, to: e.to, amount: e.amount, month: e.month || CUR, who: 'Giorgio', reverses: e.reverses || null, batch: b });
+    });
+    state.toast = { text: text, batch: b };
+    return b;
+  }
+  function moveText(from, to, amount, month) {
+    var when = month && month !== CUR ? ' per ' + monthName(month - 2026 * 12) : '';
+    if (from === null) return 'Assegnati ' + f(amount) + ' a ' + nm(to) + when + '.';
+    if (to === null) return 'Tolti ' + f(amount) + ' da ' + nm(from) + ': tornano in «da assegnare».';
+    return 'Spostati ' + f(amount) + ' da ' + nm(from) + ' a ' + nm(to) + '.';
+  }
+  function undoEntries(list, text) {
+    var rev = reversedIds();
+    var todo = list.filter(function (e) { return !rev[e.id] && !e.reverses; });
+    if (!todo.length) return;
+    addBatch(todo.map(function (e) { return { from: e.to, to: e.from, amount: e.amount, month: e.month, reverses: e.id }; }), text);
+    state.toast.noUndo = true;
+  }
+  function lastBatch() {
+    var rev = reversedIds();
+    for (var i = state.entries.length - 1; i >= 0; i--) {
+      var e = state.entries[i];
+      if (!e.reverses && !rev[e.id]) return e.batch;
+    }
+    return null;
+  }
+  function batchEntries(b) { return state.entries.filter(function (e) { return e.batch === b; }); }
+
+  // ---- Scheduled ----
+  function schedThisMonth(cat) { return state.sched.filter(function (s) { return !s.income && s.cat === cat && ymOf(s.due) <= CUR; }); }
+  function reservedOf(cat) { return sum(schedThisMonth(cat), function (s) { return s.amount; }); }
+  function advance(s) {
+    if (!s.every) { state.sched = state.sched.filter(function (x) { return x !== s; }); return; }
+    s.due.m += s.every;
+    while (s.due.m > 12) { s.due.m -= 12; s.due.y++; }
+  }
+  function record(id) {
+    var s = state.sched.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    var a = acct(s.acc);
+    if (s.income) {
+      state.income += s.amount; state.cashD[s.acc] = (state.cashD[s.acc] || 0) + s.amount;
+      state.toast = { text: 'Registrata l’entrata ' + s.payee + ' (' + f(s.amount) + '): è in «da assegnare».' };
+    } else {
+      (state.rec[s.cat] = state.rec[s.cat] || []).push({ tx: [dLabel(s.due), s.payee, a.name, -s.amount], amount: s.amount, card: a.card ? a.id : null });
+      if (a.card) state.cardD[a.id] = (state.cardD[a.id] || 0) + s.amount;
+      else state.cashD[s.acc] = (state.cashD[s.acc] || 0) - s.amount;
+      state.toast = { text: 'Registrata: ' + s.payee + ', ' + f(-s.amount) + '. La prenotazione è diventata un movimento, il disponibile non cambia.' };
+    }
+    advance(s);
+  }
+  function skip(id) {
+    var s = state.sched.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    state.toast = { text: 'Saltata questa volta: ' + s.payee + ' del ' + dLabel(s.due) + '.' + (s.every ? ' La prossima è il ' + (function () { var c = { y: s.due.y, m: s.due.m + s.every, d: s.due.d }; while (c.m > 12) { c.m -= 12; c.y++; } return dLabel(c); })() + '.' : '') };
+    advance(s);
+  }
+
+  // ---- Month ----
   function compute() {
-    var byId = {}, creditNow = 0;
+    var byId = {}, covered = {};
     GROUPS.forEach(function (g) {
       g.cats.forEach(function (c) {
         if (c.payment) return;
-        var assigned = c.assigned + (state.adj[c.id] || 0);
-        var avail = c.carried + assigned + c.activity;
-        var over = Math.max(0, -avail);
-        var credit = Math.min(over, c.cardOut || 0);
-        creditNow += credit;
-        byId[c.id] = { c: c, g: g, assigned: assigned, activity: c.activity, avail: avail, credit: credit, cash: over - credit };
+        var rec = state.rec[c.id] || [];
+        var assigned = c.assigned + delta(c.id, CUR);
+        var activity = c.activity - sum(rec, function (r) { return r.amount; });
+        var outBy = { visa: (c.cardOut || 0) + sum(rec, function (r) { return r.card === 'visa' ? r.amount : 0; }), mc: sum(rec, function (r) { return r.card === 'mc' ? r.amount : 0; }) };
+        var real = c.carried + assigned + activity;
+        var over = Math.max(0, -real);
+        var credit = Math.min(over, outBy.visa + outBy.mc);
+        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard.
+        var cv = Math.min(credit, outBy.visa), cm = credit - cv;
+        covered.visa = (covered.visa || 0) + outBy.visa - cv;
+        covered.mc = (covered.mc || 0) + outBy.mc - cm;
+        var reserved = reservedOf(c.id);
+        var short = Math.max(0, Math.min(reserved, reserved - Math.max(0, real)));
+        byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, real: real, avail: real - reserved, credit: credit, creditBy: { visa: cv, mc: cm }, cash: over - credit, reserved: reserved, short: short };
       });
     });
     GROUPS.forEach(function (g) {
       g.cats.forEach(function (c) {
         if (!c.payment) return;
-        // Covering credit overspending moves that money into the card's payment category.
-        var activity = c.activity + (CREDIT_BASE - creditNow);
-        var assigned = c.assigned + (state.adj[c.id] || 0);
-        byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, avail: c.carried + assigned + activity, credit: 0, cash: 0 };
+        var assigned = c.assigned + delta(c.id, CUR);
+        var cov = covered[c.card] || 0;
+        var activity = c.paid + cov;
+        var avail = c.carried + assigned + activity;
+        var debt = -(c.cardBase - (state.cardD[c.card] || 0));
+        byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, covered: cov, real: avail, avail: avail, credit: 0, cash: Math.max(0, -avail), reserved: 0, short: 0,
+          debt: debt, uncovered: Math.max(0, debt - Math.max(0, avail)) };
       });
     });
     return byId;
   }
+  function cashTotal() { return sum(ACCTS, function (a) { return a.card ? 0 : a.bal + (state.cashD[a.id] || 0); }); }
+  function cardBal(id) { var c = CAT[id].c; return c.cardBase - (state.cardD[c.card] || 0); }
+  function check(byId) {
+    var keys = Object.keys(byId);
+    var left = rta() + sum(keys, function (k) { return byId[k].avail + byId[k].reserved + byId[k].credit; }) + future();
+    if (left !== cashTotal()) console.error('Invariant broken', left, cashTotal());
+  }
   function status(x) {
     if (x.credit > 0) return 'credit';
     if (x.cash > 0) return 'cash';
+    if (x.short > 0) return 'short';
     return x.avail > 0 ? 'pos' : 'zero';
   }
-  var MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
   function mLabel(ym) { var q = ym.split('-'); return MONTHS[Number(q[1]) - 1] + ' ' + q[0]; }
-  // Months from September 2026 (the month shown) to the due month, both included.
   function monthsLeft(ym) { var q = ym.split('-'); return (Number(q[0]) - 2026) * 12 + (Number(q[1]) - 9) + 1; }
-  function everyLabel(n) { return n === 12 ? 'ogni anno' : n === 24 ? 'ogni 2 anni' : 'ogni ' + n + ' mesi'; }
   var TYPES = [
     { id: 'monthly', name: 'Importo al mese', help: 'Per le spese di ogni mese: spesa, bollette, abbonamenti, versamenti fissi.' },
     { id: 'date', name: 'Somma entro una data', help: 'Per mettere da parte una cifra entro un mese preciso: le vacanze, un acquisto importante.' },
@@ -506,6 +697,7 @@ button{cursor:pointer}
     return { per: per, need: need, pct: Math.max(0, Math.min(100, Math.round(pct * 100))) };
   }
   function target(x) {
+    if (x.c.payment) return null;
     var sp = specOf(x);
     if (!sp) return null;
     var pl = plan(sp, x);
@@ -522,8 +714,9 @@ button{cursor:pointer}
     return Math.round(Number(clean) * 100);
   }
   function amountStr(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function needsMoney(x) { var t = target(x); return !!(t && t.need > 0) || x.short > 0 || (x.uncovered || 0) > 0; }
 
-  // The target editor: the same markup on the desktop panel (prefix "") and the phone (prefix "ph-").
+  // ---- Target editor (unchanged from the first mockup) ----
   function draftSpec(e) {
     var amount = parseAmount(e.amountStr);
     if (amount === null || amount <= 0) return null;
@@ -573,7 +766,6 @@ button{cursor:pointer}
       : { cat: id, where: where, type: 'monthly', amountStr: amountStr(x.c.lastSpent || 0), due: '2027-06', every: 12 };
   }
 
-  // All targets of the workspace in one place.
   function goalsPanel(byId, keys) {
     var withT = keys.filter(function (k) { return target(byId[k]); });
     var without = keys.filter(function (k) { return !target(byId[k]) && !byId[k].c.payment; });
@@ -600,70 +792,144 @@ button{cursor:pointer}
       }).join('') + '</div>' : '');
   }
 
+  // ---- Cells and lines ----
   function cell(x) {
     var st = status(x);
-    var lead = st === 'credit' ? '<span class="tag">carta</span>' : st === 'cash' ? '<span class="sr">Sforato:</span>' : '';
+    var lead = st === 'credit' ? '<span class="tag">carta</span>' : st === 'short' ? '<span class="tag">prenotato</span>' : st === 'cash' ? '<span class="sr">Sforato:</span>' : '';
     return '<span class="amt-cell n ' + st + '">' + lead + f(x.avail) + '</span>';
   }
-  function goal(t) {
+  function goalLine(t) {
     if (!t) return '';
     return '<span class="goal' + (t.need > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + t.pct + '%"></i></span>' + esc(t.text) + '</span>';
   }
+  function debtLine(x) {
+    if (!x.c.payment || x.debt <= 0) return '';
+    var pct = Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100)));
+    return '<span class="goal' + (x.uncovered > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span>' +
+      (x.uncovered > 0 ? 'da coprire ' + f(x.uncovered) + ' di ' + f(x.debt) + ' di debito' : 'debito di ' + f(x.debt) + ' coperto') + '</span>';
+  }
+  function resLine(x) {
+    var list = schedThisMonth(x.c.id);
+    if (!list.length) return '';
+    var late = list.filter(function (s) { return overdue(s.due); });
+    var what = list.length === 1 ? esc(list[0].payee) + ', ' + dLabel(list[0].due) : list.length + ' spese programmate';
+    var text = (late.length ? '<b>da registrare</b> · ' : '') + 'prenotati ' + f(x.reserved) + ' · ' + what;
+    if (x.short > 0 && x.credit === 0 && x.cash === 0) text += ' · mancano ' + f(x.short);
+    return '<span class="res' + (x.short > 0 ? ' need' : '') + '">' + CLOCK + '<span>' + text + '</span></span>';
+  }
+  function subLines(x) { return goalLine(target(x)) + debtLine(x) + resLine(x); }
   function count(n, kind) { return '<span class="count n ' + (n === 0 ? 'none' : kind) + '">' + n + '</span>'; }
   function keep(x) {
-    if (state.filter === 'over') return x.avail < 0;
-    if (state.filter === 'under') { var t = target(x); return !!(t && t.need > 0); }
+    if (state.filter === 'over') return x.credit + x.cash > 0;
+    if (state.filter === 'under') return needsMoney(x);
     if (state.filter === 'avail') return x.avail > 0;
     return true;
   }
   function el(id) { return document.getElementById(id); }
-  function line(label, value) { return '<div class="qa" style="color:var(--ink-2);cursor:default"><span>' + label + '</span><span class="dots"></span><span class="n" style="color:var(--ink)">' + value + '</span></div>'; }
+  function line(label, value, cls) { return '<div class="qa' + (cls ? ' ' + cls : '') + '" style="color:var(--ink-2);cursor:default"><span>' + label + '</span><span class="dots"></span><span class="n" style="color:' + (cls === 'warnl' ? 'var(--warn)' : 'var(--ink)') + '">' + value + '</span></div>'; }
 
-  // Detail of one category, for the desktop panel (prefix "") and the phone screen (prefix "ph-").
+  // ---- Scheduled rows ----
+  function schedRow(s, withCat) {
+    var c = s.income ? null : CAT[s.cat].c;
+    var sub = (s.income ? 'Entrata' : (withCat ? esc(c.name) : '')) + (withCat || s.income ? ' · ' : '') + esc(acct(s.acc).name) + ' · ' + everyLabel(s.every) + (s.memo ? ' · ' + esc(s.memo) : '');
+    var now = ymOf(s.due) <= CUR;
+    return '<div class="sch' + (overdue(s.due) ? ' late' : '') + '"><small class="n">' + dLabel(s.due) + '</small>' +
+      '<span><b>' + esc(s.payee) + '</b><small>' + sub + '</small></span><span class="n">' + f(s.income ? s.amount : -s.amount) + '</span>' +
+      (now ? '<span class="sch-b"><button type="button" class="plain" data-rec="' + s.id + '">Registra</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Salta</button></span>' : '<span></span>') + '</div>';
+  }
+  function histHtml(cat) {
+    var rev = reversedIds();
+    var list = allEntries().filter(function (e) { return e.from === cat || e.to === cat; }).slice().reverse();
+    if (!list.length) return '<span style="color:var(--muted)">Nessuna assegnazione a settembre.</span>';
+    return list.map(function (e) {
+      var signed = e.to === cat ? e.amount : -e.amount;
+      var what = e.reverses ? 'Annulla la riga del ' + (allEntries().filter(function (x) { return x.id === e.reverses; })[0] || {}).date : nm(e.from) + ' → ' + nm(e.to);
+      var month = e.month !== CUR ? ' · per ' + monthName(e.month - 2026 * 12) : '';
+      return '<div class="tx hist' + (rev[e.id] ? ' gone' : '') + '"><small class="n">' + esc(e.date) + '</small><span>' + esc(what) + '<small>' + esc(e.who) + month + (rev[e.id] ? ' · annullata' : '') + '</small></span>' +
+        '<span class="hist-r"><span class="n">' + (signed > 0 ? '+' : '') + f(signed) + '</span>' +
+        (!rev[e.id] && !e.reverses ? '<button type="button" class="plain" data-undo="' + e.id + '" aria-label="Annulla questa assegnazione">Annulla</button>' : '') + '</span></div>';
+    }).join('');
+  }
+
+  // ---- Category detail, for the desktop panel (prefix "") and the phone screen (prefix "ph-") ----
   function catDetail(byId, x, p) {
-    var st = status(x), t = target(x), deficit = Math.max(0, -x.avail);
-    var LABEL = { pos: 'Disponibile', zero: 'Disponibile', credit: 'Sforato con la carta', cash: 'Sforato' };
+    if (x.c.payment) return payDetail(byId, x, p);
+    var st = status(x), t = target(x), deficit = Math.max(0, -x.real);
+    var LABEL = { pos: 'Disponibile', zero: 'Disponibile', credit: 'Sforato con la carta', cash: 'Sforato', short: 'Non basta per le programmate' };
     var explain;
-    if (x.c.payment) explain = 'Soldi messi da parte per pagare la carta. Crescono quando spendi con la carta da una categoria che ha disponibile, calano quando paghi la carta.';
-    else if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
-    else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la Visa. Se non lo copri, diventa debito sulla carta non coperto dalla categoria di pagamento.';
-    else if (st === 'pos') explain = 'Questi soldi sono già assegnati. Quello che resta a fine mese passa a ottobre.';
+    if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
+    else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la carta. Se non lo copri, a ottobre la categoria riparte da zero e l’importo resta come debito da coprire nella riga della carta, tra i pagamenti delle carte. Non tocca «da assegnare».';
+    else if (st === 'short') explain = 'Hai prenotato ' + f(x.reserved) + ' per spese programmate, ma la categoria ne ha solo ' + f(Math.max(0, x.real)) + ': mancano ' + f(x.short) + '. È un avviso, non uno sforamento: la spesa non è ancora avvenuta. Assegna o sposta denaro prima della data.';
+    else if (st === 'pos') explain = 'Questi soldi sono già assegnati' + (x.reserved ? ', al netto di ' + f(x.reserved) + ' prenotati per spese programmate' : '') + '. Quello che resta a fine mese passa a ottobre.';
     else explain = 'Nessun disponibile: una spesa qui renderebbe la categoria sforata.';
 
     var cover = '';
-    if (deficit > 0) {
+    var gap = deficit > 0 ? deficit : x.short;
+    if (gap > 0) {
       var keys = Object.keys(byId);
       var sources = keys.filter(function (k) { var y = byId[k]; return !y.c.payment && k !== x.c.id && y.avail > 0; })
         .sort(function (a, b) { return byId[b].avail - byId[a].avail; });
-      var preferred = sources.filter(function (k) { var sp = specOf(byId[k]); return byId[k].avail >= deficit && !(sp && sp.type === 'balance'); });
+      var preferred = sources.filter(function (k) { var sp = specOf(byId[k]); return byId[k].avail >= gap && !(sp && sp.type === 'balance'); });
       var src = state.src && sources.indexOf(state.src) >= 0 ? state.src : (preferred.length ? preferred[preferred.length - 1] : sources[0]);
-      var amount = src ? Math.min(deficit, byId[src].avail) : 0;
+      var amount = src ? Math.min(gap, byId[src].avail) : 0;
+      var fromRta = Math.min(gap, Math.max(0, rta()));
       cover = '<div class="cover"><label for="' + p + 'cover-src">Copri prendendo da</label><select id="' + p + 'cover-src" data-src-select="1">' +
         sources.map(function (k) { return '<option value="' + k + '"' + (k === src ? ' selected' : '') + '>' + esc(byId[k].c.name) + ' (' + f(byId[k].avail) + ')</option>'; }).join('') +
-        '</select><button type="button" class="btn primary" data-cover="' + x.c.id + '" data-src="' + (src || '') + '" data-amount="' + amount + '">Sposta ' + f(amount) + '</button></div>';
+        '</select><button type="button" class="btn primary" data-cover="' + x.c.id + '" data-src="' + (src || '') + '" data-amount="' + amount + '">Sposta ' + f(amount) + '</button>' +
+        (fromRta > 0 ? '<button type="button" class="plain" data-fundgap="' + x.c.id + '" data-amount="' + fromRta + '">oppure assegna ' + f(fromRta) + ' da «da assegnare»</button>' : '') + '</div>';
     }
     var fund = '';
     if (t && t.need > 0) {
       var can = Math.min(t.need, Math.max(0, rta()));
       fund = '<button type="button" class="btn primary" data-fund="' + x.c.id + '"' + (can > 0 ? '' : ' disabled') + '>Assegna ' + f(can) + ' da «da assegnare»</button>';
     }
-    var txs = (x.c.txs || []).map(function (r) {
+    var rec = (state.rec[x.c.id] || []).map(function (r) { return r.tx; }).reverse();
+    var txs = rec.concat(x.c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
+    var sch = state.sched.filter(function (s) { return s.cat === x.c.id; }).sort(function (a, b) { return ymOf(a.due) * 40 + a.due.d - (ymOf(b.due) * 40 + b.due.d); });
+    var mv = '<button type="button" class="plain" data-mvopen="' + (deficit > 0 || x.short > 0 ? 'to:' : 'from:') + x.c.id + '">Sposta denaro</button>';
 
     return (p ? '' : CLOSE) + '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(x.c.name) + '</h4></div>' +
-      '<div class="sec" style="gap:8px"><span class="state-l">' + (x.c.payment ? 'Da usare per pagare la carta' : LABEL[st]) + '</span>' +
+      '<div class="sec" style="gap:8px"><span class="state-l">' + LABEL[st] + '</span>' +
       '<span class="big n ' + st + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
       cover +
-      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(x.c.carried)) + line('Assegnato a settembre', f(x.assigned)) +
-      line('Movimenti', f(x.activity)) + line('Disponibile', f(x.avail)) + '</div>' +
+      '<div class="sec"><h5><span>Conto del mese</span>' + mv + '</h5>' + line('Riportato da agosto', f(x.c.carried)) + line('Assegnato a settembre', f(x.assigned)) +
+      line('Movimenti', f(x.activity)) + (x.reserved ? line('Prenotato per le programmate', f(-x.reserved)) : '') + line('Disponibile', f(x.avail)) + '</div>' +
+      (sch.length ? '<div class="sec"><h5>Spese programmate</h5>' + sch.map(function (s) { return schedRow(s, false); }).join('') + '</div>' : '') +
       (t ? '<div class="sec"><h5><span>Obiettivo</span><button type="button" class="plain" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Modifica</button></h5><span>' + esc(t.label) + '</span>' +
         '<span class="meter wide" style="margin:6px 0"><i style="width:' + t.pct + '%;' + (t.need > 0 ? 'background:var(--warn)' : '') + '"></i></span>' +
         '<span class="goal' + (t.need > 0 ? ' need' : '') + '" style="font-size:13px;margin-bottom:6px">' + esc(t.text) + '</span>' + fund + '</div>'
-        : (x.c.payment ? '' : '<div class="sec"><h5>Obiettivo</h5><span style="color:var(--muted)">Nessun obiettivo per questa categoria.</span><button type="button" class="btn" style="align-self:flex-start;margin-top:6px" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Aggiungi un obiettivo</button></div>')) +
+        : '<div class="sec"><h5>Obiettivo</h5><span style="color:var(--muted)">Nessun obiettivo per questa categoria.</span><button type="button" class="btn" style="align-self:flex-start;margin-top:6px" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Aggiungi un obiettivo</button></div>') +
       '<div class="sec"><h5>Assegnazione rapida</h5>' +
-      '<button type="button" class="qa"><span>Come assegnato ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastAssigned) + '</span></button>' +
-      '<button type="button" class="qa"><span>Come speso ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastSpent) + '</span></button></div>' +
+      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastAssigned + '"><span>Come assegnato ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastAssigned) + '</span></button>' +
+      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastSpent + '"><span>Come speso ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastSpent) + '</span></button></div>' +
+      '<div class="sec"><h5>Assegnazioni di settembre</h5>' + histHtml(x.c.id) + '</div>' +
+      '<div class="sec"><h5>Movimenti di settembre</h5>' + txs + '</div>';
+  }
+
+  // A card's payment category: money set aside, the card's debt and what no assigned money covers yet.
+  function payDetail(byId, x, p) {
+    var c = x.c, card = c.name;
+    var fromCats = Object.keys(byId).filter(function (k) { return byId[k].creditBy && byId[k].creditBy[c.card] > 0; });
+    var explain;
+    if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
+    else if (x.uncovered > 0 && fromCats.length) explain = 'Il debito non coperto viene da spese con la carta oltre il disponibile: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. Se copri quelle categorie entro fine mese, i soldi arrivano qui; altrimenti a ottobre ripartono da zero e il debito resta da coprire in questa riga.';
+    else if (x.uncovered > 0) explain = 'Una parte del debito della carta non ha ancora soldi messi da parte: assegnali a questa categoria.';
+    else explain = 'Il debito della carta è tutto coperto da soldi messi da parte. Quando paghi la carta dal conto corrente, il pagamento scala da qui.';
+    var can = Math.min(x.uncovered, Math.max(0, rta()));
+    var txs = (c.txs || []).map(function (r) {
+      return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · è debito, non conta nei movimenti' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
+    }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
+    return (p ? '' : CLOSE) + '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' +
+      '<div class="sec" style="gap:8px"><span class="state-l">Messi da parte per pagare la carta</span>' +
+      '<span class="big n ' + (x.cash > 0 ? 'cash' : x.avail > 0 ? 'pos' : 'zero') + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
+      '<div class="sec"><h5><span>Debito della carta</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Sposta denaro qui</button></h5>' + line('Saldo della carta', f(-x.debt)) + line('Messi da parte', f(Math.max(0, x.avail))) +
+      line('Da coprire', f(x.uncovered), x.uncovered > 0 ? 'warnl' : '') +
+      (x.uncovered > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assegna ' + f(can) + ' da «da assegnare»</button>' : '') + '</div>' +
+      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(c.carried)) + line('Assegnato a settembre', f(x.assigned)) +
+      line('Spese con la carta coperte', f(x.covered)) + line('Pagamenti della carta', f(c.paid)) + line('Disponibile', f(x.avail)) + '</div>' +
+      '<div class="sec"><h5>Assegnazioni di settembre</h5>' + histHtml(c.id) + '</div>' +
       '<div class="sec"><h5>Movimenti di settembre</h5>' + txs + '</div>';
   }
 
@@ -672,7 +938,7 @@ button{cursor:pointer}
     g.cats.forEach(function (c) {
       var x = byId[c.id], t = target(x);
       s.carried += c.carried; s.assigned += x.assigned; s.activity += x.activity; s.avail += x.avail;
-      if (x.avail < 0) { s.over.push(c.id); s.overTotal -= x.avail; }
+      if (x.credit + x.cash > 0) { s.over.push(c.id); s.overTotal += x.credit + x.cash; }
       if (t) { s.targets++; if (t.need === 0) s.reached++; s.need += t.need; }
     });
     return s;
@@ -697,43 +963,284 @@ button{cursor:pointer}
       }).join('') + '</div>';
   }
 
-  function overview(byId, keys, overspent, under) {
-    var sums = { carried: 0, assigned: 0, activity: 0, avail: 0, credit: 0 };
-    keys.forEach(function (k) { var x = byId[k]; sums.carried += x.c.carried; sums.assigned += x.assigned; sums.activity += x.activity; sums.avail += x.avail; sums.credit += x.credit; });
+  function overview(byId, keys, overspent) {
+    var sums = { carried: 0, assigned: 0, activity: 0, avail: 0, credit: 0, reserved: 0 };
+    keys.forEach(function (k) { var x = byId[k]; sums.carried += x.c.carried; sums.assigned += x.assigned; sums.activity += x.activity; sums.avail += x.avail; sums.credit += x.credit; sums.reserved += x.reserved; });
     var r = rta();
-    var todo = overspent.concat(under.filter(function (k) { return overspent.indexOf(k) < 0; }));
-    return CLOSE + '<div><span class="where">Famiglia \u00b7 settembre 2026</span><h4>Riepilogo del mese</h4></div>' +
+    var todo = keys.filter(function (k) { return overspent.indexOf(k) >= 0; }).concat(keys.filter(function (k) { return overspent.indexOf(k) < 0 && needsMoney(byId[k]); }));
+    var late = state.sched.filter(function (s) { return overdue(s.due); });
+    var starts = keys.filter(function (k) { return byId[k].c.start; });
+    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Riepilogo del mese</h4></div>' +
       '<div class="sec" style="gap:8px"><span class="state-l">Da assegnare</span><span class="big n' + (r < 0 ? ' cash' : '') + '">' + f(r) + '</span>' +
       '<p class="explain">' + (r > 0 ? 'Soldi arrivati e non ancora assegnati. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Tutti i soldi arrivati sono assegnati.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
       '<div class="gstats"><div><small>Categorie</small><b class="n">' + keys.length + '</b></div>' +
       '<div><small>Sforate</small><b class="n' + (overspent.length ? ' bad' : '') + '">' + overspent.length + '</b></div>' +
-      '<div><small>Da finanziare</small><b class="n' + (under.length ? ' warn' : '') + '">' + under.length + '</b></div></div>' +
-      (todo.length ? '<div class="sec"><h5>Da sistemare</h5>' + todo.map(function (k) {
-        var t = target(byId[k]);
-        var right = byId[k].avail < 0 ? cell(byId[k]) : '<span class="goal need">' + esc(t.text) + '</span>';
-        return '<button type="button" class="jump" data-cat="' + k + '"><b>' + esc(byId[k].c.name) + '</b>' + right + '</button>';
+      '<div><small>Da finanziare</small><b class="n' + (todo.length - overspent.length ? ' warn' : '') + '">' + (todo.length - overspent.length) + '</b></div></div>' +
+      (todo.length || late.length ? '<div class="sec"><h5>Da sistemare</h5>' + todo.map(function (k) {
+        var x = byId[k], t = target(x);
+        var right = x.credit + x.cash > 0 ? cell(x) : x.uncovered > 0 ? '<span class="goal need">da coprire ' + f(x.uncovered) + '</span>' : x.short > 0 ? '<span class="goal need">mancano ' + f(x.short) + ' per le programmate</span>' : '<span class="goal need">' + esc(t.text) + '</span>';
+        return '<button type="button" class="jump" data-cat="' + k + '"><b>' + esc(x.c.name) + '</b>' + right + '</button>';
+      }).join('') + late.map(function (s) {
+        return '<button type="button" class="jump" data-panel="sched"><b>' + esc(s.payee) + '</b><span class="goal">da registrare, ' + dLabel(s.due) + '</span></button>';
       }).join('') + '</div>' : '') +
       '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(sums.carried)) + line('Assegnato a settembre', f(sums.assigned)) +
-      line('Movimenti', f(sums.activity)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(FUTURE)) + line('Giorni di margine', '38 giorni') + '</div>' +
-      '<div class="sec"><h5>Quadratura</h5>' + line('Da assegnare', f(r)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(FUTURE)) +
-      line('Spese con carta non coperte', f(sums.credit)) +
-      '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Soldi nei conti in budget</span><span class="dots"></span><span class="n">' + f(r + sums.avail + FUTURE + sums.credit) + '</span></div>' +
-      '<p class="explain" style="font-size:13px">Il budget torna sempre con i conti: ogni euro nei conti è da assegnare, in una categoria, già assegnato ai mesi futuri o serve a coprire spese fatte con la carta.</p></div>' +
+      line('Movimenti', f(sums.activity)) + line('Prenotato per le programmate', f(-sums.reserved)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(future())) + line('Giorni di margine', '38 giorni') + '</div>' +
+      '<div class="sec"><h5>Quadratura</h5>' + line('Da assegnare', f(r)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Prenotato per le programmate', f(sums.reserved)) + line('Già assegnati a ottobre', f(future())) +
+      line('Spese con carta non coperte, questo mese', f(sums.credit)) +
+      '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Soldi nei conti in budget (carte escluse)</span><span class="dots"></span><span class="n">' + f(r + sums.avail + sums.reserved + future() + sums.credit) + '</span></div>' +
+      '<p class="explain" style="font-size:13px">Il budget torna sempre con i conti: ogni euro nei conti è da assegnare, in una categoria, prenotato per una spesa programmata, già assegnato ai mesi futuri o serve a coprire spese fatte con la carta.' +
+      (starts.length ? ' Il saldo iniziale della ' + starts.map(function (k) { return byId[k].c.name; }).join(' e della ') + ' non entra: è debito che avevi già, non soldi usciti dai conti.' : '') + '</p></div>' +
       '<p class="explain" style="font-size:13px;color:var(--muted)">Seleziona una categoria o un gruppo per vederne il dettaglio; clicca di nuovo sulla voce selezionata per chiudere il pannello.</p>';
+  }
+
+  // ---- Move money: one form for "Assign" (from unassigned) and "Move money" (between categories) ----
+  // o.rta: offer "unassigned"; o.avail: only categories with money (plus the selected one); o.pick: a "choose" placeholder.
+  function mvOptions(byId, sel, o) {
+    var out = '';
+    if (o.pick && !sel) out += '<option value="" selected>Scegli una categoria</option>';
+    if (o.rta) out += '<option value="rta"' + (sel === 'rta' ? ' selected' : '') + '>Da assegnare (' + f(rta()) + ')</option>';
+    GROUPS.forEach(function (g) {
+      var opts = g.cats.filter(function (c) { return !o.avail || byId[c.id].avail > 0 || c.id === sel; }).map(function (c) {
+        return '<option value="' + c.id + '"' + (sel === c.id ? ' selected' : '') + '>' + esc(c.name) + ' (' + f(byId[c.id].avail) + ')</option>';
+      }).join('');
+      if (opts) out += '<optgroup label="' + esc(g.name) + '">' + opts + '</optgroup>';
+    });
+    return out;
+  }
+  function mvCheck(byId) {
+    var m = state.mv, amount = parseAmount(m.amt), r = rta();
+    var from = m.from === 'rta' ? null : m.from, to = m.to === 'rta' ? null : (m.to || undefined);
+    var month = from === null && to !== null ? Number(m.month) : CUR;
+    if (to === undefined) return { err: 'Scegli dove mettere i soldi.' };
+    if (from === to) return { err: 'Origine e destinazione sono la stessa.' };
+    if (amount === null || amount <= 0) return { err: 'Scrivi un importo, per esempio 20 oppure 20,00.' };
+    if (from !== null && amount > Math.max(0, byId[from].avail)) return { err: nm(from) + (byId[from].avail > 0 ? ' ha solo ' + f(byId[from].avail) + ' disponibili.' : ' non ha disponibile da spostare.') };
+    var lines = [];
+    function ba(label, a, b) { return '<div class="ba"><span>' + esc(label) + '</span><span class="n">' + f(a) + ' → <b>' + f(b) + '</b></span></div>'; }
+    if (from === null) lines.push(ba('Da assegnare', r, r - amount)); else lines.push(ba(nm(from), byId[from].avail, byId[from].avail - amount));
+    if (to === null) lines.push(ba('Da assegnare', r, r + amount));
+    else if (month !== CUR) lines.push(ba('Già assegnati a ' + monthName(month - 2026 * 12), future(), future() + amount));
+    else {
+      var y = byId[to];
+      lines.push(ba(nm(to), y.avail, y.avail + amount));
+      var gap = Math.max(0, -y.real) || y.short || y.uncovered || 0;
+      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
+    }
+    var warn = from === null && amount > r ? 'Da assegnare scenderà sotto zero: stai assegnando soldi che non sono ancora arrivati.' : '';
+    return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
+  }
+  function mvPreview(byId) {
+    var ck = mvCheck(byId);
+    if (ck.err) return '<span style="color:var(--red-text)">' + esc(ck.err) + '</span>';
+    return ck.lines + (ck.warn ? '<div class="ba note" style="color:var(--red-text)">' + esc(ck.warn) + '</div>' : '');
+  }
+  function moveHtml(byId, p) {
+    var m = state.mv, fromRta = m.from === 'rta';
+    var ck = mvCheck(byId);
+    var months = fromRta && m.to !== 'rta' ? '<div class="field"><label for="' + p + 'mv-month">Per il mese</label><select id="' + p + 'mv-month" data-mv="month">' +
+      [CUR, CUR + 1, CUR + 2].map(function (n) { return '<option value="' + n + '"' + (Number(m.month) === n ? ' selected' : '') + '>' + monthName(n - 2026 * 12) + ' 2026' + (n === CUR ? '' : ' (mese futuro)') + '</option>'; }).join('') + '</select></div>' : '';
+    return (p ? '' : CLOSE) + '<div><span class="where">Famiglia · settembre 2026</span><h4>' + (fromRta ? 'Assegna' : 'Sposta denaro') + '</h4></div>' +
+      '<p class="explain">' + (fromRta ? 'Dai a una categoria una parte dei soldi arrivati e non ancora assegnati, per questo mese o per uno futuro.' : 'Sposta soldi già assegnati da una categoria a un’altra, o riportali in «da assegnare». Ogni spostamento è una sola riga nel registro delle assegnazioni, e si annulla con una riga uguale e contraria.') + '</p>' +
+      '<div class="field"><label for="' + p + 'mv-from">Da</label><select id="' + p + 'mv-from" data-mv="from">' + mvOptions(byId, m.from, { rta: true, avail: true }) + '</select></div>' +
+      '<div class="field"><label for="' + p + 'mv-to">A</label><select id="' + p + 'mv-to" data-mv="to">' + mvOptions(byId, m.to, { rta: m.from !== 'rta', pick: true }) + '</select></div>' +
+      months +
+      '<div class="field"><label for="' + p + 'mv-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="' + p + 'mv-amt" data-mv="amt" value="' + esc(m.amt) + '"><span>€</span></span></div>' +
+      '<div class="preview" id="' + p + 'mv-prev" aria-live="polite">' + mvPreview(byId) + '</div>' +
+      '<div class="row-btns"><button type="button" class="btn primary" id="' + p + 'mv-go" data-mvgo="1"' + (ck.err ? ' disabled' : '') + '>' + (fromRta ? 'Assegna' : 'Sposta') + (ck.err ? '' : ' ' + f(ck.amount)) + '</button><button type="button" class="btn" data-mvcancel="1">Annulla</button></div>';
+  }
+  function openMove(spec, where) {
+    var byId = compute(), m = { from: 'rta', to: '', amt: '', month: CUR, where: where };
+    if (spec && spec.indexOf('to:') === 0) {
+      var t = spec.slice(3), y = byId[t];
+      m.to = t;
+      var gap = Math.max(0, -y.real) || y.short || y.uncovered || 0;
+      if (gap > 0) m.amt = amountStr(gap);
+      if (rta() < gap) {
+        var srcs = Object.keys(byId).filter(function (k) { return k !== t && !byId[k].c.payment && byId[k].avail >= gap; });
+        if (srcs.length) m.from = srcs[0];
+      }
+    } else if (spec && spec.indexOf('from:') === 0) { m.from = spec.slice(5); m.to = 'rta'; }
+    else if (state.sel && CAT[state.sel]) m.to = state.sel;
+    state.mv = m;
+    if (where === 'ph') { state.mvBack = state.ph; state.ph = 'move'; }
+    else { state.edit = null; state.sel = 'move'; }
+  }
+
+  // ---- Quick assign ----
+  var QK = [
+    ['targets', 'Finanzia gli obiettivi', 'Porta ogni categoria a quanto chiede il suo obiettivo questo mese.'],
+    ['res', 'Copri le spese programmate', 'Aggiunge quello che manca alle categorie che non bastano per le spese programmate del mese.'],
+    ['over', 'Copri gli sforamenti', 'Riporta a zero le categorie sforate, in contanti o con la carta.'],
+    ['debt', 'Copri il debito delle carte', 'Mette da parte quello che manca per pagare le carte, saldo iniziale compreso.'],
+    ['lastA', 'Come assegnato ad agosto', 'Porta l’assegnato di ogni categoria almeno a quello di agosto.'],
+    ['lastS', 'Come speso ad agosto', 'Porta l’assegnato di ogni categoria almeno a quanto ci hai speso ad agosto.']
+  ];
+  function qaNeeds(kind, byId, scope) {
+    var out = [];
+    GROUPS.forEach(function (g) {
+      if (scope !== 'all' && scope !== g.id) return;
+      g.cats.forEach(function (c) {
+        var x = byId[c.id], t = target(x), n = 0;
+        if (c.payment) { if (kind === 'debt') n = x.uncovered; }
+        else if (kind === 'targets') n = t ? t.need : 0;
+        else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
+        else if (kind === 'over') n = x.credit + x.cash;
+        else if (kind === 'lastA') n = Math.max(0, c.lastAssigned - x.assigned);
+        else if (kind === 'lastS') n = Math.max(0, c.lastSpent - x.assigned);
+        if (n > 0) out.push([c.id, n]);
+      });
+    });
+    var left = Math.max(0, rta());
+    return out.map(function (q) { var give = Math.min(q[1], left); left -= give; return [q[0], q[1], give]; });
+  }
+  function quickHtml(byId) {
+    var q = state.qa;
+    var opts = QK.map(function (k) {
+      var list = qaNeeds(k[0], byId, q.scope), tot = sum(list, function (z) { return z[1]; });
+      return '<label class="opt"><input type="radio" name="qakind" value="' + k[0] + '" data-qa="kind"' + (q.kind === k[0] ? ' checked' : '') + '>' +
+        '<span><b>' + k[1] + '</b><small>' + k[2] + '</small><small class="n" style="color:var(--ink-2)">' + (list.length ? list.length + (list.length === 1 ? ' categoria, ' : ' categorie, ') + f(tot) : 'Niente da fare') + '</small></span></label>';
+    }).join('');
+    var list = qaNeeds(q.kind, byId, q.scope), give = sum(list, function (z) { return z[2]; }), want = sum(list, function (z) { return z[1]; });
+    var prev = list.length ? list.map(function (z) {
+      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' di ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
+    }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Da assegnare</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
+      (give < want ? '<div class="ba note" style="color:var(--warn)">Da assegnare non basta per tutto: le categorie ricevono soldi nell’ordine della tabella finché ce ne sono.</div>' : '')
+      : '<span style="color:var(--muted)">Per questa scelta non c’è niente da assegnare.</span>';
+    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Assegnazione rapida</h4></div>' +
+      '<div class="field"><label for="qa-scope">Categorie</label><select id="qa-scope" data-qa="scope"><option value="all">Tutte le categorie</option>' +
+      GROUPS.map(function (g) { return '<option value="' + g.id + '"' + (q.scope === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select></div>' +
+      '<fieldset class="types"><legend>Cosa assegnare</legend>' + opts + '</fieldset>' +
+      '<div class="preview">' + prev + '</div>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-qaapply="1"' + (give > 0 ? '' : ' disabled') + '>Assegna ' + f(give) + '</button></div>' +
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Ogni categoria riceve una riga nel registro delle assegnazioni; «Annulla» le toglie tutte insieme.</p>';
+  }
+
+  // ---- Scheduled transactions panel ----
+  function octPreview(byId) {
+    var oct = state.sched.filter(function (s) { return ymOf(s.due) === CUR + 1 && !s.income; });
+    var byCat = {};
+    oct.forEach(function (s) { byCat[s.cat] = (byCat[s.cat] || 0) + s.amount; });
+    var total = sum(oct, function (s) { return s.amount; }), inT = 0, rows = '';
+    Object.keys(byCat).forEach(function (k) {
+      var x = byId[k], sp = specOf(x), per = null;
+      if (sp && sp.type !== 'balance') per = sp.type === 'monthly' ? sp.amount : plan(sp, x).per;
+      var items = oct.filter(function (s) { return s.cat === k; }).sort(function (a, b) { return a.due.d - b.due.d; });
+      var st, cls = '';
+      if (per !== null && per >= byCat[k]) { st = 'dentro l’obiettivo (' + describe(sp) + ')'; inT += byCat[k]; }
+      else if (per !== null) { st = 'l’obiettivo chiede ' + f(per) + ': mancano ' + f(byCat[k] - per); cls = ' need'; inT += per; }
+      else { st = 'senza obiettivo'; cls = ' need'; }
+      rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return esc(s.payee); }).join(', ') + '</small>' +
+        '<span class="goal' + cls + '">' + esc(st) + '</span></span><span class="n">' + f(-byCat[k]) + '</span>' +
+        (per === null ? '<span class="sch-b"><button type="button" class="plain" data-sugg="' + k + '">Usa come obiettivo</button></span>' : '<span></span>') + '</div>';
+    });
+    return { total: total, inT: inT, n: oct.length, rows: rows };
+  }
+  function schedPanel(byId) {
+    var now = state.sched.filter(function (s) { return ymOf(s.due) <= CUR; }).sort(function (a, b) { return a.due.d - b.due.d; });
+    var late = now.filter(function (s) { return !s.income && overdue(s.due); });
+    var soon = now.filter(function (s) { return !s.income && !overdue(s.due); });
+    var inc = now.filter(function (s) { return s.income; });
+    var reserved = sum(now.filter(function (s) { return !s.income; }), function (s) { return s.amount; });
+    var o = octPreview(byId);
+    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Spese programmate</h4></div>' +
+      '<div class="gstats"><div><small>Prenotato a settembre</small><b class="n">' + f(reserved) + '</b></div>' +
+      '<div><small>Da registrare</small><b class="n">' + late.length + '</b></div>' +
+      '<div><small>Previsto a ottobre</small><b class="n">' + f(o.total) + '</b></div></div>' +
+      '<p class="explain">Una spesa programmata prenota i suoi soldi nella categoria dal primo giorno del mese: il disponibile li mostra già tolti. Quando la registri diventa un movimento e il disponibile non cambia.</p>' +
+      (late.length ? '<div class="sec"><h5>Da registrare</h5>' + late.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">La data è passata ma la spesa non è nel registro: resta prenotata finché non la registri o la salti.</p></div>' : '') +
+      '<div class="sec"><h5>Entro fine settembre</h5>' + (soon.map(function (s) { return schedRow(s, true); }).join('') || '<span style="color:var(--muted)">Nessuna.</span>') + '</div>' +
+      (inc.length ? '<div class="sec"><h5>Entrate previste</h5>' + inc.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">Le entrate non prenotano nulla: quando le registri, arrivano in «da assegnare».</p></div>' : '') +
+      '<div class="sec"><h5>Anteprima: inizio di ottobre</h5><p class="explain">Il 1° ottobre verranno prenotati <b class="n">' + f(o.total) + '</b> per ' + o.n + ' spese programmate' +
+        (o.total ? ': <b class="n">' + f(o.inT) + '</b> sono già dentro un obiettivo' + (o.total - o.inT > 0 ? ', per <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> serve assegnare a mano' : '') : '') +
+        '. Aprendo ottobre, il riepilogo del mese parte da questo elenco.</p>' + o.rows + '</div>' +
+      (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ Nuova spesa programmata</button>');
+  }
+  var SF_DAYS = (function () { var a = []; for (var d = 26; d <= 30; d++) a.push({ y: 2026, m: 9, d: d }); for (d = 1; d <= 31; d++) a.push({ y: 2026, m: 10, d: d }); return a; })();
+  function sfKey(dt) { return dt.m + '-' + dt.d; }
+  function sfPreview(byId) {
+    var s = state.sf, amt = parseAmount(s.amt);
+    if (!s.payee.trim()) return '<span style="color:var(--red-text)">Scrivi a chi va il pagamento.</span>';
+    if (amt === null || amt <= 0) return '<span style="color:var(--red-text)">Scrivi un importo, per esempio 20 oppure 20,00.</span>';
+    if (s.kind === 'in') return 'Un’entrata non prenota nulla: quando la registri, arriva in «da assegnare».';
+    if (!s.cat) return '<span style="color:var(--red-text)">Scegli la categoria: ogni spesa ne ha una.</span>';
+    var x = byId[s.cat], due = SF_DAYS.filter(function (d) { return sfKey(d) === s.due; })[0];
+    if (ymOf(due) > CUR) return 'Prenoterà ' + f(amt) + ' in ' + esc(x.c.name) + ' dal 1° ' + monthName(due.m) + '.';
+    var after = x.avail - amt;
+    return 'Prenota subito ' + f(amt) + ' in ' + esc(x.c.name) + ': il disponibile passa da ' + f(x.avail) + ' a <b class="n">' + f(after) + '</b>.' +
+      (after < 0 ? '<br><span style="color:var(--warn)">Non basta: mancano ' + f(-after) + '. È un avviso, non uno sforamento.</span>' : '');
+  }
+  function sfHtml(byId) {
+    var s = state.sf, x = s.cat ? byId[s.cat] : null;
+    var canTarget = s.kind === 'out' && x && !specOf(x) && s.every > 0;
+    return '<div class="sec sf"><h5>Nuova spesa programmata</h5>' +
+      '<div class="seg" role="group" aria-label="Tipo"><button type="button" class="btn" data-sfkind="out" aria-pressed="' + (s.kind === 'out') + '">Spesa</button><button type="button" class="btn" data-sfkind="in" aria-pressed="' + (s.kind === 'in') + '">Entrata</button></div>' +
+      '<div class="field"><label for="sf-payee">' + (s.kind === 'in' ? 'Da chi' : 'A chi') + '</label><span class="money-in"><input type="text" id="sf-payee" data-sf="payee" value="' + esc(s.payee) + '" placeholder="Per esempio: Palestra"></span></div>' +
+      (s.kind === 'out' ? '<div class="field"><label for="sf-cat">Categoria</label><select id="sf-cat" data-sf="cat">' + mvOptions(byId, s.cat, { pick: true }) + '</select></div>' : '') +
+      '<div class="field"><label for="sf-acc">Conto</label><select id="sf-acc" data-sf="acc">' + ACCTS.filter(function (a) { return s.kind === 'out' || !a.card; }).map(function (a) { return '<option value="' + a.id + '"' + (s.acc === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="sf-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="sf-amt" data-sf="amt" value="' + esc(s.amt) + '"><span>€</span></span></div>' +
+      '<div class="two"><div class="field"><label for="sf-due">Prossima data</label><select id="sf-due" data-sf="due">' + SF_DAYS.map(function (d) { return '<option value="' + sfKey(d) + '"' + (s.due === sfKey(d) ? ' selected' : '') + '>' + dLabel(d) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="sf-every">Si ripete</label><select id="sf-every" data-sf="every">' + [0, 1, 3, 6, 12].map(function (n) { return '<option value="' + n + '"' + (Number(s.every) === n ? ' selected' : '') + '>' + everyLabel(n) + '</option>'; }).join('') + '</select></div></div>' +
+      (canTarget ? '<label class="chk"><input type="checkbox" data-sf="asTarget"' + (s.asTarget ? ' checked' : '') + '> Usala anche come obiettivo di ' + esc(x.c.name) + '</label>' : '') +
+      '<div class="preview" id="sf-prev" aria-live="polite">' + sfPreview(byId) + '</div>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Salva</button><button type="button" class="btn" data-sfcancel="1">Annulla</button></div></div>';
+  }
+  function targetFromSched(cat, amount, every, due) {
+    if (every === 1) return { type: 'monthly', amount: amount };
+    var y = due.y, m = due.m;
+    return { type: 'repeat', amount: amount, every: every, due: y + '-' + (m < 10 ? '0' : '') + m };
+  }
+  function saveSf() {
+    var s = state.sf, amt = parseAmount(s.amt), byId = compute();
+    if (!s.payee.trim() || amt === null || amt <= 0 || (s.kind === 'out' && !s.cat)) { var i = el(!s.payee.trim() ? 'sf-payee' : 'sf-amt'); if (i) i.focus(); return false; }
+    var due = SF_DAYS.filter(function (d) { return sfKey(d) === s.due; })[0];
+    var item = { id: 'n' + (++state.seq), payee: s.payee.trim(), acc: s.acc, amount: amt, due: { y: due.y, m: due.m, d: due.d }, every: Number(s.every) };
+    if (s.kind === 'in') item.income = true; else item.cat = s.cat;
+    state.sched.push(item);
+    if (s.kind === 'out' && s.asTarget && !specOf(byId[s.cat]) && item.every > 0) state.targets[s.cat] = targetFromSched(s.cat, amt, item.every, item.due);
+    state.toast = { text: 'Programmata: ' + item.payee + ', ' + f(item.income ? amt : -amt) + ' il ' + dLabel(item.due) + (ymOf(item.due) <= CUR && !item.income ? '. I soldi sono già prenotati.' : '.') };
+    state.sf = null;
+    return true;
+  }
+
+  function sideHtml() {
+    var cash = ACCTS.filter(function (a) { return !a.card; }), cards = ACCTS.filter(function (a) { return a.card; });
+    var tot = 0;
+    var rows = cash.map(function (a) { var b = a.bal + (state.cashD[a.id] || 0); tot += b; return '<div class="lr"><span>' + a.name + '</span><span class="dots"></span><span class="n">' + amountStr(b) + '</span></div>'; }).join('') +
+      cards.map(function (a) { var b = cardBal(a.id); tot += b; return '<div class="lr"><span>' + a.name + '</span><span class="dots"></span><span class="n neg">' + amountStr(b).replace('-', '−') + '</span></div>'; }).join('');
+    return '<h5>In budget</h5>' + rows + '<div class="lr total"><span>Totale</span><span class="dots"></span><span class="n' + (tot < 0 ? ' neg' : '') + '">' + f(tot) + '</span></div>';
+  }
+
+  function tableRow(x) {
+    var c = x.c, sel = state.sel === c.id;
+    if (sel) {
+      return '<div class="row cols sel" role="group" aria-label="' + esc(c.name) + '"><button type="button" class="cn cnb" data-cat="' + c.id + '" aria-pressed="true"><b>' + esc(c.name) + '</b>' + subLines(x) + '</button>' +
+        '<span class="r"><input type="text" inputmode="decimal" class="asg-in n" data-asg="' + c.id + '" value="' + amountStr(x.assigned) + '" aria-label="Assegnato a ' + esc(c.name) + '"></span>' +
+        '<span class="r n">' + f(x.activity) + '</span><span class="av">' + cell(x) + '</span></div>';
+    }
+    return '<button type="button" class="row cols" data-cat="' + c.id + '" aria-pressed="false">' +
+      '<span class="cn"><b>' + esc(c.name) + '</b>' + subLines(x) + '</span>' +
+      '<span class="r n asg" data-acol="1" title="Clicca per cambiare l’assegnato">' + f(x.assigned) + '</span><span class="r n">' + f(x.activity) + '</span>' +
+      '<span class="av">' + cell(x) + '</span></button>';
   }
 
   function render() {
     var byId = compute();
+    check(byId);
     var keys = Object.keys(byId);
-    var overspent = keys.filter(function (k) { return byId[k].avail < 0; });
-    var under = keys.filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
+    var overspent = keys.filter(function (k) { return byId[k].credit + byId[k].cash > 0; });
+    var under = keys.filter(function (k) { return needsMoney(byId[k]); });
     var withMoney = keys.filter(function (k) { return byId[k].avail > 0; });
-    var overTotal = overspent.reduce(function (s, k) { return s - byId[k].avail; }, 0);
+    var overTotal = sum(overspent, function (k) { return byId[k].credit + byId[k].cash; });
+    var reservedTotal = sum(keys, function (k) { return byId[k].reserved; });
     var r = rta();
 
+    el('side-budget').innerHTML = sideHtml();
     el('rta').textContent = f(r); el('ph-rta').textContent = f(r);
     el('rta').classList.toggle('low', r < 0); el('ph-rta').classList.toggle('low', r < 0);
-    el('future').textContent = f(FUTURE);
+    el('future').textContent = f(future());
+    el('resv').textContent = f(reservedTotal);
 
     var FILTERS = [['all', 'Tutte', keys.length, 'neutral'], ['under', 'Da finanziare', under.length, 'under'], ['over', 'Sforate', overspent.length, 'over'], ['avail', 'Con disponibile', withMoney.length, 'neutral']];
     el('filters').innerHTML = FILTERS.map(function (fl) {
@@ -742,21 +1249,21 @@ button{cursor:pointer}
 
     el('notice').hidden = overspent.length === 0;
     el('notice-text').textContent = (overspent.length === 1 ? '1 categoria sforata' : overspent.length + ' categorie sforate') + ' per ' + f(overTotal) + '.';
-    el('reset').disabled = !Object.keys(state.adj).some(function (k) { return state.adj[k] !== 0; });
+    var late = state.sched.filter(function (s) { return overdue(s.due); });
+    el('notice2').hidden = late.length === 0;
+    el('notice2-text').textContent = late.length === 1 ? '1 spesa programmata da registrare: ' + late[0].payee + ', ' + dLabel(late[0].due) + '.' : late.length + ' spese programmate da registrare.';
+    var lb = lastBatch();
+    el('reset').disabled = lb === null;
+    var t = state.toast;
+    el('toast').hidden = !t;
+    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Chiudi il messaggio">×</button>';
 
     // Table
     var tA = 0, tAct = 0, tAv = 0, body = '';
     GROUPS.forEach(function (g) {
       var s = groupSums(byId, g), rows = '';
       tA += s.assigned; tAct += s.activity; tAv += s.avail;
-      g.cats.forEach(function (c) {
-        var x = byId[c.id];
-        if (!keep(x)) return;
-        rows += '<button type="button" class="row cols" data-cat="' + c.id + '" aria-pressed="' + (state.sel === c.id) + '">' +
-          '<span class="cn"><b>' + esc(c.name) + '</b>' + goal(target(x)) + '</span>' +
-          '<span class="r n">' + f(x.assigned) + '</span><span class="r n">' + f(x.activity) + '</span>' +
-          '<span class="av">' + cell(x) + '</span></button>';
-      });
+      g.cats.forEach(function (c) { var x = byId[c.id]; if (keep(x)) rows += tableRow(x); });
       if (!rows && state.filter !== 'all') return;
       var open = !state.collapsed[g.id], on = state.sel === 'g:' + g.id;
       body += '<div class="gr cols' + (on ? ' on' : '') + '"><span class="gh">' +
@@ -771,42 +1278,39 @@ button{cursor:pointer}
       '<span class="t">Movimenti<span class="n">' + f(tAct) + '</span></span>' +
       '<span class="t">Disponibile<span class="n">' + f(tAv) + '</span></span></div>' + body;
 
-    // Right-hand panel: a group or a category
+    // Right-hand panel
     var desk = document.querySelector('.desk');
     var panelOpen = !!state.sel || !!(state.edit && state.edit.where === 'desk');
     desk.classList.toggle('nopanel', !panelOpen);
     el('insp').hidden = !panelOpen;
-    el('show-overview').setAttribute('aria-pressed', String(state.sel === 'overview'));
-    el('show-goals').setAttribute('aria-pressed', String(state.sel === 'goals'));
-    if (!panelOpen) {
-      el('insp').innerHTML = '';
-    } else if (state.edit && state.edit.where === 'desk') {
-      el('insp').innerHTML = editorHtml(byId, '');
-    } else if (state.sel === 'overview') {
-      el('insp').innerHTML = overview(byId, keys, overspent, under);
-    } else if (state.sel === 'goals') {
-      el('insp').innerHTML = goalsPanel(byId, keys);
-    } else if (state.sel.indexOf('g:') === 0) {
-      var g = GROUPS.filter(function (gg) { return 'g:' + gg.id === state.sel; })[0];
-      el('insp').innerHTML = groupDetail(byId, g);
-    } else {
-      el('insp').innerHTML = catDetail(byId, byId[state.sel], '');
-    }
+    ['overview', 'goals', 'quick', 'move', 'sched'].forEach(function (k) { var b = el('show-' + k); if (b) b.setAttribute('aria-pressed', String(state.sel === k)); });
+    if (!panelOpen) el('insp').innerHTML = '';
+    else if (state.edit && state.edit.where === 'desk') el('insp').innerHTML = editorHtml(byId, '');
+    else if (state.sel === 'overview') el('insp').innerHTML = overview(byId, keys, overspent);
+    else if (state.sel === 'goals') el('insp').innerHTML = goalsPanel(byId, keys);
+    else if (state.sel === 'quick') el('insp').innerHTML = quickHtml(byId);
+    else if (state.sel === 'move') el('insp').innerHTML = moveHtml(byId, '');
+    else if (state.sel === 'sched') el('insp').innerHTML = schedPanel(byId);
+    else if (state.sel.indexOf('g:') === 0) el('insp').innerHTML = groupDetail(byId, GROUPS.filter(function (gg) { return 'g:' + gg.id === state.sel; })[0]);
+    else el('insp').innerHTML = catDetail(byId, byId[state.sel], '');
 
     // Phone
     var ph = el('ph-over');
     ph.hidden = overspent.length === 0;
     ph.textContent = overspent.length + (overspent.length === 1 ? ' sforata, ' : ' sforate, ') + f(overTotal);
+    el('ph-toast').hidden = !t || !!state.ph;
+    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '');
     el('ph-home').hidden = !!state.ph;
     el('ph-detail').hidden = !state.ph;
     if (state.ph) {
       el('ph-detail').innerHTML = state.edit && state.edit.where === 'ph'
         ? editorHtml(byId, 'ph-')
-        : '<button type="button" class="ph-back" data-phback="1">' + BACK + 'Budget</button>' + catDetail(byId, byId[state.ph], 'ph-');
+        : '<button type="button" class="ph-back" data-phback="1">' + BACK + (state.ph === 'move' && state.mvBack ? byId[state.mvBack].c.name : 'Budget') + '</button>' +
+          (state.ph === 'move' ? moveHtml(byId, 'ph-') : catDetail(byId, byId[state.ph], 'ph-'));
     } else {
       var order = GROUPS.slice().sort(function (a, b) {
-        var oa = a.cats.some(function (c) { return byId[c.id].avail < 0; }) ? 0 : 1;
-        var ob = b.cats.some(function (c) { return byId[c.id].avail < 0; }) ? 0 : 1;
+        var oa = a.cats.some(function (c) { return byId[c.id].credit + byId[c.id].cash > 0; }) ? 0 : 1;
+        var ob = b.cats.some(function (c) { return byId[c.id].credit + byId[c.id].cash > 0; }) ? 0 : 1;
         return oa - ob;
       });
       el('ph-list').innerHTML = order.map(function (g) {
@@ -815,9 +1319,14 @@ button{cursor:pointer}
           (s.over.length ? '<span class="count over n" style="margin-left:6px">' + s.over.length + '</span>' : '') + '</button><span class="n">' + f(s.avail) + '</span></div>' +
           (open ? g.cats.map(function (c) {
             var y = byId[c.id];
-            return '<button type="button" class="pc" data-phcat="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b>' + goal(target(y)) + '</span><span style="display:flex;align-items:center;gap:6px">' + cell(y) + NEXT + '</span></button>';
+            return '<button type="button" class="pc" data-phcat="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b>' + subLines(y) + '</span><span style="display:flex;align-items:center;gap:6px">' + cell(y) + NEXT + '</span></button>';
           }).join('') : '');
       }).join('');
+    }
+    if (state.focusAsg) {
+      var inp = document.querySelector('.asg-in[data-asg="' + state.focusAsg + '"]');
+      state.focusAsg = null;
+      if (inp) { inp.focus(); inp.select(); }
     }
   }
 
@@ -827,39 +1336,87 @@ button{cursor:pointer}
     el('tab-desk').setAttribute('aria-selected', String(desk));
     el('tab-phone').setAttribute('aria-selected', String(!desk));
   }
-  function fundCategory(id, max) {
-    var x = compute()[id], t = target(x);
-    if (!t || t.need <= 0) return 0;
-    var amount = Math.min(t.need, max);
-    if (amount > 0) state.adj[id] = (state.adj[id] || 0) + amount;
-    return amount;
+  function fundList(ids, byId) {
+    var left = Math.max(0, rta()), list = [];
+    ids.forEach(function (id) {
+      var t = target(byId[id]);
+      if (!t || t.need <= 0 || left <= 0) return;
+      var a = Math.min(t.need, left); left -= a; list.push({ from: null, to: id, amount: a });
+    });
+    return list;
   }
+  function commitAsg(inp, quiet) {
+    if (inp.dataset.done) return;
+    inp.dataset.done = '1';
+    var cat = inp.dataset.asg, x = compute()[cat], s = inp.value.trim().replace('−', '-');
+    var rel = /^[+\-]/.test(s), v = parseAmount(rel ? s.slice(1) : s);
+    if (v === null) { state.toast = { text: 'Importo non valido: l’assegnato di ' + x.c.name + ' non è cambiato.' }; return render(); }
+    var goal = rel ? x.assigned + (s[0] === '+' ? v : -v) : v, diff = goal - x.assigned;
+    if (diff === 0) return;
+    addBatch([diff > 0 ? { from: null, to: cat, amount: diff } : { from: cat, to: null, amount: -diff }], moveText(diff > 0 ? null : cat, diff > 0 ? cat : null, Math.abs(diff)));
+    // When focus leaves for a button, that button's click renders; rendering now would swallow the click.
+    if (!quiet) render();
+  }
+  function inPhone(b) { return !!b.closest('#view-phone'); }
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button');
     if (!b || b.disabled) return;
-    var d = b.dataset;
+    var d = b.dataset, byId;
     if (b.id === 'tab-desk') return show('desk');
     if (b.id === 'tab-phone') return show('phone');
     if (d.cover) {
       var amount = Number(d.amount);
       if (!d.src || amount <= 0) return;
-      state.adj[d.cover] = (state.adj[d.cover] || 0) + amount;
-      state.adj[d.src] = (state.adj[d.src] || 0) - amount;
+      addBatch([{ from: d.src, to: d.cover, amount: amount }], moveText(d.src, d.cover, amount));
       state.src = null;
       return render();
     }
+    if (d.fundgap) { var a = Number(d.amount); if (a > 0) addBatch([{ from: null, to: d.fundgap, amount: a }], moveText(null, d.fundgap, a)); return render(); }
     if (d.fund) {
-      var left = Math.max(0, rta());
-      if (d.fund === 'all') {
-        GROUPS.forEach(function (g) { g.cats.forEach(function (c) { left -= fundCategory(c.id, left); }); });
-      } else if (d.fund.indexOf('g:') === 0) {
-        GROUPS.filter(function (g) { return 'g:' + g.id === d.fund; })[0].cats.forEach(function (c) { left -= fundCategory(c.id, left); });
-      } else {
-        fundCategory(d.fund, left);
-      }
+      byId = compute();
+      var ids = d.fund === 'all' ? Object.keys(CAT) : d.fund.indexOf('g:') === 0 ? GROUPS.filter(function (g) { return 'g:' + g.id === d.fund; })[0].cats.map(function (c) { return c.id; }) : [d.fund];
+      var list = fundList(ids, byId);
+      if (list.length) addBatch(list, list.length === 1 ? moveText(null, list[0].to, list[0].amount) : 'Finanziati ' + list.length + ' obiettivi per ' + f(sum(list, function (z) { return z.amount; })) + '.');
       return render();
     }
+    if (d.qset) {
+      var q = d.qset.split(':'), xq = compute()[q[0]], dq = Number(q[1]) - xq.assigned;
+      if (dq) addBatch([dq > 0 ? { from: null, to: q[0], amount: dq } : { from: q[0], to: null, amount: -dq }], moveText(dq > 0 ? null : q[0], dq > 0 ? q[0] : null, Math.abs(dq)));
+      return render();
+    }
+    if (d.qaapply) {
+      var ql = qaNeeds(state.qa.kind, compute(), state.qa.scope).filter(function (z) { return z[2] > 0; });
+      if (ql.length) addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }), 'Assegnazione rapida: ' + f(sum(ql, function (z) { return z[2]; })) + ' in ' + ql.length + (ql.length === 1 ? ' categoria.' : ' categorie.'));
+      return render();
+    }
+    if (d.undo) { var en = allEntries().filter(function (x) { return x.id === d.undo; })[0]; undoEntries([en], 'Annullata la riga del ' + en.date + ': ' + moveText(en.from, en.to, en.amount, en.month).toLowerCase()); return render(); }
+    if (d.toastundo) { undoEntries(batchEntries(Number(d.toastundo)), 'Annullato.'); return render(); }
+    if (d.toastclose) { state.toast = null; return render(); }
+    if (b.id === 'reset') { var lb = lastBatch(); if (lb !== null) undoEntries(batchEntries(lb), 'Annullata l’ultima assegnazione.'); return render(); }
+    if (d.mvopen) { openMove(d.mvopen === 'rta' ? null : d.mvopen, inPhone(b) ? 'ph' : 'desk'); if (d.mvopen === 'rta') state.mv.from = 'rta'; render(); var ia = el((inPhone(b) ? 'ph-' : '') + 'mv-amt'); if (ia && state.mv.to) ia.focus(); return; }
+    if (d.mvgo) {
+      var ck = mvCheck(compute());
+      if (ck.err) return;
+      addBatch([{ from: ck.from, to: ck.to, amount: ck.amount, month: ck.month }], moveText(ck.from, ck.to, ck.amount, ck.month));
+      if (state.mv.where === 'ph') { state.ph = state.mvBack || null; } else { state.sel = ck.to && ck.month === CUR ? ck.to : null; }
+      state.mv = null;
+      return render();
+    }
+    if (d.mvcancel) { if (state.mv && state.mv.where === 'ph') state.ph = state.mvBack || null; else state.sel = null; state.mv = null; return render(); }
+    if (d.rec) { record(d.rec); return render(); }
+    if (d.skip) { skip(d.skip); return render(); }
+    if (d.sugg) {
+      var it = state.sched.filter(function (s) { return s.cat === d.sugg && ymOf(s.due) === CUR + 1; });
+      var tot = sum(it, function (s) { return s.amount; });
+      state.targets[d.sugg] = it.length === 1 ? targetFromSched(d.sugg, tot, it[0].every, it[0].due) : { type: 'monthly', amount: tot };
+      state.toast = { text: 'Nuovo obiettivo per ' + nm(d.sugg) + ': ' + describe(state.targets[d.sugg]) + '.' };
+      return render();
+    }
+    if (d.sfnew) { state.sf = { payee: '', kind: 'out', cat: '', acc: 'cc', amt: '', due: '9-30', every: 1, asTarget: true }; render(); var ip = el('sf-payee'); if (ip) ip.focus(); return; }
+    if (d.sfkind) { state.sf.kind = d.sfkind; if (d.sfkind === 'in' && acct(state.sf.acc).card) state.sf.acc = 'cc'; return render(); }
+    if (d.sfsave) { if (saveSf()) render(); return; }
+    if (d.sfcancel) { state.sf = null; return render(); }
     if (d.goaledit) { startEdit(d.goaledit, d.where); if (d.where === 'desk') state.sel = d.goaledit; return render(); }
     if (d.goalcancel) { state.edit = null; return render(); }
     if (d.goalremove) { state.targets[state.edit.cat] = null; state.edit = null; return render(); }
@@ -868,37 +1425,73 @@ button{cursor:pointer}
       if (!sp) { var inp = el((state.edit.where === 'ph' ? 'ph-' : '') + 'gamt'); if (inp) inp.focus(); return; }
       state.targets[state.edit.cat] = sp; state.edit = null; return render();
     }
-    if (d.panel) { state.edit = null; state.sel = state.sel === d.panel ? null : d.panel; return render(); }
-    if (d.deselect) { state.sel = null; state.src = null; state.edit = null; return render(); }
+    if (d.panel) {
+      state.edit = null;
+      if (d.panel === 'move') { if (state.sel === 'move') { state.sel = null; state.mv = null; } else openMove(null, 'desk'); return render(); }
+      state.sel = state.sel === d.panel ? null : d.panel; return render();
+    }
+    if (d.deselect) { state.sel = null; state.src = null; state.edit = null; state.mv = null; return render(); }
+    // Clicking the assigned amount of a row selects it and opens the amount for editing.
+    if (d.cat && e.target.closest('[data-acol]')) { state.edit = null; state.sel = d.cat; state.src = null; state.focusAsg = d.cat; return render(); }
     // Clicking the selected category or group again clears the selection.
-    if (d.cat) { var same = state.sel === d.cat && b.classList.contains('row'); state.edit = null; state.sel = same ? null : d.cat; state.src = null; return render(); }
+    if (d.cat) { var same = state.sel === d.cat && (b.classList.contains('row') || b.classList.contains('cnb')); state.edit = null; state.sel = same ? null : d.cat; state.src = null; return render(); }
     if (d.gsel) { state.edit = null; state.sel = state.sel === 'g:' + d.gsel ? null : 'g:' + d.gsel; state.src = null; return render(); }
     if (d.group) { state.collapsed[d.group] = !state.collapsed[d.group]; return render(); }
     if (d.filter) { state.filter = d.filter; return render(); }
     if (d.phcat) { state.ph = d.phcat; state.src = null; render(); el('view-phone').querySelector('.ph-in').scrollTop = 0; return; }
-    if (d.phback) { state.ph = null; state.src = null; state.edit = null; return render(); }
+    if (d.phback) { if (state.ph === 'move') { state.ph = state.mvBack || null; state.mv = null; } else state.ph = null; state.src = null; state.edit = null; return render(); }
     if (d.phgroup) { state.phCollapsed[d.phgroup] = !state.phCollapsed[d.phgroup]; return render(); }
     if (b.id === 'notice-show') { state.filter = 'over'; return render(); }
     if (b.id === 'ph-over') { state.filter = 'over'; show('desk'); return render(); }
-    if (b.id === 'reset') { state.adj = {}; state.src = null; return render(); }
   });
   function updatePreview() {
     var prev = el((state.edit.where === 'ph' ? 'ph-' : '') + 'gprev');
     if (prev) prev.innerHTML = previewHtml(compute());
   }
+  function updateMv() {
+    var p = state.mv.where === 'ph' ? 'ph-' : '', byId = compute(), ck = mvCheck(byId);
+    el(p + 'mv-prev').innerHTML = mvPreview(byId);
+    var go = el(p + 'mv-go');
+    go.disabled = !!ck.err;
+    go.textContent = (state.mv.from === 'rta' ? 'Assegna' : 'Sposta') + (ck.err ? '' : ' ' + f(ck.amount));
+  }
   document.addEventListener('input', function (e) {
-    if (e.target.dataset && e.target.dataset.gfield === 'amountStr' && state.edit) { state.edit.amountStr = e.target.value; updatePreview(); }
+    var ds = e.target.dataset || {};
+    if (ds.gfield === 'amountStr' && state.edit) { state.edit.amountStr = e.target.value; updatePreview(); }
+    if (ds.mv === 'amt' && state.mv) { state.mv.amt = e.target.value; updateMv(); }
+    if ((ds.sf === 'amt' || ds.sf === 'payee') && state.sf) { state.sf[ds.sf] = e.target.value; el('sf-prev').innerHTML = sfPreview(compute()); }
   });
   document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t.classList && t.classList.contains('asg-in')) {
+      if (e.key === 'Enter') { e.preventDefault(); commitAsg(t); return; }
+      if (e.key === 'Escape') { t.dataset.done = '1'; e.stopPropagation(); render(); return; }
+    }
+    if (e.key === 'Enter' && t.dataset && t.dataset.mv === 'amt') { e.preventDefault(); var go = el((state.mv.where === 'ph' ? 'ph-' : '') + 'mv-go'); if (go && !go.disabled) go.click(); return; }
     if (e.key !== 'Escape' || el('view-desk').hidden) return;
-    if (state.edit) { state.edit = null; render(); } else if (state.sel) { state.sel = null; state.src = null; render(); }
+    if (state.edit) { state.edit = null; render(); } else if (state.sel) { state.sel = null; state.src = null; state.mv = null; render(); }
+  });
+  document.addEventListener('focusout', function (e) {
+    if (e.target.classList && e.target.classList.contains('asg-in')) commitAsg(e.target, !!(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('button')));
   });
   document.addEventListener('change', function (e) {
-    if (e.target.dataset && e.target.dataset.srcSelect) { state.src = e.target.value; render(); }
-    var gf = e.target.dataset && e.target.dataset.gfield;
+    var ds = e.target.dataset || {};
+    if (ds.srcSelect) { state.src = e.target.value; render(); }
+    if (ds.mv && ds.mv !== 'amt' && state.mv) {
+      state.mv[ds.mv] = e.target.value;
+      if (ds.mv === 'from' && state.mv.from === 'rta' && state.mv.to === 'rta') state.mv.to = '';
+      if (ds.mv === 'from' && state.mv.from !== 'rta') state.mv.month = CUR;
+      var id = e.target.id; render(); var r = el(id); if (r) r.focus();
+    }
+    if (ds.qa) { state.qa[ds.qa] = e.target.value; var qid = e.target.id; render(); var qr = qid ? el(qid) : document.querySelector('[data-qa="kind"][value="' + state.qa.kind + '"]'); if (qr) qr.focus(); }
+    if (ds.sf && ds.sf !== 'amt' && ds.sf !== 'payee' && state.sf) {
+      state.sf[ds.sf] = ds.sf === 'asTarget' ? e.target.checked : ds.sf === 'every' ? Number(e.target.value) : e.target.value;
+      var sid = e.target.id; render(); var sr = sid ? el(sid) : null; if (sr) sr.focus();
+    }
+    var gf = ds.gfield;
     if (gf && state.edit) {
       state.edit[gf] = gf === 'every' ? Number(e.target.value) : e.target.value;
-      if (gf === 'type') { var id = e.target.id; render(); var r = el(id); if (r) r.focus(); }
+      if (gf === 'type') { var gid = e.target.id; render(); var gr = el(gid); if (gr) gr.focus(); }
       else updatePreview();
     }
   });
@@ -906,6 +1499,5 @@ button{cursor:pointer}
   render();
 })();
 </script>
-
 </body>
 </html>
