@@ -15,13 +15,18 @@ permissions:
 jobs:
   add-to-project:
     runs-on: ubuntu-latest
+    env:
+      # The `secrets` context is not allowed inside `if:` conditions (only in
+      # `env:`, `with:` and a few other fields); routing it through env here
+      # is what lets the steps below check whether it's set.
+      PROJECT_BOARD_TOKEN: ${{ secrets.PROJECT_BOARD_TOKEN }}
     steps:
       - name: Skip if PROJECT_BOARD_TOKEN is not configured yet
-        if: ${{ secrets.PROJECT_BOARD_TOKEN == '' }}
+        if: ${{ env.PROJECT_BOARD_TOKEN == '' }}
         run: echo "::warning::PROJECT_BOARD_TOKEN is not set (see the how-to guide); skipping."
 
       - uses: actions/add-to-project@v2
-        if: ${{ secrets.PROJECT_BOARD_TOKEN != '' }}
+        if: ${{ env.PROJECT_BOARD_TOKEN != '' }}
         with:
           project-url: https://github.com/users/aramilialon/projects/3
-          github-token: ${{ secrets.PROJECT_BOARD_TOKEN }}
+          github-token: ${{ env.PROJECT_BOARD_TOKEN }}
