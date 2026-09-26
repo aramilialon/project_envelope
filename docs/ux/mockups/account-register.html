@@ -1,0 +1,894 @@
+<!doctype html>
+<!--
+  Interactive mockup of an account register and transaction entry (desktop and phone).
+  Reference for docs/design.md, "User interface". Open it in a browser; no build
+  step, no dependencies except the Archivo font from Google Fonts (the app itself
+  self-hosts its fonts). The UI copy is the Italian translation; English stays
+  the source language of the app. Sample data is fictional.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - account register mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<style>
+[hidden]{display:none!important}
+html,body{margin:0}
+
+:root{
+  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
+  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
+  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
+  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
+  --amber:#E2A62C; --amber-ink:#2E2104;
+  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
+  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
+  --warn:#8C5300;
+  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+    --amber:#D9A23A; --amber-ink:#1F1602;
+    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+    --warn:#EBB765;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+  --amber:#D9A23A; --amber-ink:#1F1602;
+  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+  --warn:#EBB765;
+}
+*{box-sizing:border-box}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cond{font-stretch:78%}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* Page strip */
+.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.strip p{margin:0;color:var(--muted);max-width:70ch}
+.strip b{color:var(--ink);font-weight:600}
+.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
+.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border:1px solid var(--rule)}
+
+/* Desktop */
+.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
+.side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
+.ws{display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--ink-2)}
+.nav{display:flex;flex-direction:column}
+.nav button{padding:7px 0;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
+.nav button[aria-current]{color:var(--ink);font-weight:700}
+.nav button[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;background:var(--ink)}
+.ledger{display:flex;flex-direction:column}
+.ledger h5{margin:0 0 6px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.lr{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:13px;white-space:nowrap}
+.lr .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.lr.total{margin-top:4px;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
+.neg{color:var(--red-text)}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+.me{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-2)}
+
+.main{display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.month{display:flex;align-items:center;gap:4px}
+.month h3{margin:0 8px;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;white-space:nowrap}
+.arrow{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
+.facts b{color:var(--ink);font-weight:600}
+
+/* Ready to assign */
+.rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
+.rta .amt.low{color:var(--red-text)}
+.btn{min-height:38px;padding:0 14px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+
+.bar-tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;gap:20px}
+.tabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);white-space:nowrap}
+.tabs button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.acts{display:flex;gap:8px;padding-bottom:8px;margin-left:auto}
+.notice{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--red-text);border-bottom:1px solid var(--rule-soft)}
+.notice .plain{color:var(--red-text);text-decoration:underline;text-underline-offset:3px}
+
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 118px 118px 138px;align-items:center;column-gap:0}
+.th{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);align-items:end}
+.th .t{display:flex;flex-direction:column;align-items:flex-end;padding-right:10px;gap:1px}
+.th .t .n{font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600;font-stretch:100%}
+.gr{padding-top:18px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%;font-size:14px;letter-spacing:.2px}
+.gr button{display:flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:transparent;font-weight:700;text-align:left}
+.gr button svg{transition:transform .15s}
+.gr button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .r{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.r{text-align:right;padding-right:10px}
+.row{width:100%;min-height:46px;padding:6px 0 6px 22px;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.row:hover{background:var(--paper-2)}
+.row[aria-pressed="true"]{background:var(--pen-soft)}
+.row .r{color:var(--ink-2)}
+.cn{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn b{font-weight:500}
+.goal{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.goal.need{color:var(--warn);font-weight:600}
+.meter{display:block;width:84px;height:2px;background:var(--rule)}
+.meter i{display:block;height:2px;background:var(--pen)}
+.goal.need .meter i{background:var(--warn)}
+.av{display:flex;justify-content:flex-end}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;min-width:96px;padding:3px 10px;font-weight:600}
+.amt-cell.zero{color:var(--muted);font-weight:500}
+.amt-cell.cash{background:var(--red);color:var(--red-ink);border-radius:2px}
+.amt-cell.credit{background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 5px,color-mix(in srgb,var(--hatch) 32%,var(--hatch-bg)) 5px 7px);color:var(--hatch-ink);border:1px solid var(--hatch);border-radius:2px}
+.tag{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.empty{padding:32px 0;color:var(--muted)}
+
+.insp{display:flex;flex-direction:column;gap:20px;padding:22px 24px;border-left:1px solid var(--rule);background:var(--paper)}
+.where{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.insp h4,.ph-detail h4{margin:2px 0 0;font-size:26px;font-weight:700;font-stretch:78%;letter-spacing:-.3px;line-height:1.1}
+.big{font-size:34px;font-weight:700;font-stretch:85%;line-height:1}
+.big.cash{color:var(--red-text)} .big.credit{color:var(--warn)} .big.zero{color:var(--muted)}
+.state-l{font-weight:600}
+.explain{margin:0;color:var(--ink-2);line-height:1.55}
+.cover{display:flex;flex-direction:column;gap:8px;padding:14px;background:var(--paper-2);border:1px solid var(--rule)}
+.cover label{font-weight:600}
+.cover select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.sec{display:flex;flex-direction:column;gap:4px}
+.sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.sec h5 .plain{text-transform:none;letter-spacing:0;font-stretch:100%;font-size:13px}
+.qa{display:flex;align-items:baseline;gap:6px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left;color:var(--pen)}
+.qa .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.qa .n{color:var(--ink-2)}
+.tx{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.tx small{color:var(--muted);font-size:12px}
+.tx span small{display:block}
+.meter.wide{width:100%;height:3px}
+.meter.wide i{height:3px}
+
+/* Phone */
+.phones{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;padding:24px 0}
+.phone{position:relative;width:390px;max-width:100%;height:800px;border:1px solid var(--rule);border-radius:30px;background:var(--paper);overflow:hidden}
+.ph-in{height:100%;overflow-y:auto;padding:20px 16px 100px}
+.ph-top{display:flex;align-items:center;justify-content:space-between}
+.ph-top h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%;text-align:center}
+.ph-top small{display:block;text-align:center;color:var(--muted);font-size:12px}
+.ph-rta{margin-top:14px}
+.ph-rta .amt{font-size:26px}
+.ph-facts{display:flex;justify-content:space-between;gap:10px;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.ph-facts b{color:var(--ink)}
+.ph-facts .plain{color:var(--red-text)}
+.pg{display:flex;justify-content:space-between;padding:16px 0 6px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
+.pg .n{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.pc{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.pc .amt-cell{min-width:0}
+.pc b{font-weight:500;font-size:15px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;height:76px;padding:0 6px 14px;border-top:1px solid var(--rule);background:var(--paper)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:48px;justify-content:center;border:0;background:transparent;color:var(--muted);font-size:11px}
+.tabbar button[aria-current]{color:var(--ink);font-weight:700}
+.tabbar .add{justify-self:center;width:52px;height:44px;border-radius:4px;background:var(--pen);color:var(--pen-ink)}
+.ph-note{max-width:380px;display:flex;flex-direction:column;gap:10px;color:var(--ink-2)}
+.ph-note h3{margin:0;font-size:18px;font-weight:700;font-stretch:78%}
+.ph-note ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+
+/* Counts on the filters */
+.tabs button{display:inline-flex;align-items:center;gap:7px}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--rule-soft);color:var(--ink-2);font-size:12px;font-weight:700;font-stretch:100%}
+.count.over{background:var(--red);color:var(--red-ink)}
+.count.under{background:var(--amber);color:var(--amber-ink)}
+.count.none{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
+
+/* Selectable groups */
+.gr .gh{display:flex;align-items:center;gap:2px}
+.gr .chev{display:inline-flex;align-items:center;justify-content:center;width:28px;min-height:32px;padding:0;border:0;background:transparent}
+.gr .chev svg{transition:transform .15s}
+.gr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .gname{min-height:32px;padding:0 6px;border:0;background:transparent;font-weight:700;text-align:left;border-radius:2px}
+.gr .gname:hover{text-decoration:underline;text-underline-offset:3px}
+.gr.on{background:var(--pen-soft)}
+.gr .flag{margin-left:8px}
+.jump{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.jump:hover b{text-decoration:underline;text-underline-offset:3px}
+.jump b{font-weight:500}
+.jump .amt-cell{min-width:0}
+.gstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.gstats div{display:flex;flex-direction:column;gap:2px;padding:10px;background:var(--paper)}
+.gstats small{font-size:12px;color:var(--muted)}
+.gstats b{font-size:16px;font-stretch:85%;white-space:nowrap}
+.gstats b.bad{color:var(--red-text)} .gstats b.warn{color:var(--warn)}
+
+/* Phone: collapsible groups and detail screen */
+.pg{align-items:center;padding:12px 0 4px}
+.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-weight:700;font-stretch:78%;text-align:left}
+.pg button svg{transition:transform .15s}
+.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pc{cursor:pointer}
+.pc .go{color:var(--muted);flex-shrink:0}
+.ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
+.ph-detail{display:flex;flex-direction:column;gap:18px}
+.closer{align-self:flex-end;font-size:13px}
+.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
+.types legend{padding:0 0 6px;font-weight:600}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--pen)}
+.opt b{font-weight:600}
+.opt small{display:block;margin-top:2px;color:var(--muted);font-size:13px;line-height:1.4}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600}
+.field select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in{display:flex;align-items:center;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.money-in input{flex:1;min-width:0;min-height:40px;padding:0 10px;border:0;background:transparent;font-variant-numeric:tabular-nums;font-size:16px;outline:none}
+.money-in span{padding:0 10px;color:var(--muted)}
+.preview{padding:12px 14px;border:1px solid var(--rule);background:var(--paper-2);line-height:1.6}
+.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.danger{color:var(--red-text);margin-left:auto}
+.goal-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.goal-row > span:first-child{display:flex;flex-direction:column}
+.goal-row b{font-weight:500}
+.goal-row small{color:var(--muted);font-size:12px}
+.goal-row:hover b{text-decoration:underline;text-underline-offset:3px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+/* Account register */
+.desk.reg{grid-template-columns:230px minmax(0,1fr) 380px}
+.desk.reg.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.nav button.sub{padding-left:14px;font-size:14px}
+.lr.on{font-weight:700}
+.lr.on span:first-child::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 2px 0;background:var(--ink)}
+.acc-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.acc-head h3{margin:0;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px}
+.acc-head .sub{margin-top:8px;color:var(--muted)}
+.bal{display:flex;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.bal div{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-right:1px solid var(--rule)}
+.bal div:last-child{border-right:0}
+.bal small{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.bal .n{font-size:20px;font-weight:700;font-stretch:85%}
+.bal .main .n{font-size:26px}
+.reg-tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.reg-tools .right{display:flex;gap:8px;padding-bottom:8px;margin-left:auto;align-items:center}
+.search{display:flex;align-items:center;gap:6px;min-height:38px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.search input{border:0;background:transparent;min-width:180px;outline:none}
+.search:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.rcols{display:grid;grid-template-columns:34px 60px minmax(0,1.1fr) minmax(0,1.3fr) 96px 96px 104px;align-items:center}
+.rth{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.rth .r,.rrow .r{text-align:right;padding-right:10px}
+.rrow{min-height:44px;border-bottom:1px solid var(--rule-soft)}
+.rrow:hover{background:var(--paper-2)}
+.rrow.on{background:var(--pen-soft)}
+.rrow > button.open{grid-column:2 / -1;display:grid;grid-template-columns:60px minmax(0,1.1fr) minmax(0,1.3fr) 96px 96px 104px;align-items:center;min-height:44px;padding:0;border:0;background:transparent;text-align:left;cursor:pointer}
+.rrow .cell{padding:6px 8px 6px 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rrow .cell small{display:block;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.rrow .muted{color:var(--muted)}
+.st{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:var(--muted)}
+.st.cleared{color:var(--pen)}
+.st.locked{color:var(--ink-2);cursor:default}
+.split-sub{grid-column:4 / span 4;display:grid;grid-template-columns:minmax(0,1fr) 96px 96px 104px;padding:0 0 6px;font-size:13px;color:var(--ink-2)}
+.split-sub span{padding:2px 8px 2px 0}
+.split-sub .r{text-align:right;padding-right:10px}
+.kind{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin-right:6px}
+.month-sep{display:flex;justify-content:space-between;padding:14px 10px 6px 34px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
+.month-sep .n{font-weight:600;font-stretch:100%;color:var(--ink-2)}
+.locknote{padding:10px 12px;background:var(--paper-2);border:1px solid var(--rule);font-size:13px;color:var(--ink-2)}
+
+/* Transaction editor */
+.segs{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden}
+.segs label{flex:1;display:flex;align-items:center;justify-content:center;min-height:38px;cursor:pointer;border-right:1px solid var(--rule);font-weight:500}
+.segs label:last-child{border-right:0}
+.segs input{position:absolute;opacity:0;pointer-events:none}
+.segs input:checked + span{font-weight:700}
+.segs label:has(input:checked){background:var(--ink);color:var(--paper)}
+.segs label:has(input:focus-visible){outline:2px solid var(--pen);outline-offset:-2px}
+.field input[type=text],.field input[type=date],.field select{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.hint{font-size:13px;color:var(--muted)}
+.hint.bad{color:var(--red-text);font-weight:600}
+.hint.warn{color:var(--warn);font-weight:600}
+.splits{display:flex;flex-direction:column;gap:8px}
+.sline{display:grid;grid-template-columns:minmax(0,1fr) 120px 36px;gap:8px;align-items:center}
+.sline select{min-height:38px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.sline .money-in input{min-height:36px;font-size:14px}
+.rm{width:36px;height:36px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--muted)}
+.remain{display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{accent-color:var(--pen);width:16px;height:16px}
+.errs{padding:10px 12px;border:1px solid var(--red);color:var(--red-text);background:transparent;font-size:13px}
+
+/* Phone quick entry */
+.qe{display:flex;flex-direction:column;gap:12px}
+.qe-top{display:flex;align-items:center;justify-content:space-between}
+.qe-top h3{margin:0;font-size:22px;font-weight:700;font-stretch:72%}
+.qe-amt{padding:14px 0 6px;text-align:center;font-size:44px;font-weight:700;font-stretch:85%;border-bottom:1px solid var(--rule)}
+.qe-amt.zero{color:var(--muted)}
+.qe h5{margin:4px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.chips2{display:flex;flex-wrap:wrap;gap:6px}
+.chip2{min-height:36px;padding:0 12px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-size:14px}
+.chip2[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.chip2 small{margin-left:6px;opacity:.75;font-variant-numeric:tabular-nums}
+.keys{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.keys button{min-height:42px;border:1px solid var(--rule-soft);border-radius:3px;background:var(--paper-2);font-size:20px;font-weight:600}
+.qe-save{min-height:50px;font-size:16px}
+.toast{padding:12px 14px;border:1px solid var(--rule-strong);background:var(--paper);font-size:14px}
+.ph-in .closer{display:none}
+.ph-in .insp-like{display:flex;flex-direction:column;gap:16px}
+.insp-like h4{margin:2px 0 0;font-size:26px;font-weight:700;font-stretch:78%;letter-spacing:-.3px;line-height:1.1}
+.insp-like .field input,.insp-like .field select{width:100%}
+.ph-h{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ph-h h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%}
+.ph-bal{display:flex;flex-direction:column;gap:2px;margin:10px 0 8px}
+.ph-bal b{font-size:30px;font-weight:700;font-stretch:85%}
+.ph-bal span{font-size:13px;color:var(--muted)}
+.ph-search{display:flex;align-items:center;gap:6px;min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.ph-search input{flex:1;min-width:0;border:0;background:transparent;outline:none}
+.ph-search:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.ph-day{padding:14px 0 4px;border-bottom:1px solid var(--rule);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.ph-tx{display:grid;grid-template-columns:minmax(0,1fr) auto 36px;align-items:center;gap:6px;border-bottom:1px solid var(--rule-soft)}
+.ph-tx > button.open{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:54px;padding:6px 0;border:0;background:transparent;text-align:left;grid-column:1 / 3}
+.ph-tx .who{display:flex;flex-direction:column;min-width:0}
+.ph-tx .who b{font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-tx .who small{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-tx .amt{font-weight:600}
+.ph-tx .amt.in{color:var(--pen)}
+.ph-acc{display:flex;justify-content:space-between;align-items:center;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left;font-size:15px}
+.ph-acc.static{color:var(--ink-2)}
+.ph-acc small{display:block;font-size:12px;color:var(--muted)}
+.ph-chips{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories or tick transactions as cleared. On the phone: the accounts list, the register and quick entry.</p>
+    <div class="views" role="tablist" aria-label="Vista">
+      <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
+      <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
+    </div>
+  </div>
+
+  <section id="view-desk" role="tabpanel" aria-labelledby="tab-desk">
+    <div class="scroller">
+      <div class="desk reg nopanel" id="desk">
+        <nav class="side" aria-label="Main (mockup)">
+          <div class="brand">
+            <b>envelope</b>
+            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          </div>
+          <div class="nav">
+            <button type="button">Budget</button>
+            <button type="button" aria-current="page">Conti</button>
+            <button type="button">Portafoglio</button>
+          </div>
+          <div class="ledger">
+            <h5>In budget</h5>
+            <div class="lr on"><span>Conto corrente</span><span class="dots"></span><span class="n" id="side-bal"></span></div>
+            <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
+            <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
+            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+          </div>
+          <div class="ledger">
+            <h5>Fuori budget</h5>
+            <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
+            <div class="lr"><span>Mutuo casa</span><span class="dots"></span><span class="n neg">−96.300,00</span></div>
+          </div>
+          <button type="button" class="plain">+ Aggiungi conto</button>
+          <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+        </nav>
+
+        <div class="main">
+          <div class="acc-head">
+            <div>
+              <h3>Conto corrente</h3>
+              <div class="sub">Conto in budget · ultima riconciliazione il 5 settembre, <span class="n">1.780,73 €</span></div>
+            </div>
+            <div class="bal" aria-label="Saldi del conto">
+              <div><small>Verificato</small><span class="n" id="b-cleared"></span></div>
+              <div><small>In attesa</small><span class="n" id="b-pending"></span></div>
+              <div class="main"><small>Saldo</small><span class="n" id="b-total"></span></div>
+            </div>
+          </div>
+
+          <div class="reg-tools">
+            <div class="tabs" role="group" aria-label="Filtra le transazioni" id="reg-filters"></div>
+            <div class="right">
+              <label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="reg-search" placeholder="Cerca beneficiario, categoria, nota"></label>
+              <button type="button" class="btn">Importa</button>
+              <button type="button" class="btn">Riconcilia</button>
+              <button type="button" class="btn primary" id="new-tx">Nuova transazione</button>
+            </div>
+          </div>
+
+          <div id="register"></div>
+        </div>
+
+        <aside class="insp" aria-label="Transazione" id="panel" hidden></aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-phone" role="tabpanel" aria-labelledby="tab-phone" hidden>
+    <div class="phones">
+      <div class="phone">
+        <div class="ph-in" id="ph"></div>
+        <nav class="tabbar" aria-label="Principale (bozzetto telefono)">
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"></rect><path d="m3 6 9 7 9-7"></path></svg>Budget</button>
+          <button type="button" data-phscreen="accounts" id="ph-tab-acc" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Conti</button>
+          <button type="button" class="add" data-phscreen="quick" aria-label="Nuova spesa"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portafoglio</button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>Altro</button>
+        </nav>
+      </div>
+      <div class="ph-note">
+        <h3>On the phone</h3>
+        <ul>
+          <li><b>Accounts:</b> the list of accounts with their balances; tap the current account to open its register.</li>
+          <li><b>Register:</b> transactions grouped by day, search and filters; the circle on the right marks a transaction as cleared, tapping the row edits it full screen.</li>
+          <li><b>Quick entry</b> from the central button: amount, place (which proposes the category used last time), category with its available amount, account, Save.</li>
+          <li>Everything works offline too: changes sync later.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  function f(c) { return nf.format(c / 100).replace('-', '−'); }
+  function plainN(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('-', '−'); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  function el(id) { return document.getElementById(id); }
+  function parseAmount(str) {
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+    return Math.round(Number(clean) * 100);
+  }
+  function amountStr(c) { return c ? (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''; }
+  var MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  function dLabel(iso) { var q = iso.split('-'); return Number(q[2]) + ' ' + MONTHS[Number(q[1]) - 1]; }
+
+  var ICON = {
+    pending: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle></svg>',
+    cleared: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none"></circle><path d="m8 12.5 2.6 2.6L16.5 9" stroke="var(--paper)"></path></svg>',
+    locked: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>',
+    chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>'
+  };
+  var STATUS_LABEL = { pending: 'In attesa', cleared: 'Verificata', locked: 'Riconciliata' };
+
+  // Categories with the money available in September (same example as the budget month mockup).
+  var CATS = [
+    ['Casa e bollette', [['mutuo', 'Rata del mutuo', 0], ['luce', 'Luce e gas', 5560], ['net', 'Internet e telefono', 0], ['manut', 'Manutenzione casa', 23000]]],
+    ['Spese di tutti i giorni', [['spesa', 'Spesa alimentare', -4215], ['carb', 'Carburante e trasporti', 6170], ['rist', 'Ristoranti', -4850], ['farm', 'Farmacia e salute', 8110]]],
+    ['Spese prevedibili', [['ass', 'Assicurazione auto', 35000], ['bollo', 'Bollo auto', 10500], ['regali', 'Regali', 18000], ['vet', 'Veterinario', 6000]]],
+    ['Obiettivi e risparmio', [['fondo', 'Fondo emergenze', 783190], ['vac', 'Vacanze estate 2027', 145000], ['pac', 'Versamento nel piano di accumulo', 0]]],
+    ['Svago', [['abb', 'Abbonamenti', 403], ['hobby', 'Hobby', 2500]]]
+  ];
+  var CAT = {};
+  CATS.forEach(function (g) { g[1].forEach(function (c) { CAT[c[0]] = { id: c[0], name: c[1], avail: c[2], group: g[0] }; }); });
+  var RTA_ID = 'rta';
+  CAT[RTA_ID] = { id: RTA_ID, name: 'Da assegnare', avail: 31200, group: '' };
+  var ACCOUNTS = [
+    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['broker', 'Broker ETF', 'cash', false]
+  ];
+  var ACC = {};
+  ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3] }; });
+
+  var OPENING = 317573; // balance on 31 August
+  var seq = 0;
+  function tx(o) { seq++; o.id = 't' + seq; return o; }
+  var TXS = [
+    tx({ date: '2026-09-01', payee: 'Banca, rata mutuo', amount: -85000, cat: 'mutuo', status: 'locked' }),
+    tx({ date: '2026-09-02', payee: 'Operatore telefonico', amount: -4500, cat: 'net', status: 'locked' }),
+    tx({ date: '2026-09-05', payee: 'Trasferimento', amount: -50000, transfer: 'broker', cat: 'pac', memo: 'Versamento mensile', status: 'locked' }),
+    tx({ date: '2026-09-09', payee: 'Idraulico', amount: -12000, cat: 'manut', memo: 'Perdita lavello', status: 'cleared' }),
+    tx({ date: '2026-09-15', payee: 'Pagamento della carta', amount: -45000, transfer: 'visa', status: 'cleared' }),
+    tx({ date: '2026-09-16', payee: 'Fornitore energia', amount: -9640, cat: 'luce', status: 'cleared' }),
+    tx({ date: '2026-09-17', payee: 'Supermercato', amount: -11205, cat: 'spesa', status: 'cleared' }),
+    tx({ date: '2026-09-18', payee: 'Clinica veterinaria', amount: -8500, cat: 'vet', memo: 'Vaccino', status: 'cleared' }),
+    tx({ date: '2026-09-20', payee: 'Grande magazzino', amount: -6730, splits: [['spesa', -4230], ['regali', -2500]], memo: 'Spesa e regalo per Anna', status: 'cleared' }),
+    tx({ date: '2026-09-24', payee: 'Supermercato', amount: -8740, cat: 'spesa', status: 'pending' }),
+    tx({ date: '2026-09-25', payee: 'Stipendio', amount: 265000, cat: RTA_ID, memo: 'Settembre', status: 'cleared' })
+  ];
+  var LAST_CAT = { 'Supermercato': 'spesa', 'Mercato rionale': 'spesa', 'Panificio': 'spesa', 'Distributore': 'carb', 'Farmacia': 'farm', 'Trattoria': 'rist', 'Pizzeria': 'rist', 'Bar': 'rist', 'Fornitore energia': 'luce', 'Idraulico': 'manut', 'Clinica veterinaria': 'vet', 'Stipendio': RTA_ID, 'Grande magazzino': 'spesa', 'Operatore telefonico': 'net' };
+
+  var state = { sel: null, filter: 'all', q: '', open: {}, draft: null, errors: [], where: 'desk' };
+  var ph = { screen: 'accounts', filter: 'all', q: '' };
+
+  function sorted() { return TXS.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
+  function balances() {
+    var total = OPENING, pending = 0;
+    TXS.forEach(function (t) { total += t.amount; if (t.status === 'pending') pending += t.amount; });
+    return { total: total, pending: pending, cleared: total - pending };
+  }
+  function catText(t) {
+    if (t.transfer) {
+      var a = ACC[t.transfer];
+      var label = a.type === 'credit' ? 'Pagamento carta: ' + a.name : (t.amount < 0 ? 'Verso ' : 'Da ') + a.name;
+      return '<span class="kind">' + (a.type === 'credit' ? 'Carta' : 'Trasferimento') + '</span>' + esc(label) + (t.cat ? ' <span class="muted">· ' + esc(CAT[t.cat].name) + '</span>' : '');
+    }
+    if (t.splits) return '<span class="kind">Divisa</span>' + t.splits.length + ' categorie ' + ICON.chev;
+    if (t.cat === RTA_ID) return '<span class="kind">Entrata</span>Da assegnare';
+    return esc(CAT[t.cat].name);
+  }
+  function matches(t) {
+    if (state.filter === 'pending' && t.status !== 'pending') return false;
+    if (state.filter === 'cleared' && t.status !== 'cleared') return false;
+    if (state.filter === 'locked' && t.status !== 'locked') return false;
+    if (!state.q) return true;
+    var hay = [t.payee, t.memo || '', t.cat ? CAT[t.cat].name : '', t.transfer ? ACC[t.transfer].name : '']
+      .concat((t.splits || []).map(function (s) { return CAT[s[0]].name; })).join(' ').toLowerCase();
+    return hay.indexOf(state.q.toLowerCase()) >= 0;
+  }
+
+  function renderRegister() {
+    var b = balances();
+    el('b-cleared').textContent = f(b.cleared); el('b-pending').textContent = f(b.pending); el('b-total').textContent = f(b.total);
+    el('side-bal').textContent = plainN(b.total);
+    var counts = { all: TXS.length, pending: 0, cleared: 0, locked: 0 };
+    TXS.forEach(function (t) { counts[t.status]++; });
+    var F = [['all', 'Tutte', 'neutral'], ['pending', 'In attesa', 'under'], ['cleared', 'Verificate', 'neutral'], ['locked', 'Riconciliate', 'neutral']];
+    el('reg-filters').innerHTML = F.map(function (x) {
+      var n = counts[x[0]];
+      return '<button type="button" data-filter="' + x[0] + '" aria-pressed="' + (state.filter === x[0]) + '">' + x[1] + '<span class="count n ' + (n === 0 ? 'none' : x[2]) + '">' + n + '</span></button>';
+    }).join('');
+
+    // Running balance, then show newest first.
+    var run = OPENING, rows = [];
+    sorted().forEach(function (t) { run += t.amount; rows.push({ t: t, bal: run }); });
+    rows.reverse();
+    var html = '<div class="rth rcols"><span></span><span>Data</span><span>Beneficiario</span><span>Categoria</span><span class="r">Uscita</span><span class="r">Entrata</span><span class="r">Saldo</span></div>';
+    var shown = 0;
+    rows.forEach(function (r) {
+      var t = r.t;
+      if (!matches(t)) return;
+      shown++;
+      var st = '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button>';
+      html += '<div class="rrow rcols' + (state.sel === t.id ? ' on' : '') + '">' + st +
+        '<button type="button" class="open" data-open="' + t.id + '" aria-label="Apri ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
+        '<span class="cell n">' + dLabel(t.date) + '</span>' +
+        '<span class="cell"><b style="font-weight:500">' + esc(t.payee) + '</b>' + (t.memo ? '<small>' + esc(t.memo) + '</small>' : '') + '</span>' +
+        '<span class="cell">' + catText(t) + '</span>' +
+        '<span class="cell r n">' + (t.amount < 0 ? plainN(-t.amount) : '') + '</span>' +
+        '<span class="cell r n">' + (t.amount > 0 ? plainN(t.amount) : '') + '</span>' +
+        '<span class="cell r n">' + plainN(r.bal) + '</span></button>';
+      if (t.splits) {
+        html += '<div class="split-sub">' + t.splits.map(function (s) {
+          return '<span>' + esc(CAT[s[0]].name) + '</span><span class="r n">' + (s[1] < 0 ? plainN(-s[1]) : '') + '</span><span class="r n">' + (s[1] > 0 ? plainN(s[1]) : '') + '</span><span></span>';
+        }).join('</div><div class="split-sub">') + '</div>';
+      }
+      html += '</div>';
+    });
+    if (!shown) html += '<div class="empty">Nessuna transazione con questo filtro.</div>';
+    html += '<div class="month-sep"><span>Saldo al 31 agosto</span><span class="n">' + f(OPENING) + '</span></div>';
+    el('register').innerHTML = html;
+  }
+
+  // ---- Editor
+  function catOptions(selected, withRta) {
+    var out = withRta ? '<option value="' + RTA_ID + '"' + (selected === RTA_ID ? ' selected' : '') + '>Da assegnare (' + f(CAT[RTA_ID].avail) + ')</option>' : '<option value="">Scegli una categoria</option>';
+    CATS.forEach(function (g) {
+      out += '<optgroup label="' + esc(g[0]) + '">' + g[1].map(function (c) {
+        return '<option value="' + c[0] + '"' + (selected === c[0] ? ' selected' : '') + '>' + esc(c[1]) + ' (' + f(CAT[c[0]].avail) + ')</option>';
+      }).join('') + '</optgroup>';
+    });
+    return out;
+  }
+  function draftFrom(t) {
+    if (!t) return { id: null, kind: 'out', date: '2026-09-26', payee: '', amountStr: '', cat: '', transfer: '', memo: '', cleared: false, split: false, lines: [] };
+    return {
+      id: t.id, kind: t.transfer ? 'transfer' : t.amount > 0 ? 'in' : 'out', date: t.date, payee: t.payee,
+      amountStr: amountStr(Math.abs(t.amount)), cat: t.cat || '', transfer: t.transfer || '', memo: t.memo || '', cleared: t.status !== 'pending',
+      split: !!t.splits, lines: (t.splits || []).map(function (s) { return { cat: s[0], amountStr: amountStr(Math.abs(s[1])) }; }), locked: t.status === 'locked'
+    };
+  }
+  function draftAmount() { var a = parseAmount(state.draft.amountStr); return a === null ? null : a; }
+  function splitRemaining() {
+    var total = draftAmount() || 0, used = 0;
+    state.draft.lines.forEach(function (l) { used += parseAmount(l.amountStr) || 0; });
+    return total - used;
+  }
+  // Effect on the category's available money, the way the budget month would show it after saving.
+  function impactLine() {
+    var d = state.draft, a = draftAmount();
+    if (!a || d.split) return '';
+    if (d.kind === 'in' && d.cat === RTA_ID) return '<span class="hint">«Da assegnare» passa da ' + f(CAT[RTA_ID].avail) + ' a ' + f(CAT[RTA_ID].avail + a) + '.</span>';
+    if (d.kind === 'transfer') {
+      var acc = ACC[d.transfer];
+      if (!acc) return '';
+      if (acc.type === 'credit') return '<span class="hint">Paga la carta: scala dalla categoria di pagamento Visa, non tocca le altre categorie.</span>';
+      if (!acc.onBudget) return d.cat ? '<span class="hint">I soldi escono dal budget: ' + esc(CAT[d.cat].name) + ' passa da ' + f(CAT[d.cat].avail) + ' a ' + f(CAT[d.cat].avail - a) + '.</span>' : '<span class="hint warn">Il conto è fuori budget: scegli la categoria da cui escono i soldi.</span>';
+      return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
+    }
+    var c = CAT[d.cat];
+    if (!c || d.cat === RTA_ID) return '';
+    var before = c.avail, after = c.avail + (d.kind === 'out' ? -a : a);
+    if (d.id) { var old = TXS.filter(function (t) { return t.id === d.id; })[0]; if (old && old.cat === d.cat) after -= old.amount; }
+    return '<span class="hint' + (after < 0 ? ' bad' : '') + '">Disponibile in ' + esc(c.name) + ': ' + f(before) + ' → ' + f(after) + (after < 0 ? ', la categoria sarà sforata' : '') + '.</span>';
+  }
+  function editorHtml() {
+    var d = state.draft;
+    var isNew = !d.id;
+    if (d.locked) {
+      var t = TXS.filter(function (x) { return x.id === d.id; })[0];
+      return '<button type="button" class="plain closer" data-close="1">× Chiudi</button>' +
+        '<div><span class="where">Transazione riconciliata</span><h4>' + esc(t.payee) + '</h4></div>' +
+        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ' 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
+        '<div class="locknote">Fa parte della riconciliazione del 5 settembre, quando il saldo del conto è stato confrontato con quello della banca. Per non rompere quel confronto è bloccata: sbloccala solo se la banca l’ha davvero registrata in modo diverso.</div>' +
+        '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Sblocca e modifica</button></div>';
+    }
+    var kinds = [['out', 'Uscita'], ['in', 'Entrata'], ['transfer', 'Trasferimento']];
+    var h = '<button type="button" class="plain closer" data-close="1">× Chiudi</button>' +
+      '<div><span class="where">Conto corrente</span><h4>' + (isNew ? 'Nuova transazione' : 'Modifica transazione') + '</h4></div>' +
+      '<div class="segs" role="radiogroup" aria-label="Tipo">' + kinds.map(function (k) {
+        return '<label><input type="radio" name="kind" value="' + k[0] + '" data-df="kind" id="kind-' + k[0] + '"' + (d.kind === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
+      }).join('') + '</div>' +
+      '<div class="two"><div class="field"><label for="tx-date">Data</label><input type="date" id="tx-date" data-df="date" value="' + d.date + '"></div>' +
+      '<div class="field"><label for="tx-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="tx-amt" data-df="amountStr" value="' + esc(d.amountStr) + '" placeholder="0,00"><span>€</span></span></div></div>';
+    if (d.kind === 'transfer') {
+      h += '<div class="field"><label for="tx-acc">' + 'Verso il conto' + '</label><select id="tx-acc" data-df="transfer"><option value="">Scegli un conto</option>' +
+        ACCOUNTS.map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (fuori budget)') + '</option>'; }).join('') + '</select></div>';
+      if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, false) + '</select></div>';
+    } else {
+      h += '<div class="field"><label for="tx-payee">' + (d.kind === 'in' ? 'Da chi' : 'Beneficiario') + '</label><input type="text" id="tx-payee" data-df="payee" list="payees" value="' + esc(d.payee) + '" autocomplete="off">' +
+        '<datalist id="payees">' + Object.keys(LAST_CAT).map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('') + '</datalist>' +
+        (LAST_CAT[d.payee] && isNew ? '<span class="hint">L’ultima volta: ' + esc(CAT[LAST_CAT[d.payee]].name) + '</span>' : '') + '</div>';
+      if (!d.split) {
+        h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.kind === 'in') + '</select></div>';
+        if (d.kind === 'out') h += '<button type="button" class="plain" style="align-self:flex-start" data-split="on">Dividi su più categorie</button>';
+      } else {
+        var rem = splitRemaining();
+        h += '<div class="sec"><h5><span>Divisa su più categorie</span><button type="button" class="plain" data-split="off">Annulla divisione</button></h5><div class="splits">' +
+          d.lines.map(function (l, i) {
+            return '<div class="sline"><label class="sr" for="sl-cat-' + i + '">Categoria riga ' + (i + 1) + '</label><select id="sl-cat-' + i + '" data-line="' + i + '" data-lf="cat">' + catOptions(l.cat, false) + '</select>' +
+              '<span class="money-in"><label class="sr" for="sl-amt-' + i + '">Importo riga ' + (i + 1) + '</label><input type="text" inputmode="decimal" id="sl-amt-' + i + '" data-line="' + i + '" data-lf="amountStr" value="' + esc(l.amountStr) + '" placeholder="0,00"><span>€</span></span>' +
+              '<button type="button" class="rm" data-rmline="' + i + '" aria-label="Togli la riga ' + (i + 1) + '">×</button></div>';
+          }).join('') +
+          '<button type="button" class="plain" style="align-self:flex-start" data-addline="1">+ Aggiungi una riga</button>' +
+          '<div class="remain" id="remain"><span>Da ripartire</span><span class="n' + (rem !== 0 ? ' neg' : '') + '">' + f(rem) + '</span></div></div></div>';
+      }
+    }
+    h += '<div id="impact">' + impactLine() + '</div>' +
+      '<div class="field"><label for="tx-memo">Nota</label><input type="text" id="tx-memo" data-df="memo" value="' + esc(d.memo) + '"></div>' +
+      '<label class="check"><input type="checkbox" data-df="cleared" id="tx-cleared"' + (d.cleared ? ' checked' : '') + '> Verificata con l’estratto conto</label>' +
+      (state.errors.length ? '<div class="errs" role="alert">' + state.errors.map(esc).join('<br>') + '</div>' : '') +
+      '<div class="row-btns"><button type="button" class="btn primary" data-save="1">' + (isNew ? 'Aggiungi' : 'Salva') + '</button><button type="button" class="btn" data-close="1">Annulla</button>' +
+      (isNew ? '' : '<button type="button" class="plain danger" data-delete="1">Elimina</button>') + '</div>';
+    return h;
+  }
+  // The same checks the core does (ValidationError codes), shown in words.
+  function validate() {
+    var d = state.draft, errs = [], a = draftAmount();
+    if (a === null || a <= 0) errs.push('Scrivi un importo maggiore di zero, per esempio 12,50.');
+    if (d.kind === 'transfer') {
+      if (!d.transfer) errs.push('Scegli il conto di destinazione.');
+      else if (!ACC[d.transfer].onBudget && !d.cat) errs.push('Il conto è fuori budget: scegli la categoria da cui escono i soldi.');
+    } else {
+      if (!d.payee.trim()) errs.push('Scrivi il beneficiario.');
+      if (d.split) {
+        if (d.lines.some(function (l) { return !l.cat; })) errs.push('Ogni riga ha bisogno di una categoria.');
+        var rem = splitRemaining();
+        if (a && rem !== 0) errs.push('Le righe devono sommare all’importo: ' + (rem > 0 ? 'mancano ' + f(rem) : 'ci sono ' + f(-rem) + ' di troppo') + '.');
+      } else if (!d.cat) errs.push('Scegli una categoria.');
+    }
+    return errs;
+  }
+  function save() {
+    state.errors = validate();
+    if (state.errors.length) return renderPanel();
+    var d = state.draft, a = draftAmount(), sign = d.kind === 'in' ? 1 : -1;
+    var t = d.id ? TXS.filter(function (x) { return x.id === d.id; })[0] : tx({});
+    t.date = d.date; t.amount = sign * a; t.memo = d.memo; t.status = d.cleared ? 'cleared' : 'pending';
+    delete t.transfer; delete t.splits; delete t.cat;
+    if (d.kind === 'transfer') { t.transfer = d.transfer; t.payee = ACC[d.transfer].type === 'credit' ? 'Pagamento della carta' : 'Trasferimento'; if (!ACC[d.transfer].onBudget) t.cat = d.cat; }
+    else {
+      t.payee = d.payee.trim();
+      if (d.split) t.splits = d.lines.map(function (l) { return [l.cat, -parseAmount(l.amountStr)]; });
+      else t.cat = d.cat;
+      if (!d.split) LAST_CAT[t.payee] = d.cat;
+    }
+    if (!d.id) TXS.push(t);
+    state.sel = state.where === 'desk' ? t.id : null; state.draft = null; state.errors = [];
+    if (state.where === 'ph') ph.screen = 'register';
+    renderAll();
+  }
+  function renderPanel() {
+    var open = !!state.draft && state.where === 'desk';
+    el('panel').hidden = !open;
+    el('desk').classList.toggle('nopanel', !open);
+    el('panel').innerHTML = open ? editorHtml() : '';
+    renderPhone();
+  }
+  function refreshLive() {
+    var imp = el('impact'); if (imp) imp.innerHTML = impactLine();
+    var rem = el('remain');
+    if (rem) { var r = splitRemaining(); rem.innerHTML = '<span>Da ripartire</span><span class="n' + (r !== 0 ? ' neg' : '') + '">' + f(r) + '</span>'; }
+  }
+
+  // ---- Phone quick entry
+  var qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null };
+  var QE_PAYEES = ['Supermercato', 'Distributore', 'Farmacia', 'Bar', 'Panificio', 'Trattoria'];
+  var QE_CATS = ['spesa', 'carb', 'rist', 'farm', 'hobby', 'regali'];
+  function qeCents() { return qe.amt ? Math.round(Number(qe.amt.replace(',', '.')) * 100) : 0; }
+  function qeHtml() {
+    var c = qeCents();
+    if (qe.done) {
+      return '<div class="qe"><div class="qe-top"><h3>Spesa salvata</h3></div>' +
+        '<div class="toast"><b>' + f(-qe.done.amount) + '</b> da ' + esc(qe.done.payee) + ' con ' + esc(qe.done.acc) + '.<br>' + esc(qe.done.cat) + ' ora ha <b class="n">' + f(qe.done.after) + '</b> disponibili' + (qe.done.after < 0 ? ': è sforata.' : '.') + '</div>' +
+        '<button type="button" class="btn primary qe-save" data-qe="again">Un’altra spesa</button><button type="button" class="btn" data-qe="close">Chiudi</button></div>';
+    }
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', 'del'];
+    return '<div class="qe"><div class="qe-top"><button type="button" class="ph-back" data-qe="close">Annulla</button><h3>Nuova spesa</h3><span style="width:60px"></span></div>' +
+      '<div class="qe-amt n' + (c ? '' : ' zero') + '" aria-live="polite">' + (qe.amt ? qe.amt.replace('.', ',') + ' €' : '0,00 €') + '</div>' +
+      '<h5>Dove</h5><div class="chips2">' + QE_PAYEES.map(function (p) { return '<button type="button" class="chip2" data-qepayee="' + p + '" aria-pressed="' + (qe.payee === p) + '">' + p + '</button>'; }).join('') + '</div>' +
+      '<h5>Categoria</h5><div class="chips2">' + QE_CATS.map(function (id) {
+        return '<button type="button" class="chip2" data-qecat="' + id + '" aria-pressed="' + (qe.cat === id) + '">' + esc(CAT[id].name) + '<small>' + f(CAT[id].avail) + '</small></button>';
+      }).join('') + '</div>' +
+      '<h5>Con</h5><div class="chips2">' + [['visa', 'Visa'], ['cc', 'Conto corrente'], ['cont', 'Contanti']].map(function (a) { return '<button type="button" class="chip2" data-qeacc="' + a[0] + '" aria-pressed="' + (qe.acc === a[0]) + '">' + a[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="keys">' + keys.map(function (k) { return '<button type="button" data-key="' + k + '"' + (k === 'del' ? ' aria-label="Cancella una cifra"' : '') + '>' + (k === 'del' ? '⌫' : k) + '</button>'; }).join('') + '</div>' +
+      '<button type="button" class="btn primary qe-save" data-qe="save"' + (c > 0 && qe.cat ? '' : ' disabled') + '>' + (c > 0 ? 'Salva ' + f(c) : 'Salva') + '</button></div>';
+  }
+
+  var LONGDAY = new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  function phMatches(t) {
+    if (ph.filter === 'pending' && t.status !== 'pending') return false;
+    if (ph.filter === 'cleared' && t.status === 'pending') return false;
+    if (!ph.q) return true;
+    var hay = [t.payee, t.memo || '', t.cat ? CAT[t.cat].name : '', t.transfer ? ACC[t.transfer].name : ''].join(' ').toLowerCase();
+    return hay.indexOf(ph.q.toLowerCase()) >= 0;
+  }
+  function phRegisterHtml() {
+    var b = balances(), rows = sorted().reverse().filter(phMatches), html = '', day = null;
+    rows.forEach(function (t) {
+      if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === '2026-09-26' ? 'Oggi' : LONGDAY.format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
+      var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      html += '<div class="ph-tx"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
+        '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
+        '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';
+    });
+    if (!rows.length) html = '<p class="hint" style="padding:16px 0">Nessuna transazione.</p>';
+    var chips = [['all', 'Tutte'], ['pending', 'In attesa'], ['cleared', 'Verificate']].map(function (c) { return '<button type="button" class="chip2" data-phfilter="' + c[0] + '" aria-pressed="' + (ph.filter === c[0]) + '">' + c[1] + '</button>'; }).join('');
+    return '<div class="ph-h"><button type="button" class="ph-back" data-phscreen="accounts">‹ Conti</button><button type="button" class="btn primary" data-phnew="1">+ Nuova</button></div>' +
+      '<div class="ph-h" style="margin-top:6px"><h3>Conto corrente</h3></div>' +
+      '<div class="ph-bal"><b class="n">' + f(b.total) + '</b><span class="n">verificato ' + f(b.cleared) + ' · in attesa ' + f(b.pending) + '</span></div>' +
+      '<label class="ph-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Cerca"></label>' +
+      '<div class="ph-chips">' + chips + '</div>' + html;
+  }
+  function phAccountsHtml() {
+    var b = balances();
+    return '<div class="ph-h"><h3>Conti</h3><button type="button" class="plain">+ Aggiungi</button></div>' +
+      '<div class="ph-day">In budget · ' + f(b.total + 800000 + 8540 - 64230) + '</div>' +
+      '<button type="button" class="ph-acc" data-phscreen="register"><span>Conto corrente<small>1 transazione in attesa</small></span><span class="n" style="display:flex;align-items:center;gap:6px">' + f(b.total) + ' ›</span></button>' +
+      '<div class="ph-acc static"><span>Conto risparmio</span><span class="n">' + f(800000) + '</span></div>' +
+      '<div class="ph-acc static"><span>Contanti</span><span class="n">' + f(8540) + '</span></div>' +
+      '<div class="ph-acc static"><span>Visa<small>carta di credito</small></span><span class="n neg">' + f(-64230) + '</span></div>' +
+      '<div class="ph-day">Fuori budget</div>' +
+      '<div class="ph-acc static"><span>Broker ETF</span><span class="n">' + f(4218000) + '</span></div>' +
+      '<div class="ph-acc static"><span>Mutuo casa</span><span class="n neg">' + f(-9630000) + '</span></div>' +
+      '<p class="hint">Nel bozzetto solo il Conto corrente ha i movimenti.</p>';
+  }
+  function renderPhone() {
+    var out;
+    if (state.draft && state.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-close="1" style="align-self:flex-start">‹ Conto corrente</button>' + editorHtml() + '</div>';
+    else if (ph.screen === 'quick') out = qeHtml();
+    else if (ph.screen === 'register') out = phRegisterHtml();
+    else out = phAccountsHtml();
+    el('ph').innerHTML = out;
+    el('ph-tab-acc').toggleAttribute('aria-current', ph.screen !== 'quick');
+  }
+
+  function show(view) {
+    var desk = view === 'desk';
+    el('view-desk').hidden = !desk; el('view-phone').hidden = desk;
+    el('tab-desk').setAttribute('aria-selected', String(desk)); el('tab-phone').setAttribute('aria-selected', String(!desk));
+  }
+  function renderAll() { renderRegister(); renderPanel(); }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    var d = b.dataset;
+    if (b.id === 'tab-desk') { if (state.where === 'ph') { state.draft = null; renderAll(); } return show('desk'); }
+    if (b.id === 'tab-phone') { if (state.where === 'desk') { state.draft = null; state.sel = null; renderAll(); } return show('phone'); }
+    if (b.id === 'new-tx') { state.where = 'desk'; state.sel = null; state.draft = draftFrom(null); state.errors = []; renderAll(); var p = el('tx-amt'); if (p) p.focus(); return; }
+    if (d.filter) { state.filter = d.filter; return renderRegister(); }
+    if (d.toggle) {
+      var t = TXS.filter(function (x) { return x.id === d.toggle; })[0];
+      if (t.status === 'locked') return;
+      t.status = t.status === 'pending' ? 'cleared' : 'pending';
+      return renderAll();
+    }
+    if (d.open) {
+      if (state.sel === d.open && state.draft) { state.sel = null; state.draft = null; return renderAll(); }
+      state.where = 'desk'; state.sel = d.open; state.draft = draftFrom(TXS.filter(function (x) { return x.id === d.open; })[0]); state.errors = [];
+      return renderAll();
+    }
+    if (d.close) { state.sel = null; state.draft = null; state.errors = []; return renderAll(); }
+    if (d.unlock) { state.draft.locked = false; var tt = TXS.filter(function (x) { return x.id === state.draft.id; })[0]; tt.status = 'cleared'; return renderAll(); }
+    if (d.split === 'on') {
+      var a = draftAmount() || 0;
+      state.draft.split = true;
+      state.draft.lines = [{ cat: state.draft.cat, amountStr: amountStr(a) }, { cat: '', amountStr: '' }];
+      return renderPanel();
+    }
+    if (d.split === 'off') { state.draft.split = false; state.draft.cat = state.draft.lines[0] ? state.draft.lines[0].cat : ''; state.draft.lines = []; return renderPanel(); }
+    if (d.addline) { state.draft.lines.push({ cat: '', amountStr: amountStr(Math.max(0, splitRemaining())) }); return renderPanel(); }
+    if (d.rmline) { state.draft.lines.splice(Number(d.rmline), 1); return renderPanel(); }
+    if (d.save) return save();
+    if (d.delete) { TXS = TXS.filter(function (x) { return x.id !== state.draft.id; }); state.sel = null; state.draft = null; return renderAll(); }
+    // Phone
+    if (d.key) {
+      if (d.key === 'del') qe.amt = qe.amt.slice(0, -1);
+      else if (d.key === ',') { if (qe.amt.indexOf(',') < 0) qe.amt = (qe.amt || '0') + ','; }
+      else { var parts = qe.amt.split(','); if (!(parts[1] && parts[1].length >= 2) && qe.amt.length < 8) qe.amt += d.key; }
+      return renderPhone();
+    }
+    if (d.qepayee) { qe.payee = d.qepayee; qe.cat = LAST_CAT[d.qepayee] || qe.cat; return renderPhone(); }
+    if (d.qecat) { qe.cat = d.qecat; return renderPhone(); }
+    if (d.qeacc) { qe.acc = d.qeacc; return renderPhone(); }
+    if (d.qe === 'again') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
+    if (d.qe === 'close') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; ph.screen = 'register'; return renderPhone(); }
+    if (d.phscreen) { ph.screen = d.phscreen; state.draft = null; if (d.phscreen === 'quick') qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
+    if (d.phfilter) { ph.filter = d.phfilter; return renderPhone(); }
+    if (d.phopen) { state.where = 'ph'; state.draft = draftFrom(TXS.filter(function (x) { return x.id === d.phopen; })[0]); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
+    if (d.phnew) { state.where = 'ph'; state.draft = draftFrom(null); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
+    if (d.qe === 'save') {
+      var cents = qeCents();
+      CAT[qe.cat].avail -= cents;
+      qe.done = { amount: -cents, payee: qe.payee || 'Spesa', cat: CAT[qe.cat].name, after: CAT[qe.cat].avail, acc: { visa: 'Visa', cc: 'Conto corrente', cont: 'Contanti' }[qe.acc] };
+      if (qe.acc === 'cc') TXS.push(tx({ date: '2026-09-26', payee: qe.done.payee, amount: -cents, cat: qe.cat, status: 'pending' }));
+      return renderAll();
+    }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t.id === 'reg-search') { state.q = t.value; return renderRegister(); }
+    if (t.id === 'ph-search') { ph.q = t.value; var pos = t.selectionStart; renderPhone(); var n = el('ph-search'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } return; }
+    if (!state.draft) return;
+    if (t.dataset.df && t.type !== 'radio' && t.type !== 'checkbox' && t.tagName !== 'SELECT') { state.draft[t.dataset.df] = t.value; refreshLive(); }
+    if (t.dataset.lf === 'amountStr') { state.draft.lines[Number(t.dataset.line)].amountStr = t.value; refreshLive(); }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (!state.draft) return;
+    if (t.dataset.df === 'kind') { state.draft.kind = t.value; state.draft.split = false; if (t.value === 'in') state.draft.cat = RTA_ID; else if (state.draft.cat === RTA_ID) state.draft.cat = ''; renderPanel(); var r = el('kind-' + t.value); if (r) r.focus(); return; }
+    if (t.dataset.df === 'cleared') { state.draft.cleared = t.checked; return; }
+    if (t.dataset.df === 'payee') {
+      state.draft.payee = t.value;
+      if (LAST_CAT[t.value] && !state.draft.cat && !state.draft.split) state.draft.cat = LAST_CAT[t.value];
+      renderPanel(); return;
+    }
+    if (t.tagName === 'SELECT' && t.dataset.df) { state.draft[t.dataset.df] = t.value; renderPanel(); var s = el(t.id); if (s) s.focus(); return; }
+    if (t.dataset.lf === 'cat') { state.draft.lines[Number(t.dataset.line)].cat = t.value; return refreshLive(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && state.draft && !el('view-desk').hidden) { state.sel = null; state.draft = null; renderAll(); }
+  });
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) show('phone');
+  renderAll();
+})();
+</script>
+
+</body>
+</html>

@@ -24,7 +24,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `apps/` | `api` (next), then `web` and `mobile` |
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, bound to 127.0.0.1 |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
-| `docs/` | Design document, getting started, how-to guides, ADRs, glossary |
+| `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |
 | `scripts/` | GitHub setup (labels, milestones, ruleset) and Git hooks |
 
 ## Commands
@@ -45,6 +45,14 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 - Data access: plain SQL migrations and parameterized queries with node-postgres, in repository modules; no SQL in route handlers (ADR 0005).
 - Background jobs go through the queue module interface (`enqueue`, `schedule`, `work`) with an outbox, deduplication keys, the `processed_jobs` register and a mandatory double-delivery test (design document, "Queue module").
 - Authentication: Keycloak as identity provider; the app speaks OpenID Connect only.
+
+## User interface
+
+- Web and mobile screens follow the "User interface" section of [docs/design.md](docs/design.md) and the mockups in `docs/ux/mockups/` (open them in a browser, or read their HTML): the same layout, states, interactions and copy. The mockups show the Italian translation; the English source strings go in the i18n catalogue.
+- Use the design tokens and type described there; no other colours, fonts, shadows or card styles. Self-host fonts.
+- A screen without a mockup is not built from scratch: stop and ask for its mockup, or propose one in `docs/ux/mockups/` in its own pull request.
+- Where the mockup cannot be followed, say why in the pull request and update the mockup and the design section in the same pull request once agreed.
+- Logic that the mockups compute in JavaScript (target calculation, covering overspending) belongs in `packages/core`, with tests.
 
 ## Git and GitHub workflow
 

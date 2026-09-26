@@ -11,6 +11,9 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - GitHub workflow: labels and milestones, protected main branch, pull request template, commit convention checked by a Git hook and by CI on pull request titles.
 - `apps/api`: Keycloak access token verification against the realm's JWKS (signature, issuer, audience, expiry), as a Fastify preHandler not yet wired into any route (`#6`).
 - `apps/api`: maps a verified access token's `sub`/`email` claims to a local `users` row, creating it on first sign-in and keeping the email in sync, as a Fastify preHandler chained after token verification (`#7`).
+- Documentation: user interface design (principles, visual language, budget month on desktop and phone, other screens, target calculation) and interactive mockups in `docs/ux/mockups/`: budget month, account register, import and reconciliation, settings and first run, portfolio.
+- README rewritten around what the app does, with screenshots of the mockups, principles, status and roadmap.
+- Documentation: import and reconciliation rules (duplicate detection, transaction states, statement difference, adjustments, locking); portfolios can share a brokerage account, with every trade assigned to one portfolio; ideas kept for after 1.0.0 (place-aware suggestions on the phone, optional receipt reading).
 - `apps/api`: checks the local user's role in the workspace a request names and opens the request's single database transaction with the session variables ADR 0006's Row-Level Security policies expect, as a Fastify preHandler chained after user mapping (`#8`).
 - `apps/api`: the server now connects to PostgreSQL as the restricted `envelope_app` role (`APP_DATABASE_URL`) instead of the migration runner's superuser, so Row-Level Security is enforced for the running server, not just proven in tests (`#9`).
 

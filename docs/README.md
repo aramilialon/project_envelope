@@ -7,6 +7,7 @@
 | [How-to guides](how-to/) | Step-by-step recipes for changing the project |
 | [Decisions (ADR)](adr/) | Why a solution was chosen, and which alternatives were discarded |
 | [Glossary](glossary.md) | Financial and technical terms used in the code |
+| [Mockups](ux/mockups/) | Interactive mockups of the interface, open them in a browser; described in the design document's "User interface" section |
 
 ## How-to guides
 

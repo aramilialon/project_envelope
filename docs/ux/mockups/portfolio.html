@@ -1,0 +1,946 @@
+<!doctype html>
+<!--
+  Interactive mockup of the portfolio: overview, allocation, rebalancing, linked accounts, new-portfolio setup, trade entry.
+  Reference for docs/design.md, "User interface". Open it in a browser; no build
+  step, no dependencies except the Archivo font from Google Fonts (the app itself
+  self-hosts its fonts). The UI copy is the Italian translation; English stays
+  the source language of the app. Sample data is fictional.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - portfolio mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<style>
+[hidden]{display:none!important}
+html,body{margin:0}
+
+:root{
+  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
+  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
+  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
+  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
+  --amber:#E2A62C; --amber-ink:#2E2104;
+  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
+  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
+  --warn:#8C5300;
+  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+    --amber:#D9A23A; --amber-ink:#1F1602;
+    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+    --warn:#EBB765;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
+  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
+  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
+  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
+  --amber:#D9A23A; --amber-ink:#1F1602;
+  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
+  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
+  --warn:#EBB765;
+}
+*{box-sizing:border-box}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.cond{font-stretch:78%}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* Page strip */
+.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.strip p{margin:0;color:var(--muted);max-width:70ch}
+.strip b{color:var(--ink);font-weight:600}
+.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
+.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border:1px solid var(--rule)}
+
+/* Desktop */
+.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
+.side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
+.brand{display:flex;flex-direction:column;gap:2px}
+.brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
+.ws{display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--ink-2)}
+.nav{display:flex;flex-direction:column}
+.nav button{padding:7px 0;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
+.nav button[aria-current]{color:var(--ink);font-weight:700}
+.nav button[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;background:var(--ink)}
+.ledger{display:flex;flex-direction:column}
+.ledger h5{margin:0 0 6px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.lr{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:13px;white-space:nowrap}
+.lr .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.lr.total{margin-top:4px;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
+.neg{color:var(--red-text)}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+.me{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-2)}
+
+.main{display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.month{display:flex;align-items:center;gap:4px}
+.month h3{margin:0 8px;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;white-space:nowrap}
+.arrow{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
+.facts b{color:var(--ink);font-weight:600}
+
+/* Ready to assign */
+.rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
+.rta .amt.low{color:var(--red-text)}
+.btn{min-height:38px;padding:0 14px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+
+.bar-tools{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;gap:20px}
+.tabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);white-space:nowrap}
+.tabs button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.acts{display:flex;gap:8px;padding-bottom:8px;margin-left:auto}
+.notice{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--red-text);border-bottom:1px solid var(--rule-soft)}
+.notice .plain{color:var(--red-text);text-decoration:underline;text-underline-offset:3px}
+
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 118px 118px 138px;align-items:center;column-gap:0}
+.th{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);align-items:end}
+.th .t{display:flex;flex-direction:column;align-items:flex-end;padding-right:10px;gap:1px}
+.th .t .n{font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600;font-stretch:100%}
+.gr{padding-top:18px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%;font-size:14px;letter-spacing:.2px}
+.gr button{display:flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:transparent;font-weight:700;text-align:left}
+.gr button svg{transition:transform .15s}
+.gr button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .r{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.r{text-align:right;padding-right:10px}
+.row{width:100%;min-height:46px;padding:6px 0 6px 22px;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.row:hover{background:var(--paper-2)}
+.row[aria-pressed="true"]{background:var(--pen-soft)}
+.row .r{color:var(--ink-2)}
+.cn{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn b{font-weight:500}
+.goal{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.goal.need{color:var(--warn);font-weight:600}
+.meter{display:block;width:84px;height:2px;background:var(--rule)}
+.meter i{display:block;height:2px;background:var(--pen)}
+.goal.need .meter i{background:var(--warn)}
+.av{display:flex;justify-content:flex-end}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px;min-width:96px;padding:3px 10px;font-weight:600}
+.amt-cell.zero{color:var(--muted);font-weight:500}
+.amt-cell.cash{background:var(--red);color:var(--red-ink);border-radius:2px}
+.amt-cell.credit{background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 5px,color-mix(in srgb,var(--hatch) 32%,var(--hatch-bg)) 5px 7px);color:var(--hatch-ink);border:1px solid var(--hatch);border-radius:2px}
+.tag{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.empty{padding:32px 0;color:var(--muted)}
+
+.insp{display:flex;flex-direction:column;gap:20px;padding:22px 24px;border-left:1px solid var(--rule);background:var(--paper)}
+.where{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.insp h4,.ph-detail h4{margin:2px 0 0;font-size:26px;font-weight:700;font-stretch:78%;letter-spacing:-.3px;line-height:1.1}
+.big{font-size:34px;font-weight:700;font-stretch:85%;line-height:1}
+.big.cash{color:var(--red-text)} .big.credit{color:var(--warn)} .big.zero{color:var(--muted)}
+.state-l{font-weight:600}
+.explain{margin:0;color:var(--ink-2);line-height:1.55}
+.cover{display:flex;flex-direction:column;gap:8px;padding:14px;background:var(--paper-2);border:1px solid var(--rule)}
+.cover label{font-weight:600}
+.cover select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.sec{display:flex;flex-direction:column;gap:4px}
+.sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.sec h5 .plain{text-transform:none;letter-spacing:0;font-stretch:100%;font-size:13px}
+.qa{display:flex;align-items:baseline;gap:6px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left;color:var(--pen)}
+.qa .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
+.qa .n{color:var(--ink-2)}
+.tx{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.tx small{color:var(--muted);font-size:12px}
+.tx span small{display:block}
+.meter.wide{width:100%;height:3px}
+.meter.wide i{height:3px}
+
+/* Phone */
+.phones{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;padding:24px 0}
+.phone{position:relative;width:390px;max-width:100%;height:800px;border:1px solid var(--rule);border-radius:30px;background:var(--paper);overflow:hidden}
+.ph-in{height:100%;overflow-y:auto;padding:20px 16px 100px}
+.ph-top{display:flex;align-items:center;justify-content:space-between}
+.ph-top h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%;text-align:center}
+.ph-top small{display:block;text-align:center;color:var(--muted);font-size:12px}
+.ph-rta{margin-top:14px}
+.ph-rta .amt{font-size:26px}
+.ph-facts{display:flex;justify-content:space-between;gap:10px;margin:12px 0 4px;font-size:13px;color:var(--muted)}
+.ph-facts b{color:var(--ink)}
+.ph-facts .plain{color:var(--red-text)}
+.pg{display:flex;justify-content:space-between;padding:16px 0 6px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
+.pg .n{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
+.pc{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.pc .amt-cell{min-width:0}
+.pc b{font-weight:500;font-size:15px}
+.tabbar{position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;height:76px;padding:0 6px 14px;border-top:1px solid var(--rule);background:var(--paper)}
+.tabbar button{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:48px;justify-content:center;border:0;background:transparent;color:var(--muted);font-size:11px}
+.tabbar button[aria-current]{color:var(--ink);font-weight:700}
+.tabbar .add{justify-self:center;width:52px;height:44px;border-radius:4px;background:var(--pen);color:var(--pen-ink)}
+.ph-note{max-width:380px;display:flex;flex-direction:column;gap:10px;color:var(--ink-2)}
+.ph-note h3{margin:0;font-size:18px;font-weight:700;font-stretch:78%}
+.ph-note ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+
+/* Counts on the filters */
+.tabs button{display:inline-flex;align-items:center;gap:7px}
+.count{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:10px;background:var(--rule-soft);color:var(--ink-2);font-size:12px;font-weight:700;font-stretch:100%}
+.count.over{background:var(--red);color:var(--red-ink)}
+.count.under{background:var(--amber);color:var(--amber-ink)}
+.count.none{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
+
+/* Selectable groups */
+.gr .gh{display:flex;align-items:center;gap:2px}
+.gr .chev{display:inline-flex;align-items:center;justify-content:center;width:28px;min-height:32px;padding:0;border:0;background:transparent}
+.gr .chev svg{transition:transform .15s}
+.gr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.gr .gname{min-height:32px;padding:0 6px;border:0;background:transparent;font-weight:700;text-align:left;border-radius:2px}
+.gr .gname:hover{text-decoration:underline;text-underline-offset:3px}
+.gr.on{background:var(--pen-soft)}
+.gr .flag{margin-left:8px}
+.jump{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.jump:hover b{text-decoration:underline;text-underline-offset:3px}
+.jump b{font-weight:500}
+.jump .amt-cell{min-width:0}
+.gstats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.gstats div{display:flex;flex-direction:column;gap:2px;padding:10px;background:var(--paper)}
+.gstats small{font-size:12px;color:var(--muted)}
+.gstats b{font-size:16px;font-stretch:85%;white-space:nowrap}
+.gstats b.bad{color:var(--red-text)} .gstats b.warn{color:var(--warn)}
+
+/* Phone: collapsible groups and detail screen */
+.pg{align-items:center;padding:12px 0 4px}
+.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-weight:700;font-stretch:78%;text-align:left}
+.pg button svg{transition:transform .15s}
+.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pc{cursor:pointer}
+.pc .go{color:var(--muted);flex-shrink:0}
+.ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
+.ph-detail{display:flex;flex-direction:column;gap:18px}
+.closer{align-self:flex-end;font-size:13px}
+.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+.types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
+.types legend{padding:0 0 6px;font-weight:600}
+.opt{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule-soft);cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--pen)}
+.opt b{font-weight:600}
+.opt small{display:block;margin-top:2px;color:var(--muted);font-size:13px;line-height:1.4}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-weight:600}
+.field select{min-height:40px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in{display:flex;align-items:center;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.money-in:focus-within{outline:2px solid var(--pen);outline-offset:1px}
+.money-in input{flex:1;min-width:0;min-height:40px;padding:0 10px;border:0;background:transparent;font-variant-numeric:tabular-nums;font-size:16px;outline:none}
+.money-in span{padding:0 10px;color:var(--muted)}
+.preview{padding:12px 14px;border:1px solid var(--rule);background:var(--paper-2);line-height:1.6}
+.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.danger{color:var(--red-text);margin-left:auto}
+.goal-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.goal-row > span:first-child{display:flex;flex-direction:column}
+.goal-row b{font-weight:500}
+.goal-row small{color:var(--muted);font-size:12px}
+.goal-row:hover b{text-decoration:underline;text-underline-offset:3px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+
+:root{ --s1:#2a78d6; --s2:#1baf7a; --band:#E4E6EF; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --s1:#3987e5; --s2:#199e70; --band:#262B3A; } }
+:root[data-theme="dark"]{ --s1:#3987e5; --s2:#199e70; --band:#262B3A; }
+.desk.pf{grid-template-columns:230px minmax(0,1fr)}
+.desk.pf.withpanel{grid-template-columns:230px minmax(0,1fr) 360px}
+.pf-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.pf-head h3{margin:0;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px}
+.pf-head .sub{margin-top:8px;color:var(--muted)}
+.figs{display:flex;flex-wrap:wrap;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
+.figs div{display:flex;flex-direction:column;gap:2px;padding:10px 16px;border-right:1px solid var(--rule)}
+.figs div:last-child{border-right:0}
+.figs small{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.figs b{font-size:20px;font-stretch:85%}
+.figs .big b{font-size:26px}
+.subtabs{display:flex;gap:22px;margin-top:22px;border-bottom:1px solid var(--rule)}
+.subtabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.subtabs button[aria-selected="true"]{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.pane{display:flex;flex-direction:column;gap:22px;padding-top:20px}
+.note-line{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--rule-soft);color:var(--warn)}
+.note-line.ok{color:var(--ink-2)}
+.note-line b{font-weight:700}
+.two-col{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:28px;align-items:start}
+.card-h{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 8px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+.card-h .plain{text-transform:none;letter-spacing:0;font-stretch:100%;font-size:13px}
+.legend2{display:flex;gap:16px;font-size:13px;color:var(--ink-2)}
+.legend2 span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:18px;height:0;border-top:2px solid}
+.chart{position:relative}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart .axis{fill:var(--muted);font-size:11px;font-family:var(--font)}
+.chart .grid{stroke:var(--rule-soft);stroke-width:1}
+.chart .tip{position:absolute;pointer-events:none;padding:8px 10px;border:1px solid var(--rule-strong);background:var(--paper);font-size:12px;line-height:1.5;white-space:nowrap}
+.chart .tip b{font-weight:700}
+table.t{border-collapse:collapse;width:100%;font-size:14px}
+table.t th{padding:8px 8px 6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);text-align:left}
+table.t td{padding:8px;border-bottom:1px solid var(--rule-soft)}
+table.t .r{text-align:right}
+table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:1px solid var(--rule)}
+.pos{color:var(--ink)} .negv{color:var(--red-text)}
+.gauge{position:relative;height:26px}
+.gauge .track{position:absolute;left:0;right:0;top:11px;height:4px;background:var(--rule-soft)}
+.gauge .bandz{position:absolute;top:6px;height:14px;background:var(--band)}
+.gauge .tgt{position:absolute;top:3px;width:2px;height:20px;background:var(--ink)}
+.gauge .cur{position:absolute;top:7px;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--s1);box-shadow:0 0 0 2px var(--paper)}
+.gauge .cur.out{background:var(--amber)}
+.alloc-row{display:grid;grid-template-columns:minmax(0,1.1fr) 66px 66px minmax(160px,1.6fr) 120px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-soft)}
+.alloc-row.sub{padding-left:18px;color:var(--ink-2)}
+.alloc-row .st{font-size:12px;font-weight:700;font-stretch:78%;letter-spacing:.3px;text-transform:uppercase}
+.alloc-row .st.out{color:var(--warn)}
+.alloc-row .st.in{color:var(--muted)}
+.alloc-head{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)}
+.pct-in{display:flex;align-items:center;gap:4px}
+.pct-in input{width:62px;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);text-align:right;font-variant-numeric:tabular-nums}
+.sumline{display:flex;justify-content:space-between;padding:8px 0;font-weight:600}
+.sumline .bad{color:var(--red-text)}
+.inst{display:flex;flex-wrap:wrap;gap:6px}
+.inst span{padding:2px 8px;border:1px solid var(--rule);border-radius:2px;font-size:12px;color:var(--ink-2)}
+.segs{display:flex;border:1px solid var(--rule);border-radius:3px;overflow:hidden;align-self:flex-start;flex-wrap:wrap}
+.segs label{display:flex;align-items:center;justify-content:center;min-height:38px;padding:0 14px;cursor:pointer;border-right:1px solid var(--rule);font-weight:500}
+.segs label:last-child{border-right:0}
+.segs input{position:absolute;opacity:0;pointer-events:none}
+.segs label:has(input:checked){background:var(--ink);color:var(--paper);font-weight:700}
+.segs label:has(input:focus-visible){outline:2px solid var(--pen);outline-offset:-2px}
+.ctrls{display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end}
+.ctrls .field select,.ctrls .field input[type=text]{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.check{display:flex;align-items:center;gap:8px;cursor:pointer}
+.check input{accent-color:var(--pen);width:16px;height:16px}
+.trade{font-weight:700}
+.trade.buy{color:var(--ink)}
+.trade.sell{color:var(--ink)}
+.kind-tag{display:inline-block;min-width:54px;font-size:11px;font-weight:700;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase}
+.kind-tag.buy{color:var(--pen)} .kind-tag.sell{color:var(--warn)}
+.hint{font-size:13px;color:var(--muted)}
+.hint.bad{color:var(--red-text);font-weight:600}
+.presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.preset{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);text-align:left}
+.preset[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.preset small{color:var(--muted);font-size:12px;line-height:1.4}
+.field input[type=text],.field input[type=date],.field select{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.twof{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.ph-card{display:flex;flex-direction:column;gap:10px}
+.ph-card h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%}
+.ph-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.ph-item small{display:block;color:var(--muted);font-size:12px}
+.acc-block{display:flex;flex-direction:column}
+.acc-block h4{display:flex;justify-content:space-between;align-items:baseline;margin:0;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:16px;font-weight:700;font-stretch:78%}
+.split-bar{display:flex;height:14px;margin:10px 0 4px;gap:2px}
+.split-bar i{display:block;height:100%}
+.split-bar i.lt{background:var(--s1)} .split-bar i.tp{background:var(--s2)} .split-bar i.un{background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)}
+.sw2{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+.unas{color:var(--warn);font-weight:600}
+.assign{display:flex;gap:6px;align-items:center}
+.assign select{min-height:32px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.wiz{display:flex;flex-direction:column;gap:22px;max-width:760px}
+.wiz h3{margin:0;font-size:36px;line-height:1.05;font-weight:700;font-stretch:72%;letter-spacing:-.4px}
+.wiz .steps{display:flex;margin:0;padding:0;list-style:none;border-bottom:1px solid var(--rule)}
+.wiz .steps li{display:flex;align-items:center;gap:8px;padding:8px 18px 9px 0;margin-right:18px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.wiz .steps li .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--rule);border-radius:50%;font-size:12px;font-weight:700}
+.wiz .steps li.done .num{background:var(--ink-2);border-color:var(--ink-2);color:var(--paper)}
+.wiz .steps li.now{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.opt2{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:3px;cursor:pointer}
+.opt2:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.opt2 input{margin-top:3px;accent-color:var(--pen)}
+.opt2 small{display:block;color:var(--muted);font-size:13px}
+.opt2.off{opacity:.55;cursor:default}
+.take{display:grid;grid-template-columns:minmax(0,1fr) 110px 110px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-soft)}
+.take input{width:100%;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);text-align:right}
+.witem{display:grid;grid-template-columns:minmax(0,1fr) 90px minmax(0,1.2fr) 36px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.witem input[type=text]{width:100%;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.witem select{width:100%;min-height:34px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.rm{width:34px;height:34px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--muted)}
+.ph-pick{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.chip2{min-height:34px;padding:0 12px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-size:14px;white-space:nowrap}
+.chip2[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.ph-alert{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid var(--amber);background:transparent;text-align:left;color:var(--ink)}
+.ph-alert small{display:block;color:var(--muted);font-size:12px}
+.ph-chart svg{display:block;width:100%;height:auto}
+.ph-chart .axis{fill:var(--muted);font-size:10px;font-family:var(--font)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, portfolio mockup: overview with the monthly history, target allocation with thresholds, mechanical rebalancing, linked accounts (one brokerage account holding several portfolios), the guided setup of a new portfolio and trade entry. Instrument names are fictional.</p>
+    <div class="views" role="tablist" aria-label="Vista">
+      <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
+      <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
+    </div>
+  </div>
+
+  <section id="view-desk" role="tabpanel" aria-labelledby="tab-desk">
+    <div class="scroller">
+      <div class="desk pf" id="desk">
+        <nav class="side" aria-label="Main (mockup)">
+          <div class="brand">
+            <b>envelope</b>
+            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          </div>
+          <div class="nav">
+            <button type="button">Budget</button>
+            <button type="button">Conti</button>
+            <button type="button" aria-current="page">Portafoglio</button>
+          </div>
+          <div id="pf-side" style="display:flex;flex-direction:column;gap:26px"></div>
+          <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+        </nav>
+        <div class="main">
+          <div id="pf-normal">
+            <div class="pf-head">
+              <div><h3>Lungo termine</h3><div class="sub">Nel conto Broker ETF, insieme a Terzo pilastro · prezzi al 25 settembre 2026 · prossimo controllo il 1° ottobre</div></div>
+              <div class="figs" id="figs"></div>
+            </div>
+            <div class="subtabs" role="tablist" aria-label="Sezioni del portafoglio" id="subtabs"></div>
+            <div id="pane"></div>
+          </div>
+          <div id="pf-wizard" hidden></div>
+        </div>
+        <aside class="insp" aria-label="Nuova operazione" id="panel" hidden></aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-phone" role="tabpanel" aria-labelledby="tab-phone" hidden>
+    <div class="phones">
+      <div class="phone"><div class="ph-in" id="ph"></div></div>
+      <div class="ph-note">
+        <h3>On the phone</h3>
+        <ul>
+          <li>The Portfolio tab shows the value with a small chart (6 or 12 months), the items against their targets and the positions; the chips at the top switch portfolio.</li>
+          <li>The portfolio sends no continuous alerts: one notification on the first day of the month, and only when an item is outside its threshold. The notification opens the monthly check.</li>
+          <li>Trades are placed with the broker; they are recorded here afterwards, with the real prices.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
+  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  function f(c) { return nf.format(c / 100).replace('-', '−'); }
+  function f0(c) { return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100).replace('-', '−'); }
+  function pct(x, d) { return (x * 100).toLocaleString('it-IT', { minimumFractionDigits: d === undefined ? 1 : d, maximumFractionDigits: d === undefined ? 1 : d }).replace('-', '−') + '%'; }
+  function signed(c) { return (c > 0 ? '+' : '') + f(c); }
+  function parseAmount(str) {
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
+    return Math.round(Number(clean) * 100);
+  }
+
+  // Instruments (fictional names), prices in cents.
+  var INST = [
+    { id: 'mondo', name: 'ETF azioni mondo', code: 'MONDO', qty: 239, price: 9840, avg: 8610, item: 'world' },
+    { id: 'emerg', name: 'ETF azioni mercati emergenti', code: 'EMERG', qty: 131, price: 3125, avg: 2980, item: 'em' },
+    { id: 'obbl', name: 'ETF obbligazioni governative euro', code: 'OBBL', qty: 98, price: 11280, avg: 11450, item: 'bonds' },
+    { id: 'oro', name: 'ETC oro fisico', code: 'ORO', qty: 83, price: 4210, avg: 3620, item: 'gold' }
+  ];
+  var CASH = 1995;
+  // The Broker ETF account holds several portfolios: every unit belongs to one portfolio, or is not assigned yet.
+  var PF = [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro']];
+  var HOLD = { mondo: { tp: 60, un: 0 }, emerg: { tp: 0, un: 0 }, obbl: { tp: 40, un: 25 }, oro: { tp: 0, un: 20 } };
+  var OTHER_PF = [['Fondo pensione', 1892000, 'conto Fondo pensione']];
+  // Allocation tree: top-level items with optional children. Targets in percent.
+  var S = {
+    tab: 'overview', panel: false, wizard: null, created: [], phScreen: 'home', phPeriod: 12,
+    items: [
+      { id: 'stocks', name: 'Azioni', target: 60, children: [{ id: 'world', name: 'Mondo', target: 50 }, { id: 'em', name: 'Mercati emergenti', target: 10 }] },
+      { id: 'bonds', name: 'Obbligazioni', target: 30 },
+      { id: 'gold', name: 'Oro', target: 10 }
+    ],
+    rule: '525', preset: 'bands525', mode: 'contrib', contribStr: '500,00', minTradeStr: '100,00', fractional: false,
+    trade: { type: 'buy', inst: 'obbl', date: '2026-09-26', qtyStr: '3', priceStr: '112,80', feesStr: '2,95', saved: null }
+  };
+  var PRESETS = [
+    ['monthly', 'Solo controllo mensile', 'Ogni mese riporta tutto agli obiettivi, qualunque sia lo scostamento.', 'abs5', 'full'],
+    ['bands5', 'Bande di 5 punti', 'Interviene solo se una voce si sposta di più di 5 punti, e la riporta all’obiettivo.', 'abs5', 'full'],
+    ['bands525', 'Regola 5/25', 'Soglia pari al più stretto tra ±5 punti e ±25% dell’obiettivo.', '525', 'full'],
+    ['contrib', 'Solo con i versamenti', 'Non vende mai: i nuovi soldi vanno alle voci sotto l’obiettivo.', '525', 'contrib'],
+    ['edge', 'Operazioni minime', 'Fuori soglia, riporta la voce solo al bordo della sua banda.', '525', 'edge']
+  ];
+  var RULES = { abs5: 'Assoluta: ±5 punti', rel20: 'Relativa: ±20% dell’obiettivo', '525': 'Regola 5/25: la più stretta tra ±5 punti e ±25%' };
+
+  function leaves() {
+    var out = [];
+    S.items.forEach(function (it) {
+      if (it.children) it.children.forEach(function (c) { out.push({ id: c.id, name: it.name + ' › ' + c.name, target: c.target / 100, top: it }); });
+      else out.push({ id: it.id, name: it.name, target: it.target / 100, top: it });
+    });
+    return out;
+  }
+  function valueOf(itemId) { return INST.filter(function (i) { return i.item === itemId; }).reduce(function (s, i) { return s + i.qty * i.price; }, 0); }
+  function total() { return INST.reduce(function (s, i) { return s + i.qty * i.price; }, 0) + CASH; }
+  function band(t) {
+    var w = S.rule === 'abs5' ? 0.05 : S.rule === 'rel20' ? t * 0.2 : Math.min(0.05, t * 0.25);
+    return [Math.max(0, t - w), Math.min(1, t + w)];
+  }
+  function topValue(it) { return it.children ? it.children.reduce(function (s, c) { return s + valueOf(c.id); }, 0) : valueOf(it.id); }
+  function status() {
+    var V = total();
+    return S.items.map(function (it) {
+      var t = it.target / 100, v = topValue(it), w = v / V, b = band(t);
+      return { it: it, t: t, v: v, w: w, band: b, out: w < b[0] || w > b[1] };
+    });
+  }
+  function sums() {
+    var top = S.items.reduce(function (s, it) { return s + Number(it.target || 0); }, 0);
+    var subs = S.items.filter(function (it) { return it.children; }).map(function (it) { return { it: it, sum: it.children.reduce(function (s, c) { return s + Number(c.target || 0); }, 0) }; });
+    return { top: top, subs: subs, ok: Math.abs(top - 100) < 1e-9 && subs.every(function (x) { return Math.abs(x.sum - x.it.target) < 1e-9; }) };
+  }
+
+  // Rebalancing: amounts per leaf item, then whole shares per instrument.
+  function plan() {
+    var V = total() - CASH, contrib = (parseAmount(S.contribStr) || 0) + CASH, W = V + contrib;
+    var minTrade = parseAmount(S.minTradeStr) || 0;
+    var L = leaves(), deltas = {};
+    var st = status(), outTop = {};
+    st.forEach(function (x) { outTop[x.it.id] = x; });
+    if (S.mode === 'full') {
+      L.forEach(function (l) { deltas[l.id] = l.target * W - valueOf(l.id); });
+    } else if (S.mode === 'contrib') {
+      var need = {}, sumNeed = 0;
+      L.forEach(function (l) { need[l.id] = Math.max(0, l.target * W - valueOf(l.id)); sumNeed += need[l.id]; });
+      L.forEach(function (l) { deltas[l.id] = sumNeed >= contrib ? contrib * need[l.id] / (sumNeed || 1) : need[l.id] + (contrib - sumNeed) * l.target; });
+    } else {
+      var fixed = 0, rest = [];
+      L.forEach(function (l) {
+        var top = outTop[l.top.id], share = l.top.children ? (l.target / (l.top.target / 100)) : 1, v = valueOf(l.id);
+        if (top.w > top.band[1]) { deltas[l.id] = top.band[1] * share * W - v; fixed += deltas[l.id]; }
+        else if (top.w < top.band[0]) { deltas[l.id] = top.band[0] * share * W - v; fixed += deltas[l.id]; }
+        else rest.push(l);
+      });
+      var free = contrib - fixed, needR = {}, sumR = 0;
+      rest.forEach(function (l) { needR[l.id] = Math.max(0, l.target * W - valueOf(l.id)); sumR += needR[l.id]; });
+      rest.forEach(function (l) { deltas[l.id] = free >= 0 ? (sumR ? free * needR[l.id] / sumR : free * l.target) : 0; });
+    }
+    // Drop trades below the minimum and give their money to the other buys.
+    var small = 0;
+    L.forEach(function (l) { if (Math.abs(deltas[l.id]) < minTrade) { if (deltas[l.id] > 0) small += deltas[l.id]; deltas[l.id] = 0; } });
+    var buys = L.filter(function (l) { return deltas[l.id] > 0; }), sumBuys = buys.reduce(function (s, l) { return s + deltas[l.id]; }, 0);
+    buys.forEach(function (l) { deltas[l.id] += sumBuys ? small * deltas[l.id] / sumBuys : 0; });
+    var rows = L.map(function (l) {
+      var inst = INST.filter(function (i) { return i.item === l.id; })[0];
+      var d = deltas[l.id], q = S.fractional ? Math.round(d / inst.price * 1000) / 1000 : (d >= 0 ? Math.floor(d / inst.price) : -Math.ceil(-d / inst.price));
+      return { l: l, inst: inst, delta: d, qty: q, amount: Math.round(q * inst.price) };
+    });
+    var spent = rows.reduce(function (s, r) { return s + r.amount; }, 0);
+    return { rows: rows, contrib: contrib, left: contrib - spent, W: W };
+  }
+
+  // Monthly history: portfolio value and cumulative net contributions (cents).
+  var MONTHS = ['ott 25', 'nov 25', 'dic 25', 'gen 26', 'feb 26', 'mar 26', 'apr 26', 'mag 26', 'giu 26', 'lug 26', 'ago 26', 'set 26'];
+  var VALUES = [3490000, 3580000, 3610000, 3695000, 3720000, 3640000, 3790000, 3880000, 3960000, 4030000, 4105000, 4218000];
+  var CONTRIB = MONTHS.map(function (m, i) { return 3400000 + i * 50000; });
+  function monthlyReturns() {
+    return VALUES.map(function (v, i) { if (!i) return null; var prev = VALUES[i - 1], flow = CONTRIB[i] - CONTRIB[i - 1]; return (v - prev - flow) / prev; });
+  }
+  function twr() { return monthlyReturns().slice(1).reduce(function (p, r) { return p * (1 + r); }, 1) - 1; }
+
+  function chartSvg() {
+    var W = 640, H = 240, pl = 64, pr = 76, pt = 12, pb = 28;
+    var lo = 3300000, hi = 4300000;
+    var x = function (i) { return pl + i * (W - pl - pr) / (MONTHS.length - 1); };
+    var y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
+    var ticks = [3400000, 3600000, 3800000, 4000000, 4200000];
+    var path = function (arr) { return arr.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' '); };
+    var last = MONTHS.length - 1;
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Valore del portafoglio e versamenti netti, ottobre 2025 – settembre 2026">' +
+      ticks.map(function (t) { return '<line class="grid" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(t) + '" y2="' + y(t) + '"></line><text class="axis" x="' + (pl - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + f0(t) + '</text>'; }).join('') +
+      MONTHS.map(function (m, i) { return i % 2 === 1 || i === last ? '<text class="axis" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + m + '</text>' : ''; }).join('') +
+      '<path d="' + path(CONTRIB) + '" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="5 4"></path>' +
+      '<path d="' + path(VALUES) + '" fill="none" stroke="var(--s1)" stroke-width="2"></path>' +
+      '<circle cx="' + x(last) + '" cy="' + y(VALUES[last]) + '" r="4" fill="var(--s1)" stroke="var(--paper)" stroke-width="2"></circle>' +
+      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(VALUES[last]) + 4) + '" style="fill:var(--ink)">Valore</text>' +
+      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(CONTRIB[last]) + 4) + '" style="fill:var(--ink-2)">Versato</text>' +
+      '<line id="xh" x1="0" x2="0" y1="' + pt + '" y2="' + (H - pb) + '" stroke="var(--muted)" stroke-width="1" visibility="hidden"></line>' +
+      '<rect x="' + pl + '" y="' + pt + '" width="' + (W - pl - pr) + '" height="' + (H - pt - pb) + '" fill="transparent" id="hit" data-w="' + W + '" data-pl="' + pl + '" data-pr="' + pr + '"></rect></svg>';
+  }
+
+  function figsHtml() {
+    var V = total(), paid = CONTRIB[CONTRIB.length - 1], gain = V - paid;
+    return '<div class="big"><small>Valore</small><b class="n">' + f(V) + '</b></div><div><small>Versato</small><b class="n">' + f(paid) + '</b></div>' +
+      '<div><small>Guadagno</small><b class="n' + (gain < 0 ? ' negv' : '') + '">' + signed(gain) + '</b></div><div><small>Rendimento 12 mesi</small><b class="n">' + pct(twr()) + '</b></div>';
+  }
+  function gauge(w, t, b, out) {
+    var scale = function (v) { return Math.max(0, Math.min(100, v / 0.8 * 100)); };
+    return '<div class="gauge" aria-hidden="true"><span class="track"></span><span class="bandz" style="left:' + scale(b[0]) + '%;width:' + (scale(b[1]) - scale(b[0])) + '%"></span>' +
+      '<span class="tgt" style="left:' + scale(t) + '%"></span><span class="cur' + (out ? ' out' : '') + '" style="left:' + scale(w) + '%"></span></div>';
+  }
+  function allocTable(editable) {
+    var V = total(), st = status();
+    var h = '<div class="alloc-row alloc-head"><span>Voce</span><span class="r">Obiettivo</span><span class="r">Attuale</span><span>Obiettivo, soglia e attuale</span><span>Stato</span></div>';
+    st.forEach(function (x) {
+      h += '<div class="alloc-row"><b style="font-weight:600">' + esc(x.it.name) + '</b>' +
+        (editable ? '<span class="pct-in"><label class="sr" for="t-' + x.it.id + '">Obiettivo ' + esc(x.it.name) + '</label><input type="text" inputmode="decimal" id="t-' + x.it.id + '" data-tgt="' + x.it.id + '" value="' + x.it.target + '">%</span>' : '<span class="r n">' + pct(x.t, 0) + '</span>') +
+        '<span class="r n">' + pct(x.w) + '</span>' + gauge(x.w, x.t, x.band, x.out) +
+        '<span class="st ' + (x.out ? 'out' : 'in') + '">' + (x.out ? (x.w > x.band[1] ? 'Sopra la soglia' : 'Sotto la soglia') : 'Dentro la soglia') + '<br><span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">' + pct(x.band[0], 1) + ' – ' + pct(x.band[1], 1) + '</span></span></div>';
+      (x.it.children || []).forEach(function (c) {
+        var v = valueOf(c.id), w = v / V;
+        h += '<div class="alloc-row sub"><span>' + esc(c.name) + '</span>' +
+          (editable ? '<span class="pct-in"><label class="sr" for="t-' + c.id + '">Obiettivo ' + esc(c.name) + '</label><input type="text" inputmode="decimal" id="t-' + c.id + '" data-sub="' + x.it.id + ':' + c.id + '" value="' + c.target + '">%</span>' : '<span class="r n">' + pct(c.target / 100, 0) + '</span>') +
+          '<span class="r n">' + pct(w) + '</span><span class="inst">' + INST.filter(function (i) { return i.item === c.id; }).map(function (i) { return '<span>' + i.code + '</span>'; }).join('') + '</span><span></span></div>';
+      });
+    });
+    return h;
+  }
+
+  function overview() {
+    var st = status(), outs = st.filter(function (x) { return x.out; });
+    var note = outs.length
+      ? '<div class="note-line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path></svg><span>' +
+        outs.map(function (x) { return '<b>' + esc(x.it.name) + '</b> al ' + pct(x.w) + ', fuori dalla soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]); }).join('; ') + '.</span><button type="button" class="plain" data-tab="rebal">Per tornare ai tuoi obiettivi</button></div>'
+      : '<div class="note-line ok">Tutte le voci sono dentro le soglie.</div>';
+    var rets = monthlyReturns();
+    var rows = MONTHS.map(function (m, i) { return { m: m, v: VALUES[i], c: CONTRIB[i], r: rets[i] }; }).reverse();
+    var pos = INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<tr><td><b style="font-weight:500">' + esc(i.name) + '</b><div class="hint">' + i.code + '</div></td><td class="r n">' + i.qty + '</td><td class="r n">' + f(i.price) + '</td><td class="r n">' + f(v) + '</td><td class="r n ' + (g < 0 ? 'negv' : '') + '">' + signed(g) + '</td></tr>'; }).join('') +
+      '<tr><td>Liquidità nel conto</td><td></td><td></td><td class="r n">' + f(CASH) + '</td><td></td></tr>';
+    return note +
+      '<div class="two-col"><div><div class="card-h"><span>Andamento</span><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Valore</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Versamenti netti</span></span></div>' +
+      '<div class="chart" id="chart">' + chartSvg() + '<div class="tip" id="tip" hidden></div></div></div>' +
+      '<div><div class="card-h"><span>Mese per mese</span></div><table class="t"><thead><tr><th>Mese</th><th class="r">Valore</th><th class="r">Versato</th><th class="r">Rendimento</th></tr></thead><tbody>' +
+      rows.slice(0, 7).map(function (r) { return '<tr><td>' + r.m + '</td><td class="r n">' + f0(r.v) + '</td><td class="r n">' + f0(r.c) + '</td><td class="r n ' + (r.r < 0 ? 'negv' : '') + '">' + (r.r === null ? '–' : pct(r.r)) + '</td></tr>'; }).join('') +
+      '</tbody></table><p class="hint" style="margin:6px 0 0">Rendimento ponderato nel tempo: misura la strategia senza l’effetto dei versamenti.</p></div></div>' +
+      '<div><div class="card-h"><span>Allocazione</span><button type="button" class="plain" data-tab="alloc">Modifica</button></div>' + allocTable(false) + '</div>' +
+      '<div><div class="card-h"><span>Posizioni</span><button type="button" class="plain" data-trade="1">Registra un’operazione</button></div><table class="t"><thead><tr><th>Strumento</th><th class="r">Quote</th><th class="r">Prezzo</th><th class="r">Valore</th><th class="r">Guadagno</th></tr></thead><tbody>' + pos + '</tbody></table></div>';
+  }
+
+  function allocPane() {
+    var sm = sums();
+    return '<p class="hint" style="margin:0;max-width:75ch">Gli obiettivi di ogni livello devono sommare al 100% (le sottovoci alla loro voce). Le soglie decidono quando il controllo mensile segnala una voce; l’app lavora solo sugli strumenti che hai messo qui.</p>' +
+      '<div>' + allocTable(true) +
+      '<div class="sumline"><span>Totale</span><span class="n ' + (Math.abs(sm.top - 100) < 1e-9 ? '' : 'bad') + '">' + sm.top.toLocaleString('it-IT') + '%</span></div>' +
+      sm.subs.filter(function (x) { return Math.abs(x.sum - x.it.target) > 1e-9; }).map(function (x) { return '<div class="hint bad">Le sottovoci di ' + esc(x.it.name) + ' sommano a ' + x.sum.toLocaleString('it-IT') + '% invece di ' + x.it.target.toLocaleString('it-IT') + '%.</div>'; }).join('') +
+      (Math.abs(sm.top - 100) > 1e-9 ? '<div class="hint bad">Le voci principali sommano a ' + sm.top.toLocaleString('it-IT') + '%: devono fare 100%.</div>' : '') + '</div>' +
+      '<div class="field" style="max-width:420px"><label for="rule">Soglia</label><select id="rule" data-rule="1">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (S.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
+      '<div><div class="card-h"><span>Parti da una regola</span></div><div class="presets">' + PRESETS.map(function (p) {
+        return '<button type="button" class="preset" data-preset="' + p[0] + '" aria-pressed="' + (S.preset === p[0]) + '"><b>' + p[1] + '</b><small>' + p[2] + '</small></button>';
+      }).join('') + '</div><p class="hint" style="margin:8px 0 0">Sono metodi meccanici e non dicono cosa comprare: impostano soglia e modo di ribilanciare, poi li modifichi come vuoi.</p></div>';
+  }
+
+  function rebalPane() {
+    var sm = sums();
+    if (!sm.ok) return '<div class="hint bad">Sistema prima gli obiettivi nella scheda Allocazione: non sommano al 100%.</div>';
+    var p = plan(), V = total();
+    var modes = [['contrib', 'Solo con i versamenti'], ['full', 'Completo'], ['edge', 'Fino al bordo della soglia']];
+    var rows = p.rows.map(function (r) {
+      var v = valueOf(r.l.id), w = v / V, after = (v + r.amount) / (V - CASH + p.contrib - p.left + p.left);
+      var kind = r.qty > 0 ? '<span class="kind-tag buy">Compra</span>' : r.qty < 0 ? '<span class="kind-tag sell">Vendi</span>' : '<span class="kind-tag">–</span>';
+      return '<tr><td><b style="font-weight:500">' + esc(r.l.name) + '</b><div class="hint">' + r.inst.code + ' · ' + f(r.inst.price) + '</div></td><td class="r n">' + pct(r.l.target, 0) + '</td><td class="r n">' + pct(w) + '</td>' +
+        '<td>' + kind + (r.qty ? '<span class="n trade">' + Math.abs(r.qty).toLocaleString('it-IT') + ' quote</span>' : '') + '</td><td class="r n">' + (r.qty ? f(Math.abs(r.amount)) : '') + '</td><td class="r n">' + pct(after) + '</td></tr>';
+    }).join('');
+    return '<div class="ctrls"><div class="field"><span style="font-weight:600">Modo</span><div class="segs" role="radiogroup" aria-label="Modo di ribilanciamento">' + modes.map(function (m) { return '<label><input type="radio" name="mode" value="' + m[0] + '" data-mode="1"' + (S.mode === m[0] ? ' checked' : '') + '><span>' + m[1] + '</span></label>'; }).join('') + '</div></div>' +
+      '<div class="field"><label for="contrib">Versamento di questo mese</label><span class="money-in" style="width:160px"><input type="text" inputmode="decimal" id="contrib" data-contrib="1" value="' + esc(S.contribStr) + '"><span>€</span></span></div>' +
+      '<div class="field"><label for="mint">Operazione minima</label><span class="money-in" style="width:130px"><input type="text" inputmode="decimal" id="mint" data-mint="1" value="' + esc(S.minTradeStr) + '"><span>€</span></span></div>' +
+      '<label class="check" style="min-height:40px"><input type="checkbox" data-frac="1"' + (S.fractional ? ' checked' : '') + '> Quote frazionate</label></div>' +
+      '<div><div class="card-h"><span>Per tornare ai tuoi obiettivi</span><span class="n" style="text-transform:none;letter-spacing:0;font-stretch:100%">Da investire ' + f(p.contrib) + ' (versamento + ' + f(CASH) + ' di liquidità)</span></div>' +
+      '<table class="t"><thead><tr><th>Voce</th><th class="r">Obiettivo</th><th class="r">Attuale</th><th>Operazione</th><th class="r">Importo</th><th class="r">Dopo</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="hint" style="margin:8px 0 0">Resta in liquidità ' + f(p.left) + '. ' + (S.mode === 'contrib' ? 'Nessuna vendita: i soldi nuovi vanno alle voci sotto l’obiettivo, in proporzione a quanto ne mancano.' : S.mode === 'full' ? 'Compra e vende per riportare ogni voce al suo obiettivo.' : 'Riporta le voci fuori soglia solo al bordo della banda: meno operazioni, meno costi.') + ' Le operazioni sotto il minimo vengono saltate.</p></div>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-trade="1">Registra un’operazione fatta</button><span class="hint">envelope non esegue ordini: fai le operazioni dal tuo broker e registrale qui con i prezzi reali.</span></div>';
+  }
+
+  function tradePanel() {
+    var t = S.trade, qty = Number(String(t.qtyStr).replace(',', '.')), price = parseAmount(t.priceStr), fees = parseAmount(t.feesStr) || 0;
+    var ok = qty > 0 && price !== null;
+    var gross = ok ? Math.round(qty * price) : 0, net = t.type === 'sell' ? gross - fees : gross + fees;
+    var TYPES = [['buy', 'Acquisto'], ['sell', 'Vendita'], ['div', 'Dividendo o cedola'], ['fee', 'Commissione'], ['split', 'Frazionamento'], ['xfer', 'Trasferimento titoli']];
+    if (t.saved) return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">Operazione registrata</span><h4>' + esc(t.saved) + '</h4></div><p class="explain">Le posizioni e l’allocazione sono aggiornate. Il conto Broker ETF riflette il movimento.</p><div class="row-btns"><button type="button" class="btn" data-newtrade="1">Registrane un’altra</button></div>';
+    return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">Lungo termine</span><h4>Nuova operazione</h4></div>' +
+      '<div class="field"><label for="tt">Tipo</label><select id="tt" data-tr="type">' + TYPES.map(function (x) { return '<option value="' + x[0] + '"' + (t.type === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="ti">Strumento</label><select id="ti" data-tr="inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (t.inst === i.id ? ' selected' : '') + '>' + esc(i.name) + ' (' + i.code + ')</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="td">Data</label><input type="date" id="td" data-tr="date" value="' + t.date + '"></div>' +
+      '<div class="twof"><div class="field"><label for="tq">Quote</label><input type="text" inputmode="decimal" id="tq" data-tr="qtyStr" value="' + esc(t.qtyStr) + '"></div>' +
+      '<div class="field"><label for="tp">Prezzo</label><span class="money-in"><input type="text" inputmode="decimal" id="tp" data-tr="priceStr" value="' + esc(t.priceStr) + '"><span>€</span></span></div></div>' +
+      '<div class="field"><label for="tf">Commissioni e tasse</label><span class="money-in"><input type="text" inputmode="decimal" id="tf" data-tr="feesStr" value="' + esc(t.feesStr) + '"><span>€</span></span></div>' +
+      '<div class="sec" id="tr-sum"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Controvalore</span><span class="dots"></span><span class="n">' + f(gross) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>' + (t.type === 'sell' ? 'Entrano nel conto' : 'Escono dal conto') + '</span><span class="dots"></span><span class="n">' + f(net) + '</span></div></div>' +
+      (ok ? '' : '<div class="hint bad">Scrivi quote e prezzo, per esempio 3 e 112,80.</div>') +
+      '<div class="row-btns"><button type="button" class="btn primary" data-savetrade="1"' + (ok && (t.type === 'buy' || t.type === 'sell') ? '' : ' disabled') + '>Registra</button><button type="button" class="btn" data-close="1">Annulla</button></div>' +
+      (t.type !== 'buy' && t.type !== 'sell' ? '<p class="hint">Nel bozzetto si registrano solo acquisti e vendite; gli altri tipi hanno il loro modulo.</p>' : '');
+  }
+
+  function phChart(n) {
+    var W = 340, H = 130, pl = 6, pr = 6, pt = 10, pb = 18;
+    var vals = VALUES.slice(-n), con = CONTRIB.slice(-n), mon = MONTHS.slice(-n);
+    var lo = Math.min.apply(null, con.concat(vals)) * 0.98, hi = Math.max.apply(null, vals) * 1.01;
+    var x = function (i) { return pl + i * (W - pl - pr) / (vals.length - 1); };
+    var y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
+    var path = function (a) { return a.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' '); };
+    var area = path(vals) + ' L' + x(vals.length - 1) + ' ' + (H - pb) + ' L' + x(0) + ' ' + (H - pb) + ' Z';
+    var l = vals.length - 1;
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Valore e versamenti negli ultimi ' + n + ' mesi">' +
+      '<path d="' + area + '" fill="var(--s1)" opacity="0.10"></path>' +
+      '<path d="' + path(con) + '" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="5 4"></path>' +
+      '<path d="' + path(vals) + '" fill="none" stroke="var(--s1)" stroke-width="2"></path>' +
+      '<circle cx="' + x(l) + '" cy="' + y(vals[l]) + '" r="4" fill="var(--s1)" stroke="var(--paper)" stroke-width="2"></circle>' +
+      '<text class="axis" x="' + x(0) + '" y="' + (H - 4) + '">' + mon[0] + '</text><text class="axis" x="' + x(l) + '" y="' + (H - 4) + '" text-anchor="end">' + mon[l] + '</text></svg>';
+  }
+  function phoneHtml() {
+    var st = status(), outs = st.filter(function (x) { return x.out; });
+    if (S.phScreen === 'check') {
+      var saved = S.mode; S.mode = 'contrib'; var p = plan(); S.mode = saved;
+      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portafoglio</button><span class="hint">Notifica del 1° ottobre</span><h3>Controllo di ottobre</h3>' +
+        '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' voce è' : ' voci sono') + ' fuori dalla soglia.' : 'Tutte le voci sono dentro le soglie.') + '</p>' +
+        st.map(function (x) { return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>obiettivo ' + pct(x.t, 0) + ' · soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>'; }).join('') +
+        '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Per tornare ai tuoi obiettivi, con il versamento di ' + f(parseAmount(S.contribStr) || 0) + '</h5>' +
+        p.rows.filter(function (r) { return r.qty; }).map(function (r) { return '<div class="ph-item"><span>' + (r.qty > 0 ? 'Compra ' : 'Vendi ') + Math.abs(r.qty) + ' ' + r.inst.code + '<small>' + esc(r.l.name) + '</small></span><span class="n">' + f(Math.abs(r.amount)) + '</span></div>'; }).join('') +
+        '<button type="button" class="btn primary" style="min-height:48px">Registra le operazioni fatte</button></div>';
+    }
+    var V = total(), paid = CONTRIB[CONTRIB.length - 1], n = S.phPeriod;
+    var change = VALUES[VALUES.length - 1] - VALUES[VALUES.length - n];
+    return '<div class="ph-card"><div class="ph-pick">' + [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro'], ['fp', 'Fondo pensione']].map(function (x) { return '<button type="button" class="chip2" aria-pressed="' + (x[0] === 'lt') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<div><span class="hint">Lungo termine · 25 settembre</span><div style="font-size:34px;font-weight:700;font-stretch:85%" class="n">' + f(V) + '</div>' +
+      '<span class="n" style="font-size:13px;color:var(--ink-2)">' + signed(V - paid) + ' rispetto ai versamenti · ' + signed(change) + ' in ' + n + ' mesi</span></div>' +
+      '<div class="ph-chart">' + phChart(n) + '</div>' +
+      '<div class="row-btns" style="justify-content:space-between"><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Valore</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Versato</span></span>' +
+      '<span class="ph-pick">' + [6, 12].map(function (k) { return '<button type="button" class="chip2" data-php="' + k + '" aria-pressed="' + (n === k) + '">' + k + ' mesi</button>'; }).join('') + '</span></div>' +
+      (outs.length ? '<button type="button" class="ph-alert" data-phs="check"><span><b>Controllo di ottobre</b><small>' + outs.length + (outs.length === 1 ? ' voce fuori soglia' : ' voci fuori soglia') + ': ' + outs.map(function (x) { return esc(x.it.name); }).join(', ') + '</small></span><span>\u203a</span></button>' : '') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Allocazione</h5>' +
+      st.map(function (x) { return '<div><div class="row-btns" style="justify-content:space-between"><b style="font-weight:600">' + esc(x.it.name) + '</b><span class="n" style="' + (x.out ? 'color:var(--warn);font-weight:700' : '') + '">' + pct(x.w) + ' <span class="hint">/ ' + pct(x.t, 0) + '</span></span></div>' + gauge(x.w, x.t, x.band, x.out) + '</div>'; }).join('') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Posizioni</h5>' +
+      INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<div class="ph-item"><span>' + esc(i.name) + '<small>' + i.qty + ' quote · ' + f(i.price) + '</small></span><span style="text-align:right"><span class="n" style="font-weight:600">' + f(v) + '</span><small class="n' + (g < 0 ? ' negv' : '') + '">' + signed(g) + '</small></span></div>'; }).join('') +
+      '</div>';
+  }
+
+  // ---- Sidebar, linked accounts and the new-portfolio setup
+  function tpValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].tp * i.price; }, 0); }
+  function unValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].un * i.price; }, 0); }
+  function sideHtml() {
+    var lt = total(), tp = tpValue(), un = unValue();
+    var extra = (S.created || []).map(function (c) { return '<div class="lr"><span>' + esc(c.name) + '</span><span class="dots"></span><span class="n">' + (c.value / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>'; }).join('');
+    return '<div class="ledger"><h5>Portafogli</h5>' +
+      '<div class="lr" style="font-weight:700"><span>Lungo termine</span><span class="dots"></span><span class="n">' + (lt / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Terzo pilastro</span><span class="dots"></span><span class="n">' + (tp / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div>' + extra +
+      '<button type="button" class="plain" style="margin-top:6px;text-align:left" data-wiz="start">+ Nuovo portafoglio</button></div>' +
+      '<div class="ledger"><h5>Conti</h5>' +
+      '<div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">' + ((lt + tp + un + createdValue()) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      (un ? '<div class="lr" style="padding-left:12px;font-size:12px"><span class="unas">non assegnati</span><span class="dots"></span><span class="n unas">' + (un / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' : '') +
+      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div></div>';
+  }
+  function createdValue() { return (S.created || []).reduce(function (s2, c) { return s2 + c.value; }, 0); }
+  function accountsPane() {
+    var lt = total() - CASH, tp = tpValue(), un = unValue(), cv = createdValue(), all = lt + tp + un + cv + CASH;
+    var rows = INST.map(function (i) {
+      var h = HOLD[i.id], created = (S.created || []).reduce(function (s2, c) { return s2 + (c.take[i.id] || 0); }, 0);
+      return '<tr><td><b style="font-weight:500">' + esc(i.name) + '</b><div class="hint">' + i.code + ' · ' + f(i.price) + '</div></td>' +
+        '<td class="r n">' + (i.qty + h.tp + h.un + created) + '</td><td class="r n">' + i.qty + '</td><td class="r n">' + (h.tp || '') + '</td>' + ((S.created || []).length ? '<td class="r n">' + (created || '') + '</td>' : '') +
+        '<td class="r n' + (h.un ? ' unas' : '') + '">' + (h.un || '') + '</td><td>' + (h.un ? '<span class="assign"><label class="sr" for="as-' + i.id + '">Assegna a</label><select id="as-' + i.id + '" data-assign="' + i.id + '"><option value="">Assegna a\u2026</option><option value="lt">Lungo termine</option><option value="tp">Terzo pilastro</option></select></span>' : '') + '</td></tr>';
+    }).join('');
+    var seg = function (v, cls) { return v > 0 ? '<i class="' + cls + '" style="flex:' + v + '"></i>' : ''; };
+    return '<p class="hint" style="margin:0;max-width:78ch">Un portafoglio è un insieme logico di titoli, non un conto: lo stesso conto del broker può contenerne più di uno, e un portafoglio può stare su più conti. Ogni operazione appartiene a un conto e a un portafoglio; spostare quote tra due portafogli dello stesso conto è un trasferimento senza movimento di denaro.</p>' +
+      '<div class="acc-block"><h4><span>Broker ETF</span><span class="n">' + f(all) + '</span></h4>' +
+      '<div class="split-bar" aria-hidden="true">' + seg(lt + CASH, 'lt') + seg(tp, 'tp') + seg(cv, 'tp') + seg(un, 'un') + '</div>' +
+      '<div class="legend2" style="flex-wrap:wrap"><span><i class="sw2" style="background:var(--s1)"></i>Lungo termine ' + f(lt + CASH) + '</span><span><i class="sw2" style="background:var(--s2)"></i>Terzo pilastro ' + f(tp) + '</span>' +
+      (S.created || []).map(function (c) { return '<span><i class="sw2" style="background:var(--s2)"></i>' + esc(c.name) + ' ' + f(c.value) + '</span>'; }).join('') +
+      (un ? '<span><i class="sw2" style="background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)"></i><span class="unas">Non assegnati ' + f(un) + '</span></span>' : '') + '</div>' +
+      '<table class="t" style="margin-top:12px"><thead><tr><th>Strumento</th><th class="r">Nel conto</th><th class="r">Lungo termine</th><th class="r">Terzo pilastro</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '<th class="r">Non assegnate</th><th></th></tr></thead><tbody>' + rows +
+      '<tr><td>Liquidità</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '<td></td><td></td></tr></tbody></table>' +
+      (un ? '<p class="hint unas" style="margin:6px 0 0">Le quote non assegnate contano nel conto ma in nessun portafoglio: non entrano in allocazione e ribilanciamento finché non le assegni.</p>' : '') + '</div>' +
+      '<div class="acc-block"><h4><span>Fondo pensione</span><span class="n">' + f(1892000) + '</span></h4><p class="hint" style="margin:8px 0 0">Tutto nel portafoglio Fondo pensione.</p></div>';
+  }
+  var WSTEPS = ['Nome', 'Conti', 'Titoli', 'Allocazione', 'Fatto'];
+  function wizardHtml() {
+    var w = S.wizard, h = '<div class="wiz"><button type="button" class="plain" data-wiz="cancel" style="align-self:flex-start">\u00d7 Annulla</button><h3>Nuovo portafoglio</h3>' +
+      '<ol class="steps">' + WSTEPS.map(function (t, k) { var n = k + 1; return '<li class="' + (n < w.step ? 'done' : n === w.step ? 'now' : '') + '"><span class="num">' + (n < w.step ? '\u2713' : n) + '</span>' + t + '</li>'; }).join('') + '</ol>';
+    if (w.step === 1) {
+      h += '<p style="margin:0;color:var(--ink-2);max-width:65ch">Un portafoglio raggruppa i titoli che hanno uno scopo comune e un\u2019allocazione obiettivo, anche se stanno in conti diversi o condividono un conto con altri portafogli.</p>' +
+        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-w="name" value="' + esc(w.name) + '" placeholder="Quarto pilastro, Studi dei figli\u2026"></div>' +
+        '<div class="field"><label for="w-purpose">Scopo (facoltativo)</label><input type="text" id="w-purpose" data-w="purpose" value="' + esc(w.purpose) + '" placeholder="Per cosa sono questi soldi"></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else if (w.step === 2) {
+      h += '<p style="margin:0;color:var(--ink-2)">In quali conti stanno i titoli di questo portafoglio? Puoi sceglierne più di uno, anche già usati da altri portafogli.</p>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>Broker ETF</b><small>Contiene già Lungo termine e Terzo pilastro · ' + f(unValue()) + ' non assegnati</small></span></label>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="fp"' + (w.accounts.fp ? ' checked' : '') + '><span><b>Fondo pensione</b><small>Tutto assegnato a Fondo pensione</small></span></label>' +
+        '<button type="button" class="plain" style="align-self:flex-start">+ Aggiungi un conto di investimento</button>';
+    } else if (w.step === 3) {
+      h += '<p style="margin:0;color:var(--ink-2)">Scegli quante quote di ogni titolo appartengono al nuovo portafoglio. Le proponiamo dalle quote non ancora assegnate; puoi anche spostarne da un altro portafoglio.</p>' +
+        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Titolo nel Broker ETF</span><span class="r">Non assegnate</span><span class="r">In altri portafogli</span><span class="r">In questo</span></div>' +
+        INST.map(function (i) { var hh = HOLD[i.id]; return '<div class="take"><span>' + esc(i.name) + '<div class="hint">' + i.code + ' · ' + f(i.price) + '</div></span><span class="r n">' + hh.un + '</span><span class="r n">' + (i.qty + hh.tp) + '</span><span><label class="sr" for="tk-' + i.id + '">Quote di ' + i.code + '</label><input type="text" inputmode="numeric" id="tk-' + i.id + '" data-take="' + i.id + '" value="' + (w.take[i.id] || 0) + '"></span></div>'; }).join('') +
+        '</div><div class="sumline"><span>Valore del nuovo portafoglio</span><span class="n" id="w-val">' + f(wizValue()) + '</span></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else if (w.step === 4) {
+      var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
+      h += '<p style="margin:0;color:var(--ink-2)">Da dove partiamo per gli obiettivi? Potrai modificarli quando vuoi nella scheda Allocazione.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">' +
+        [['own', 'Le mie voci', 'Scrivi tu voci e percentuali'], ['copy', 'Copia da Lungo termine', 'Stesse voci e soglie, poi le cambi'], ['known', 'Allocazione nota', 'Dalla libreria (in una versione successiva)']].map(function (o) {
+          return '<label class="opt2' + (o[0] === 'known' ? ' off' : '') + '"><input type="radio" name="wstart" value="' + o[0] + '" data-wstart="1"' + (w.start === o[0] ? ' checked' : '') + (o[0] === 'known' ? ' disabled' : '') + '><span><b>' + o[1] + '</b><small>' + o[2] + '</small></span></label>';
+        }).join('') + '</div>' +
+        '<div><div class="witem" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Voce</span><span class="r">Obiettivo</span><span>Strumenti</span><span></span></div>' +
+        w.items.map(function (it, k) {
+          return '<div class="witem"><span><label class="sr" for="wi-n-' + k + '">Voce</label><input type="text" id="wi-n-' + k + '" data-wi="' + k + ':name" value="' + esc(it.name) + '"></span>' +
+            '<span class="pct-in"><label class="sr" for="wi-t-' + k + '">Obiettivo</label><input type="text" inputmode="decimal" id="wi-t-' + k + '" data-wi="' + k + ':t" value="' + esc(String(it.t)) + '">%</span>' +
+            '<span><label class="sr" for="wi-i-' + k + '">Strumento</label><select id="wi-i-' + k + '" data-wi="' + k + ':inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (it.inst === i.id ? ' selected' : '') + '>' + i.code + '</option>'; }).join('') + '</select></span>' +
+            '<button type="button" class="rm" data-wirm="' + k + '" aria-label="Togli la voce">\u00d7</button></div>';
+        }).join('') + '<button type="button" class="plain" data-wiadd="1" style="margin-top:6px">+ Aggiungi una voce</button>' +
+        '<div class="sumline"><span>Totale</span><span class="n' + (Math.abs(sum - 100) > 1e-9 ? ' bad' : '') + '" id="w-sum">' + sum.toLocaleString('it-IT') + '%</span></div></div>' +
+        '<div class="field" style="max-width:420px"><label for="w-rule">Soglia</label><select id="w-rule" data-w="rule">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (w.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else {
+      h += '<div class="figs" style="align-self:flex-start"><div class="big"><small>' + esc(w.name) + '</small><b class="n">' + f(wizValue()) + '</b></div><div><small>Voci</small><b class="n">' + w.items.length + '</b></div><div><small>Conti</small><b class="n">' + (w.accounts.broker ? 'Broker ETF' : '') + (w.accounts.fp ? (w.accounts.broker ? ', ' : '') + 'Fondo pensione' : '') + '</b></div></div>' +
+        '<p style="margin:0;color:var(--ink-2)">Il portafoglio è pronto. Le quote scelte sono ora assegnate a lui; da qui in avanti, ogni operazione su questi titoli ti chiederà a quale portafoglio appartiene.</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-wiz="finish">Apri il portafoglio</button></div>';
+    }
+    if (w.step < 5) h += '<div class="row-btns" style="justify-content:space-between;padding-top:10px;border-top:1px solid var(--rule)">' + (w.step > 1 ? '<button type="button" class="btn" data-wiz="back">Indietro</button>' : '<span></span>') + '<button type="button" class="btn primary" data-wiz="next">' + (w.step === 4 ? 'Crea il portafoglio' : 'Continua') + '</button></div>';
+    return h + '</div>';
+  }
+  function wizValue() { var w = S.wizard; return INST.reduce(function (s2, i) { return s2 + (Number(w.take[i.id]) || 0) * i.price; }, 0); }
+  function wizardNext() {
+    var w = S.wizard; w.err = '';
+    if (w.step === 1 && !w.name.trim()) { w.err = 'Dai un nome al portafoglio.'; return; }
+    if (w.step === 2 && !w.accounts.broker && !w.accounts.fp) { w.err = 'Scegli almeno un conto.'; return; }
+    if (w.step === 3) {
+      var bad = INST.filter(function (i) { var q = Number(w.take[i.id]) || 0; return q < 0 || q !== Math.floor(q) || q > HOLD[i.id].un + i.qty + HOLD[i.id].tp; })[0];
+      if (bad) { w.err = 'Le quote di ' + bad.code + ' non sono valide.'; return; }
+      var more = INST.filter(function (i) { return (Number(w.take[i.id]) || 0) > HOLD[i.id].un; })[0];
+      if (more) { w.err = 'Per ' + more.code + ' chiedi più quote di quelle non assegnate: nel bozzetto si prendono solo quelle libere.'; return; }
+    }
+    if (w.step === 4) {
+      var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
+      if (Math.abs(sum - 100) > 1e-9) { w.err = 'Le voci devono sommare al 100% (ora ' + sum.toLocaleString('it-IT') + '%).'; return; }
+      if (w.items.some(function (it) { return !it.name.trim(); })) { w.err = 'Ogni voce ha bisogno di un nome.'; return; }
+    }
+    w.step++;
+    if (w.step === 5) {
+      INST.forEach(function (i) { HOLD[i.id].un -= Number(w.take[i.id]) || 0; });
+      S.created = (S.created || []).concat([{ name: w.name.trim(), value: wizValue(), take: Object.assign({}, w.take) }]);
+    }
+  }
+
+  function paneHtml() { return S.tab === 'overview' ? overview() : S.tab === 'alloc' ? allocPane() : S.tab === 'accounts' ? accountsPane() : rebalPane(); }
+  function render() {
+    el('pf-side').innerHTML = sideHtml();
+    el('pf-normal').hidden = !!S.wizard; el('pf-wizard').hidden = !S.wizard;
+    if (S.wizard) el('pf-wizard').innerHTML = wizardHtml();
+    el('figs').innerHTML = figsHtml();
+    var TABS = [['overview', 'Panoramica'], ['alloc', 'Allocazione'], ['rebal', 'Ribilanciamento'], ['accounts', 'Conti collegati']];
+    el('subtabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('');
+    el('pane').innerHTML = '<div class="pane">' + paneHtml() + '</div>';
+    el('panel').hidden = !S.panel;
+    el('desk').classList.toggle('withpanel', S.panel);
+    el('panel').innerHTML = S.panel ? tradePanel() : '';
+    el('ph').innerHTML = phoneHtml();
+    wireChart();
+  }
+  function renderPaneOnly() {
+    el('figs').innerHTML = figsHtml();
+    var keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
+    el('pane').innerHTML = '<div class="pane">' + paneHtml() + '</div>';
+    el('ph').innerHTML = phoneHtml();
+    if (keep && el(keep)) { el(keep).focus(); try { el(keep).setSelectionRange(pos, pos); } catch (e) { /* not a text field */ } }
+    wireChart();
+  }
+  function wireChart() {
+    var hit = el('hit'); if (!hit) return;
+    var svg = hit.ownerSVGElement, tip = el('tip'), xh = el('xh');
+    function move(ev) {
+      var r = svg.getBoundingClientRect(), W = Number(hit.dataset.w), pl = Number(hit.dataset.pl), pr = Number(hit.dataset.pr);
+      var sx = (ev.clientX - r.left) * W / r.width;
+      var i = Math.max(0, Math.min(MONTHS.length - 1, Math.round((sx - pl) / ((W - pl - pr) / (MONTHS.length - 1)))));
+      var x = pl + i * (W - pl - pr) / (MONTHS.length - 1);
+      xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('visibility', 'visible');
+      tip.hidden = false;
+      tip.style.left = (x * r.width / W) + 'px'; tip.style.top = '14px'; tip.style.transform = x > W * 0.55 ? 'translateX(calc(-100% - 10px))' : 'translateX(10px)';
+      tip.innerHTML = '<b>' + MONTHS[i] + '</b><br>Valore <span class="n">' + f0(VALUES[i]) + '</span><br>Versato <span class="n">' + f0(CONTRIB[i]) + '</span><br>Guadagno <span class="n">' + f0(VALUES[i] - CONTRIB[i]) + '</span>';
+    }
+    hit.addEventListener('pointermove', move);
+    hit.addEventListener('pointerleave', function () { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); });
+  }
+  function show(v) {
+    var d = v === 'desk';
+    el('view-desk').hidden = !d; el('view-phone').hidden = d;
+    el('tab-desk').setAttribute('aria-selected', String(d)); el('tab-phone').setAttribute('aria-selected', String(!d));
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b || b.disabled) return;
+    var d = b.dataset;
+    if (b.id === 'tab-desk') return show('desk');
+    if (b.id === 'tab-phone') return show('phone');
+    if (d.tab) { S.tab = d.tab; return render(); }
+    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: { mondo: 0, emerg: 0, obbl: 25, oro: 20 }, start: 'own', items: [{ name: 'Obbligazioni', t: 75, inst: 'obbl' }, { name: 'Oro', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
+    if (d.wiz === 'cancel') { S.wizard = null; return render(); }
+    if (d.wiz === 'back') { S.wizard.step--; S.wizard.err = ''; return render(); }
+    if (d.wiz === 'next') { wizardNext(); return render(); }
+    if (d.wiz === 'finish') { S.wizard = null; S.tab = 'accounts'; return render(); }
+    if (d.wiadd) { S.wizard.items.push({ name: '', t: 0, inst: 'mondo' }); return render(); }
+    if (d.wirm) { S.wizard.items.splice(Number(d.wirm), 1); return render(); }
+    if (d.phs) { S.phScreen = d.phs; el('ph').innerHTML = phoneHtml(); el('ph').scrollTop = 0; return; }
+    if (d.php) { S.phPeriod = Number(d.php); el('ph').innerHTML = phoneHtml(); return; }
+    if (d.trade) { S.panel = true; S.trade.saved = null; return render(); }
+    if (d.close) { S.panel = false; return render(); }
+    if (d.newtrade) { S.trade.saved = null; return render(); }
+    if (d.preset) { var p = PRESETS.filter(function (x) { return x[0] === d.preset; })[0]; S.preset = p[0]; S.rule = p[3]; S.mode = p[4]; return render(); }
+    if (d.savetrade) {
+      var t = S.trade, inst = INST.filter(function (i) { return i.id === t.inst; })[0];
+      var q = Number(String(t.qtyStr).replace(',', '.')), price = parseAmount(t.priceStr), fees = parseAmount(t.feesStr) || 0;
+      if (t.type === 'buy') { inst.avg = Math.round((inst.avg * inst.qty + q * price) / (inst.qty + q)); inst.qty += q; CASH -= Math.round(q * price) + fees; }
+      else { inst.qty = Math.max(0, inst.qty - q); CASH += Math.round(q * price) - fees; }
+      inst.price = price;
+      t.saved = (t.type === 'buy' ? 'Acquisto di ' : 'Vendita di ') + q + ' ' + inst.code;
+      return render();
+    }
+  });
+  document.addEventListener('change', function (e) {
+    var t = e.target, d = t.dataset;
+    if (d.mode) { S.mode = t.value; return renderPaneOnly(); }
+    if (d.assign) {
+      if (!t.value) return;
+      var qn = HOLD[d.assign].un; HOLD[d.assign].un = 0;
+      if (t.value === 'tp') HOLD[d.assign].tp += qn; else INST.filter(function (x) { return x.id === d.assign; })[0].qty += qn;
+      return render();
+    }
+    if (d.wacc) { S.wizard.accounts[d.wacc] = t.checked; return; }
+    if (d.wstart) {
+      S.wizard.start = t.value;
+      if (t.value === 'copy') S.wizard.items = [{ name: 'Azioni', t: 60, inst: 'mondo' }, { name: 'Obbligazioni', t: 30, inst: 'obbl' }, { name: 'Oro', t: 10, inst: 'oro' }];
+      return render();
+    }
+    if (d.w === 'rule') { S.wizard.rule = t.value; return; }
+    if (d.wi && t.tagName === 'SELECT') { var qq = d.wi.split(':'); S.wizard.items[Number(qq[0])][qq[1]] = t.value; return; }
+    if (d.rule) { S.rule = t.value; S.preset = null; return render(); }
+    if (d.frac) { S.fractional = t.checked; return renderPaneOnly(); }
+    if (d.tr) { S.trade[d.tr] = t.value; if (d.tr === 'inst') { var i = INST.filter(function (x) { return x.id === t.value; })[0]; S.trade.priceStr = (i.price / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }); } el('panel').innerHTML = tradePanel(); var n = el(t.id); if (n) n.focus(); return; }
+  });
+  document.addEventListener('input', function (e) {
+    var t = e.target, d = t.dataset;
+    if (d.tgt) { var it = S.items.filter(function (x) { return x.id === d.tgt; })[0]; it.target = Number(t.value.replace(',', '.')) || 0; S.preset = null; return renderPaneOnly(); }
+    if (d.sub) { var q = d.sub.split(':'), p = S.items.filter(function (x) { return x.id === q[0]; })[0], c = p.children.filter(function (x) { return x.id === q[1]; })[0]; c.target = Number(t.value.replace(',', '.')) || 0; return renderPaneOnly(); }
+    if (d.contrib) { S.contribStr = t.value; return renderPaneOnly(); }
+    if (d.w === 'name' || d.w === 'purpose') { S.wizard[d.w] = t.value; return; }
+    if (d.take) { S.wizard.take[d.take] = t.value; var wv = el('w-val'); if (wv) wv.textContent = f(wizValue()); return; }
+    if (d.wi && t.tagName === 'INPUT') {
+      var q2 = d.wi.split(':'); S.wizard.items[Number(q2[0])][q2[1]] = t.value;
+      var sm = S.wizard.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0), ws = el('w-sum');
+      if (ws) { ws.textContent = sm.toLocaleString('it-IT') + '%'; ws.classList.toggle('bad', Math.abs(sm - 100) > 1e-9); }
+      return;
+    }
+    if (d.mint) { S.minTradeStr = t.value; return renderPaneOnly(); }
+    if (d.tr && t.tagName === 'INPUT' && t.type === 'text') {
+      S.trade[d.tr] = t.value;
+      var pos = t.selectionStart, id = t.id; el('panel').innerHTML = tradePanel(); var n = el(id); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } }
+    }
+  });
+  if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) show('phone');
+  render();
+})();
+</script>
+
+</body>
+</html>

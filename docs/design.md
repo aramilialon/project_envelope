@@ -31,8 +31,8 @@ The budget follows the envelope method: money comes into "ready to assign" and t
 | Overspending | A negative category, to be covered by moving money. If still uncovered at the end of the month: for cash and debit, the category restarts at zero and the amount is taken from next month's "ready to assign"; for credit cards, it becomes debt on the card not covered by the payment category | MVP |
 | Credit cards | Automatic payment category that sets aside the money spent with the card | MVP |
 | Scheduled transactions | Rent, salary, subscriptions | MVP |
-| Import | CSV, OFX, QIF and CAMT.053 with column mapping and duplicate detection | MVP |
-| Reconciliation | Compare with the bank balance and lock reconciled transactions | MVP |
+| Import | CSV, OFX, QIF and CAMT.053 with column mapping and duplicate detection (see "Import and reconciliation") | MVP |
+| Reconciliation | Compare the cleared balance with the bank statement, find the difference, lock reconciled transactions (see "Import and reconciliation") | MVP |
 | Instant notifications | Instant alert when a category goes negative, a purchase exceeds the available balance or money arrives to be assigned; sent by the server to every member (see Sync, Notifications) | MVP |
 | Age of money | Average number of days between a euro coming in and being spent, weighted by amount, over the outflows of the last 30 days; first in, first out, across all on-budget accounts; transfers between on-budget accounts excluded. Always visible | MVP |
 | Automatic rules | Category suggested from payee or description | Phase 2 |
@@ -51,13 +51,47 @@ Every rule of the method has at least one MVP feature that makes it practical.
 | 3. Roll with the punches | Moving money between categories, overspending handling, instant notifications |
 | 4. Age your money | Age of money, assigning to future months |
 
+### Target calculation
+
+A target tells the budget how much a category asks for in the current month. There are four kinds. In the formulas, *carried* is the available balance brought over from the previous month, *assigned* is what the user assigned this month and *available* is the category's balance now.
+
+| Kind | Settings | Asks this month | Still missing this month | Progress shown |
+| --- | --- | --- | --- | --- |
+| Monthly amount | amount | the amount | amount − assigned, at least 0 | assigned ÷ amount |
+| Amount by a date | total, due month | (total − carried) ÷ months left, rounded up to the cent, at least 0 | asked − assigned, at least 0 | available ÷ total |
+| Repeating expense | amount, every 2, 3, 4, 6, 12 or 24 months, next due month | as "amount by a date" until the due month; then the due month moves forward by the interval | asked − assigned, at least 0 | available ÷ amount |
+| Balance to keep | threshold | threshold − available, at least 0 | the same | available ÷ threshold |
+
+"Months left" counts the current month and the due month. Example: €3,600 for holidays by June 2027, with €1,250 carried into September 2026, asks (3,600 − 1,250) ÷ 10 = €235 a month; with €200 assigned in September, €35 is still missing. "Fund the targets" assigns the missing amounts from ready to assign, never more than it holds. Payment categories of credit cards have no targets.
+
+These rules belong in `packages/core`, with tests; the mockup's `plan()` function is a reference implementation in plain JavaScript.
+
+### Import and reconciliation
+
+**Import.**
+
+- CSV files need a column mapping: date, description, and either one amount column or separate outflow and inflow columns, plus an optional memo; the date format, the decimal separator and whether the first row holds column names. The mapping is remembered per account. OFX, QIF and CAMT.053 need no mapping.
+- A row is a duplicate of a transaction already in the same account when the bank's own transaction id matches (formats that carry one, such as OFX), or otherwise when the amount is the same and the dates are at most 3 days apart; each existing transaction matches at most one row. Duplicates are not imported again; a matched *pending* transaction becomes *cleared*.
+- New rows are imported as cleared. Payee and category are suggested from the user's rules and history; rows without a category are imported as "to categorize" and listed with their own filter in the register.
+- The file is read to extract its rows and is not stored. The import summary compares the file's closing balance, when it has one, with the account's balance.
+
+**Reconciliation.**
+
+- A transaction is *pending* (recorded, not yet seen at the bank), *cleared* (seen on a bank statement or imported) or *reconciled* (part of a completed reconciliation).
+- The user enters the statement's closing balance and date. The *cleared balance* is the last reconciled balance plus the cleared transactions up to that date that the user keeps ticked; pending transactions are listed apart and count only once marked cleared.
+- *Difference* = statement balance − cleared balance. When it is not zero, the app looks for a pending or unticked transaction equal to the difference and offers to fix it in one step.
+- With a zero difference, the ticked transactions become reconciled, and the reconciliation (account, date, statement balance, user) is kept in the account's history.
+- When a real difference remains (a forgotten fee, a bank correction), the user can add an adjustment transaction for it, dated on the statement date; its category is chosen by the user, "ready to assign" by default, so the budget and the accounts stay equal.
+- Reconciled transactions cannot be edited or deleted. Unlocking one is an explicit action, recorded in the audit log, and it marks the account's last reconciliation as broken until it is redone.
+- Credit cards and every other on-budget or off-budget cash account reconcile the same way.
+
 ## Portfolio module
 
 The user records every instrument they own and every transaction. The app derives positions, value and month-by-month performance from historical prices.
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
-| Portfolios | One or more per user (for example "Long term", "Pension fund"), each over one or more brokerage accounts | MVP |
+| Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade belongs to one account and one portfolio, so an account's positions are split logically across its portfolios. Holdings not assigned to any portfolio are shown as such | MVP |
 | Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
 | Positions | Quantity, average cost, current value, unrealized and realized gains or losses | MVP |
@@ -221,8 +255,8 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Instrument | ISIN, ticker, exchange, type, currency, asset class | Shared across users; private data kept separate |
 | Price | instrument, date, close, source | Daily time series |
 | FxRate | currency pair, date, rate | Historical rates for multi-currency |
-| Portfolio | name, linked brokerage accounts | |
-| Trade | instrument, type, date, quantity, price, fees, taxes | Buys, sells, dividends, splits |
+| Portfolio | name, purpose, allocation | Linked to accounts through its trades: a portfolio can span several accounts and an account can hold several portfolios |
+| Trade | account, portfolio, instrument, type, date, quantity, price, fees, taxes | Buys, sells, dividends, splits; moving units between two portfolios of the same account is a transfer without cash |
 | AllocationNode | portfolio, parent, name, target, threshold | Tree of the target allocation |
 | AllocationLink | node, instrument, share | Which instrument falls in which item, and in what proportion |
 | AuditLog | who, what, when, before and after | Append-only |
@@ -394,6 +428,68 @@ In an encrypted workspace the server sees which fields change and when, but not 
 - Biometric unlock; amounts hidden when the app goes to the background.
 - Instant budget notifications (negative category, purchase exceeds the available balance, money to assign); for the portfolio, only the monthly rebalancing summary.
 - Widget with the available amounts of favorite categories (phase 3).
+- Account list and register on the phone: balances, transactions grouped by day, search, marking transactions as cleared, and editing a transaction in a full-screen form.
+
+## User interface
+
+The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request. The screenshots in the repository README come from these mockups (`docs/ux/screenshots/`); update them when a mockup they show changes.
+
+### Principles
+
+- **Colour marks problems.** A category with money is plain ink, because that is the normal state; zero is grey. Only what needs attention gets colour: red for cash overspending, amber for credit overspending and for targets still missing money, blue for actions and selection.
+- **Form as well as colour.** Every state is recognizable without colour: cash overspending is a solid red block, credit overspending amber hatching with a "card" label, missing target money a label with an amber meter.
+- **A ledger, not a dashboard.** Rules and hairlines instead of cards, shadows and pills; corners of 2 to 3 px at most; icons only where they carry meaning (month arrows, group chevrons, warnings, the phone's tab bar).
+- **Summary before detail.** The month's table fills the width; detail opens in a side panel only when asked for, and closes again.
+- **Numbers line up.** Tabular figures, right-aligned columns, amounts formatted for the user's locale with a real minus sign.
+- **No envelope pictures.** "envelope" is a code name; the interface does not draw envelopes.
+- **Neutral wording, never advice**, as everywhere in the app.
+
+### Visual language
+
+| Token | Light | Dark | Use |
+| --- | --- | --- | --- |
+| `desk` | `#ECECE8` | `#131418` | Page ground, sidebar |
+| `paper` | `#FFFFFF` | `#1B1D22` | Working surfaces: table, panel |
+| `ink` | `#1A1C22` | `#ECEDF0` | Text and positive amounts |
+| `muted` | `#686C76` | `#979BA6` | Secondary text, zero amounts |
+| `rule` | `#D3D4CF` | `#343740` | Lines between rows and sections |
+| `pen` | `#2340A0` | `#93A8F4` | Buttons, links, selection (`pen-soft` for selected rows) |
+| `red` | `#B3241B` | `#D2392E` | Cash overspending, errors |
+| `amber` / `warn` | `#E2A62C` / `#8C5300` | `#D9A23A` / `#EBB765` | Credit overspending, targets still missing money |
+
+Type is **Archivo**, one family with a width axis: condensed (72 to 78 %) for the month, panel titles, group names and uppercase labels; normal width for text and figures, with tabular lining numbers. Sizes: 40 px month title, 26 px panel title, 14 to 15 px body, 12 px labels (uppercase, 0.5 px tracking). The app self-hosts the font files: a self-hosted install must not call third-party servers.
+
+Both themes follow the operating system setting and can be forced in the user's preferences. Text meets WCAG 2.2 AA contrast, every control is reachable by keyboard with a visible focus ring, and touch targets are at least 44 px.
+
+### Budget month on the desktop
+
+- **Sidebar:** workspace switcher; navigation (Budget, Accounts, Portfolio); on-budget accounts as a ledger with dotted leaders and their total; off-budget accounts; "Add account"; the user and settings.
+- **Header:** the month with previous and next arrows, age of money, money already assigned to future months, and the "ready to assign" box with its Assign button (its amount turns red when negative).
+- **Toolbar:** filter tabs with a count badge each: All, Underfunded (amber), Overspent (red), With money; a zero count is shown outlined. Buttons: Summary, Targets, Quick assign, Move money, Undo.
+- **Notice:** one line when categories are overspent, with their count and total and a "Show" link that applies the Overspent filter.
+- **Table:** columns Category, Assigned, Activity, Available, with totals in the header. A group row has a chevron that collapses it, a name that selects it, a red badge with the number of overspent categories it holds, and the group's totals. A category row shows its name, its target meter with a short status ("€35.00 still needed this month", "target reached", "on track, €42.86 a month") and its amounts.
+- **Side panel:** hidden when nothing is selected. It closes with "× Close", by clicking the selected item again, or with Esc. It shows one of:
+  - *Category:* state, available amount and a sentence explaining what happens at the end of the month; covering overspending by choosing the category to take money from (preselected: the smallest one that covers the whole amount, never a balance-to-keep target); the month's ledger (carried over, assigned, activity, available); the target with Edit, or "Add a target", and "Assign €X from ready to assign" when money is missing; quick assign (as assigned last month, as spent last month); the month's transactions.
+  - *Group:* available in the group; categories, overspent and targets reached; the group's ledger; "Fund the targets" for the group; its categories, each opening its own detail.
+  - *Summary:* ready to assign with a sentence for its state (money without a job, every euro has a job, too much assigned); counts; "To fix" with overspent categories and missing targets; the month's ledger; a reconciliation block showing that ready to assign + available + assigned to future months + uncovered card spending = money in the on-budget accounts.
+  - *Targets:* every target grouped by kind, what the targets ask this month and what is still missing, "Fund all targets", and the categories without a target, each with "Add".
+  - *Target editor:* the four kinds, each with a one-line explanation; amount (typed in the user's locale), due month, repeat interval; a live preview of what the target asks and what is missing this month; Save, Cancel and Remove.
+
+### Budget month on the phone
+
+One column: month, ready to assign, age of money, and a link with the number and total of overspent categories. Groups collapse by tapping their name; groups with overspending come first. A category row shows only its name, its target status and the available amount; tapping it opens a full-screen detail with a back link, the same content as the desktop panel, and the same target editor. The tab bar has Budget, Accounts, a central button for quick expense entry, Portfolio and More. Groups have no summary screen on the phone.
+
+### Other screens
+
+- **Account register.** Desktop: the account's cleared, pending and total balance; filters by state with counts; search; transactions newest first with a running balance, splits shown under their row; a round control on each row switches pending and cleared, reconciled rows show a padlock. A row opens in the side panel: outflow, inflow or transfer; the payee proposes the category used last time; the category's available amount before and after; splitting across categories with the amount still to split; transfers to a credit card are card payments, transfers to an off-budget account ask for a category. Phone: accounts list, register grouped by day, full-screen transaction form, and quick entry (amount keypad, place, category with its available amount, account).
+- **Import and reconciliation.** Import in four steps (file, columns, check, done) and reconciliation with the statement balance, the difference, clues and locking, as described in "Import and reconciliation".
+- **Settings.** Two separate places. *Your account*, from the user menu, holds what belongs to the person and applies in every workspace: profile, language, number and date format, personal time zone, theme, notifications and devices, sign-in and security. *Workspace settings*, from the workspace switcher, hold what every member shares: name, currency and the workspace time zone, members and roles, categories and groups, accounts, data export and deletion. Changing workspace settings needs the owner role, except categories, which editors can manage.
+- **First run.** Five steps: the method in four lines, the workspace, the first account with today's balance (cash accounts only; credit cards are added later), the starting categories, and the amount ready to assign.
+- **Portfolio.** Overview (value, contributions, gain, 12-month return, out-of-threshold notice, value against contributions over time, month-by-month table, allocation bars, positions), allocation editor (targets per level adding up to 100%, threshold rule, rebalancing presets), rebalancing (mode, contribution, minimum trade, whole or fractional units, "To get back to your targets:"), trade entry, and linked accounts showing how each brokerage account is split across portfolios, with holdings not assigned yet. A new portfolio is created with a short guided setup: name and purpose, accounts, which holdings of each account belong to it, a starting allocation. Phone: value chart, allocation bars and the monthly check.
+
+### Screens still to design
+
+Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: move money, quick assign, scheduled transactions, sign-in; for later milestones, reports, prices and manual prices, ETF look-through, well-known allocations and the CAPE-based target.
 
 ## Open source, hosting and market data
 
@@ -463,6 +559,15 @@ Work starts from the domain core and the web app for a single workspace, already
 | 5. Hosted version (optional) | End-to-end encryption module, subscriptions, licensed market data, managed backups, external security test, legal and GDPR review | Security test passed and legal documents ready |
 | 6. Evolutions | PSD2 bank connection, shared budgets, widgets | Driven by actual needs |
 
+### After 1.0.0
+
+Ideas kept for after the whole product is complete, each off by default and optional:
+
+| Idea | What it does | Privacy |
+| --- | --- | --- |
+| Place-aware suggestions (mobile) | With the user's permission, the phone remembers where expenses are recorded and, back at the same place, proposes the payee and category used there | Opt-in per device; a place is stored as an approximate area, never as a track; the list of places can be viewed and deleted |
+| Receipt reading | A photo of a receipt becomes a draft transaction with date, amount, merchant and, where present, the VAT number; the reading service is configured by the administrator (a self-hosted engine or an external provider with their own key) | No service is enabled by default; the photo is discarded after reading unless the user attaches it to the transaction |
+
 The field-level sync protocol is designed here (this section) but only ships, as its own milestone, once the API surfaces it needs (queue, authenticated multi-workspace requests) exist — see `CLAUDE.md`'s numbered step list for the exact within-phase sequencing, which is more detailed than the phase table above and takes precedence where the two seem to disagree. Targets, reports and broker import each carry their own `Phase` tag where they are first described (budget MVP, budget phase 2 and portfolio phase 2 respectively); phase 4 here is only about packaging what by then already exists. End-to-end encryption and local tax rules are each described once, where most specific (this section's "End-to-end encryption: a future, optional module" and the Portfolio module table), not repeated in phase 6.
 
 ## Decisions
@@ -487,3 +592,4 @@ The field-level sync protocol is designed here (this section) but only ships, as
 | Budget notifications | Instant, from the server to every member, and locally on the device making the change |
 | Age of money | Amount-weighted average over the outflows of the last 30 days, first in first out; monthly history in reports |
 | Timeline | No deadlines; phases only have an order |
+| Interface | Ledger-like visual language where colour marks problems; Archivo, self-hosted; the budget month mockup in `docs/ux/mockups/` is the reference (see "User interface") |
