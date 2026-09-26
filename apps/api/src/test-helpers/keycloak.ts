@@ -16,6 +16,7 @@ export interface KeycloakTestRealm {
   readonly audience: string;
   getUserToken(): Promise<string>;
   getTokenWithMismatchedAudience(): Promise<string>;
+  updateUserEmail(email: string): Promise<void>;
   teardown(): Promise<void>;
 }
 
@@ -42,13 +43,16 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
 
   await createClientWithAudience(adminToken, realm, "envelope-api", clientSecret, MATCHING_AUDIENCE);
   await createClientWithAudience(adminToken, realm, "envelope-other", clientSecret, MISMATCHED_AUDIENCE);
-  await createUser(adminToken, realm, username, password);
+  const userId = await createUser(adminToken, realm, username, password);
 
   return {
     issuer: `${KEYCLOAK_URL}/realms/${realm}`,
     audience: MATCHING_AUDIENCE,
     getUserToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, username, password),
     getTokenWithMismatchedAudience: () => getUserAccessToken(realm, "envelope-other", clientSecret, username, password),
+    updateUserEmail: async (email: string) => {
+      await adminRequest(adminToken, "PUT", `/admin/realms/${realm}/users/${userId}`, { email });
+    },
     teardown: async () => {
       await adminRequest(adminToken, "DELETE", `/admin/realms/${realm}`);
     },
@@ -153,7 +157,7 @@ async function createClientWithAudience(
   });
 }
 
-async function createUser(adminToken: string, realm: string, username: string, password: string): Promise<void> {
+async function createUser(adminToken: string, realm: string, username: string, password: string): Promise<string> {
   // firstName/lastName are required: without them Keycloak's user-profile validation silently
   // adds a VERIFY_PROFILE required action at login time, which rejects the password grant with
   // "Account is not fully set up" even though the user's own requiredActions list is empty.
@@ -173,4 +177,6 @@ async function createUser(adminToken: string, realm: string, username: string, p
     value: password,
     temporary: false,
   });
+
+  return internalId;
 }

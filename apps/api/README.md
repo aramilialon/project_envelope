@@ -1,6 +1,6 @@
 # @envelope/api
 
-The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL. Step 3 (authentication) is in progress: Keycloak access tokens are verified against the realm's JWKS, but not wired into any route yet.
+The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL. Step 3 (authentication) is in progress: Keycloak access tokens are verified against the realm's JWKS and mapped to a local `users` row, but neither is wired into any route yet.
 
 ## Contents
 
@@ -12,6 +12,8 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of th
 | `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006) |
 | `src/routes/health.ts` | `GET /health`: reports whether the database is reachable |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
+| `src/auth/user-mapper.ts` | Fastify preHandler, chained after the token verifier: upserts a `users` row from the token's `sub`/`email` claims and attaches its id to `request.userId` |
+| `src/users/repository.ts` | The `users` table's only entry point for queries (ADR 0005) |
 | `src/test-helpers/keycloak.ts` | Provisions a throwaway Keycloak realm, clients and user for tests, through the admin REST API |
 | `src/app.ts` | `buildApp(config)`: assembles the Fastify instance and its routes, without opening a port (used directly by tests) |
 | `src/main.ts` | Entry point: loads the config, builds the app, starts listening |
@@ -75,4 +77,4 @@ Comparisons with Perl/CGI/DBI, to find your way around the code.
 
 ## Current limitations
 
-No repository/route code yet (step 4): `/health` is still the only route, and no query touches the domain schema except in tests. Because of that, the API's own connection still uses the superuser role (`envelope`) from `infra/.env`, which bypasses the Row-Level Security policies described in [ADR 0006](../../docs/adr/0006-row-level-security.md); those policies are proven correct by `src/db/schema.test.ts` (using `SET ROLE envelope_app`), not yet enforced for the running server. Access-token verification (`src/auth/token-verifier.ts`) exists and is tested, but nothing calls it yet: mapping the token to a local user, checking workspace membership, and registering it globally so every route rejects an invalid token are the next issues in `v0.3.0`.
+No repository/route code yet (step 4) beyond the users table: `/health` is still the only route, and no query touches the rest of the domain schema except in tests. Because of that, the API's own connection still uses the superuser role (`envelope`) from `infra/.env`, which bypasses the Row-Level Security policies described in [ADR 0006](../../docs/adr/0006-row-level-security.md); those policies are proven correct by `src/db/schema.test.ts` (using `SET ROLE envelope_app`), not yet enforced for the running server. Access-token verification and user mapping exist and are tested, but nothing calls them yet: checking workspace membership and registering both preHandlers globally so every route rejects an invalid token are the next issues in `v0.3.0`.
