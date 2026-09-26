@@ -32,7 +32,8 @@ project_generate_ssh_key: true
 # the playbook again with `--tags project` to clone the repository.
 project_repo: ""
 project_dir: "/home/{{ dev_user }}/envelope"
-# Run `pnpm install --frozen-lockfile` after cloning (needs pnpm-lock.yaml in the repo).
+# Run `pnpm install --frozen-lockfile` right after the first clone (needs pnpm-lock.yaml).
+# Later runs never touch the working copy: run `pnpm install` yourself after `git pull`.
 project_install_deps: true
 
 # --- GitHub CLI -----------------------------------------------------------

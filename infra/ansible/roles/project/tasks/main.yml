@@ -38,10 +38,14 @@
   register: project_lockfile
   when: project_repo | length > 0
 
-- name: Install the project's dependencies
+# Only right after the first clone: later the clone is a working copy (branches,
+# changed dependencies) and `pnpm install` is run by hand, like `git pull`.
+- name: Install the project's dependencies after the first clone
   become: true
   become_user: "{{ dev_user }}"
-  ansible.builtin.command: /usr/local/bin/fnm exec --using={{ node_major }} pnpm install --frozen-lockfile
+  ansible.builtin.command: >-
+    /usr/local/bin/fnm exec --using={{ node_major }}
+    pnpm install --frozen-lockfile --config.confirmModulesPurge=false
   args:
     chdir: "{{ project_dir }}"
   environment:
@@ -49,6 +53,7 @@
   when:
     - project_repo | length > 0
     - project_install_deps | bool
+    - project_clone.changed | default(false)
     - project_lockfile.stat.exists | default(false)
   changed_when: "'Already up to date' not in project_deps.stdout"
   register: project_deps
