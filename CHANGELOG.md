@@ -13,8 +13,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ### Changed
 
+- Documentation: the assignment ledger (ADR 0008) gets a device-generated `batch_id`, shared by every entry one user action creates (quick assign, undoing a group), so a whole batch undoes together without a separate batch table; the budget month's reconciliation sentence now distinguishes `creditOverspending` (the invariant's transient term) from `uncovered` (cumulative, includes starting balances).
 - Documentation: the budget month mockup now covers assigning and moving money through the assignment ledger (editing the assigned amount in the table, one Assign / Move money form, quick assign, the month's assignments with undo), scheduled transactions that reserve money (reserved amounts, shortfall warnings, recording and skipping, a preview of next month, creating a scheduled transaction) and card debt ("to cover" on payment categories, a card added with a starting balance); `docs/design.md` describes these screens, and its credit card rules now keep the starting balance out of the payment category's activity.
-
 - Documentation: the portfolio mockup and its "User interface" section no longer describe holdings left unassigned to any portfolio, aligning them with #219 (every trade is assigned to exactly one portfolio when it is entered).
 - Documentation: monthly assignments recorded as an append-only ledger instead of a mutable per-category total (ADR 0008); credit card debt shown as derived rather than persisted; scheduled transactions reserve money instead of only appearing once recorded; import stages rows until categorized instead of a "to categorize" state in `transactions`; sync's conflict-loser notice; foreign-currency budget accounts deferred to after 1.0.0.
 
