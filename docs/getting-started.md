@@ -156,9 +156,10 @@ $ cp .env.example .env
 $ nano .env              # set the passwords; check the image versions
 $ docker compose up -d
 $ docker compose ps
+$ KEYCLOAK_ADMIN_PASSWORD=<password set above> ../scripts/keycloak/bootstrap.sh
 ```
 
-The services listen on `127.0.0.1` only, so they are not exposed on your network. To open the Keycloak console from your laptop, use an SSH tunnel:
+The last command creates the real `envelope` realm and its `envelope-api` client (safe to run again: an existing realm or client is left alone); see the script's own comments for adding an external identity provider later. The services listen on `127.0.0.1` only, so they are not exposed on your network. To open the Keycloak console from your laptop, use an SSH tunnel:
 
 ```bash
 ssh -L 8080:127.0.0.1:8080 dev@envelope-dev

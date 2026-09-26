@@ -1,6 +1,6 @@
 # @envelope/api
 
-The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL. Step 3 (authentication) is in progress: Keycloak access tokens are verified against the realm's JWKS, mapped to a local `users` row, and workspace membership is checked with the request's Row-Level Security session variables set — none of it wired into a real route yet.
+The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL. Step 3 (authentication) is in progress: Keycloak access tokens are verified against the realm's JWKS, mapped to a local `users` row, and workspace membership is checked with the request's Row-Level Security session variables set. Token verification and user mapping are global preHandlers, applied to every route except `/health`; workspace membership stays an explicit per-route opt-in.
 
 ## Contents
 

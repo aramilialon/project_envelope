@@ -25,7 +25,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, bound to 127.0.0.1 |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |
-| `scripts/` | GitHub setup (labels, milestones, ruleset) and Git hooks |
+| `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, and Git hooks |
 
 ## Commands
 
