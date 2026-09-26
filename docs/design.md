@@ -432,7 +432,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 
 ## User interface
 
-The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request.
+The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request. The screenshots in the repository README come from these mockups (`docs/ux/screenshots/`); update them when a mockup they show changes.
 
 ### Principles
 

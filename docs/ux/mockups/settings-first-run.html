@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Interactive mockup of the settings and of the first run.
+  Interactive mockup of the settings (your account, workspace) and of the first run.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Archivo font from Google Fonts (the app itself
   self-hosts its fonts). The UI copy is the Italian translation; English stays
@@ -330,25 +330,66 @@ table.nt small{display:block;color:var(--muted)}
 .bigsum{display:flex;flex-direction:column;gap:4px;padding:16px;border:1px solid var(--rule-strong)}
 .bigsum b{font-size:34px;font-stretch:85%}
 .rules4{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--ink-2)}
+
+/* Account settings: outside any workspace */
+.acct{display:grid;grid-template-columns:230px minmax(0,1fr);min-width:1100px;background:var(--paper)}
+.acct-top{grid-column:1 / -1;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 22px;border-bottom:1px solid var(--rule);background:var(--desk)}
+.acct-top b{font-size:20px;font-weight:700;font-stretch:78%}
+.acct .subnav{background:var(--desk)}
+.scope{display:inline-block;padding:6px 10px;border:1px solid var(--rule);border-radius:3px;font-size:13px;color:var(--ink-2);background:var(--paper-2);align-self:flex-start}
+.scope b{color:var(--ink)}
+.menu{position:relative}
+.menu-pop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:5;display:flex;flex-direction:column;padding:4px 0;border:1px solid var(--rule-strong);background:var(--paper)}
+.menu-pop button,.menu-pop span{padding:9px 12px;border:0;background:transparent;text-align:left;font-size:14px}
+.menu-pop button:hover{background:var(--pen-soft)}
+.menu-pop span{font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.menu-pop hr{margin:4px 0;border:0;border-top:1px solid var(--rule-soft)}
+.as{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.as select{min-height:32px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.ro{padding:10px 12px;border:1px solid var(--rule);background:var(--paper-2);font-size:13px;color:var(--ink-2)}
+.wsl{display:grid;grid-template-columns:minmax(0,1fr) 150px auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.wsl small{display:block;color:var(--muted)}
+.accl{display:grid;grid-template-columns:minmax(0,1fr) 150px 120px auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.accl small{display:block;color:var(--muted)}
+.accl select{min-height:34px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, settings and first run mockup. In the settings the theme and the number format really apply; the first run creates a sample budget from start to finish.</p>
+    <p><b>envelope</b>, settings mockup, split in two: <b>your account</b> (applies to you in every workspace, from the menu with your name) and <b>workspace settings</b> (apply to every member, from the workspace menu). In the workspace settings you can switch the role you view the page with. Then the first run.</p>
     <div class="views" role="tablist" aria-label="Schermata">
-      <button type="button" role="tab" id="tab-set" aria-controls="view-set" aria-selected="true">Settings</button>
+      <button type="button" role="tab" id="tab-acc" aria-controls="view-acc" aria-selected="true">Your account</button>
+      <button type="button" role="tab" id="tab-ws" aria-controls="view-ws" aria-selected="false">Workspace</button>
       <button type="button" role="tab" id="tab-onb" aria-controls="view-onb" aria-selected="false">First run</button>
     </div>
   </div>
 
-  <section id="view-set" role="tabpanel" aria-labelledby="tab-set">
+  <section id="view-acc" role="tabpanel" aria-labelledby="tab-acc">
+    <div class="scroller">
+      <div class="acct">
+        <div class="acct-top"><span><b>envelope</b> · Il tuo account</span><button type="button" class="plain" data-view="ws">← Torna al workspace Famiglia</button></div>
+        <nav class="subnav" aria-label="Il tuo account" id="acc-nav"></nav>
+        <div class="main" id="acc-main"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="view-ws" role="tabpanel" aria-labelledby="tab-ws" hidden>
     <div class="scroller">
       <div class="desk set">
         <nav class="side" aria-label="Main (mockup)">
-          <div class="brand">
+          <div class="brand menu">
             <b>envelope</b>
-            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <button type="button" class="ws" id="ws-menu-btn" aria-expanded="false" aria-haspopup="true">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <div class="menu-pop" id="ws-menu" hidden>
+              <span>Workspace</span>
+              <button type="button">Famiglia ✓</button>
+              <button type="button">Personale</button>
+              <hr>
+              <button type="button" data-close-menu="1">Impostazioni del workspace</button>
+              <button type="button">+ Nuovo workspace</button>
+            </div>
           </div>
           <div class="nav">
             <button type="button">Budget</button>
@@ -362,10 +403,16 @@ table.nt small{display:block;color:var(--muted)}
             <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
             <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
           </div>
-          <div class="me"><span>Giorgio</span><button type="button" class="plain" aria-current="page" style="text-decoration:underline;text-underline-offset:3px">Impostazioni</button></div>
+          <div class="me menu">
+            <button type="button" class="plain" id="me-btn" aria-expanded="false" aria-haspopup="true" style="color:var(--ink)">Giorgio ▾</button>
+            <div class="menu-pop" id="me-menu" hidden style="top:auto;bottom:calc(100% + 4px)">
+              <button type="button" data-view="acc">Il tuo account</button>
+              <button type="button">Esci</button>
+            </div>
+          </div>
         </nav>
-        <nav class="subnav" aria-label="Impostazioni" id="subnav"></nav>
-        <div class="main" id="settings"></div>
+        <nav class="subnav" aria-label="Impostazioni del workspace" id="ws-nav"></nav>
+        <div class="main" id="ws-main"></div>
       </div>
     </div>
   </section>
@@ -386,13 +433,15 @@ table.nt small{display:block;color:var(--muted)}
   }
   function fmt(c, locale) { return new Intl.NumberFormat(locale || 'it-IT', { style: 'currency', currency: 'EUR' }).format(c / 100).replace('-', '−'); }
 
-  var SECTIONS = [['profile', 'Profilo'], ['workspace', 'Workspace'], ['members', 'Membri'], ['categories', 'Categorie'], ['notifications', 'Notifiche'], ['security', 'Accesso e sicurezza']];
+  var ACC_SECTIONS = [['profile', 'Profilo'], ['prefs', 'Preferenze'], ['notifications', 'Notifiche'], ['security', 'Accesso e sicurezza'], ['workspaces', 'I tuoi workspace']];
+  var WS_SECTIONS = [['general', 'Generale'], ['members', 'Membri'], ['categories', 'Categorie'], ['accounts', 'Conti'], ['data', 'Dati']];
   var LOCALES = [['it-IT', 'Italia'], ['en-GB', 'Regno Unito'], ['en-US', 'Stati Uniti'], ['de-DE', 'Germania'], ['fr-FR', 'Francia'], ['de-CH', 'Svizzera']];
   var ZONES = ['Europe/Rome', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'Asia/Tokyo'];
+  var ROLE = { owner: 'Proprietario', editor: 'Può modificare', reader: 'Sola lettura' };
   var S = {
-    section: 'profile', saved: null,
+    acc: 'profile', ws: 'general', saved: null, as: 'owner', notifWs: 'Famiglia',
     profile: { name: 'Giorgio', email: 'giorgio@example.org', lang: 'it', locale: 'it-IT', zone: 'Europe/Rome', theme: 'system' },
-    workspace: { name: 'Famiglia', currency: 'EUR', zone: 'Europe/Rome', confirmDelete: '' },
+    workspace: { name: 'Famiglia', zone: 'Europe/Rome', confirmDelete: '' },
     members: [{ id: 'm1', name: 'Giorgio', email: 'giorgio@example.org', role: 'owner', me: true }, { id: 'm2', name: 'Anna', email: 'anna@example.org', role: 'editor' }, { id: 'm3', name: 'Luca', email: 'luca@example.org', role: 'reader' }],
     invites: [{ email: 'nonna@example.org', role: 'reader' }], invite: { email: '', role: 'editor' }, memberError: '',
     groups: [
@@ -401,16 +450,17 @@ table.nt small{display:block;color:var(--muted)}
       { id: 'g3', name: 'Spese prevedibili', cats: [['Assicurazione auto'], ['Bollo auto'], ['Regali'], ['Veterinario'], ['Palestra', true]] },
       { id: 'g4', name: 'Svago', cats: [['Abbonamenti'], ['Hobby']] }
     ],
+    accounts: [['Conto corrente', 'Conto corrente', true, false], ['Conto risparmio', 'Risparmio', true, false], ['Contanti', 'Contanti', true, false], ['Visa', 'Carta di credito', true, false], ['Broker ETF', 'Investimenti', false, false], ['Mutuo casa', 'Mutuo', false, false], ['Vecchio conto postale', 'Conto corrente', true, true]],
     alerts: [
-      ['over', 'Una categoria va in negativo', 'Subito, a tutti i membri', [true, true, false]],
+      ['over', 'Una categoria va in negativo', 'Subito', [true, true, false]],
       ['exceed', 'Una spesa supera il disponibile', 'Subito, mentre registri la spesa', [true, false, false]],
       ['income', 'Arrivano soldi da assegnare', 'Quando entra un’entrata', [true, true, false]],
       ['approve', 'Transazioni importate da controllare', 'Dopo ogni import', [false, true, false]],
       ['portfolio', 'Controllo mensile del portafoglio', 'Il primo del mese, se qualcosa è oltre la soglia', [true, false, true]]
     ],
-    devices: [['iPhone di Giorgio', 'App envelope · ultima attività oggi'], ['Chrome su Mac', 'Browser · ultima attività ora']]
+    devices: [['iPhone di Giorgio', 'App envelope · ultima attività oggi'], ['Chrome su Mac', 'Browser · ultima attività ora']],
+    myWorkspaces: [['Famiglia', 'owner', '3 membri'], ['Personale', 'owner', 'solo tu'], ['Casa al mare', 'editor', '4 membri, di Anna']]
   };
-  var ROLE = { owner: 'Proprietario', editor: 'Può modificare', reader: 'Sola lettura' };
 
   function applyTheme() {
     var t = S.profile.theme;
@@ -418,87 +468,49 @@ table.nt small{display:block;color:var(--muted)}
     else document.documentElement.setAttribute('data-theme', t);
   }
   function sample() {
-    var d = new Date(Date.UTC(2026, 8, 26, 12));
-    var loc = S.profile.locale;
+    var d = new Date(Date.UTC(2026, 8, 26, 12)), loc = S.profile.locale;
     return new Intl.DateTimeFormat(loc, { dateStyle: 'full', timeZone: 'UTC' }).format(d) + ' · ' + fmt(123456, loc) + ' · ' + fmt(-4215, loc);
   }
   function savedNote(key) { return S.saved === key ? '<span class="saved" role="status">Salvato</span>' : ''; }
   function h(title, lead) { return '<div><h3 class="page-h">' + title + '</h3>' + (lead ? '<p class="lead">' + lead + '</p>' : '') + '</div>'; }
-  function segs(name, value, opts) {
-    return '<div class="segs" role="radiogroup">' + opts.map(function (o) { return '<label><input type="radio" name="' + name + '" value="' + o[0] + '" data-set="' + name + '"' + (value === o[0] ? ' checked' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>';
+  function segs(name, value, opts, disabled) {
+    return '<div class="segs" role="radiogroup">' + opts.map(function (o) { return '<label><input type="radio" name="' + name + '" value="' + o[0] + '" data-set="' + name + '"' + (value === o[0] ? ' checked' : '') + (disabled ? ' disabled' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>';
+  }
+  function nav(list, cur, attr, title) {
+    return '<h5>' + title + '</h5>' + list.map(function (s) { return '<button type="button" ' + attr + '="' + s[0] + '"' + (cur === s[0] ? ' aria-current="page"' : '') + '>' + s[1] + '</button>'; }).join('');
   }
 
-  function renderSection() {
-    el('subnav').innerHTML = '<h5>Impostazioni</h5>' + SECTIONS.map(function (s) { return '<button type="button" data-sec="' + s[0] + '"' + (S.section === s[0] ? ' aria-current="page"' : '') + '>' + s[1] + '</button>'; }).join('');
-    var p = S.profile, w = S.workspace, out = '';
-    if (S.section === 'profile') {
-      out = h('Profilo', 'Valgono solo per te, in tutti i workspace.') +
-        '<div class="field"><label for="p-name">Nome</label><input type="text" id="p-name" data-set="name" value="' + esc(p.name) + '"></div>' +
+  // ---- Your account: the person, in every workspace
+  function renderAcc() {
+    el('acc-nav').innerHTML = nav(ACC_SECTIONS, S.acc, 'data-acc', 'Il tuo account');
+    var p = S.profile, out = '<span class="scope">Vale per <b>te</b>, in tutti i tuoi workspace</span>';
+    if (S.acc === 'profile') {
+      out += h('Profilo') +
+        '<div class="field"><label for="p-name">Nome</label><input type="text" id="p-name" data-set="name" value="' + esc(p.name) + '"><span class="hint">È il nome che vedono gli altri membri dei tuoi workspace.</span></div>' +
         '<div class="field"><label for="p-email">Email</label><input type="email" id="p-email" value="' + esc(p.email) + '" readonly><span class="hint">Si cambia da "Accesso e sicurezza".</span></div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="profile">Salva</button>' + savedNote('profile') + '</div>';
+    } else if (S.acc === 'prefs') {
+      out += h('Preferenze', 'Come vedi envelope: lingua, formati e tema.') +
         '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('lang', p.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>' +
         '<div class="field"><label for="p-locale">Formato di date e numeri</label><select id="p-locale" data-set="locale">' + LOCALES.map(function (l) { return '<option value="' + l[0] + '"' + (p.locale === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
         '<div class="sample" aria-live="polite">' + esc(sample()) + '</div></div>' +
-        '<div class="field"><label for="p-zone">Il tuo fuso orario</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Per mostrarti ore e notifiche. Il mese di una spesa lo decide il fuso del workspace.</span></div>' +
+        '<div class="field"><label for="p-zone">Il tuo fuso orario</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Per mostrarti ore e notifiche. A quale mese appartiene una spesa lo decide il fuso del workspace, uguale per tutti.</span></div>' +
         '<div class="field"><span style="font-weight:600">Tema</span>' + segs('theme', p.theme, [['system', 'Come il sistema'], ['light', 'Chiaro'], ['dark', 'Scuro']]) + '<span class="hint">Si applica subito: prova.</span></div>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-save="profile">Salva</button>' + savedNote('profile') + '</div>';
-    } else if (S.section === 'workspace') {
-      out = h('Workspace', 'Il workspace è il budget di una famiglia o di una persona, con i suoi conti. Tutti i membri vedono gli stessi numeri.') +
-        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"></div>' +
-        '<div class="field"><label for="w-cur">Valuta</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Si sceglie alla creazione e non cambia: tutti i conti in altre valute vengono convertiti in questa.</span></div>' +
-        '<div class="field"><label for="w-zone">Fuso orario del workspace</label><select id="w-zone" data-set="wzone">' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
-        '<span class="hint">Decide a quale giorno e mese appartiene una spesa, uguale per tutti i membri anche se sono in viaggio: una spesa fatta alle 23 del 30 settembre a New York conta a settembre.</span></div>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-save="workspace">Salva</button>' + savedNote('workspace') + '</div>' +
-        '<div class="block"><h4>I tuoi dati</h4><p class="hint" style="margin:0">Scarica tutto il workspace: conti, transazioni, budget, obiettivi e portafogli, in un file che puoi leggere e reimportare.</p>' +
-        '<div class="row-btns"><button type="button" class="btn">Esporta in JSON</button><button type="button" class="btn">Esporta le transazioni in CSV</button></div></div>' +
-        '<div class="block danger-zone"><h4>Elimina il workspace</h4><p class="hint" style="margin:0">Cancella per sempre il workspace e tutti i suoi dati, per tutti i membri. Scarica prima una copia.</p>' +
-        '<div class="field"><label for="w-del">Per confermare scrivi <b>' + esc(w.name) + '</b></label><input type="text" id="w-del" data-set="wdel" value="' + esc(w.confirmDelete) + '" autocomplete="off"></div>' +
-        '<div class="row-btns"><button type="button" class="btn bad primary" data-delws="1"' + (w.confirmDelete === w.name ? '' : ' disabled') + '>Elimina il workspace</button></div></div>';
-    } else if (S.section === 'members') {
-      var owners = S.members.filter(function (m) { return m.role === 'owner'; }).length;
-      out = h('Membri', 'Chi può vedere e modificare il workspace Famiglia.') +
-        '<div>' + S.members.map(function (m) {
-          var lastOwner = m.role === 'owner' && owners === 1;
-          return '<div class="mrow"><span><b style="font-weight:600">' + esc(m.name) + (m.me ? ' (tu)' : '') + '</b><small>' + esc(m.email) + '</small></span>' +
-            '<span><label class="sr" for="role-' + m.id + '">Ruolo di ' + esc(m.name) + '</label><select id="role-' + m.id + '" data-role="' + m.id + '"' + (lastOwner ? ' disabled title="Serve almeno un proprietario"' : '') + '>' +
-            ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (m.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></span>' +
-            (m.me ? '<span></span>' : '<button type="button" class="plain danger" data-rmm="' + m.id + '">Togli</button>') + '</div>';
-        }).join('') + '</div>' +
-        (S.memberError ? '<div class="hint bad" role="alert">' + esc(S.memberError) + '</div>' : '') +
-        '<div class="block"><h4>Invita qualcuno</h4><div class="inv"><div class="field"><label for="inv-email">Email</label><input type="email" id="inv-email" data-set="invemail" value="' + esc(S.invite.email) + '" placeholder="nome@esempio.it"></div>' +
-        '<div class="field"><label for="inv-role">Ruolo</label><select id="inv-role" data-set="invrole">' + ['editor', 'reader', 'owner'].map(function (r) { return '<option value="' + r + '"' + (S.invite.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></div>' +
-        '<button type="button" class="btn primary" data-invite="1">Invia l’invito</button></div>' +
-        (S.invites.length ? '<div>' + S.invites.map(function (i, k) { return '<div class="dev"><span>' + esc(i.email) + '<small>Invito in attesa · ' + ROLE[i.role] + '</small></span><button type="button" class="plain danger" data-rminv="' + k + '">Annulla l’invito</button></div>'; }).join('') + '</div>' : '') + '</div>' +
-        '<div class="block"><h4>Cosa può fare ogni ruolo</h4><div class="roles"><b>Proprietario</b><span>Tutto, compresi membri, esportazione ed eliminazione del workspace.</span>' +
-        '<b>Può modificare</b><span>Conti, transazioni, budget, obiettivi e portafogli.</span><b>Sola lettura</b><span>Vede tutto e riceve le notifiche, ma non cambia niente.</span></div></div>';
-    } else if (S.section === 'categories') {
-      out = h('Categorie', 'Gruppi e categorie del budget. Rinomina scrivendo sul nome; una categoria archiviata sparisce dal budget ma resta nelle transazioni passate.') +
-        '<div>' + S.groups.map(function (g, gi) {
-          return '<div class="cg"><div class="cg-h"><span style="flex:1">' + esc(g.name) + '</span>' +
-            '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Sposta su ' + esc(g.name) + '"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
-            '<button type="button" class="ib" data-gmove="' + gi + ':1" aria-label="Sposta giù ' + esc(g.name) + '"' + (gi === S.groups.length - 1 ? ' disabled' : '') + '>↓</button></div>' +
-            g.cats.map(function (c, ci) {
-              return '<div class="cr"><span><label class="sr" for="c-' + gi + '-' + ci + '">Nome</label><input type="text" id="c-' + gi + '-' + ci + '" data-cname="' + gi + ':' + ci + '" value="' + esc(c[0]) + '"' + (c[1] ? ' style="color:var(--muted)"' : '') + '></span>' +
-                '<span class="tools">' + (c[1] ? '<span class="tag-arch" style="align-self:center;margin-right:6px">Archiviata</span>' : '') +
-                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':-1" aria-label="Sposta su"' + (ci === 0 ? ' disabled' : '') + '>↑</button>' +
-                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':1" aria-label="Sposta giù"' + (ci === g.cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
-                '<button type="button" class="btn" style="min-height:34px" data-carch="' + gi + ':' + ci + '">' + (c[1] ? 'Ripristina' : 'Archivia') + '</button></span></div>';
-            }).join('') +
-            '<div class="cr"><button type="button" class="plain" style="justify-self:start" data-cadd="' + gi + '">+ Aggiungi una categoria</button><span></span></div></div>';
-        }).join('') + '</div>' +
-        '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Aggiungi un gruppo</button></div>';
-    } else if (S.section === 'notifications') {
-      out = h('Notifiche', 'Scegli quali avvisi ricevere e dove. Valgono per te, non per gli altri membri.') +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="prefs">Salva</button>' + savedNote('prefs') + '</div>';
+    } else if (S.acc === 'notifications') {
+      out += h('Notifiche', 'Quali avvisi ricevi e dove. Sono tue: gli altri membri scelgono i propri.') +
+        '<div class="field" style="max-width:320px"><label for="n-ws">Per il workspace</label><select id="n-ws" data-set="notifws">' + S.myWorkspaces.map(function (w) { return '<option' + (S.notifWs === w[0] ? ' selected' : '') + '>' + w[0] + '</option>'; }).join('') + '</select></div>' +
         '<table class="nt"><thead><tr><th>Avviso</th><th class="c">Telefono</th><th class="c">Browser</th><th class="c">Email</th></tr></thead><tbody>' +
         S.alerts.map(function (a, ai) {
           return '<tr><td>' + esc(a[1]) + '<small>' + esc(a[2]) + '</small></td>' + ['Telefono', 'Browser', 'Email'].map(function (ch, k) {
             return '<td class="c"><input type="checkbox" data-alert="' + ai + ':' + k + '" aria-label="' + esc(a[1]) + ', ' + ch + '"' + (a[3][k] ? ' checked' : '') + '></td>';
           }).join('') + '</tr>';
         }).join('') + '</tbody></table>' +
-        '<div class="block"><h4>Dispositivi che ricevono le notifiche</h4>' + S.devices.map(function (d, k) {
+        '<div class="block"><h4>I tuoi dispositivi</h4>' + S.devices.map(function (d, k) {
           return '<div class="dev"><span>' + esc(d[0]) + '<small>' + esc(d[1]) + '</small></span><button type="button" class="plain danger" data-rmdev="' + k + '">Scollega</button></div>';
         }).join('') + '</div>';
-    } else {
-      out = h('Accesso e sicurezza', 'L’accesso è gestito dal servizio di autenticazione del tuo envelope. Da qui vedi lo stato; le modifiche si fanno nella sua pagina dell’account.') +
+    } else if (S.acc === 'security') {
+      out += h('Accesso e sicurezza', 'L’accesso è gestito dal servizio di autenticazione del tuo envelope. Qui vedi lo stato; le modifiche si fanno nella sua pagina dell’account.') +
         '<div><div class="kc"><span>Email<small>giorgio@example.org · verificata</small></span><button type="button" class="btn">Cambia</button></div>' +
         '<div class="kc"><span>Password<small>cambiata 3 mesi fa</small></span><button type="button" class="btn">Cambia</button></div>' +
         '<div class="kc"><span>Verifica in due passaggi <span class="st-ok">attiva</span><small>app di autenticazione</small></span><button type="button" class="btn">Gestisci</button></div>' +
@@ -506,9 +518,87 @@ table.nt small{display:block;color:var(--muted)}
         '<div class="block"><h4>Sessioni aperte</h4>' +
         '<div class="dev"><span>Chrome su Mac<small>questa sessione · Milano</small></span><span class="hint">In uso</span></div>' +
         '<div class="dev"><span>App envelope su iPhone<small>ultimo accesso oggi alle 8:12</small></span><button type="button" class="plain danger">Esci</button></div>' +
-        '<div class="row-btns"><button type="button" class="btn">Esci da tutte le altre sessioni</button></div></div>';
+        '<div class="row-btns"><button type="button" class="btn">Esci da tutte le altre sessioni</button></div></div>' +
+        '<div class="block danger-zone"><h4>Elimina il tuo account</h4><p class="hint" style="margin:0">Prima devi lasciare o eliminare i workspace di cui sei l’unico proprietario.</p><div class="row-btns"><button type="button" class="btn bad" disabled>Elimina l’account</button></div></div>';
+    } else {
+      out += h('I tuoi workspace', 'Ogni workspace ha i suoi conti, il suo budget e i suoi membri. Le sue impostazioni si aprono dal menu del workspace.') +
+        '<div>' + S.myWorkspaces.map(function (w) {
+          return '<div class="wsl"><span><b style="font-weight:600">' + esc(w[0]) + '</b><small>' + esc(w[2]) + '</small></span><span class="hint">' + ROLE[w[1]] + '</span>' +
+            '<span class="row-btns">' + (w[0] === 'Famiglia' ? '<button type="button" class="btn" data-view="ws">Impostazioni</button>' : '') + (w[1] === 'owner' ? '' : '<button type="button" class="plain danger">Lascia</button>') + '</span></div>';
+        }).join('') + '</div><div class="row-btns"><button type="button" class="btn primary" data-view="onb">+ Nuovo workspace</button></div>';
     }
-    el('settings').innerHTML = '<div class="form">' + out + '</div>';
+    el('acc-main').innerHTML = '<div class="form">' + out + '</div>';
+  }
+
+  // ---- Workspace settings: shared by every member
+  function can(what) {
+    if (S.as === 'owner') return true;
+    if (S.as === 'editor') return what === 'categories';
+    return false;
+  }
+  function renderWs() {
+    el('ws-nav').innerHTML = nav(WS_SECTIONS, S.ws, 'data-wsec', 'Workspace Famiglia');
+    var w = S.workspace, ro = !can(S.ws), dis = ro ? ' disabled' : '';
+    var out = '<div class="row-btns" style="justify-content:space-between"><span class="scope">Vale per <b>tutti i membri</b> del workspace Famiglia</span>' +
+      '<label class="as">Guarda come <select data-as="1">' + ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (S.as === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></label></div>' +
+      (ro ? '<div class="ro">' + (S.as === 'reader' ? 'Con la sola lettura vedi queste impostazioni ma non le puoi cambiare.' : 'Solo un proprietario può cambiare questa sezione. Chi può modificare gestisce le categorie.') + '</div>' : '');
+    if (S.ws === 'general') {
+      out += h('Generale') +
+        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"' + dis + '></div>' +
+        '<div class="field"><label for="w-cur">Valuta</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Si sceglie alla creazione e non cambia: i conti in altre valute vengono convertiti in questa.</span></div>' +
+        '<div class="field"><label for="w-zone">Fuso orario del workspace</label><select id="w-zone" data-set="wzone"' + dis + '>' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
+        '<span class="hint">Decide a quale giorno e mese appartiene una spesa, uguale per tutti i membri anche in viaggio: una spesa delle 23 del 30 settembre a New York conta a settembre.</span></div>' +
+        (ro ? '' : '<div class="row-btns"><button type="button" class="btn primary" data-save="general">Salva</button>' + savedNote('general') + '</div>');
+    } else if (S.ws === 'members') {
+      var owners = S.members.filter(function (m) { return m.role === 'owner'; }).length;
+      out += h('Membri', 'Chi può vedere e modificare questo workspace.') +
+        '<div>' + S.members.map(function (m) {
+          var lastOwner = m.role === 'owner' && owners === 1;
+          return '<div class="mrow"><span><b style="font-weight:600">' + esc(m.name) + (m.me ? ' (tu)' : '') + '</b><small>' + esc(m.email) + '</small></span>' +
+            '<span><label class="sr" for="role-' + m.id + '">Ruolo di ' + esc(m.name) + '</label><select id="role-' + m.id + '" data-role="' + m.id + '"' + (lastOwner || ro ? ' disabled' : '') + (lastOwner ? ' title="Serve almeno un proprietario"' : '') + '>' +
+            ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (m.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></span>' +
+            (m.me || ro ? '<span></span>' : '<button type="button" class="plain danger" data-rmm="' + m.id + '">Togli</button>') + '</div>';
+        }).join('') + '</div>' +
+        (S.memberError ? '<div class="hint bad" role="alert">' + esc(S.memberError) + '</div>' : '') +
+        (ro ? '' : '<div class="block"><h4>Invita qualcuno</h4><div class="inv"><div class="field"><label for="inv-email">Email</label><input type="email" id="inv-email" data-set="invemail" value="' + esc(S.invite.email) + '" placeholder="nome@esempio.it"></div>' +
+        '<div class="field"><label for="inv-role">Ruolo</label><select id="inv-role" data-set="invrole">' + ['editor', 'reader', 'owner'].map(function (r) { return '<option value="' + r + '"' + (S.invite.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></div>' +
+        '<button type="button" class="btn primary" data-invite="1">Invia l’invito</button></div>' +
+        (S.invites.length ? '<div>' + S.invites.map(function (i, k) { return '<div class="dev"><span>' + esc(i.email) + '<small>Invito in attesa · ' + ROLE[i.role] + '</small></span><button type="button" class="plain danger" data-rminv="' + k + '">Annulla l’invito</button></div>'; }).join('') + '</div>' : '') + '</div>') +
+        '<div class="block"><h4>Cosa può fare ogni ruolo</h4><div class="roles"><b>Proprietario</b><span>Tutto, comprese queste impostazioni, i membri, l’esportazione e l’eliminazione del workspace.</span>' +
+        '<b>Può modificare</b><span>Conti, transazioni, budget, obiettivi, portafogli e categorie.</span><b>Sola lettura</b><span>Vede tutto e riceve le notifiche, ma non cambia niente.</span></div></div>';
+    } else if (S.ws === 'categories') {
+      out += h('Categorie', 'Gruppi e categorie del budget. Rinomina scrivendo sul nome; una categoria archiviata sparisce dal budget ma resta nelle transazioni passate.') +
+        '<div>' + S.groups.map(function (g, gi) {
+          return '<div class="cg"><div class="cg-h"><span style="flex:1">' + esc(g.name) + '</span>' +
+            (ro ? '' : '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Sposta su ' + esc(g.name) + '"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button type="button" class="ib" data-gmove="' + gi + ':1" aria-label="Sposta giù ' + esc(g.name) + '"' + (gi === S.groups.length - 1 ? ' disabled' : '') + '>↓</button>') + '</div>' +
+            g.cats.map(function (c, ci) {
+              return '<div class="cr"><span><label class="sr" for="c-' + gi + '-' + ci + '">Nome</label><input type="text" id="c-' + gi + '-' + ci + '" data-cname="' + gi + ':' + ci + '" value="' + esc(c[0]) + '"' + (c[1] ? ' style="color:var(--muted)"' : '') + (ro ? ' readonly' : '') + '></span>' +
+                '<span class="tools">' + (c[1] ? '<span class="tag-arch" style="align-self:center;margin-right:6px">Archiviata</span>' : '') +
+                (ro ? '' : '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':-1" aria-label="Sposta su"' + (ci === 0 ? ' disabled' : '') + '>↑</button>' +
+                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':1" aria-label="Sposta giù"' + (ci === g.cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
+                '<button type="button" class="btn" style="min-height:34px" data-carch="' + gi + ':' + ci + '">' + (c[1] ? 'Ripristina' : 'Archivia') + '</button>') + '</span></div>';
+            }).join('') +
+            (ro ? '' : '<div class="cr"><button type="button" class="plain" style="justify-self:start" data-cadd="' + gi + '">+ Aggiungi una categoria</button><span></span></div>') + '</div>';
+        }).join('') + '</div>' +
+        (ro ? '' : '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Aggiungi un gruppo</button></div>');
+    } else if (S.ws === 'accounts') {
+      out += h('Conti', 'I conti del workspace. Un conto reale sta in un solo workspace, così non viene mai contato due volte.') +
+        '<div>' + S.accounts.map(function (a, k) {
+          return '<div class="accl"><span><b style="font-weight:600' + (a[3] ? ';color:var(--muted)' : '') + '">' + esc(a[0]) + '</b><small>' + esc(a[1]) + (a[3] ? ' · chiuso' : '') + '</small></span>' +
+            '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro || a[3] ? ' disabled' : '') + '><option value="1"' + (a[2] ? ' selected' : '') + '>In budget</option><option value="0"' + (a[2] ? '' : ' selected') + '>Fuori budget</option></select></span>' +
+            '<span class="hint">' + (a[2] ? 'entra in "da assegnare"' : 'solo nel patrimonio') + '</span>' +
+            (ro ? '<span></span>' : '<button type="button" class="plain' + (a[3] ? '' : ' danger') + '" data-accclose="' + k + '">' + (a[3] ? 'Riapri' : 'Chiudi') + '</button>') + '</div>';
+        }).join('') + '</div><p class="hint" style="margin:0">Un conto si chiude quando il saldo è zero: resta nello storico, non compare più nel budget.</p>';
+    } else {
+      out += h('Dati', 'I dati del workspace sono di chi lo usa.') +
+        '<div class="block"><h4>Esporta</h4><p class="hint" style="margin:0">Tutto il workspace: conti, transazioni, budget, obiettivi e portafogli, in un file che puoi leggere e reimportare.</p>' +
+        '<div class="row-btns"><button type="button" class="btn"' + dis + '>Esporta in JSON</button><button type="button" class="btn"' + dis + '>Esporta le transazioni in CSV</button></div></div>' +
+        '<div class="block danger-zone"><h4>Elimina il workspace</h4><p class="hint" style="margin:0">Cancella per sempre il workspace e tutti i suoi dati, per tutti i membri. Scarica prima una copia.</p>' +
+        '<div class="field"><label for="w-del">Per confermare scrivi <b>' + esc(w.name) + '</b></label><input type="text" id="w-del" data-set="wdel" value="' + esc(w.confirmDelete) + '" autocomplete="off"' + dis + '></div>' +
+        '<div class="row-btns"><button type="button" class="btn bad primary" data-delws="1"' + (!ro && w.confirmDelete === w.name ? '' : ' disabled') + '>Elimina il workspace</button></div></div>';
+    }
+    el('ws-main').innerHTML = '<div class="form">' + out + '</div>';
   }
 
   // ---- First run
@@ -558,34 +648,41 @@ table.nt small{display:block;color:var(--muted)}
   }
 
   function show(v) {
-    var s = v === 'set';
-    el('view-set').hidden = !s; el('view-onb').hidden = s;
-    el('tab-set').setAttribute('aria-selected', String(s)); el('tab-onb').setAttribute('aria-selected', String(!s));
+    ['acc', 'ws', 'onb'].forEach(function (k) { el('view-' + k).hidden = k !== v; el('tab-' + k).setAttribute('aria-selected', String(k === v)); });
+    el('ws-menu').hidden = true; el('me-menu').hidden = true;
   }
+  function renderAll() { renderAcc(); renderWs(); }
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button');
     if (!b || b.disabled) return;
     var d = b.dataset;
-    if (b.id === 'tab-set') return show('set');
+    if (b.id === 'tab-acc') return show('acc');
+    if (b.id === 'tab-ws') return show('ws');
     if (b.id === 'tab-onb') return show('onb');
-    if (d.sec) { S.section = d.sec; S.saved = null; S.memberError = ''; return renderSection(); }
-    if (d.save) { S.saved = d.save; return renderSection(); }
-    if (d.rmm) { S.members = S.members.filter(function (m) { return m.id !== d.rmm; }); return renderSection(); }
+    if (d.view) return show(d.view);
+    if (b.id === 'ws-menu-btn') { var m = el('ws-menu'); m.hidden = !m.hidden; b.setAttribute('aria-expanded', String(!m.hidden)); return; }
+    if (b.id === 'me-btn') { var n = el('me-menu'); n.hidden = !n.hidden; b.setAttribute('aria-expanded', String(!n.hidden)); return; }
+    if (d.closeMenu) { el('ws-menu').hidden = true; S.ws = 'general'; return renderWs(); }
+    if (d.acc) { S.acc = d.acc; S.saved = null; return renderAcc(); }
+    if (d.wsec) { S.ws = d.wsec; S.saved = null; S.memberError = ''; return renderWs(); }
+    if (d.save) { S.saved = d.save; return renderAll(); }
+    if (d.rmm) { S.members = S.members.filter(function (m) { return m.id !== d.rmm; }); return renderWs(); }
     if (d.invite) {
       var em = S.invite.email.trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { S.memberError = 'Scrivi un indirizzo email valido.'; return renderSection(); }
-      if (S.members.some(function (m) { return m.email === em; }) || S.invites.some(function (i) { return i.email === em; })) { S.memberError = 'Questa persona è già membro o invitata.'; return renderSection(); }
-      S.invites.push({ email: em, role: S.invite.role }); S.invite.email = ''; S.memberError = ''; return renderSection();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { S.memberError = 'Scrivi un indirizzo email valido.'; return renderWs(); }
+      if (S.members.some(function (m) { return m.email === em; }) || S.invites.some(function (i) { return i.email === em; })) { S.memberError = 'Questa persona è già membro o invitata.'; return renderWs(); }
+      S.invites.push({ email: em, role: S.invite.role }); S.invite.email = ''; S.memberError = ''; return renderWs();
     }
-    if (d.rminv) { S.invites.splice(Number(d.rminv), 1); return renderSection(); }
-    if (d.gmove) { var q = d.gmove.split(':').map(Number), g = S.groups.splice(q[0], 1)[0]; S.groups.splice(q[0] + q[1], 0, g); return renderSection(); }
-    if (d.cmove) { var r = d.cmove.split(':').map(Number), cats = S.groups[r[0]].cats, c = cats.splice(r[1], 1)[0]; cats.splice(r[1] + r[2], 0, c); return renderSection(); }
-    if (d.carch) { var a = d.carch.split(':').map(Number), cc = S.groups[a[0]].cats[a[1]]; cc[1] = !cc[1]; return renderSection(); }
-    if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['Nuova categoria']); renderSection(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
-    if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'Nuovo gruppo', cats: [['Nuova categoria']] }); return renderSection(); }
-    if (d.rmdev) { S.devices.splice(Number(d.rmdev), 1); return renderSection(); }
-    if (d.delws) { S.workspace.confirmDelete = ''; S.saved = null; el('settings').innerHTML = '<div class="form">' + h('Workspace eliminato', 'Nel bozzetto non succede niente di irreversibile: ricarica la pagina per ricominciare.') + '</div>'; return; }
+    if (d.rminv) { S.invites.splice(Number(d.rminv), 1); return renderWs(); }
+    if (d.gmove) { var q = d.gmove.split(':').map(Number), g = S.groups.splice(q[0], 1)[0]; S.groups.splice(q[0] + q[1], 0, g); return renderWs(); }
+    if (d.cmove) { var r = d.cmove.split(':').map(Number), cats = S.groups[r[0]].cats, c = cats.splice(r[1], 1)[0]; cats.splice(r[1] + r[2], 0, c); return renderWs(); }
+    if (d.carch) { var a = d.carch.split(':').map(Number), cc = S.groups[a[0]].cats[a[1]]; cc[1] = !cc[1]; return renderWs(); }
+    if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['Nuova categoria']); renderWs(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
+    if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'Nuovo gruppo', cats: [['Nuova categoria']] }); return renderWs(); }
+    if (d.accclose) { var ac = S.accounts[Number(d.accclose)]; ac[3] = !ac[3]; return renderWs(); }
+    if (d.rmdev) { S.devices.splice(Number(d.rmdev), 1); return renderAcc(); }
+    if (d.delws) { S.workspace.confirmDelete = ''; el('ws-main').innerHTML = '<div class="form">' + h('Workspace eliminato', 'Nel bozzetto non succede niente di irreversibile: ricarica la pagina per ricominciare.') + '</div>'; return; }
     if (d.onb === 'next') {
       if (O.step === 3) {
         var v = parseAmount(O.balStr || '0');
@@ -600,17 +697,20 @@ table.nt small{display:block;color:var(--muted)}
   });
   document.addEventListener('change', function (e) {
     var t = e.target, d = t.dataset;
-    if (d.set === 'theme') { S.profile.theme = t.value; applyTheme(); return renderSection(); }
+    if (d.set === 'theme') { S.profile.theme = t.value; applyTheme(); return renderAcc(); }
     if (d.set === 'lang') { S.profile.lang = t.value; return; }
-    if (d.set === 'locale') { S.profile.locale = t.value; return renderSection(); }
+    if (d.set === 'locale') { S.profile.locale = t.value; return renderAcc(); }
     if (d.set === 'zone') { S.profile.zone = t.value; return; }
+    if (d.set === 'notifws') { S.notifWs = t.value; return; }
     if (d.set === 'wzone') { S.workspace.zone = t.value; return; }
     if (d.set === 'invrole') { S.invite.role = t.value; return; }
+    if (d.as) { S.as = t.value; return renderWs(); }
+    if (d.accbud !== undefined) { S.accounts[Number(d.accbud)][2] = t.value === '1'; return renderWs(); }
     if (d.role) {
       var m = S.members.filter(function (x) { return x.id === d.role; })[0];
       var owners = S.members.filter(function (x) { return x.role === 'owner'; }).length;
-      if (m.role === 'owner' && t.value !== 'owner' && owners === 1) { S.memberError = 'Serve almeno un proprietario.'; return renderSection(); }
-      m.role = t.value; S.memberError = ''; return renderSection();
+      if (m.role === 'owner' && t.value !== 'owner' && owners === 1) { S.memberError = 'Serve almeno un proprietario.'; return renderWs(); }
+      m.role = t.value; S.memberError = ''; return renderWs();
     }
     if (d.alert) { var q = d.alert.split(':').map(Number); S.alerts[q[0]][3][q[1]] = t.checked; return; }
     if (d.o === 'type') { O.type = t.value; if (t.value === 'offbudget' && O.acc === 'Conto corrente') O.acc = 'Broker'; return renderOnb(); }
@@ -623,14 +723,12 @@ table.nt small{display:block;color:var(--muted)}
     if (d.set === 'name') S.profile.name = t.value;
     if (d.set === 'wname') S.workspace.name = t.value;
     if (d.set === 'invemail') S.invite.email = t.value;
-    if (d.set === 'wdel') {
-      S.workspace.confirmDelete = t.value;
-      var btn = document.querySelector('[data-delws]'); if (btn) btn.disabled = t.value !== S.workspace.name;
-    }
+    if (d.set === 'wdel') { S.workspace.confirmDelete = t.value; var btn = document.querySelector('[data-delws]'); if (btn) btn.disabled = t.value !== S.workspace.name; }
     if (d.cname) { var q = d.cname.split(':').map(Number); S.groups[q[0]].cats[q[1]][0] = t.value; }
     if (d.o === 'ws' || d.o === 'acc' || d.o === 'balStr') O[d.o] = t.value;
   });
-  renderSection(); renderOnb();
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { el('ws-menu').hidden = true; el('me-menu').hidden = true; } });
+  renderAll(); renderOnb();
 })();
 </script>
 

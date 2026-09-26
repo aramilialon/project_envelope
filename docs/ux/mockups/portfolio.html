@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  Interactive mockup of the portfolio: overview, allocation, rebalancing, trade entry.
+  Interactive mockup of the portfolio: overview, allocation, rebalancing, linked accounts, new-portfolio setup, trade entry.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Archivo font from Google Fonts (the app itself
   self-hosts its fonts). The UI copy is the Italian translation; English stays
@@ -337,12 +337,46 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
 .ph-card h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%}
 .ph-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
 .ph-item small{display:block;color:var(--muted);font-size:12px}
+.acc-block{display:flex;flex-direction:column}
+.acc-block h4{display:flex;justify-content:space-between;align-items:baseline;margin:0;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:16px;font-weight:700;font-stretch:78%}
+.split-bar{display:flex;height:14px;margin:10px 0 4px;gap:2px}
+.split-bar i{display:block;height:100%}
+.split-bar i.lt{background:var(--s1)} .split-bar i.tp{background:var(--s2)} .split-bar i.un{background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)}
+.sw2{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px}
+.unas{color:var(--warn);font-weight:600}
+.assign{display:flex;gap:6px;align-items:center}
+.assign select{min-height:32px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.wiz{display:flex;flex-direction:column;gap:22px;max-width:760px}
+.wiz h3{margin:0;font-size:36px;line-height:1.05;font-weight:700;font-stretch:72%;letter-spacing:-.4px}
+.wiz .steps{display:flex;margin:0;padding:0;list-style:none;border-bottom:1px solid var(--rule)}
+.wiz .steps li{display:flex;align-items:center;gap:8px;padding:8px 18px 9px 0;margin-right:18px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.wiz .steps li .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--rule);border-radius:50%;font-size:12px;font-weight:700}
+.wiz .steps li.done .num{background:var(--ink-2);border-color:var(--ink-2);color:var(--paper)}
+.wiz .steps li.now{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.opt2{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:3px;cursor:pointer}
+.opt2:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.opt2 input{margin-top:3px;accent-color:var(--pen)}
+.opt2 small{display:block;color:var(--muted);font-size:13px}
+.opt2.off{opacity:.55;cursor:default}
+.take{display:grid;grid-template-columns:minmax(0,1fr) 110px 110px 120px;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--rule-soft)}
+.take input{width:100%;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);text-align:right}
+.witem{display:grid;grid-template-columns:minmax(0,1fr) 90px minmax(0,1.2fr) 36px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--rule-soft)}
+.witem input[type=text]{width:100%;min-height:34px;padding:0 8px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.witem select{width:100%;min-height:34px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+.rm{width:34px;height:34px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);color:var(--muted)}
+.ph-pick{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.chip2{min-height:34px;padding:0 12px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-size:14px;white-space:nowrap}
+.chip2[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.ph-alert{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:10px 12px;border:1px solid var(--amber);background:transparent;text-align:left;color:var(--ink)}
+.ph-alert small{display:block;color:var(--muted);font-size:12px}
+.ph-chart svg{display:block;width:100%;height:auto}
+.ph-chart .axis{fill:var(--muted);font-size:10px;font-family:var(--font)}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, portfolio mockup: overview with the monthly history, target allocation with thresholds, mechanical rebalancing and trade entry. Instrument names are fictional. Change the targets or the contribution and watch the trades change.</p>
+    <p><b>envelope</b>, portfolio mockup: overview with the monthly history, target allocation with thresholds, mechanical rebalancing, linked accounts (one brokerage account holding several portfolios), the guided setup of a new portfolio and trade entry. Instrument names are fictional.</p>
     <div class="views" role="tablist" aria-label="Vista">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -362,25 +396,19 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
             <button type="button">Conti</button>
             <button type="button" aria-current="page">Portafoglio</button>
           </div>
-          <div class="ledger">
-            <h5>Portafogli</h5>
-            <div class="lr" style="font-weight:700"><span>Lungo termine</span><span class="dots"></span><span class="n">42.180,00</span></div>
-            <div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div>
-          </div>
-          <div class="ledger">
-            <h5>Conti collegati</h5>
-            <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
-          </div>
-          <button type="button" class="plain">+ Nuovo portafoglio</button>
+          <div id="pf-side" style="display:flex;flex-direction:column;gap:26px"></div>
           <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
         </nav>
         <div class="main">
-          <div class="pf-head">
-            <div><h3>Lungo termine</h3><div class="sub">Conto Broker ETF · prezzi al 25 settembre 2026 · prossimo controllo il 1° ottobre</div></div>
-            <div class="figs" id="figs"></div>
+          <div id="pf-normal">
+            <div class="pf-head">
+              <div><h3>Lungo termine</h3><div class="sub">Nel conto Broker ETF, insieme a Terzo pilastro · prezzi al 25 settembre 2026 · prossimo controllo il 1° ottobre</div></div>
+              <div class="figs" id="figs"></div>
+            </div>
+            <div class="subtabs" role="tablist" aria-label="Sezioni del portafoglio" id="subtabs"></div>
+            <div id="pane"></div>
           </div>
-          <div class="subtabs" role="tablist" aria-label="Sezioni del portafoglio" id="subtabs"></div>
-          <div id="pane"></div>
+          <div id="pf-wizard" hidden></div>
         </div>
         <aside class="insp" aria-label="Nuova operazione" id="panel" hidden></aside>
       </div>
@@ -391,10 +419,10 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     <div class="phones">
       <div class="phone"><div class="ph-in" id="ph"></div></div>
       <div class="ph-note">
-        <h3>The monthly check</h3>
+        <h3>On the phone</h3>
         <ul>
-          <li>The portfolio sends no continuous alerts: one notification on the first day of the month, and only when an item is outside its threshold.</li>
-          <li>The notification opens this summary: what is outside, by how much, and the trades that bring it back with this month’s contribution.</li>
+          <li>The Portfolio tab shows the value with a small chart (6 or 12 months), the items against their targets and the positions; the chips at the top switch portfolio.</li>
+          <li>The portfolio sends no continuous alerts: one notification on the first day of the month, and only when an item is outside its threshold. The notification opens the monthly check.</li>
           <li>Trades are placed with the broker; they are recorded here afterwards, with the real prices.</li>
         </ul>
       </div>
@@ -425,9 +453,13 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     { id: 'oro', name: 'ETC oro fisico', code: 'ORO', qty: 83, price: 4210, avg: 3620, item: 'gold' }
   ];
   var CASH = 1995;
+  // The Broker ETF account holds several portfolios: every unit belongs to one portfolio, or is not assigned yet.
+  var PF = [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro']];
+  var HOLD = { mondo: { tp: 60, un: 0 }, emerg: { tp: 0, un: 0 }, obbl: { tp: 40, un: 25 }, oro: { tp: 0, un: 20 } };
+  var OTHER_PF = [['Fondo pensione', 1892000, 'conto Fondo pensione']];
   // Allocation tree: top-level items with optional children. Targets in percent.
   var S = {
-    tab: 'overview', panel: false,
+    tab: 'overview', panel: false, wizard: null, created: [], phScreen: 'home', phPeriod: 12,
     items: [
       { id: 'stocks', name: 'Azioni', target: 60, children: [{ id: 'world', name: 'Mondo', target: 50 }, { id: 'em', name: 'Mercati emergenti', target: 10 }] },
       { id: 'bonds', name: 'Obbligazioni', target: 30 },
@@ -643,25 +675,163 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
       (t.type !== 'buy' && t.type !== 'sell' ? '<p class="hint">Nel bozzetto si registrano solo acquisti e vendite; gli altri tipi hanno il loro modulo.</p>' : '');
   }
 
+  function phChart(n) {
+    var W = 340, H = 130, pl = 6, pr = 6, pt = 10, pb = 18;
+    var vals = VALUES.slice(-n), con = CONTRIB.slice(-n), mon = MONTHS.slice(-n);
+    var lo = Math.min.apply(null, con.concat(vals)) * 0.98, hi = Math.max.apply(null, vals) * 1.01;
+    var x = function (i) { return pl + i * (W - pl - pr) / (vals.length - 1); };
+    var y = function (v) { return pt + (hi - v) / (hi - lo) * (H - pt - pb); };
+    var path = function (a) { return a.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' '); };
+    var area = path(vals) + ' L' + x(vals.length - 1) + ' ' + (H - pb) + ' L' + x(0) + ' ' + (H - pb) + ' Z';
+    var l = vals.length - 1;
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Valore e versamenti negli ultimi ' + n + ' mesi">' +
+      '<path d="' + area + '" fill="var(--s1)" opacity="0.10"></path>' +
+      '<path d="' + path(con) + '" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="5 4"></path>' +
+      '<path d="' + path(vals) + '" fill="none" stroke="var(--s1)" stroke-width="2"></path>' +
+      '<circle cx="' + x(l) + '" cy="' + y(vals[l]) + '" r="4" fill="var(--s1)" stroke="var(--paper)" stroke-width="2"></circle>' +
+      '<text class="axis" x="' + x(0) + '" y="' + (H - 4) + '">' + mon[0] + '</text><text class="axis" x="' + x(l) + '" y="' + (H - 4) + '" text-anchor="end">' + mon[l] + '</text></svg>';
+  }
   function phoneHtml() {
     var st = status(), outs = st.filter(function (x) { return x.out; });
-    var saved = S.mode; S.mode = 'contrib'; var p = plan(); S.mode = saved;
-    return '<div class="ph-card"><span class="hint">Notifica del 1° ottobre</span><h3>Controllo di ottobre</h3>' +
-      '<div class="figs" style="align-self:stretch"><div class="big" style="flex:1"><small>Lungo termine</small><b class="n">' + f(total()) + '</b></div><div><small>12 mesi</small><b class="n">' + pct(twr()) + '</b></div></div>' +
-      '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' voce è' : ' voci sono') + ' fuori dalla soglia.' : 'Tutte le voci sono dentro le soglie.') + '</p>' +
-      st.map(function (x) {
-        return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>obiettivo ' + pct(x.t, 0) + ' · soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>';
-      }).join('') +
-      '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Con il versamento di ' + f(parseAmount(S.contribStr) || 0) + '</h5>' +
-      p.rows.filter(function (r) { return r.qty; }).map(function (r) { return '<div class="ph-item"><span>' + (r.qty > 0 ? 'Compra ' : 'Vendi ') + Math.abs(r.qty) + ' ' + r.inst.code + '<small>' + esc(r.l.name) + '</small></span><span class="n">' + f(Math.abs(r.amount)) + '</span></div>'; }).join('') +
-      '<button type="button" class="btn primary" style="min-height:48px">Registra le operazioni fatte</button></div>';
+    if (S.phScreen === 'check') {
+      var saved = S.mode; S.mode = 'contrib'; var p = plan(); S.mode = saved;
+      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portafoglio</button><span class="hint">Notifica del 1° ottobre</span><h3>Controllo di ottobre</h3>' +
+        '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' voce è' : ' voci sono') + ' fuori dalla soglia.' : 'Tutte le voci sono dentro le soglie.') + '</p>' +
+        st.map(function (x) { return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>obiettivo ' + pct(x.t, 0) + ' · soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>'; }).join('') +
+        '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Per tornare ai tuoi obiettivi, con il versamento di ' + f(parseAmount(S.contribStr) || 0) + '</h5>' +
+        p.rows.filter(function (r) { return r.qty; }).map(function (r) { return '<div class="ph-item"><span>' + (r.qty > 0 ? 'Compra ' : 'Vendi ') + Math.abs(r.qty) + ' ' + r.inst.code + '<small>' + esc(r.l.name) + '</small></span><span class="n">' + f(Math.abs(r.amount)) + '</span></div>'; }).join('') +
+        '<button type="button" class="btn primary" style="min-height:48px">Registra le operazioni fatte</button></div>';
+    }
+    var V = total(), paid = CONTRIB[CONTRIB.length - 1], n = S.phPeriod;
+    var change = VALUES[VALUES.length - 1] - VALUES[VALUES.length - n];
+    return '<div class="ph-card"><div class="ph-pick">' + [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro'], ['fp', 'Fondo pensione']].map(function (x) { return '<button type="button" class="chip2" aria-pressed="' + (x[0] === 'lt') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<div><span class="hint">Lungo termine · 25 settembre</span><div style="font-size:34px;font-weight:700;font-stretch:85%" class="n">' + f(V) + '</div>' +
+      '<span class="n" style="font-size:13px;color:var(--ink-2)">' + signed(V - paid) + ' rispetto ai versamenti · ' + signed(change) + ' in ' + n + ' mesi</span></div>' +
+      '<div class="ph-chart">' + phChart(n) + '</div>' +
+      '<div class="row-btns" style="justify-content:space-between"><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Valore</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Versato</span></span>' +
+      '<span class="ph-pick">' + [6, 12].map(function (k) { return '<button type="button" class="chip2" data-php="' + k + '" aria-pressed="' + (n === k) + '">' + k + ' mesi</button>'; }).join('') + '</span></div>' +
+      (outs.length ? '<button type="button" class="ph-alert" data-phs="check"><span><b>Controllo di ottobre</b><small>' + outs.length + (outs.length === 1 ? ' voce fuori soglia' : ' voci fuori soglia') + ': ' + outs.map(function (x) { return esc(x.it.name); }).join(', ') + '</small></span><span>\u203a</span></button>' : '') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Allocazione</h5>' +
+      st.map(function (x) { return '<div><div class="row-btns" style="justify-content:space-between"><b style="font-weight:600">' + esc(x.it.name) + '</b><span class="n" style="' + (x.out ? 'color:var(--warn);font-weight:700' : '') + '">' + pct(x.w) + ' <span class="hint">/ ' + pct(x.t, 0) + '</span></span></div>' + gauge(x.w, x.t, x.band, x.out) + '</div>'; }).join('') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Posizioni</h5>' +
+      INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<div class="ph-item"><span>' + esc(i.name) + '<small>' + i.qty + ' quote · ' + f(i.price) + '</small></span><span style="text-align:right"><span class="n" style="font-weight:600">' + f(v) + '</span><small class="n' + (g < 0 ? ' negv' : '') + '">' + signed(g) + '</small></span></div>'; }).join('') +
+      '</div>';
   }
 
+  // ---- Sidebar, linked accounts and the new-portfolio setup
+  function tpValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].tp * i.price; }, 0); }
+  function unValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].un * i.price; }, 0); }
+  function sideHtml() {
+    var lt = total(), tp = tpValue(), un = unValue();
+    var extra = (S.created || []).map(function (c) { return '<div class="lr"><span>' + esc(c.name) + '</span><span class="dots"></span><span class="n">' + (c.value / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>'; }).join('');
+    return '<div class="ledger"><h5>Portafogli</h5>' +
+      '<div class="lr" style="font-weight:700"><span>Lungo termine</span><span class="dots"></span><span class="n">' + (lt / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Terzo pilastro</span><span class="dots"></span><span class="n">' + (tp / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div>' + extra +
+      '<button type="button" class="plain" style="margin-top:6px;text-align:left" data-wiz="start">+ Nuovo portafoglio</button></div>' +
+      '<div class="ledger"><h5>Conti</h5>' +
+      '<div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">' + ((lt + tp + un + createdValue()) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
+      (un ? '<div class="lr" style="padding-left:12px;font-size:12px"><span class="unas">non assegnati</span><span class="dots"></span><span class="n unas">' + (un / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' : '') +
+      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div></div>';
+  }
+  function createdValue() { return (S.created || []).reduce(function (s2, c) { return s2 + c.value; }, 0); }
+  function accountsPane() {
+    var lt = total() - CASH, tp = tpValue(), un = unValue(), cv = createdValue(), all = lt + tp + un + cv + CASH;
+    var rows = INST.map(function (i) {
+      var h = HOLD[i.id], created = (S.created || []).reduce(function (s2, c) { return s2 + (c.take[i.id] || 0); }, 0);
+      return '<tr><td><b style="font-weight:500">' + esc(i.name) + '</b><div class="hint">' + i.code + ' · ' + f(i.price) + '</div></td>' +
+        '<td class="r n">' + (i.qty + h.tp + h.un + created) + '</td><td class="r n">' + i.qty + '</td><td class="r n">' + (h.tp || '') + '</td>' + ((S.created || []).length ? '<td class="r n">' + (created || '') + '</td>' : '') +
+        '<td class="r n' + (h.un ? ' unas' : '') + '">' + (h.un || '') + '</td><td>' + (h.un ? '<span class="assign"><label class="sr" for="as-' + i.id + '">Assegna a</label><select id="as-' + i.id + '" data-assign="' + i.id + '"><option value="">Assegna a\u2026</option><option value="lt">Lungo termine</option><option value="tp">Terzo pilastro</option></select></span>' : '') + '</td></tr>';
+    }).join('');
+    var seg = function (v, cls) { return v > 0 ? '<i class="' + cls + '" style="flex:' + v + '"></i>' : ''; };
+    return '<p class="hint" style="margin:0;max-width:78ch">Un portafoglio è un insieme logico di titoli, non un conto: lo stesso conto del broker può contenerne più di uno, e un portafoglio può stare su più conti. Ogni operazione appartiene a un conto e a un portafoglio; spostare quote tra due portafogli dello stesso conto è un trasferimento senza movimento di denaro.</p>' +
+      '<div class="acc-block"><h4><span>Broker ETF</span><span class="n">' + f(all) + '</span></h4>' +
+      '<div class="split-bar" aria-hidden="true">' + seg(lt + CASH, 'lt') + seg(tp, 'tp') + seg(cv, 'tp') + seg(un, 'un') + '</div>' +
+      '<div class="legend2" style="flex-wrap:wrap"><span><i class="sw2" style="background:var(--s1)"></i>Lungo termine ' + f(lt + CASH) + '</span><span><i class="sw2" style="background:var(--s2)"></i>Terzo pilastro ' + f(tp) + '</span>' +
+      (S.created || []).map(function (c) { return '<span><i class="sw2" style="background:var(--s2)"></i>' + esc(c.name) + ' ' + f(c.value) + '</span>'; }).join('') +
+      (un ? '<span><i class="sw2" style="background:repeating-linear-gradient(135deg,var(--rule-soft) 0 4px,var(--rule) 4px 6px)"></i><span class="unas">Non assegnati ' + f(un) + '</span></span>' : '') + '</div>' +
+      '<table class="t" style="margin-top:12px"><thead><tr><th>Strumento</th><th class="r">Nel conto</th><th class="r">Lungo termine</th><th class="r">Terzo pilastro</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '<th class="r">Non assegnate</th><th></th></tr></thead><tbody>' + rows +
+      '<tr><td>Liquidità</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '<td></td><td></td></tr></tbody></table>' +
+      (un ? '<p class="hint unas" style="margin:6px 0 0">Le quote non assegnate contano nel conto ma in nessun portafoglio: non entrano in allocazione e ribilanciamento finché non le assegni.</p>' : '') + '</div>' +
+      '<div class="acc-block"><h4><span>Fondo pensione</span><span class="n">' + f(1892000) + '</span></h4><p class="hint" style="margin:8px 0 0">Tutto nel portafoglio Fondo pensione.</p></div>';
+  }
+  var WSTEPS = ['Nome', 'Conti', 'Titoli', 'Allocazione', 'Fatto'];
+  function wizardHtml() {
+    var w = S.wizard, h = '<div class="wiz"><button type="button" class="plain" data-wiz="cancel" style="align-self:flex-start">\u00d7 Annulla</button><h3>Nuovo portafoglio</h3>' +
+      '<ol class="steps">' + WSTEPS.map(function (t, k) { var n = k + 1; return '<li class="' + (n < w.step ? 'done' : n === w.step ? 'now' : '') + '"><span class="num">' + (n < w.step ? '\u2713' : n) + '</span>' + t + '</li>'; }).join('') + '</ol>';
+    if (w.step === 1) {
+      h += '<p style="margin:0;color:var(--ink-2);max-width:65ch">Un portafoglio raggruppa i titoli che hanno uno scopo comune e un\u2019allocazione obiettivo, anche se stanno in conti diversi o condividono un conto con altri portafogli.</p>' +
+        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-w="name" value="' + esc(w.name) + '" placeholder="Quarto pilastro, Studi dei figli\u2026"></div>' +
+        '<div class="field"><label for="w-purpose">Scopo (facoltativo)</label><input type="text" id="w-purpose" data-w="purpose" value="' + esc(w.purpose) + '" placeholder="Per cosa sono questi soldi"></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else if (w.step === 2) {
+      h += '<p style="margin:0;color:var(--ink-2)">In quali conti stanno i titoli di questo portafoglio? Puoi sceglierne più di uno, anche già usati da altri portafogli.</p>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>Broker ETF</b><small>Contiene già Lungo termine e Terzo pilastro · ' + f(unValue()) + ' non assegnati</small></span></label>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="fp"' + (w.accounts.fp ? ' checked' : '') + '><span><b>Fondo pensione</b><small>Tutto assegnato a Fondo pensione</small></span></label>' +
+        '<button type="button" class="plain" style="align-self:flex-start">+ Aggiungi un conto di investimento</button>';
+    } else if (w.step === 3) {
+      h += '<p style="margin:0;color:var(--ink-2)">Scegli quante quote di ogni titolo appartengono al nuovo portafoglio. Le proponiamo dalle quote non ancora assegnate; puoi anche spostarne da un altro portafoglio.</p>' +
+        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Titolo nel Broker ETF</span><span class="r">Non assegnate</span><span class="r">In altri portafogli</span><span class="r">In questo</span></div>' +
+        INST.map(function (i) { var hh = HOLD[i.id]; return '<div class="take"><span>' + esc(i.name) + '<div class="hint">' + i.code + ' · ' + f(i.price) + '</div></span><span class="r n">' + hh.un + '</span><span class="r n">' + (i.qty + hh.tp) + '</span><span><label class="sr" for="tk-' + i.id + '">Quote di ' + i.code + '</label><input type="text" inputmode="numeric" id="tk-' + i.id + '" data-take="' + i.id + '" value="' + (w.take[i.id] || 0) + '"></span></div>'; }).join('') +
+        '</div><div class="sumline"><span>Valore del nuovo portafoglio</span><span class="n" id="w-val">' + f(wizValue()) + '</span></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else if (w.step === 4) {
+      var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
+      h += '<p style="margin:0;color:var(--ink-2)">Da dove partiamo per gli obiettivi? Potrai modificarli quando vuoi nella scheda Allocazione.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">' +
+        [['own', 'Le mie voci', 'Scrivi tu voci e percentuali'], ['copy', 'Copia da Lungo termine', 'Stesse voci e soglie, poi le cambi'], ['known', 'Allocazione nota', 'Dalla libreria (in una versione successiva)']].map(function (o) {
+          return '<label class="opt2' + (o[0] === 'known' ? ' off' : '') + '"><input type="radio" name="wstart" value="' + o[0] + '" data-wstart="1"' + (w.start === o[0] ? ' checked' : '') + (o[0] === 'known' ? ' disabled' : '') + '><span><b>' + o[1] + '</b><small>' + o[2] + '</small></span></label>';
+        }).join('') + '</div>' +
+        '<div><div class="witem" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Voce</span><span class="r">Obiettivo</span><span>Strumenti</span><span></span></div>' +
+        w.items.map(function (it, k) {
+          return '<div class="witem"><span><label class="sr" for="wi-n-' + k + '">Voce</label><input type="text" id="wi-n-' + k + '" data-wi="' + k + ':name" value="' + esc(it.name) + '"></span>' +
+            '<span class="pct-in"><label class="sr" for="wi-t-' + k + '">Obiettivo</label><input type="text" inputmode="decimal" id="wi-t-' + k + '" data-wi="' + k + ':t" value="' + esc(String(it.t)) + '">%</span>' +
+            '<span><label class="sr" for="wi-i-' + k + '">Strumento</label><select id="wi-i-' + k + '" data-wi="' + k + ':inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (it.inst === i.id ? ' selected' : '') + '>' + i.code + '</option>'; }).join('') + '</select></span>' +
+            '<button type="button" class="rm" data-wirm="' + k + '" aria-label="Togli la voce">\u00d7</button></div>';
+        }).join('') + '<button type="button" class="plain" data-wiadd="1" style="margin-top:6px">+ Aggiungi una voce</button>' +
+        '<div class="sumline"><span>Totale</span><span class="n' + (Math.abs(sum - 100) > 1e-9 ? ' bad' : '') + '" id="w-sum">' + sum.toLocaleString('it-IT') + '%</span></div></div>' +
+        '<div class="field" style="max-width:420px"><label for="w-rule">Soglia</label><select id="w-rule" data-w="rule">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (w.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
+        (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
+    } else {
+      h += '<div class="figs" style="align-self:flex-start"><div class="big"><small>' + esc(w.name) + '</small><b class="n">' + f(wizValue()) + '</b></div><div><small>Voci</small><b class="n">' + w.items.length + '</b></div><div><small>Conti</small><b class="n">' + (w.accounts.broker ? 'Broker ETF' : '') + (w.accounts.fp ? (w.accounts.broker ? ', ' : '') + 'Fondo pensione' : '') + '</b></div></div>' +
+        '<p style="margin:0;color:var(--ink-2)">Il portafoglio è pronto. Le quote scelte sono ora assegnate a lui; da qui in avanti, ogni operazione su questi titoli ti chiederà a quale portafoglio appartiene.</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-wiz="finish">Apri il portafoglio</button></div>';
+    }
+    if (w.step < 5) h += '<div class="row-btns" style="justify-content:space-between;padding-top:10px;border-top:1px solid var(--rule)">' + (w.step > 1 ? '<button type="button" class="btn" data-wiz="back">Indietro</button>' : '<span></span>') + '<button type="button" class="btn primary" data-wiz="next">' + (w.step === 4 ? 'Crea il portafoglio' : 'Continua') + '</button></div>';
+    return h + '</div>';
+  }
+  function wizValue() { var w = S.wizard; return INST.reduce(function (s2, i) { return s2 + (Number(w.take[i.id]) || 0) * i.price; }, 0); }
+  function wizardNext() {
+    var w = S.wizard; w.err = '';
+    if (w.step === 1 && !w.name.trim()) { w.err = 'Dai un nome al portafoglio.'; return; }
+    if (w.step === 2 && !w.accounts.broker && !w.accounts.fp) { w.err = 'Scegli almeno un conto.'; return; }
+    if (w.step === 3) {
+      var bad = INST.filter(function (i) { var q = Number(w.take[i.id]) || 0; return q < 0 || q !== Math.floor(q) || q > HOLD[i.id].un + i.qty + HOLD[i.id].tp; })[0];
+      if (bad) { w.err = 'Le quote di ' + bad.code + ' non sono valide.'; return; }
+      var more = INST.filter(function (i) { return (Number(w.take[i.id]) || 0) > HOLD[i.id].un; })[0];
+      if (more) { w.err = 'Per ' + more.code + ' chiedi più quote di quelle non assegnate: nel bozzetto si prendono solo quelle libere.'; return; }
+    }
+    if (w.step === 4) {
+      var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
+      if (Math.abs(sum - 100) > 1e-9) { w.err = 'Le voci devono sommare al 100% (ora ' + sum.toLocaleString('it-IT') + '%).'; return; }
+      if (w.items.some(function (it) { return !it.name.trim(); })) { w.err = 'Ogni voce ha bisogno di un nome.'; return; }
+    }
+    w.step++;
+    if (w.step === 5) {
+      INST.forEach(function (i) { HOLD[i.id].un -= Number(w.take[i.id]) || 0; });
+      S.created = (S.created || []).concat([{ name: w.name.trim(), value: wizValue(), take: Object.assign({}, w.take) }]);
+    }
+  }
+
+  function paneHtml() { return S.tab === 'overview' ? overview() : S.tab === 'alloc' ? allocPane() : S.tab === 'accounts' ? accountsPane() : rebalPane(); }
   function render() {
+    el('pf-side').innerHTML = sideHtml();
+    el('pf-normal').hidden = !!S.wizard; el('pf-wizard').hidden = !S.wizard;
+    if (S.wizard) el('pf-wizard').innerHTML = wizardHtml();
     el('figs').innerHTML = figsHtml();
-    var TABS = [['overview', 'Panoramica'], ['alloc', 'Allocazione'], ['rebal', 'Ribilanciamento']];
+    var TABS = [['overview', 'Panoramica'], ['alloc', 'Allocazione'], ['rebal', 'Ribilanciamento'], ['accounts', 'Conti collegati']];
     el('subtabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('');
-    el('pane').innerHTML = '<div class="pane">' + (S.tab === 'overview' ? overview() : S.tab === 'alloc' ? allocPane() : rebalPane()) + '</div>';
+    el('pane').innerHTML = '<div class="pane">' + paneHtml() + '</div>';
     el('panel').hidden = !S.panel;
     el('desk').classList.toggle('withpanel', S.panel);
     el('panel').innerHTML = S.panel ? tradePanel() : '';
@@ -671,7 +841,7 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
   function renderPaneOnly() {
     el('figs').innerHTML = figsHtml();
     var keep = document.activeElement && document.activeElement.id, pos = document.activeElement && document.activeElement.selectionStart;
-    el('pane').innerHTML = '<div class="pane">' + (S.tab === 'overview' ? overview() : S.tab === 'alloc' ? allocPane() : rebalPane()) + '</div>';
+    el('pane').innerHTML = '<div class="pane">' + paneHtml() + '</div>';
     el('ph').innerHTML = phoneHtml();
     if (keep && el(keep)) { el(keep).focus(); try { el(keep).setSelectionRange(pos, pos); } catch (e) { /* not a text field */ } }
     wireChart();
@@ -704,6 +874,15 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (b.id === 'tab-desk') return show('desk');
     if (b.id === 'tab-phone') return show('phone');
     if (d.tab) { S.tab = d.tab; return render(); }
+    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: { mondo: 0, emerg: 0, obbl: 25, oro: 20 }, start: 'own', items: [{ name: 'Obbligazioni', t: 75, inst: 'obbl' }, { name: 'Oro', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
+    if (d.wiz === 'cancel') { S.wizard = null; return render(); }
+    if (d.wiz === 'back') { S.wizard.step--; S.wizard.err = ''; return render(); }
+    if (d.wiz === 'next') { wizardNext(); return render(); }
+    if (d.wiz === 'finish') { S.wizard = null; S.tab = 'accounts'; return render(); }
+    if (d.wiadd) { S.wizard.items.push({ name: '', t: 0, inst: 'mondo' }); return render(); }
+    if (d.wirm) { S.wizard.items.splice(Number(d.wirm), 1); return render(); }
+    if (d.phs) { S.phScreen = d.phs; el('ph').innerHTML = phoneHtml(); el('ph').scrollTop = 0; return; }
+    if (d.php) { S.phPeriod = Number(d.php); el('ph').innerHTML = phoneHtml(); return; }
     if (d.trade) { S.panel = true; S.trade.saved = null; return render(); }
     if (d.close) { S.panel = false; return render(); }
     if (d.newtrade) { S.trade.saved = null; return render(); }
@@ -721,6 +900,20 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
   document.addEventListener('change', function (e) {
     var t = e.target, d = t.dataset;
     if (d.mode) { S.mode = t.value; return renderPaneOnly(); }
+    if (d.assign) {
+      if (!t.value) return;
+      var qn = HOLD[d.assign].un; HOLD[d.assign].un = 0;
+      if (t.value === 'tp') HOLD[d.assign].tp += qn; else INST.filter(function (x) { return x.id === d.assign; })[0].qty += qn;
+      return render();
+    }
+    if (d.wacc) { S.wizard.accounts[d.wacc] = t.checked; return; }
+    if (d.wstart) {
+      S.wizard.start = t.value;
+      if (t.value === 'copy') S.wizard.items = [{ name: 'Azioni', t: 60, inst: 'mondo' }, { name: 'Obbligazioni', t: 30, inst: 'obbl' }, { name: 'Oro', t: 10, inst: 'oro' }];
+      return render();
+    }
+    if (d.w === 'rule') { S.wizard.rule = t.value; return; }
+    if (d.wi && t.tagName === 'SELECT') { var qq = d.wi.split(':'); S.wizard.items[Number(qq[0])][qq[1]] = t.value; return; }
     if (d.rule) { S.rule = t.value; S.preset = null; return render(); }
     if (d.frac) { S.fractional = t.checked; return renderPaneOnly(); }
     if (d.tr) { S.trade[d.tr] = t.value; if (d.tr === 'inst') { var i = INST.filter(function (x) { return x.id === t.value; })[0]; S.trade.priceStr = (i.price / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }); } el('panel').innerHTML = tradePanel(); var n = el(t.id); if (n) n.focus(); return; }
@@ -730,6 +923,14 @@ table.t .grp td{padding-top:14px;font-weight:700;font-stretch:78%;border-bottom:
     if (d.tgt) { var it = S.items.filter(function (x) { return x.id === d.tgt; })[0]; it.target = Number(t.value.replace(',', '.')) || 0; S.preset = null; return renderPaneOnly(); }
     if (d.sub) { var q = d.sub.split(':'), p = S.items.filter(function (x) { return x.id === q[0]; })[0], c = p.children.filter(function (x) { return x.id === q[1]; })[0]; c.target = Number(t.value.replace(',', '.')) || 0; return renderPaneOnly(); }
     if (d.contrib) { S.contribStr = t.value; return renderPaneOnly(); }
+    if (d.w === 'name' || d.w === 'purpose') { S.wizard[d.w] = t.value; return; }
+    if (d.take) { S.wizard.take[d.take] = t.value; var wv = el('w-val'); if (wv) wv.textContent = f(wizValue()); return; }
+    if (d.wi && t.tagName === 'INPUT') {
+      var q2 = d.wi.split(':'); S.wizard.items[Number(q2[0])][q2[1]] = t.value;
+      var sm = S.wizard.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0), ws = el('w-sum');
+      if (ws) { ws.textContent = sm.toLocaleString('it-IT') + '%'; ws.classList.toggle('bad', Math.abs(sm - 100) > 1e-9); }
+      return;
+    }
     if (d.mint) { S.minTradeStr = t.value; return renderPaneOnly(); }
     if (d.tr && t.tagName === 'INPUT' && t.type === 'text') {
       S.trade[d.tr] = t.value;
