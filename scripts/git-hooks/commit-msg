@@ -17,7 +17,7 @@ fi
 cat >&2 <<MSG
 Commit message refused: the first line must look like
   feat(api): add the migration runner
-  fix(core): keep credit overspending out of ready to assign
+  fix(core): keep credit overspending out of unassigned money
   docs: explain the release process
 Types: feat fix docs chore refactor test ci build perf revert
 Scopes: core api web mobile infra deps (optional)

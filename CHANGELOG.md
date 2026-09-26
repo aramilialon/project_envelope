@@ -19,6 +19,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ### Changed
 
+- Neutral names for two budget concepts: "ready to assign" is now **unassigned** (`BudgetMonth.unassigned`, the income category id `UNASSIGNED` = `"unassigned"`), and "age of money" is now **days of buffer**; the budget goals and the first run are described in the project's own words.
 - The `main` branch ruleset now only allows "Squash and merge" and also requires the `conventional-title` check to pass, alongside `test`; the repository is public, so this works on the free plan.
 
 ## [0.1.1] - 2026-09-26

@@ -70,4 +70,4 @@ The CI on GitHub runs all the tests again.
 
 ## Exercise
 
-Write a test checking that assigning a negative amount (taking money out of a category) **increases** ready to assign. Hint: start from the "rule 1" test and add a second, negative assignment to the same category.
+Write a test checking that assigning a negative amount (taking money out of a category) **increases** unassigned money. Hint: start from the "only money that has arrived can be assigned" test and add a second, negative assignment to the same category.

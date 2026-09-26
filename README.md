@@ -13,12 +13,12 @@
 
 ## What it does
 
-**Envelope budgeting.** Money that comes in lands in *ready to assign*; you assign it to categories, and you only ever assign money you already have.
+**Envelope budgeting.** Money that comes in stays *unassigned* until you assign it to categories, and you only ever assign money you already have.
 
 - Categories with rollover, credit cards with their own payment category, overspending that is handled differently for cash and for cards.
 - Targets for monthly bills, for a sum by a date, for expenses that repeat every few months, and for a balance to keep.
 - Import of bank statements (CSV, OFX, QIF, CAMT.053) with duplicate detection, and reconciliation with the bank balance.
-- Age of money, and instant notifications when a category goes negative.
+- Days of buffer, and instant notifications when a category goes negative.
 
 **Portfolios.** Record your trades; envelope derives positions, value and month-by-month performance.
 

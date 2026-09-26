@@ -16,7 +16,7 @@ The project may become open source and be used outside Italy. The main user is I
 
 ### No hard-coded text
 
-- Every user-facing string in the apps comes from a translation catalog, looked up by a stable key (for example `budget.readyToAssign.title`).
+- Every user-facing string in the apps comes from a translation catalog, looked up by a stable key (for example `budget.unassigned.title`).
 - Messages use the **ICU MessageFormat** syntax, which handles plurals and variables correctly in every language (for example `{count, plural, one {# category} other {# categories}}`).
 - Catalogs live in the repository, one file per language (for example `packages/i18n/locales/en.json` and `it.json`). A CI check fails if a key is missing in a required language.
 - The i18n library (candidates: i18next, FormatJS, Lingui, all of which support React and React Native) will be chosen in phase 1 with its own ADR.

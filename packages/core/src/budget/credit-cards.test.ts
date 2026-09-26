@@ -37,7 +37,7 @@ describe("credit cards", () => {
 
     assert.equal(find(result.categories, "groceries").available, 30000); // 400 − 100
     assert.equal(find(result.paymentCategories, CARD).available, 10000); // set aside to pay the card
-    assert.equal(result.readyToAssign, 60000); // unchanged by the card spending
+    assert.equal(result.unassigned, 60000); // unchanged by the card spending
     assert.equal(result.creditOverspending, 0);
   });
 
@@ -54,7 +54,7 @@ describe("credit cards", () => {
     assert.equal(card.available, 0);
   });
 
-  it("uncovered card spending is credit overspending, which never touches ready to assign", () => {
+  it("uncovered card spending is credit overspending, which never touches unassigned money", () => {
     const input = budget({
       assignments: [{ categoryId: "groceries", month: "2026-09", amount: 5000 }],
       activity: [{ categoryId: "groceries", month: "2026-09", amount: -8000, paymentCategoryId: CARD }],
@@ -70,7 +70,7 @@ describe("credit cards", () => {
 
     const october = computeBudgetMonth(input, "2026-10");
     assert.equal(find(october.categories, "groceries").available, 0); // restarts at zero
-    assert.equal(october.readyToAssign, 95000); // 1000 − 50: the €30 became card debt instead
+    assert.equal(october.unassigned, 95000); // 1000 − 50: the €30 became card debt instead
     assert.equal(october.overspentLastMonth, 0);
   });
 
@@ -143,7 +143,7 @@ describe("credit cards", () => {
     const result = computeBudgetMonth(input, "2026-09");
 
     assert.equal(find(result.paymentCategories, CARD).available, 0);
-    assert.equal(result.readyToAssign, 80000);
+    assert.equal(result.unassigned, 80000);
   });
 
   it("paying more than the payment category holds is cash overspending", () => {
@@ -153,6 +153,6 @@ describe("credit cards", () => {
 
     const september = computeBudgetMonth(input, "2026-09");
     assert.equal(find(september.paymentCategories, CARD).cashOverspending, 5000);
-    assert.equal(computeBudgetMonth(input, "2026-10").readyToAssign, 95000);
+    assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 95000);
   });
 });
