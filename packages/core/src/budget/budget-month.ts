@@ -76,6 +76,18 @@ export interface CardPayment {
   readonly amount: Cents;
 }
 
+/**
+ * A card's real, external balance (from its own account's transactions,
+ * including any starting balance) as of the requested month — not derived
+ * from activity or card payments. Used only to compute `uncovered`; never
+ * stored or carried across months by this function.
+ */
+export interface CardBalance {
+  readonly paymentCategoryId: string;
+  /** Positive: amount currently owed on the card. */
+  readonly owed: Cents;
+}
+
 export interface BudgetInput {
   /** Regular categories. */
   readonly categoryIds: readonly string[];
@@ -85,6 +97,7 @@ export interface BudgetInput {
   readonly assignments: readonly Assignment[];
   readonly activity: readonly Activity[];
   readonly cardPayments?: readonly CardPayment[];
+  readonly cardBalances?: readonly CardBalance[];
 }
 
 export interface CategoryMonth {
@@ -103,6 +116,12 @@ export interface CategoryMonth {
   readonly creditOverspending: Cents;
   /** Rest of a negative `available` (taken from unassigned money next month if left uncovered). */
   readonly cashOverspending: Cents;
+  /**
+   * Payment categories only: how much of the card's real balance (`BudgetInput.cardBalances`)
+   * assigned money does not cover yet — `max(0, owed - available)`. Derived fresh every call,
+   * never persisted or carried to the next month; 0 when no `cardBalances` entry is given.
+   */
+  readonly uncovered: Cents;
 }
 
 export interface BudgetMonth {
@@ -166,6 +185,19 @@ function validate(input: BudgetInput, month: Month): void {
     assertCents(item.amount, "card payment");
     if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
   }
+  const seenBalances = new Set<string>();
+  for (const item of input.cardBalances ?? []) {
+    assertCents(item.owed, "card balance");
+    if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
+    if (seenBalances.has(item.paymentCategoryId)) {
+      throw new ValidationError(
+        "duplicate_card_balance",
+        `duplicate card balance: "${item.paymentCategoryId}"`,
+        { paymentCategoryId: item.paymentCategoryId },
+      );
+    }
+    seenBalances.add(item.paymentCategoryId);
+  }
 }
 
 interface MonthState {
@@ -186,6 +218,7 @@ function computeMonth(
     activityBy: ReadonlyMap<string, Cents>;
     creditBy: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
     paymentsBy: ReadonlyMap<string, Cents>;
+    cardBalanceBy: ReadonlyMap<string, Cents>;
   },
 ): MonthState {
   const paymentIds = input.paymentCategoryIds ?? [];
@@ -221,7 +254,7 @@ function computeMonth(
       toCover -= covered;
     }
 
-    return { categoryId: id, carriedOver, assigned, activity, available, creditOverspending, cashOverspending };
+    return { categoryId: id, carriedOver, assigned, activity, available, creditOverspending, cashOverspending, uncovered: 0 };
   });
 
   const paymentCategories = paymentIds.map((id): CategoryMonth => {
@@ -229,6 +262,7 @@ function computeMonth(
     const assigned = data.assignedBy.get(key(id, m)) ?? 0;
     const activity = (movedToPayment.get(id) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
     const available = carriedOver + assigned + activity;
+    const owed = data.cardBalanceBy.get(id);
     // Paying more than the payment category holds spends cash that had no job: cash overspending.
     return {
       categoryId: id,
@@ -238,6 +272,10 @@ function computeMonth(
       available,
       creditOverspending: 0,
       cashOverspending: Math.max(0, -available),
+      // max(0, available): an overpayment already reduces available and next month's
+      // unassigned (cashOverspending); counting its negative available again here
+      // would double the same shortfall into both mechanisms.
+      uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
     };
   });
 
@@ -268,7 +306,9 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     }
   }
   for (const p of input.cardPayments ?? []) addTo(paymentsBy, key(p.paymentCategoryId, p.month), p.amount);
-  const data = { assignedBy, activityBy, creditBy, paymentsBy };
+  const cardBalanceBy = new Map<string, Cents>();
+  for (const b of input.cardBalances ?? []) cardBalanceBy.set(b.paymentCategoryId, b.owed);
+  const data = { assignedBy, activityBy, creditBy, paymentsBy, cardBalanceBy };
 
   // 2. Find the first month with data: the computation starts there.
   let firstMonth = month;

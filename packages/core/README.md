@@ -47,6 +47,6 @@ Comparisons with Perl, to find your way around the code.
 
 ## Current limitations
 
-- Credit card starting balances (debt that existed before the budget) and income on a credit card (for example cashback) are not supported yet.
+- Income on a credit card (for example cashback) is not modeled as a transaction here yet; the API composes it from an income transaction plus a card payment instead (design.md, "Credit cards").
 - Transfers between two credit cards (balance transfers) are rejected for now.
-- Uncategorized transactions are rejected: the import flow will have to ask for a category or park them in a dedicated category.
+- Uncategorized transactions are rejected: the import flow stages rows until every one has a category, is a transfer, or is income (design.md, "Import and reconciliation").

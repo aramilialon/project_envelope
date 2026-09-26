@@ -211,6 +211,9 @@ describe("budget invariant with accounts and credit cards", () => {
       }
 
       const aggregated = aggregateTransactions(accounts, transactions);
+      // A starting balance (or any card debt tracked outside the budget) is external to
+      // the invariant: it must never move money between the budget and the cash accounts.
+      const cardBalances = paymentCategoryIds.map((id) => ({ paymentCategoryId: id, owed: amount(300000) }));
       const input: BudgetInput = {
         categoryIds,
         paymentCategoryIds,
@@ -220,6 +223,7 @@ describe("budget invariant with accounts and credit cards", () => {
           month: pick(months),
           amount: amount(100000) - 30000,
         })),
+        cardBalances,
       };
       const month = pick(months);
 
@@ -235,6 +239,16 @@ describe("budget invariant with accounts and credit cards", () => {
         .reduce((sum, t) => sum + t.amount, 0);
 
       assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);
+
+      for (const card of result.paymentCategories) {
+        const owed = cardBalances.find((b) => b.paymentCategoryId === card.categoryId)?.owed ?? 0;
+        assert.ok(card.uncovered >= 0, `uncovered went negative on run ${run}, month ${month}`);
+        assert.equal(
+          card.uncovered,
+          Math.max(0, owed - Math.max(0, card.available)),
+          `uncovered formula mismatch on run ${run}, month ${month}`,
+        );
+      }
     }
   });
 });

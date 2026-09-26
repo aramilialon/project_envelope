@@ -155,4 +155,55 @@ describe("credit cards", () => {
     assert.equal(find(september.paymentCategories, CARD).cashOverspending, 5000);
     assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 95000);
   });
+
+  describe("a starting balance (or any uncovered card debt) shows as uncovered, not swept away", () => {
+    it("with nothing assigned yet: available 0, uncovered the full balance, unassigned untouched", () => {
+      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }] });
+
+      const september = computeBudgetMonth(input, "2026-09");
+      const card = find(september.paymentCategories, CARD);
+
+      assert.equal(card.available, 0);
+      assert.equal(card.uncovered, 120000);
+      assert.equal(september.unassigned, 100000); // unaffected: the debt is credit, not cash
+    });
+
+    it("assigning money to the payment category reduces uncovered directly", () => {
+      const input = budget({
+        assignments: [{ categoryId: CARD, month: "2026-09", amount: 20000 }],
+        cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }],
+      });
+
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+
+      assert.equal(card.available, 20000);
+      assert.equal(card.uncovered, 100000);
+    });
+
+    it("paying more than assigned is cash overspending, same as today; the rest stays uncovered", () => {
+      const input = budget({
+        assignments: [{ categoryId: CARD, month: "2026-09", amount: 20000 }],
+        cardPayments: [{ paymentCategoryId: CARD, month: "2026-09", amount: 30000 }],
+        // The card's real balance already reflects the payment: 1200 owed − 300 paid = 900.
+        cardBalances: [{ paymentCategoryId: CARD, owed: 90000 }],
+      });
+
+      const september = computeBudgetMonth(input, "2026-09");
+      const card = find(september.paymentCategories, CARD);
+
+      assert.equal(card.cashOverspending, 10000); // 300 paid − 200 set aside
+      assert.equal(card.uncovered, 90000);
+      assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 70000); // 1000 − 200 assigned − 100 excess payment
+    });
+
+    it("does not persist: a payment category with no cardBalances input has no uncovered debt", () => {
+      const input = budget({
+        assignments: [{ categoryId: "groceries", month: "2026-09", amount: 5000 }],
+        activity: [{ categoryId: "groceries", month: "2026-09", amount: -8000, paymentCategoryId: CARD }],
+      });
+
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+      assert.equal(card.uncovered, 0);
+    });
+  });
 });

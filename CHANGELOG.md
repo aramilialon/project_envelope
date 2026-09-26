@@ -6,6 +6,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Added
+
+- `@envelope/core`: `computeBudgetMonth` takes each on-budget credit card's real balance and returns `uncovered` per payment category — debt not yet covered by assigned money, derived fresh every call instead of being swept to zero at month-end or silently lost (`#249`).
+
 ### Changed
 
 - Documentation: the portfolio mockup and its "User interface" section no longer describe holdings left unassigned to any portfolio, aligning them with #219 (every trade is assigned to exactly one portfolio when it is entered).

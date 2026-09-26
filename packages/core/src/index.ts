@@ -10,6 +10,7 @@ export type {
   Assignment,
   BudgetInput,
   BudgetMonth,
+  CardBalance,
   CardPayment,
   CategoryMonth,
   Income,

@@ -82,4 +82,4 @@ Then the web app (phase 1 of the roadmap), with the i18n library chosen in its o
 
 ## Known limitations of the core
 
-Credit card starting balances, income on credit cards, transfers between credit cards and uncategorized transactions are not supported yet (see `packages/core/README.md`).
+Income on credit cards, transfers between credit cards and uncategorized transactions are not supported yet (see `packages/core/README.md`).
