@@ -17,6 +17,7 @@ export type ValidationErrorCode =
   | "duplicate_account"
   | "unknown_account"
   | "missing_payment_category"
+  | "duplicate_card_balance"
   | "uncategorized_transaction"
   | "split_mismatch"
   | "unsupported_transaction";

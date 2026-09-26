@@ -23,7 +23,10 @@
  *   - credit card to credit card: not supported yet (balance transfers).
  *
  * Limitation of this version: income on a credit card (for example cashback)
- * and credit card starting balances are not supported yet.
+ * is not modeled as a transaction here; the API composes it from an income
+ * transaction plus a card payment instead (design.md, "Credit cards"). A
+ * card's starting balance is not an Activity at all — see `CardBalance` in
+ * budget-month.ts.
  */
 
 import { ValidationError } from "../errors.ts";
