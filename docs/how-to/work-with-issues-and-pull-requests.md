@@ -30,7 +30,7 @@ Every change reaches `main` through a pull request that a person reviews and mer
    ```bash
    git config core.hooksPath scripts/git-hooks
    ```
-5. Every new issue and pull request is added to the [project board](https://github.com/users/aramilialon/projects/3) automatically (`.github/workflows/add-to-project.yml`). It needs a token with `project` scope that the repository's own `GITHUB_TOKEN` does not have (the board belongs to the user, not the repository): create a fine-grained personal access token with read/write access to Projects, then store it once:
+5. Every new issue is added to the [project board](https://github.com/users/aramilialon/projects/3) automatically (`.github/workflows/add-to-project.yml`); pull requests are not, since a pull request that closes an issue already on the board would just duplicate its card. It needs a token with `project` scope that the repository's own `GITHUB_TOKEN` does not have (the board belongs to the user, not the repository): create a fine-grained personal access token with read/write access to Projects, then store it once:
    ```bash
    gh secret set PROJECT_BOARD_TOKEN
    ```
