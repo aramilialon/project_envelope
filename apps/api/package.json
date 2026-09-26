@@ -1,0 +1,23 @@
+{
+  "name": "@envelope/api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "envelope backend: API, sync and background jobs",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/main.ts",
+    "start": "node --env-file-if-exists=.env src/main.ts",
+    "migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "fastify": "^5.12.5",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "pino-pretty": "^13.1.3"
+  }
+}

@@ -166,14 +166,34 @@ ssh -L 8080:127.0.0.1:8080 dev@envelope-dev
 
 Leave that session open and browse to [http://localhost:8080](http://localhost:8080) on the laptop. Sign in as `admin` with the password set in `.env`. Keycloak takes about a minute to start the first time.
 
-## 9. Editing the code
+## 9. The API server (`apps/api`)
+
+```bash
+$ cd ~/envelope/apps/api
+$ cp .env.example .env
+$ nano .env                 # set DATABASE_URL's password to the one in infra/.env
+$ pnpm --filter @envelope/api dev
+```
+
+The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL.
+
+Its integration tests use a separate database, so a failing test never touches the one above:
+
+```bash
+$ createdb -h 127.0.0.1 -U envelope envelope_test     # once; asks for the password in infra/.env
+$ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test pnpm --filter @envelope/api test
+```
+
+See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
+
+## 10. Editing the code
 
 Any editor works. Two common options:
 
 - **On the VM:** `vim` or `nano` over SSH.
 - **From the laptop:** an editor with remote SSH support, such as Visual Studio Code with the Remote - SSH extension. Files stay on the VM; the laptop only shows them.
 
-## 10. Daily workflow
+## 11. Daily workflow
 
 Changes reach the VM through the repository:
 

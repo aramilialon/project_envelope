@@ -1,5 +1,6 @@
 # Continuous integration: on every push to main and every pull request,
-# install dependencies, check types and run the tests.
+# install dependencies, check types, apply migrations against a real
+# PostgreSQL and run the tests.
 name: CI
 
 on:
@@ -13,6 +14,23 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: envelope_test
+          POSTGRES_PASSWORD: envelope_test
+          POSTGRES_DB: envelope_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U envelope_test -d envelope_test"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      # Used by apps/api: its own tests and the migration runner.
+      DATABASE_URL: postgres://envelope_test:envelope_test@localhost:5432/envelope_test
     steps:
       - uses: actions/checkout@v7
 
@@ -36,4 +54,6 @@ jobs:
             pnpm install --no-frozen-lockfile
           fi
       - run: pnpm typecheck
+      - name: Apply database migrations
+        run: pnpm --filter @envelope/api migrate
       - run: pnpm test

@@ -4,7 +4,7 @@ The applications will live here, each one a package of the monorepo:
 
 | Folder | Contents | Phase |
 | --- | --- | --- |
-| `api` | Node.js server: API, sync, background jobs | 0–1 |
+| [`api`](api/README.md) | Node.js server: API, sync, background jobs | 0–1 |
 | `web` | React app for the browser | 1 |
 | `mobile` | Expo app for iOS and Android | 3 |
 
