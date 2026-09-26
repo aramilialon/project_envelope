@@ -172,12 +172,21 @@ Leave that session open and browse to [http://localhost:8080](http://localhost:8
 $ cd ~/envelope/apps/api
 $ cp .env.example .env
 $ nano .env                 # set DATABASE_URL's password to the one in infra/.env
+$ pnpm --filter @envelope/api migrate
+```
+
+Migrations create the `envelope_app` role but never give it a password (ADR 0006: that would mean committing a real credential). Give it one, once per Postgres instance:
+
+```bash
+$ docker exec -it envelope-postgres-1 psql -U envelope -d envelope \
+  -c "ALTER ROLE envelope_app WITH LOGIN PASSWORD '<a password you pick>';"
+$ nano .env                 # set APP_DATABASE_URL to that password
 $ pnpm --filter @envelope/api dev
 ```
 
 The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` only need to look valid for now: nothing calls Keycloak yet outside the tests.
 
-Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm through the admin API (no manual realm setup needed):
+Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm and their own `envelope_app` login through the admin API (no manual setup needed for tests specifically):
 
 ```bash
 $ createdb -h 127.0.0.1 -U envelope envelope_test     # once; asks for the password in infra/.env

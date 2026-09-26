@@ -9,6 +9,7 @@ export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 export interface Config {
   readonly host: string;
   readonly port: number;
+  /** The API's own restricted connection (envelope_app, ADR 0006) — never the migration runner's. */
   readonly databaseUrl: string;
   readonly logLevel: LogLevel;
   readonly logPretty: boolean;
@@ -23,7 +24,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   return {
     host: env.HOST || "127.0.0.1",
     port: parsePort(env, "PORT", 3000),
-    databaseUrl: requireEnv(env, "DATABASE_URL"),
+    databaseUrl: requireEnv(env, "APP_DATABASE_URL"),
     logLevel: parseLogLevel(env, "LOG_LEVEL", "info"),
     logPretty: parseBoolean(env, "LOG_PRETTY", false),
     nodeEnv: env.NODE_ENV || "development",
@@ -33,8 +34,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 }
 
 /**
- * The migration runner only ever needs a database to connect to: loading the
- * full Config would make it demand Keycloak settings it has no use for.
+ * The migration runner needs its own connection, with the privileges to run
+ * DDL (create tables, grant to envelope_app) that the restricted app
+ * connection (APP_DATABASE_URL, above) deliberately does not have. Loading
+ * the full Config would also make it demand Keycloak settings it has no use
+ * for.
  */
 export function loadDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
   return requireEnv(env, "DATABASE_URL");

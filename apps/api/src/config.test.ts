@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { loadConfig, loadDatabaseUrl } from "./config.ts";
 
 const BASE_ENV = {
-  DATABASE_URL: "postgres://envelope@127.0.0.1:5432/envelope",
+  APP_DATABASE_URL: "postgres://envelope_app@127.0.0.1:5432/envelope",
   KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
   KEYCLOAK_AUDIENCE: "envelope-api",
 };
@@ -14,7 +14,7 @@ describe("loadConfig", () => {
     const config = loadConfig(BASE_ENV);
     assert.equal(config.host, "127.0.0.1");
     assert.equal(config.port, 3000);
-    assert.equal(config.databaseUrl, BASE_ENV.DATABASE_URL);
+    assert.equal(config.databaseUrl, BASE_ENV.APP_DATABASE_URL);
     assert.equal(config.logLevel, "info");
     assert.equal(config.logPretty, false);
     assert.equal(config.nodeEnv, "development");
@@ -38,14 +38,14 @@ describe("loadConfig", () => {
     assert.equal(config.nodeEnv, "production");
   });
 
-  it("rejects a missing DATABASE_URL", () => {
-    assert.throws(() => loadConfig({ KEYCLOAK_ISSUER: "x", KEYCLOAK_AUDIENCE: "x" }), /DATABASE_URL/);
+  it("rejects a missing APP_DATABASE_URL", () => {
+    assert.throws(() => loadConfig({ KEYCLOAK_ISSUER: "x", KEYCLOAK_AUDIENCE: "x" }), /APP_DATABASE_URL/);
   });
 
   it("rejects a missing KEYCLOAK_ISSUER or KEYCLOAK_AUDIENCE", () => {
-    assert.throws(() => loadConfig({ DATABASE_URL: BASE_ENV.DATABASE_URL }), /KEYCLOAK_ISSUER/);
+    assert.throws(() => loadConfig({ APP_DATABASE_URL: BASE_ENV.APP_DATABASE_URL }), /KEYCLOAK_ISSUER/);
     assert.throws(
-      () => loadConfig({ DATABASE_URL: BASE_ENV.DATABASE_URL, KEYCLOAK_ISSUER: "x" }),
+      () => loadConfig({ APP_DATABASE_URL: BASE_ENV.APP_DATABASE_URL, KEYCLOAK_ISSUER: "x" }),
       /KEYCLOAK_AUDIENCE/,
     );
   });
@@ -67,7 +67,8 @@ describe("loadConfig", () => {
 
 describe("loadDatabaseUrl", () => {
   it("reads DATABASE_URL alone, without requiring the Keycloak variables", () => {
-    assert.equal(loadDatabaseUrl({ DATABASE_URL: BASE_ENV.DATABASE_URL }), BASE_ENV.DATABASE_URL);
+    const databaseUrl = "postgres://envelope@127.0.0.1:5432/envelope";
+    assert.equal(loadDatabaseUrl({ DATABASE_URL: databaseUrl }), databaseUrl);
   });
 
   it("rejects a missing DATABASE_URL", () => {
