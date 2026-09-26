@@ -175,13 +175,15 @@ $ nano .env                 # set DATABASE_URL's password to the one in infra/.e
 $ pnpm --filter @envelope/api dev
 ```
 
-The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL.
+The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` only need to look valid for now: nothing calls Keycloak yet outside the tests.
 
-Its integration tests use a separate database, so a failing test never touches the one above:
+Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm through the admin API (no manual realm setup needed):
 
 ```bash
 $ createdb -h 127.0.0.1 -U envelope envelope_test     # once; asks for the password in infra/.env
-$ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test pnpm --filter @envelope/api test
+$ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
+  KEYCLOAK_ADMIN_PASSWORD=<password from infra/.env> \
+  pnpm --filter @envelope/api test
 ```
 
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.

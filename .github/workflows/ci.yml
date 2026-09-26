@@ -1,6 +1,6 @@
 # Continuous integration: on every push to main and every pull request,
 # install dependencies, check types, apply migrations against a real
-# PostgreSQL and run the tests.
+# PostgreSQL, start a real Keycloak, and run the tests.
 name: CI
 
 on:
@@ -31,8 +31,32 @@ jobs:
     env:
       # Used by apps/api: its own tests and the migration runner.
       DATABASE_URL: postgres://envelope_test:envelope_test@localhost:5432/envelope_test
+      # Used by apps/api's Keycloak test helper to provision a throwaway realm per test run.
+      KEYCLOAK_ADMIN_PASSWORD: envelope_test
     steps:
       - uses: actions/checkout@v7
+
+      # Keycloak needs an explicit "start-dev" command, which the "services:" block cannot
+      # pass, so it is started as a plain container instead of a service.
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+            quay.io/keycloak/keycloak:26.0 start-dev
+
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
+              echo "Keycloak is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Keycloak did not become ready in time"
+          docker logs keycloak
+          exit 1
 
       # Reads the pnpm version from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@v6

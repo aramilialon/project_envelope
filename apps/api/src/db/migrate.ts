@@ -9,7 +9,7 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { loadConfig } from "../config.ts";
+import { loadDatabaseUrl } from "../config.ts";
 import { createPool, type DbPool } from "./pool.ts";
 
 export const DEFAULT_MIGRATIONS_DIR = path.join(
@@ -78,8 +78,7 @@ async function loadApplied(pool: DbPool): Promise<Map<string, AppliedMigration>>
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
-  const pool = createPool(config.databaseUrl);
+  const pool = createPool(loadDatabaseUrl());
   try {
     const applied = await runMigrations(pool);
     console.log(applied.length === 0 ? "No pending migrations." : `Applied: ${applied.join(", ")}`);
