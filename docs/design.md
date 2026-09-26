@@ -382,7 +382,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 
 ### Notifications
 
-- **Budget, plaintext workspace.** When a change reaches the server, a job that recomputes the affected categories is queued in the same transaction. If a category goes negative, a purchase exceeds the available balance, money arrives to be assigned or a transaction needs approval, the server immediately sends a push to every member of the workspace.
+- **Budget, plaintext workspace.** When a change reaches the server, a job that recomputes the affected categories is queued in the same transaction. If a category goes negative, a purchase exceeds the available balance, or money arrives to be assigned, the server immediately sends a push to every member of the workspace. Resolving any of these — moving money, assigning the new income — needs the `owner` or `editor` role: a `read-only` member is notified but cannot act on it.
 - **Budget, on the device making the change.** The alert appears immediately, computed locally by the shared core, even offline. The server's push reaches the other members; for the author of the change, the notification id prevents a duplicate.
 - **Budget, encrypted workspace.** The server sends only a silent notification ("there are updates"); the device syncs, computes and shows the alert. On iOS silent notifications can be delayed: this must be measured.
 - **Portfolio.** Monthly rebalancing check: a server job for plaintext workspaces, a scheduled notification on the device for encrypted ones.
@@ -455,13 +455,15 @@ Work starts from the domain core and the web app for a single workspace, already
 
 | Phase | Contents | Move on when |
 | --- | --- | --- |
-| 0. Foundations | Monorepo, CI, database, Keycloak, workspaces, offline sync prototype, domain core with tests | Sign-up, sign-in with 2FA, offline changes synced without loss or duplicates, green CI |
-| 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, age of money, CSV/OFX import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
+| 0. Foundations | Monorepo, CI, database, Keycloak, workspaces, domain core with tests | Sign-up, sign-in with 2FA, green CI |
+| 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, age of money, CSV/OFX/QIF/CAMT.053 import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
 | 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing | The dashboard reproduces the results of an existing spreadsheet-based tracker |
 | 3. Mobile and offline | Expo app, local database, sync, quick entry, notifications | One week of use on two devices without loss or duplicates |
-| 4. Public open-source beta | Docker, documentation, targets, reports, broker import | A self-hosted install works in under 10 minutes |
+| 4. Public open-source beta | Docker, documentation | A self-hosted install works in under 10 minutes |
 | 5. Hosted version (optional) | End-to-end encryption module, subscriptions, licensed market data, managed backups, external security test, legal and GDPR review | Security test passed and legal documents ready |
-| 6. Evolutions | Optional end-to-end encryption module, PSD2 bank connection, shared budgets, local tax rules, widgets | Driven by actual needs |
+| 6. Evolutions | PSD2 bank connection, shared budgets, widgets | Driven by actual needs |
+
+The field-level sync protocol is designed here (this section) but only ships, as its own milestone, once the API surfaces it needs (queue, authenticated multi-workspace requests) exist — see `CLAUDE.md`'s numbered step list for the exact within-phase sequencing, which is more detailed than the phase table above and takes precedence where the two seem to disagree. Targets, reports and broker import each carry their own `Phase` tag where they are first described (budget MVP, budget phase 2 and portfolio phase 2 respectively); phase 4 here is only about packaging what by then already exists. End-to-end encryption and local tax rules are each described once, where most specific (this section's "End-to-end encryption: a future, optional module" and the Portfolio module table), not repeated in phase 6.
 
 ## Decisions
 
