@@ -1,0 +1,22 @@
+# Adds every new issue and pull request to the project board automatically,
+# so it never falls behind (it did once: 64 items tracked out of 203 issues).
+name: Add to project
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v2
+        with:
+          project-url: https://github.com/users/aramilialon/projects/3
+          github-token: ${{ secrets.PROJECT_BOARD_TOKEN }}

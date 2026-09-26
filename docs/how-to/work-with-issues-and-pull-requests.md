@@ -6,7 +6,7 @@ Every change reaches `main` through a pull request that a person reviews and mer
 
 | Piece | Role | Example |
 | --- | --- | --- |
-| Milestone | A goal with a version number and a "done when" criterion | `v0.1.0 API skeleton` |
+| Milestone | A goal with a version number and a "done when" criterion | `0.1.0 API skeleton` |
 | Issue | One task inside a milestone, with labels | "Migration runner with checksums" |
 | Branch | The work on one issue | `feat/12-migration-runner` |
 | Pull request | The proposal to merge the branch into `main`; closes the issue when merged | "Add the migration runner", body `Closes #12` |
@@ -30,12 +30,16 @@ Every change reaches `main` through a pull request that a person reviews and mer
    ```bash
    git config core.hooksPath scripts/git-hooks
    ```
+5. Every new issue and pull request is added to the [project board](https://github.com/users/aramilialon/projects/3) automatically (`.github/workflows/add-to-project.yml`). It needs a token with `project` scope that the repository's own `GITHUB_TOKEN` does not have (the board belongs to the user, not the repository): create a fine-grained personal access token with read/write access to Projects, then store it once:
+   ```bash
+   gh secret set PROJECT_BOARD_TOKEN
+   ```
 
 ## The workflow
 
 1. **Pick or create an issue** in the current milestone:
    ```bash
-   gh issue create --title "Migration runner with checksums" --label area:api --label type:feature --milestone "v0.1.0 API skeleton"
+   gh issue create --title "Migration runner with checksums" --label area:api --label type:feature --milestone "0.1.0 API skeleton"
    ```
 2. **Create a branch** from an up-to-date `main`, named `<type>/<issue>-<short-description>`:
    ```bash
@@ -55,7 +59,7 @@ Every change reaches `main` through a pull request that a person reviews and mer
 4. **Push the branch and open the pull request**:
    ```bash
    git push -u origin feat/12-migration-runner
-   gh pr create --fill --milestone "v0.1.0 API skeleton"
+   gh pr create --fill --milestone "0.1.0 API skeleton"
    ```
    The title must follow the commit convention too, for example `feat(api): add the migration runner`: it becomes the commit message on `main`. The template asks for `Closes #12`, the tests run and the checklist.
 5. **Review and merge (a person).** Read the changes on GitHub, wait for a green CI, then merge with **Squash and merge**: `main` gets one commit per pull request, and the issue closes automatically.
