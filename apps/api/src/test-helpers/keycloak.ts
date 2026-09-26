@@ -31,7 +31,9 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
   const adminToken = await getAdminToken(adminPassword);
   const realm = `envelope-test-${randomUUID()}`;
   const clientSecret = randomUUID();
-  const username = "test-user";
+  // Unique per realm: apps/api's own users.email is UNIQUE, and every test realm otherwise
+  // mapped to the same "test-user@example.com", colliding across test files and runs.
+  const username = `test-user-${randomUUID()}`;
   const password = randomUUID();
 
   await adminRequest(adminToken, "POST", "/admin/realms", {
