@@ -27,7 +27,7 @@ Every change reaches `main` through a pull request that a person reviews and mer
    scripts/github/protect-main.sh
    ```
    On a private repository this needs a paid GitHub plan. Without it, GitHub answers `403` and the local safeguards below are the only protection.
-4. Refuse pushes to `main` from each clone:
+4. Activate the Git hooks in each clone (they refuse pushes to `main` and check commit messages):
    ```bash
    git config core.hooksPath scripts/git-hooks
    ```
@@ -43,10 +43,10 @@ Every change reaches `main` through a pull request that a person reviews and mer
    git switch main && git pull
    git switch -c feat/12-migration-runner
    ```
-   Types: `feat`, `fix`, `chore`, `docs`.
-3. **Commit** with messages in English, imperative mood, referencing the issue:
+   Branch types: `feat`, `fix`, `chore`, `docs`.
+3. **Commit** following the commit convention (below), referencing the issue:
    ```text
-   Add the migration runner
+   feat(api): add the migration runner
 
    Applies pending SQL files in order, one transaction each, and records
    their checksums in schema_migrations.
@@ -58,13 +58,45 @@ Every change reaches `main` through a pull request that a person reviews and mer
    git push -u origin feat/12-migration-runner
    gh pr create --fill --milestone "v0.1.0 API skeleton"
    ```
-   The template asks for `Closes #12`, the tests run and the checklist.
+   The title must follow the commit convention too, for example `feat(api): add the migration runner`: it becomes the commit message on `main`. The template asks for `Closes #12`, the tests run and the checklist.
 5. **Review and merge (a person).** Read the changes on GitHub, wait for a green CI, then merge with **Squash and merge**: `main` gets one commit per pull request, and the issue closes automatically.
 6. **Clean up**:
    ```bash
    git switch main && git pull
    git branch -d feat/12-migration-runner
    ```
+
+## Commit convention
+
+The first line of every commit message, and every pull request title, looks like `<type>(<scope>): <description>`:
+
+| Type | When |
+| --- | --- |
+| `feat` | New functionality |
+| `fix` | A bug fix |
+| `docs` | Documentation only |
+| `refactor` | Code change that neither adds a feature nor fixes a bug |
+| `test` | Tests only |
+| `perf` | Faster or lighter, same behavior |
+| `build` | Dependencies, build configuration |
+| `ci` | CI workflows |
+| `chore` | Maintenance that fits nothing above |
+| `revert` | Undoes a previous commit |
+
+- **Scope** (optional): the part of the project, one of `core`, `api`, `web`, `mobile`, `infra`, `deps`.
+- **Description**: imperative mood, lower case, no final period: "add", not "added" or "adds".
+- **Breaking change**: add `!` before the colon, as in `feat(api)!: rename the budget endpoint`, and explain it in the body.
+
+Examples:
+
+```text
+feat(core): support credit card payment categories
+fix(api): reject transactions dated in an invalid month
+docs: explain the release process
+build(deps): update pnpm to 10.34.5
+```
+
+The `commit-msg` hook in `scripts/git-hooks` rejects other formats, and the "PR title" workflow checks pull request titles. The types also tell which version number to raise at release time: `feat` raises the minor version, `fix` the patch version, a `!` the major version (from 1.0.0 onwards).
 
 ## Releasing a milestone
 
@@ -85,7 +117,7 @@ When every issue of a milestone is closed:
 | Layer | What it does | Limit |
 | --- | --- | --- |
 | Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request | Needs a public repository or a paid plan |
-| Pre-push hook (`scripts/git-hooks/pre-push`) | Refuses `git push` to `main` from the clone | Local: must be activated in each clone |
+| Git hooks (`scripts/git-hooks/`) | `pre-push` refuses `git push` to `main`; `commit-msg` checks the commit convention | Local: must be activated in each clone |
 | Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, merging and approving pull requests, skipping hooks; ask before force pushes, tags, releases and raw API calls | Match the usual command forms, not every possible variant |
 
 Only the ruleset is a real boundary; the other two catch mistakes early.

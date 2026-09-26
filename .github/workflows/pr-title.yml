@@ -1,0 +1,25 @@
+# With "Squash and merge", the pull request title becomes the commit message on
+# main, so it must follow the same convention as commit messages.
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the pull request title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          convention='^(feat|fix|docs|chore|refactor|test|ci|build|perf|revert)(\([a-z0-9-]+\))?!?: [^ ].*'
+          if [[ "$TITLE" =~ $convention ]]; then
+            echo "Title follows the convention: $TITLE"
+          else
+            echo "::error::The title must look like 'feat(api): add the migration runner'. Got: $TITLE"
+            exit 1
+          fi
