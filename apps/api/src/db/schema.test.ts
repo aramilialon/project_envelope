@@ -22,6 +22,7 @@ const WORKSPACE_TABLES = [
   "transactions",
   "splits",
   "monthly_assignments",
+  "audit_log",
 ];
 
 describe("apps/api/migrations, applied to a real database", () => {
@@ -123,6 +124,57 @@ describe("apps/api/migrations, applied to a real database", () => {
               workspaceB,
             ]),
           /row-level security/,
+        );
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    });
+  });
+
+  describe("audit_log is append-only", () => {
+    let workspaceId: string;
+    let entryId: string;
+
+    before(async () => {
+      workspaceId = randomUUID();
+      await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Audited', 'EUR', 'Europe/Rome')", [
+        workspaceId,
+      ]);
+      const { rows } = await pool.query<{ id: string }>(
+        "INSERT INTO audit_log (workspace_id, user_id, action) VALUES ($1, NULL, 'test.action') RETURNING id",
+        [workspaceId],
+      );
+      entryId = rows[0]!.id;
+    });
+
+    it("rejects an UPDATE from envelope_app", async () => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL ROLE envelope_app");
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+
+        await assert.rejects(
+          () => client.query("UPDATE audit_log SET action = 'changed' WHERE id = $1", [entryId]),
+          /permission denied/,
+        );
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    });
+
+    it("rejects a DELETE from envelope_app", async () => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL ROLE envelope_app");
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+
+        await assert.rejects(
+          () => client.query("DELETE FROM audit_log WHERE id = $1", [entryId]),
+          /permission denied/,
         );
       } finally {
         await client.query("ROLLBACK");
