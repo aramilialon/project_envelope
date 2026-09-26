@@ -11,6 +11,7 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of th
 | `src/db/migrate.ts` | Applies pending SQL files from `migrations/`, also runnable as `pnpm --filter @envelope/api migrate` |
 | `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006) |
 | `src/routes/health.ts` | `GET /health`: reports whether the database is reachable |
+| `src/routes/me.ts` | `GET /me`: returns the caller's local user id; registered only outside production, to give the global auth preHandlers a real route to protect ahead of the Budget API's own routes |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
 | `src/auth/user-mapper.ts` | Fastify preHandler, chained after the token verifier: upserts a `users` row from the token's `sub`/`email` claims and attaches its id to `request.userId` |
 | `src/auth/workspace-membership.ts` | Fastify preHandler, chained after the user mapper: checks the local user's role in the workspace the request names, and opens the request's single database transaction with `app.user_id`/`app.workspace_id` set for ADR 0006's RLS policies; `registerWorkspaceScope` commits or rolls it back once the response is ready |
