@@ -1,6 +1,6 @@
 # @envelope/api
 
-The backend server: a Fastify HTTP API on top of PostgreSQL. Step 1 of the backend MVP (see `CLAUDE.md`) is just a skeleton: configuration, a database pool, a migration runner and a `/health` endpoint, all with integration tests against a real PostgreSQL.
+The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 and 2 of the backend MVP (see `CLAUDE.md`) are done: configuration, a database pool, a migration runner, a `/health` endpoint, the domain schema (workspaces, users, memberships, accounts, categories, transactions, monthly assignments) and Row-Level Security per workspace, all with integration tests against a real PostgreSQL.
 
 ## Contents
 
@@ -9,7 +9,7 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Step 1 of the backe
 | `src/config.ts` | Reads and validates environment variables once at startup |
 | `src/db/pool.ts` | The only file that imports `pg` directly; everything else gets a connection pool from here |
 | `src/db/migrate.ts` | Applies pending SQL files from `migrations/`, also runnable as `pnpm --filter @envelope/api migrate` |
-| `migrations/` | Plain SQL migration files (ADR 0005); empty until step 2 adds the domain schema |
+| `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006) |
 | `src/routes/health.ts` | `GET /health`: reports whether the database is reachable |
 | `src/app.ts` | `buildApp(config)`: assembles the Fastify instance and its routes, without opening a port (used directly by tests) |
 | `src/main.ts` | Entry point: loads the config, builds the app, starts listening |
@@ -68,4 +68,4 @@ Comparisons with Perl/CGI/DBI, to find your way around the code.
 
 ## Current limitations
 
-No authentication yet (step 3), no domain schema yet (step 2): `/health` is the only route, and it only checks that the database is reachable.
+No authentication yet (step 3) and no repository/route code yet (step 4): `/health` is still the only route, and no query touches the domain schema except in tests. Because of that, the API's own connection still uses the superuser role (`envelope`) from `infra/.env`, which bypasses the Row-Level Security policies described in [ADR 0006](../../docs/adr/0006-row-level-security.md); those policies are proven correct by `src/db/schema.test.ts` (using `SET ROLE envelope_app`), not yet enforced for the running server.

@@ -9,7 +9,7 @@
     "dev": "node --watch --env-file-if-exists=.env src/main.ts",
     "start": "node --env-file-if-exists=.env src/main.ts",
     "migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "node --test --test-concurrency=1 \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
