@@ -89,7 +89,7 @@ The user records every instrument they own and every transaction. The app derive
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
-| Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade belongs to one account and one portfolio, so an account's positions are split logically across its portfolios. Holdings not assigned to any portfolio are shown as such | MVP |
+| Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade is assigned to exactly one portfolio at entry (never left unassigned, and an account is never treated as if it were a portfolio), so an account's positions are split logically across its portfolios | MVP |
 | Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
 | Positions | Quantity, average cost, current value, unrealized and realized gains or losses | MVP |
