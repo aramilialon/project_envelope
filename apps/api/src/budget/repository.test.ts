@@ -1,0 +1,155 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { after, before, describe, it } from "node:test";
+
+import { isValidationError } from "@envelope/core";
+
+import { createAssignmentBatch } from "../assignments/repository.ts";
+import { createTransaction } from "../transactions/repository.ts";
+import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
+import { createPool, type DbPool } from "../db/pool.ts";
+import { getBudgetMonth } from "./repository.ts";
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error(
+    "Set DATABASE_URL to a test database before running the integration tests, " +
+      "e.g. postgres://envelope:<password>@127.0.0.1:5432/envelope_test",
+  );
+}
+
+describe("budget month repository", () => {
+  let pool: DbPool;
+  let workspaceId: string;
+  let authorId: string;
+  let checkingAccountId: string;
+  let groupId: string;
+  let categoryId: string;
+
+  before(async () => {
+    pool = createPool(databaseUrl);
+    await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+
+    workspaceId = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Test', 'EUR', 'UTC')", [
+      workspaceId,
+    ]);
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id",
+      [randomUUID(), `${randomUUID()}@example.com`],
+    );
+    authorId = user.rows[0]!.id;
+    const account = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Checking', 'checking', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    checkingAccountId = account.rows[0]!.id;
+    const group = await pool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
+      [workspaceId],
+    );
+    groupId = group.rows[0]!.id;
+    const category = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Groceries', 1) RETURNING id",
+      [workspaceId, groupId],
+    );
+    categoryId = category.rows[0]!.id;
+  });
+
+  after(async () => {
+    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+    await pool.query("DELETE FROM users WHERE id = $1", [authorId]);
+    await pool.end();
+  });
+
+  it("computes unassigned money and a category's available amount, joined with its name/group/sort order", async () => {
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: checkingAccountId,
+      occurredAt: "2026-09-01",
+      splits: [{ categoryId: null, amountCents: 100_000 }],
+    });
+    await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2026-09", sourceCategoryId: null, destinationCategoryId: categoryId, amountCents: 40_000 }],
+    });
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: checkingAccountId,
+      occurredAt: "2026-09-10",
+      splits: [{ categoryId, amountCents: -10_000 }],
+    });
+
+    const september = await getBudgetMonth(pool, workspaceId, "2026-09");
+    assert.equal(september.unassigned, 60_000);
+
+    const groceries = september.categories.find((c) => c.categoryId === categoryId);
+    assert.equal(groceries?.name, "Groceries");
+    assert.equal(groceries?.groupId, groupId);
+    assert.equal(groceries?.groupName, "Home");
+    assert.equal(groceries?.sortOrder, 1);
+    assert.equal(groceries?.carriedOver, 0);
+    assert.equal(groceries?.assigned, 40_000);
+    assert.equal(groceries?.activity, -10_000);
+    assert.equal(groceries?.available, 30_000);
+  });
+
+  it("rolls a category's positive available balance over to the next month", async () => {
+    const october = await getBudgetMonth(pool, workspaceId, "2026-10");
+    const groceries = october.categories.find((c) => c.categoryId === categoryId);
+    assert.equal(groceries?.carriedOver, 30_000);
+    assert.equal(groceries?.assigned, 0);
+    assert.equal(groceries?.activity, 0);
+    assert.equal(groceries?.available, 30_000);
+    assert.equal(october.unassigned, 60_000); // unaffected: no new income or assignments in October
+  });
+
+  it("shows a credit card's starting-balance debt as uncovered, and unassigned money as unaffected", async () => {
+    const cardAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Card', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    const cardAccountId = cardAccount.rows[0]!.id;
+    const paymentCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Card payment', 2) RETURNING id",
+      [workspaceId, groupId],
+    );
+    const paymentCategoryId = paymentCategory.rows[0]!.id;
+    await pool.query("UPDATE accounts SET payment_category_id = $1 WHERE id = $2", [paymentCategoryId, cardAccountId]);
+    // A starting balance dated before the test month, exactly as accounts/repository.ts's
+    // createStartingBalanceTransaction records one, but with a controlled date instead of now().
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: cardAccountId,
+      occurredAt: "2026-08-01",
+      status: "cleared",
+      splits: [{ categoryId: paymentCategoryId, amountCents: -120_000 }],
+    });
+
+    const withNothingAssigned = await getBudgetMonth(pool, workspaceId, "2026-11");
+    const cardBefore = withNothingAssigned.paymentCategories.find((c) => c.categoryId === paymentCategoryId);
+    assert.equal(cardBefore?.available, 0);
+    assert.equal(cardBefore?.uncovered, 120_000);
+    const unassignedBefore = withNothingAssigned.unassigned;
+
+    await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2026-11", sourceCategoryId: null, destinationCategoryId: paymentCategoryId, amountCents: 20_000 }],
+    });
+
+    const withSomeAssigned = await getBudgetMonth(pool, workspaceId, "2026-11");
+    const cardAfter = withSomeAssigned.paymentCategories.find((c) => c.categoryId === paymentCategoryId);
+    assert.equal(cardAfter?.available, 20_000);
+    assert.equal(cardAfter?.uncovered, 100_000);
+    assert.equal(withSomeAssigned.unassigned, unassignedBefore - 20_000);
+  });
+
+  it("a packages/core ValidationError surfaces with its stable code, not a raw message", async () => {
+    await assert.rejects(
+      () => getBudgetMonth(pool, workspaceId, "not-a-month"),
+      (error: unknown) => isValidationError(error, "invalid_month"),
+    );
+  });
+});

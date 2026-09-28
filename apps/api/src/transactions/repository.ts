@@ -307,6 +307,19 @@ export async function listTransactionsForAccount(
   return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
 }
 
+/** Every transaction of the workspace, across every account — what the budget month endpoint (#16) aggregates. */
+export async function listTransactionsForWorkspace(db: DbPool | DbClient, workspaceId: string): Promise<TransactionRecord[]> {
+  const { rows } = await db.query<TransactionRow>(
+    `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
+     JOIN workspaces w ON w.id = t.workspace_id
+     WHERE t.workspace_id = $1
+     ORDER BY t.occurred_at, t.created_at`,
+    [workspaceId],
+  );
+  const splitsByTransaction = await loadSplits(db, rows.map((r) => r.id));
+  return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
+}
+
 /**
  * Updates payee/memo/status and, if given, replaces every split. Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be
