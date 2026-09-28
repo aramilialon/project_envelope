@@ -20,5 +20,6 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 | `0008_workspace_row_level_security.sql` | Row-Level Security policies and the `envelope_app` role (see [ADR 0006](../../../docs/adr/0006-row-level-security.md)) |
 | `0009_audit_log.sql` | `audit_log` (append-only: no `UPDATE`/`DELETE` grant to `envelope_app`) |
 | `0010_accounts_payment_category.sql` | `accounts`: drops `'off_budget'` from `type` (on-budget is `on_budget` alone), adds `payment_category_id` |
+| `0011_assignment_ledger.sql` | Drops `monthly_assignments` (migration 0007), creates `assignment_ledger` — an append-only ledger, no `UPDATE`/`DELETE` grant to `envelope_app` (see [ADR 0008](../../../docs/adr/0008-assignment-ledger.md)) |
 
 Not here yet: `goals` (targets) and every portfolio table (`instruments`, `trades`, `allocation_node`...), which belong to later steps of the roadmap.
