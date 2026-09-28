@@ -51,9 +51,9 @@
 
 | Milestone | Contents | Status |
 | --- | --- | --- |
-| 0.1.0 – 0.1.1 | API skeleton, database schema, Row-Level Security per workspace | Released |
-| 0.1.2 | Authentication with Keycloak (OpenID Connect) | In progress |
-| 0.1.3 – 0.1.6 | Budget API, import, queue and notifications, offline sync | Planned |
+| 0.1.0 – 0.1.2 | API skeleton, database schema, Row-Level Security per workspace, authentication with Keycloak (OpenID Connect) | Released |
+| 0.1.3 | Budget API | In progress |
+| 0.1.4 – 0.1.6 | Import, queue and notifications, offline sync | Planned |
 | 0.1.7 – 0.1.8 | Web app, then a real month of a household budget run with the app alone | Planned |
 | 0.2.x | Portfolios, prices, allocation and rebalancing | Planned |
 | 0.3.x | Mobile app | Planned |
