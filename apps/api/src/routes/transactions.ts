@@ -5,6 +5,7 @@ import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
 import {
   createTransaction,
+  createTransfer,
   listTransactionsForAccount,
   updateTransaction,
   type SplitInput,
@@ -111,6 +112,42 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
         return;
       }
       return result;
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.post("/workspaces/:workspaceId/transfers", { preHandler }, async (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const sourceAccountId = typeof body.sourceAccountId === "string" ? body.sourceAccountId : "";
+    const destinationAccountId = typeof body.destinationAccountId === "string" ? body.destinationAccountId : "";
+    const occurredAt = typeof body.occurredAt === "string" ? body.occurredAt : "";
+    const amountCents = typeof body.amountCents === "number" ? body.amountCents : undefined;
+    if (!sourceAccountId || !destinationAccountId || !occurredAt || amountCents === undefined) {
+      await reply.code(400).send({
+        error: "invalid transfer: sourceAccountId, destinationAccountId, occurredAt and amountCents are required",
+      });
+      return;
+    }
+    const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
+      ? (body.status as TransactionStatus)
+      : undefined;
+
+    try {
+      const transfer = await createTransfer(request.db!, {
+        workspaceId: request.workspace!.id,
+        sourceAccountId,
+        destinationAccountId,
+        occurredAt,
+        amountCents,
+        ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
+        ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
+        ...(status ? { status } : {}),
+      });
+      await reply.code(201).send(transfer);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;

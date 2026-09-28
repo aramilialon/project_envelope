@@ -6,7 +6,7 @@ import { isValidationError } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { createTransaction, listTransactionsForAccount, updateTransaction } from "./repository.ts";
+import { createTransaction, createTransfer, listTransactionsForAccount, updateTransaction } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -20,6 +20,9 @@ describe("transactions repository", () => {
   let pool: DbPool;
   let workspaceId: string;
   let accountId: string;
+  let savingsAccountId: string;
+  let creditCardAccountId: string;
+  let otherCreditCardAccountId: string;
   let categoryId: string;
   let otherCategoryId: string;
 
@@ -37,6 +40,21 @@ describe("transactions repository", () => {
       [workspaceId],
     );
     accountId = account.rows[0]!.id;
+    const savingsAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Savings', 'savings', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    savingsAccountId = savingsAccount.rows[0]!.id;
+    const creditCardAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Card', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    creditCardAccountId = creditCardAccount.rows[0]!.id;
+    const otherCreditCardAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Other card', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    otherCreditCardAccountId = otherCreditCardAccount.rows[0]!.id;
     const group = await pool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -219,5 +237,107 @@ describe("transactions repository", () => {
   it("updating an unknown transaction reports not_found", async () => {
     const result = await updateTransaction(pool, workspaceId, randomUUID(), { payee: "Nobody" });
     assert.equal(result, "not_found");
+  });
+
+  it("creates a transfer as two linked transactions, opposite signed amounts", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 5000,
+    });
+    assert.equal(transfer.source.accountId, accountId);
+    assert.equal(transfer.source.transferId, transfer.destination.id);
+    assert.equal(transfer.source.splits[0]?.categoryId, null);
+    assert.equal(transfer.source.splits[0]?.amountCents, -5000);
+
+    assert.equal(transfer.destination.accountId, savingsAccountId);
+    assert.equal(transfer.destination.transferId, transfer.source.id);
+    assert.equal(transfer.destination.splits[0]?.amountCents, 5000);
+  });
+
+  it("creates a cash-to-card transfer the same way, no special-casing", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: creditCardAccountId,
+      occurredAt: "2026-09-11",
+      amountCents: 2000,
+    });
+    assert.equal(transfer.destination.accountId, creditCardAccountId);
+    assert.equal(transfer.destination.splits[0]?.amountCents, 2000);
+  });
+
+  it("rejects a transfer between two on-budget credit cards", async () => {
+    await assert.rejects(
+      () =>
+        createTransfer(pool, {
+          workspaceId,
+          sourceAccountId: creditCardAccountId,
+          destinationAccountId: otherCreditCardAccountId,
+          occurredAt: "2026-09-12",
+          amountCents: 1000,
+        }),
+      (error: unknown) => isValidationError(error, "unsupported_transaction"),
+    );
+  });
+
+  it("rejects a transfer to the same account", async () => {
+    await assert.rejects(
+      () =>
+        createTransfer(pool, {
+          workspaceId,
+          sourceAccountId: accountId,
+          destinationAccountId: accountId,
+          occurredAt: "2026-09-12",
+          amountCents: 1000,
+        }),
+      (error: unknown) => isValidationError(error, "duplicate_account"),
+    );
+  });
+
+  it("rejects a transfer naming an unknown account", async () => {
+    await assert.rejects(
+      () =>
+        createTransfer(pool, {
+          workspaceId,
+          sourceAccountId: accountId,
+          destinationAccountId: randomUUID(),
+          occurredAt: "2026-09-12",
+          amountCents: 1000,
+        }),
+      (error: unknown) => isValidationError(error, "unknown_account"),
+    );
+  });
+
+  it("rejects a non-positive transfer amount", async () => {
+    await assert.rejects(
+      () =>
+        createTransfer(pool, {
+          workspaceId,
+          sourceAccountId: accountId,
+          destinationAccountId: savingsAccountId,
+          occurredAt: "2026-09-12",
+          amountCents: 0,
+        }),
+      (error: unknown) => isValidationError(error, "invalid_amount"),
+    );
+  });
+
+  it("deleting one side of a transfer sets the other's transferId to null", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-13",
+      amountCents: 750,
+    });
+
+    await pool.query("DELETE FROM transactions WHERE id = $1", [transfer.source.id]);
+
+    const destination = await listTransactionsForAccount(pool, workspaceId, savingsAccountId);
+    const remaining = destination.find((t) => t.id === transfer.destination.id);
+    assert.equal(remaining?.transferId, null);
   });
 });

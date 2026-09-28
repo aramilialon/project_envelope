@@ -28,6 +28,7 @@ describe("transactions routes", () => {
   let app: App;
   let workspaceId: string;
   let accountId: string;
+  let savingsAccountId: string;
   let categoryId: string;
   let token: string;
 
@@ -55,6 +56,11 @@ describe("transactions routes", () => {
       [workspaceId],
     );
     accountId = account.rows[0]!.id;
+    const savingsAccount = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Savings', 'savings', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    savingsAccountId = savingsAccount.rows[0]!.id;
     const group = await superuserPool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -176,5 +182,54 @@ describe("transactions routes", () => {
       payload: { payee: "Nobody" },
     });
     assert.equal(response.statusCode, 404);
+  });
+
+  it("creates a transfer, visible from both accounts' own transaction list", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: {
+        sourceAccountId: accountId,
+        destinationAccountId: savingsAccountId,
+        occurredAt: "2026-09-21",
+        amountCents: 3000,
+      },
+    });
+    assert.equal(created.statusCode, 201);
+    const transfer = created.json();
+    assert.equal(transfer.source.transferId, transfer.destination.id);
+
+    const sourceList = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: auth,
+    });
+    assert.ok(sourceList.json().transactions.some((t: { id: string }) => t.id === transfer.source.id));
+
+    const destinationList = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${savingsAccountId}/transactions`,
+      headers: auth,
+    });
+    assert.ok(destinationList.json().transactions.some((t: { id: string }) => t.id === transfer.destination.id));
+  });
+
+  it("rejects a transfer to the same account with a translatable error", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        sourceAccountId: accountId,
+        destinationAccountId: accountId,
+        occurredAt: "2026-09-21",
+        amountCents: 1000,
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error, "duplicate_account");
   });
 });
