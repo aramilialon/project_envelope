@@ -6,6 +6,7 @@ import { registerWorkspaceScope } from "./auth/workspace-membership.ts";
 import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
+import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerMeRoute } from "./routes/me.ts";
 
@@ -44,6 +45,7 @@ export function buildApp(config: Config): App {
   registerWorkspaceScope(fastify);
   registerHealthRoute(fastify, pool);
   registerAccountsRoutes(fastify, pool);
+  registerCategoriesRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
   // preHandlers to protect ahead of the Budget API's own routes (#235).
   if (config.nodeEnv !== "production") {

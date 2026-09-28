@@ -10,6 +10,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - `@envelope/core`: `computeBudgetMonth` takes each on-budget credit card's real balance and returns `uncovered` per payment category — debt not yet covered by assigned money, derived fresh every call instead of being swept to zero at month-end or silently lost (`#249`).
 - `apps/api`: accounts — create (with an on-budget credit card's payment category and optional starting balance transaction created automatically), list, close (`#11`).
+- `apps/api`: category groups and categories — create, list, archive, reorder (`#12`).
 
 ### Changed
 
