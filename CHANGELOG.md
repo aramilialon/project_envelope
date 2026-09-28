@@ -12,6 +12,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: accounts — create (with an on-budget credit card's payment category and optional starting balance transaction created automatically), list, close (`#11`).
 - `apps/api`: category groups and categories — create, list, archive, reorder (`#12`).
 - `apps/api`: transactions — create, list, update, with splits, income (a `null` category) and a reconciled transaction refusing further edits; `budgetDate` is derived at read time from the workspace's own time zone rather than stored (`#13`).
+- `apps/api`: transfers between accounts, as two linked transactions (`transferId`), created atomically; a transfer between two on-budget credit cards is rejected, matching `packages/core`'s own current limitation (`#14`).
 
 ### Fixed
 

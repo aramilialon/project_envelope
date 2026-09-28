@@ -115,9 +115,20 @@ function validateSplits(splits: readonly SplitInput[], expectedTotal: number | u
 /** An instant with its own explicit offset ("Z" or "+02:00") needs no anchoring: it already names one exact moment. */
 const HAS_EXPLICIT_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
-export async function createTransaction(db: DbPool | DbClient, input: CreateTransactionInput): Promise<TransactionRecord> {
-  validateSplits(input.splits, input.amountCents);
+interface InsertTransactionRowInput {
+  readonly workspaceId: string;
+  readonly accountId: string;
+  readonly occurredAt: string;
+  readonly payee: string | null;
+  readonly memo: string | null;
+  readonly status: TransactionStatus;
+}
 
+/**
+ * Inserts a bare `transactions` row (no splits) and returns its id. Shared by
+ * `createTransaction` and `createTransfer`'s two linked legs.
+ */
+async function insertTransactionRow(db: DbPool | DbClient, input: InsertTransactionRowInput): Promise<string> {
   // design.md, "Accounting rules": a date-only occurredAt (a bank import's date, or a plain
   // "YYYY-MM-DD" from a form) is midnight in the WORKSPACE's own time zone, not UTC or
   // whatever zone this database connection happens to default to — Postgres would otherwise
@@ -133,28 +144,132 @@ export async function createTransaction(db: DbPool | DbClient, input: CreateTran
        $4, $5, $6
      )
      RETURNING id`,
-    [
-      input.workspaceId,
-      input.accountId,
-      input.occurredAt,
-      input.payee ?? null,
-      input.memo ?? null,
-      input.status ?? "pending",
-      anchored,
-    ],
+    [input.workspaceId, input.accountId, input.occurredAt, input.payee, input.memo, input.status, anchored],
   );
-  const transaction = rows[0];
-  if (!transaction) {
-    throw new Error("createTransaction: INSERT ... RETURNING produced no row");
+  const row = rows[0];
+  if (!row) {
+    throw new Error("insertTransactionRow: INSERT ... RETURNING produced no row");
   }
+  return row.id;
+}
 
-  await insertSplits(db, input.workspaceId, transaction.id, input.splits);
+export async function createTransaction(db: DbPool | DbClient, input: CreateTransactionInput): Promise<TransactionRecord> {
+  validateSplits(input.splits, input.amountCents);
 
-  const record = await getTransaction(db, input.workspaceId, transaction.id);
+  const id = await insertTransactionRow(db, {
+    workspaceId: input.workspaceId,
+    accountId: input.accountId,
+    occurredAt: input.occurredAt,
+    payee: input.payee ?? null,
+    memo: input.memo ?? null,
+    status: input.status ?? "pending",
+  });
+  await insertSplits(db, input.workspaceId, id, input.splits);
+
+  const record = await getTransaction(db, input.workspaceId, id);
   if (!record) {
     throw new Error("createTransaction: the transaction just inserted was not found");
   }
   return record;
+}
+
+export interface CreateTransferInput {
+  readonly workspaceId: string;
+  readonly sourceAccountId: string;
+  readonly destinationAccountId: string;
+  readonly occurredAt: string;
+  /** Positive: the amount moved from the source account to the destination. */
+  readonly amountCents: number;
+  readonly payee?: string;
+  readonly memo?: string;
+  readonly status?: TransactionStatus;
+}
+
+export interface TransferRecord {
+  readonly source: TransactionRecord;
+  readonly destination: TransactionRecord;
+}
+
+/**
+ * Creates a transfer as two linked `transactions` rows (`transfer_id`), each
+ * with a single split whose `categoryId` is null — the transfer amount
+ * itself here, not income (income is the only meaning `null` gets on a
+ * non-transfer transaction; see `SplitInput`).
+ *
+ * Card-to-card is the one combination `packages/core`'s `aggregateTransactions`
+ * does not support yet (#260): rejected here too, before either leg is
+ * written, instead of only failing later when the budget month is computed.
+ */
+export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput): Promise<TransferRecord> {
+  assertCents(input.amountCents);
+  if (input.amountCents <= 0) {
+    throw new ValidationError("invalid_amount", "a transfer amount must be positive", { amount: input.amountCents });
+  }
+  if (input.sourceAccountId === input.destinationAccountId) {
+    throw new ValidationError("duplicate_account", "a transfer needs two different accounts", {
+      accountId: input.sourceAccountId,
+    });
+  }
+
+  const { rows } = await db.query<{ id: string; type: string; on_budget: boolean }>(
+    "SELECT id, type, on_budget FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+    [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],
+  );
+  const byId = new Map(rows.map((row): [string, { type: string; onBudget: boolean }] => [
+    row.id,
+    { type: row.type, onBudget: row.on_budget },
+  ]));
+  const source = byId.get(input.sourceAccountId);
+  const destination = byId.get(input.destinationAccountId);
+  if (!source || !destination) {
+    const missing = source ? input.destinationAccountId : input.sourceAccountId;
+    throw new ValidationError("unknown_account", `unknown account: "${missing}"`, { accountId: missing });
+  }
+  if (source.type === "credit_card" && source.onBudget && destination.type === "credit_card" && destination.onBudget) {
+    throw new ValidationError(
+      "unsupported_transaction",
+      "transfers between two on-budget credit cards are not supported yet (#260)",
+      { accountId: input.sourceAccountId },
+    );
+  }
+
+  const sourceId = await insertTransferLeg(db, input, input.sourceAccountId, -input.amountCents);
+  const destinationId = await insertTransferLeg(db, input, input.destinationAccountId, input.amountCents);
+  await db.query("UPDATE transactions SET transfer_id = $1 WHERE id = $2 AND workspace_id = $3", [
+    destinationId,
+    sourceId,
+    input.workspaceId,
+  ]);
+  await db.query("UPDATE transactions SET transfer_id = $1 WHERE id = $2 AND workspace_id = $3", [
+    sourceId,
+    destinationId,
+    input.workspaceId,
+  ]);
+
+  const sourceRecord = await getTransaction(db, input.workspaceId, sourceId);
+  const destinationRecord = await getTransaction(db, input.workspaceId, destinationId);
+  if (!sourceRecord || !destinationRecord) {
+    throw new Error("createTransfer: a leg just inserted was not found");
+  }
+  return { source: sourceRecord, destination: destinationRecord };
+}
+
+async function insertTransferLeg(
+  db: DbPool | DbClient,
+  input: CreateTransferInput,
+  accountId: string,
+  signedAmountCents: number,
+): Promise<string> {
+  const id = await insertTransactionRow(db, {
+    workspaceId: input.workspaceId,
+    accountId,
+    occurredAt: input.occurredAt,
+    payee: input.payee ?? null,
+    memo: input.memo ?? null,
+    status: input.status ?? "pending",
+  });
+  await insertSplits(db, input.workspaceId, id, [{ categoryId: null, amountCents: signedAmountCents }]);
+  return id;
 }
 
 export async function getTransaction(
