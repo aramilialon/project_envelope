@@ -7,6 +7,7 @@ import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerAssignmentsRoutes } from "./routes/assignments.ts";
+import { registerBudgetRoutes } from "./routes/budget.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerMeRoute } from "./routes/me.ts";
@@ -48,6 +49,7 @@ export function buildApp(config: Config): App {
   registerHealthRoute(fastify, pool);
   registerAccountsRoutes(fastify, pool);
   registerAssignmentsRoutes(fastify, pool);
+  registerBudgetRoutes(fastify, pool);
   registerCategoriesRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
