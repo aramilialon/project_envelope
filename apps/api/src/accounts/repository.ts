@@ -32,8 +32,9 @@ interface AccountRow {
   readonly currency: string;
   readonly on_budget: boolean;
   readonly payment_category_id: string | null;
-  readonly closed_at: string | null;
-  readonly created_at: string;
+  /** `node-postgres` parses `timestamptz` into a `Date`, not a string, despite the column's SQL type. */
+  readonly closed_at: Date | null;
+  readonly created_at: Date;
 }
 
 const ACCOUNT_COLUMNS = "id, workspace_id, name, type, currency, on_budget, payment_category_id, closed_at, created_at";
@@ -182,7 +183,7 @@ function toAccountRecord(row: AccountRow): AccountRecord {
     currency: row.currency,
     onBudget: row.on_budget,
     paymentCategoryId: row.payment_category_id,
-    closedAt: row.closed_at,
-    createdAt: row.created_at,
+    closedAt: row.closed_at ? row.closed_at.toISOString() : null,
+    createdAt: row.created_at.toISOString(),
   };
 }

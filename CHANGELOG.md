@@ -11,6 +11,11 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: `computeBudgetMonth` takes each on-budget credit card's real balance and returns `uncovered` per payment category — debt not yet covered by assigned money, derived fresh every call instead of being swept to zero at month-end or silently lost (`#249`).
 - `apps/api`: accounts — create (with an on-budget credit card's payment category and optional starting balance transaction created automatically), list, close (`#11`).
 - `apps/api`: category groups and categories — create, list, archive, reorder (`#12`).
+- `apps/api`: transactions — create, list, update, with splits, income (a `null` category) and a reconciled transaction refusing further edits; `budgetDate` is derived at read time from the workspace's own time zone rather than stored (`#13`).
+
+### Fixed
+
+- `apps/api`: a date-only `occurredAt` was anchored to the database connection's own time zone instead of the workspace's, producing the wrong `budgetDate` for a workspace west of Greenwich; also affected `accounts.createdAt`/`closedAt`, returned as a `Date` object instead of the declared `string` by every repository reading a `timestamptz` column (`#13`).
 
 ### Changed
 
