@@ -9,6 +9,7 @@ import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerMeRoute } from "./routes/me.ts";
+import { registerTransactionsRoutes } from "./routes/transactions.ts";
 
 /**
  * Routes that stay reachable without a token: just the health check, which
@@ -46,6 +47,7 @@ export function buildApp(config: Config): App {
   registerHealthRoute(fastify, pool);
   registerAccountsRoutes(fastify, pool);
   registerCategoriesRoutes(fastify, pool);
+  registerTransactionsRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
   // preHandlers to protect ahead of the Budget API's own routes (#235).
   if (config.nodeEnv !== "production") {

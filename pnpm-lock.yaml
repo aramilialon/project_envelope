@@ -17,6 +17,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@envelope/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       fastify:
         specifier: ^5.12.5
         version: 5.12.5
