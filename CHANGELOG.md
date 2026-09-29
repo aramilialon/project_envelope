@@ -19,6 +19,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: goals (targets) — one per category, set/read/deleted; reading joins the goal with how much it still needs this month, via `@envelope/core`'s `computeTarget` (`#18`).
 - `@envelope/core`: `computeDaysOfBuffer` — the amount-weighted average number of days between a euro coming in and being spent, first in first out, across every on-budget account, over the outflows of the last 30 days; a transfer between two on-budget accounts does not count (`#20`).
 - `apps/api`: the days of buffer endpoint (`GET /workspaces/:workspaceId/days-of-buffer`), recomputed from real transactions, defaulting to today in the workspace's own time zone (`#21`).
+- `apps/api`: unresolved budget problems (`GET /workspaces/:workspaceId/budget-months/:month/problems`) — overspent categories, uncovered card debt and unassigned money still to assign, derived entirely from the budget month computation, nothing new stored (`#23`).
 
 ### Fixed
 

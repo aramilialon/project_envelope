@@ -8,7 +8,7 @@ import { createAssignmentBatch } from "../assignments/repository.ts";
 import { createTransaction } from "../transactions/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { getBudgetMonth } from "./repository.ts";
+import { getBudgetMonth, listBudgetProblems } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -151,5 +151,46 @@ describe("budget month repository", () => {
       () => getBudgetMonth(pool, workspaceId, "not-a-month"),
       (error: unknown) => isValidationError(error, "invalid_month"),
     );
+  });
+
+  it("lists unassigned money as a problem when positive", async () => {
+    const budgetMonth = await getBudgetMonth(pool, workspaceId, "2026-09");
+    assert.ok(budgetMonth.unassigned > 0, "expected the fixture to still have unassigned money in September");
+
+    const problems = await listBudgetProblems(pool, workspaceId, "2026-09");
+    const unassignedProblem = problems.find((p) => p.kind === "unassigned_money");
+    assert.equal(unassignedProblem?.amountCents, budgetMonth.unassigned);
+  });
+
+  it("lists an overspent category, with enough detail to link to it", async () => {
+    const overspentCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Overspent', 3) RETURNING id",
+      [workspaceId, groupId],
+    );
+    const overspentCategoryId = overspentCategory.rows[0]!.id;
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: checkingAccountId,
+      occurredAt: "2026-12-01",
+      splits: [{ categoryId: overspentCategoryId, amountCents: -5_000 }],
+    });
+
+    const problems = await listBudgetProblems(pool, workspaceId, "2026-12");
+    const problem = problems.find((p) => p.categoryId === overspentCategoryId);
+    assert.equal(problem?.kind, "overspent_category");
+    assert.equal(problem?.name, "Overspent");
+    assert.equal(problem?.groupName, "Home");
+    assert.equal(problem?.amountCents, 5_000);
+  });
+
+  it("lists uncovered card debt as its own kind of problem, even when the category is not itself negative", async () => {
+    const budgetMonth = await getBudgetMonth(pool, workspaceId, "2026-11");
+    const cardCategory = budgetMonth.paymentCategories.find((c) => c.uncovered > 0);
+    assert.ok(cardCategory, "expected the card fixture to still have uncovered debt in November");
+    assert.ok(cardCategory!.available >= 0, "this problem kind is meant for debt that is not itself a negative available");
+
+    const problems = await listBudgetProblems(pool, workspaceId, "2026-11");
+    const problem = problems.find((p) => p.categoryId === cardCategory!.categoryId && p.kind === "uncovered_card_debt");
+    assert.equal(problem?.amountCents, cardCategory!.uncovered);
   });
 });
