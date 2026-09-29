@@ -10,10 +10,12 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 
+export type WorkspaceRole = "owner" | "editor" | "read_only";
+
 declare module "fastify" {
   interface FastifyRequest {
     db?: DbClient;
-    workspace?: { id: string; role: string };
+    workspace?: { id: string; role: WorkspaceRole };
   }
 }
 
@@ -55,7 +57,7 @@ export function createWorkspaceMembershipPreHandler(pool: DbPool) {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.user_id', $1, true)", [request.userId]);
 
-    const { rows } = await client.query<{ role: string }>(
+    const { rows } = await client.query<{ role: WorkspaceRole }>(
       "SELECT role FROM memberships WHERE user_id = $1 AND workspace_id = $2",
       [request.userId, workspaceId],
     );
@@ -73,6 +75,17 @@ export function createWorkspaceMembershipPreHandler(pool: DbPool) {
     request.db = client;
     request.workspace = { id: workspaceId, role: membership.role };
   };
+}
+
+/**
+ * Chained after `createWorkspaceMembershipPreHandler` on every endpoint that
+ * changes budget data (#24): a `read_only` member can see everything but
+ * write nothing.
+ */
+export async function requireWriteAccess(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.workspace?.role === "read_only") {
+    await reply.code(403).send({ error: "read-only members cannot make this change" });
+  }
 }
 
 function extractWorkspaceId(request: FastifyRequest): string | undefined {

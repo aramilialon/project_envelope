@@ -22,6 +22,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: unresolved budget problems (`GET /workspaces/:workspaceId/budget-months/:month/problems`) — overspent categories, uncovered card debt and unassigned money still to assign, derived entirely from the budget month computation, nothing new stored (`#23`).
 - `@envelope/core`: `previousMonth`, the complement of `nextMonth` (`#19`).
 - `apps/api`: quick assign (`POST /workspaces/:workspaceId/quick-assign`) — fund the targets, cover overspending, cover the cards' debt, repeat last month's assigned or spent amounts, each scoped to all categories or one group, as one assignment-ledger batch; categories are funded in table order until unassigned money runs out (`#19`).
+- `apps/api`: every endpoint that changes budget data now rejects a `read_only` member with 403 (`requireWriteAccess`, chained after workspace membership); `owner` and `editor` are unaffected, and a `read_only` member can still read everything (`#24`).
 
 ### Fixed
 

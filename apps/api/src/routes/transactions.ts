@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
 import {
@@ -42,9 +42,10 @@ function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {
 
 export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
+  const writePreHandler = [preHandler, requireWriteAccess];
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
 
-  app.post(base, { preHandler }, async (request, reply) => {
+  app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const splits = parseSplits(body);
@@ -83,7 +84,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
     return { transactions };
   });
 
-  app.patch(`${base}/:transactionId`, { preHandler }, async (request, reply) => {
+  app.patch(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { transactionId } = request.params as { transactionId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const splits = body.splits === undefined ? undefined : parseSplits(body);
@@ -120,7 +121,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
     }
   });
 
-  app.post("/workspaces/:workspaceId/transfers", { preHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const sourceAccountId = typeof body.sourceAccountId === "string" ? body.sourceAccountId : "";
     const destinationAccountId = typeof body.destinationAccountId === "string" ? body.destinationAccountId : "";
