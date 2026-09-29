@@ -29,3 +29,5 @@ export type {
   TargetProgress,
 } from "./budget/targets.ts";
 export { computeTarget } from "./budget/targets.ts";
+export type { BufferAccount, CashMovement } from "./budget/days-of-buffer.ts";
+export { computeDaysOfBuffer } from "./budget/days-of-buffer.ts";

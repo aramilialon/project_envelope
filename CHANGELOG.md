@@ -17,6 +17,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: the budget month endpoint (`GET /workspaces/:workspaceId/budget-months/:month`), wiring accounts, transactions and the assignment ledger into `@envelope/core`'s `computeBudgetMonth`, joined with each category's name, group and sort order (`#16`).
 - `@envelope/core`: `computeTarget` for the four target kinds (monthly amount, amount by a date, repeating expense, balance to keep) — what each asks this month, what is still missing, and progress (`#17`).
 - `apps/api`: goals (targets) — one per category, set/read/deleted; reading joins the goal with how much it still needs this month, via `@envelope/core`'s `computeTarget` (`#18`).
+- `@envelope/core`: `computeDaysOfBuffer` — the amount-weighted average number of days between a euro coming in and being spent, first in first out, across every on-budget account, over the outflows of the last 30 days; a transfer between two on-budget accounts does not count (`#20`).
 
 ### Fixed
 
