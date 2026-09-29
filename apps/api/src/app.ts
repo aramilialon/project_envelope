@@ -9,6 +9,7 @@ import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerAssignmentsRoutes } from "./routes/assignments.ts";
 import { registerBudgetRoutes } from "./routes/budget.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
+import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerTransactionsRoutes } from "./routes/transactions.ts";
@@ -51,6 +52,7 @@ export function buildApp(config: Config): App {
   registerAssignmentsRoutes(fastify, pool);
   registerBudgetRoutes(fastify, pool);
   registerCategoriesRoutes(fastify, pool);
+  registerGoalsRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
   // preHandlers to protect ahead of the Budget API's own routes (#235).

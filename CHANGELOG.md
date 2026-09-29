@@ -16,6 +16,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: the assignment ledger (ADR 0008) — assign, unassign and move money as a batch of append-only entries sharing one `batch_id`; undo a whole batch or a single entry, as new reversing rows, never an edit; a category's assigned amount per month is derived from the ledger, never stored (`#15`).
 - `apps/api`: the budget month endpoint (`GET /workspaces/:workspaceId/budget-months/:month`), wiring accounts, transactions and the assignment ledger into `@envelope/core`'s `computeBudgetMonth`, joined with each category's name, group and sort order (`#16`).
 - `@envelope/core`: `computeTarget` for the four target kinds (monthly amount, amount by a date, repeating expense, balance to keep) — what each asks this month, what is still missing, and progress (`#17`).
+- `apps/api`: goals (targets) — one per category, set/read/deleted; reading joins the goal with how much it still needs this month, via `@envelope/core`'s `computeTarget` (`#18`).
 
 ### Fixed
 
