@@ -51,4 +51,12 @@ describe("smoke: 0.1.0 API skeleton, against the real process", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { status: "ok", database: "connected" });
   });
+
+  it("still guards an unknown route with the global auth hook, rather than leaking a bare 404", async () => {
+    // The global auth preHandler (#10) runs before Fastify even resolves a route, so an
+    // unauthenticated request to a path that does not exist gets the same 401 as one that
+    // does — proving the hook truly applies to every path, not only registered ones.
+    const response = await fetch(`${server.baseUrl}/not-a-real-route`);
+    assert.equal(response.status, 401);
+  });
 });
