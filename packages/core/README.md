@@ -8,7 +8,7 @@ The domain logic of envelope: the budget rules, and later portfolios and rebalan
 | --- | --- |
 | `src/errors.ts` | `ValidationError` with a stable `code` that the UI translates |
 | `src/money.ts` | Amounts as integer minor units: validation, sums, locale-aware parsing and formatting |
-| `src/month.ts` | "YYYY-MM" months and "YYYY-MM-DD" dates: validation, month of a date, next month, comparison, ranges |
+| `src/month.ts` | "YYYY-MM" months and "YYYY-MM-DD" dates: validation, month of a date, next/previous month, comparison, ranges |
 | `src/budget/transactions.ts` | From individual transactions to monthly totals: income, splits, transfers, card payments, off-budget accounts |
 | `src/budget/budget-month.ts` | One budget month: unassigned money, rollover, cash and credit overspending, credit card payment categories |
 | `src/budget/targets.ts` | The four target kinds (monthly amount, amount by a date, repeating expense, balance to keep): what each asks this month, what is missing, progress |

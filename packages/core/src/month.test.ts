@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth } from "./month.ts";
+import { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
 
 describe("months", () => {
   it("compute the next month, across the end of the year", () => {
     assert.equal(nextMonth("2026-09"), "2026-10");
     assert.equal(nextMonth("2026-12"), "2027-01");
+  });
+
+  it("compute the previous month, across the start of the year", () => {
+    assert.equal(previousMonth("2026-09"), "2026-08");
+    assert.equal(previousMonth("2027-01"), "2026-12");
   });
 
   it("compare in chronological order", () => {

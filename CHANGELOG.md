@@ -20,6 +20,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: `computeDaysOfBuffer` — the amount-weighted average number of days between a euro coming in and being spent, first in first out, across every on-budget account, over the outflows of the last 30 days; a transfer between two on-budget accounts does not count (`#20`).
 - `apps/api`: the days of buffer endpoint (`GET /workspaces/:workspaceId/days-of-buffer`), recomputed from real transactions, defaulting to today in the workspace's own time zone (`#21`).
 - `apps/api`: unresolved budget problems (`GET /workspaces/:workspaceId/budget-months/:month/problems`) — overspent categories, uncovered card debt and unassigned money still to assign, derived entirely from the budget month computation, nothing new stored (`#23`).
+- `@envelope/core`: `previousMonth`, the complement of `nextMonth` (`#19`).
+- `apps/api`: quick assign (`POST /workspaces/:workspaceId/quick-assign`) — fund the targets, cover overspending, cover the cards' debt, repeat last month's assigned or spent amounts, each scoped to all categories or one group, as one assignment-ledger batch; categories are funded in table order until unassigned money runs out (`#19`).
 
 ### Fixed
 

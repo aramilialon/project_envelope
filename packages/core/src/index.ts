@@ -4,7 +4,7 @@ export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
 export type { LocalDate, Month } from "./month.ts";
-export { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth } from "./month.ts";
+export { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
 export type {
   Activity,
   Assignment,
