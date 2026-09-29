@@ -6,15 +6,16 @@ import {
   listAccounts,
   type AccountType,
 } from "../accounts/repository.ts";
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 
 const ACCOUNT_TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card"];
 
 export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
+  const writePreHandler = [preHandler, requireWriteAccess];
 
-  app.post("/workspaces/:workspaceId/accounts", { preHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/accounts", { preHandler: writePreHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const type = body.type;
@@ -43,7 +44,7 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     return { accounts };
   });
 
-  app.patch("/workspaces/:workspaceId/accounts/:accountId/close", { preHandler }, async (request, reply) => {
+  app.patch("/workspaces/:workspaceId/accounts/:accountId/close", { preHandler: writePreHandler }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const account = await closeAccount(request.db!, request.workspace!.id, accountId);
     if (!account) {

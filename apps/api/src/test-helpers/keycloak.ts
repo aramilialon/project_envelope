@@ -16,6 +16,8 @@ export interface KeycloakTestRealm {
   readonly audience: string;
   getUserToken(): Promise<string>;
   getTokenWithMismatchedAudience(): Promise<string>;
+  /** A token for a brand-new user in the same realm — for tests needing several distinct local users (e.g. #24's per-role checks). */
+  getTokenForNewUser(): Promise<string>;
   updateUserEmail(email: string): Promise<void>;
   teardown(): Promise<void>;
 }
@@ -52,6 +54,12 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
     audience: MATCHING_AUDIENCE,
     getUserToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, username, password),
     getTokenWithMismatchedAudience: () => getUserAccessToken(realm, "envelope-other", clientSecret, username, password),
+    getTokenForNewUser: async () => {
+      const otherUsername = `test-user-${randomUUID()}`;
+      const otherPassword = randomUUID();
+      await createUser(adminToken, realm, otherUsername, otherPassword);
+      return getUserAccessToken(realm, "envelope-api", clientSecret, otherUsername, otherPassword);
+    },
     updateUserEmail: async (email: string) => {
       await adminRequest(adminToken, "PUT", `/admin/realms/${realm}/users/${userId}`, { email });
     },

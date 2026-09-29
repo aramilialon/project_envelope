@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import {
   archiveCategory,
   archiveCategoryGroup,
@@ -29,8 +29,9 @@ function stringArrayField(body: Record<string, unknown>, field: string): string[
 
 export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
+  const writePreHandler = [preHandler, requireWriteAccess];
 
-  app.post("/workspaces/:workspaceId/category-groups", { preHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/category-groups", { preHandler: writePreHandler }, async (request, reply) => {
     const name = stringField((request.body ?? {}) as Record<string, unknown>, "name");
     if (!name) {
       await reply.code(400).send({ error: "invalid category group: name is required" });
@@ -45,7 +46,7 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     return { groups };
   });
 
-  app.patch("/workspaces/:workspaceId/category-groups/:groupId/archive", { preHandler }, async (request, reply) => {
+  app.patch("/workspaces/:workspaceId/category-groups/:groupId/archive", { preHandler: writePreHandler }, async (request, reply) => {
     const { groupId } = request.params as { groupId: string };
     const group = await archiveCategoryGroup(request.db!, request.workspace!.id, groupId);
     if (!group) {
@@ -55,7 +56,7 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     return group;
   });
 
-  app.put("/workspaces/:workspaceId/category-groups/reorder", { preHandler }, async (request, reply) => {
+  app.put("/workspaces/:workspaceId/category-groups/reorder", { preHandler: writePreHandler }, async (request, reply) => {
     const groupIds = stringArrayField((request.body ?? {}) as Record<string, unknown>, "groupIds");
     if (!groupIds) {
       await reply.code(400).send({ error: "groupIds must be an array of ids" });
@@ -70,7 +71,7 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     return { groups };
   });
 
-  app.post("/workspaces/:workspaceId/categories", { preHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/categories", { preHandler: writePreHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const name = stringField(body, "name");
     const groupId = stringField(body, "groupId");
@@ -92,7 +93,7 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     return { categories };
   });
 
-  app.patch("/workspaces/:workspaceId/categories/:categoryId/archive", { preHandler }, async (request, reply) => {
+  app.patch("/workspaces/:workspaceId/categories/:categoryId/archive", { preHandler: writePreHandler }, async (request, reply) => {
     const { categoryId } = request.params as { categoryId: string };
     const category = await archiveCategory(request.db!, request.workspace!.id, categoryId);
     if (!category) {
@@ -104,7 +105,7 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
 
   app.put(
     "/workspaces/:workspaceId/category-groups/:groupId/categories/reorder",
-    { preHandler },
+    { preHandler: writePreHandler },
     async (request, reply) => {
       const { groupId } = request.params as { groupId: string };
       const categoryIds = stringArrayField((request.body ?? {}) as Record<string, unknown>, "categoryIds");

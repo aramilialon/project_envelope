@@ -1,7 +1,7 @@
 import { assertMonth } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
@@ -47,9 +47,10 @@ function parseGoalInput(body: Record<string, unknown>): GoalInput | string {
 
 export function registerGoalsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
+  const writePreHandler = [preHandler, requireWriteAccess];
   const base = "/workspaces/:workspaceId/categories/:categoryId/goal";
 
-  app.put(base, { preHandler }, async (request, reply) => {
+  app.put(base, { preHandler: writePreHandler }, async (request, reply) => {
     const { categoryId } = request.params as { categoryId: string };
     const parsed = parseGoalInput((request.body ?? {}) as Record<string, unknown>);
     if (typeof parsed === "string") {
@@ -98,7 +99,7 @@ export function registerGoalsRoutes(app: FastifyInstance, pool: DbPool): void {
     }
   });
 
-  app.delete(base, { preHandler }, async (request, reply) => {
+  app.delete(base, { preHandler: writePreHandler }, async (request, reply) => {
     const { categoryId } = request.params as { categoryId: string };
     const removed = await deleteGoal(request.db!, request.workspace!.id, categoryId);
     if (!removed) {

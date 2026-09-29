@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import {
   createAssignmentBatch,
   undoAssignmentBatch,
@@ -40,7 +40,8 @@ function parseEntries(body: Record<string, unknown>): AssignmentEntryInput[] | u
 }
 
 export function registerAssignmentsRoutes(app: FastifyInstance, pool: DbPool): void {
-  const preHandler = createWorkspaceMembershipPreHandler(pool);
+  // Every route here writes to the ledger, so the write guard applies uniformly (#24).
+  const preHandler = [createWorkspaceMembershipPreHandler(pool), requireWriteAccess];
 
   app.post("/workspaces/:workspaceId/assignments", { preHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;

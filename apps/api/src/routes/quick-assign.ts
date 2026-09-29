@@ -1,7 +1,7 @@
 import { assertMonth } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategoryGroups } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
@@ -35,7 +35,7 @@ function parseScope(body: Record<string, unknown>): QuickAssignScope | string {
 }
 
 export function registerQuickAssignRoutes(app: FastifyInstance, pool: DbPool): void {
-  const preHandler = createWorkspaceMembershipPreHandler(pool);
+  const preHandler = [createWorkspaceMembershipPreHandler(pool), requireWriteAccess];
 
   app.post("/workspaces/:workspaceId/quick-assign", { preHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
