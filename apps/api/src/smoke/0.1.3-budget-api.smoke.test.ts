@@ -5,8 +5,9 @@
  * subprocess and talks to it over a real HTTP connection, not
  * buildApp()+inject() (ADR 0007). As a checkpoint milestone, it re-exercises
  * everything accumulated since 0.1.0: authentication (0.1.2), accounts,
- * categories, transactions, transfers and the assignment ledger (0.1.3), all
- * working together in one real server.
+ * categories, transactions, transfers, the assignment ledger, quick assign
+ * and the owner/editor/read-only role restriction (0.1.3), all working
+ * together in one real server.
  *
  * Randomized, not scripted (ADR 0007): a fixed-seed PRNG drives both a
  * positive scenario (valid operations; the invariant is computed
@@ -153,10 +154,12 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
       recorded.push({ accountId, amountCents, month });
     };
 
+    const QUICK_ASSIGN_MODES = ["fund_targets", "cover_overspending", "cover_card_debt", "repeat_assigned", "repeat_spent"];
+
     for (let i = 0; i < 18; i++) {
       const month = pick(MONTHS);
       const account = pick([checkingId, walletId]);
-      switch (Math.floor(random() * 4)) {
+      switch (Math.floor(random() * 5)) {
         case 0: {
           // income
           const cents = amount(200_000);
@@ -191,7 +194,7 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
           record(other, cents, month);
           break;
         }
-        default: {
+        case 3: {
           // assign or move via the ledger: no effect on any account's own balance
           const source = Math.floor(random() * 2) === 0 ? null : pick(categoryIds);
           let destination: string | null = pick(categoryIds);
@@ -201,7 +204,12 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
           await api("POST", "/assignments", {
             entries: [{ month, sourceCategoryId: source, destinationCategoryId: destination, amountCents: amount(60_000) }],
           });
+          break;
         }
+        default:
+          // quick assign, any mode: also only ever moves money between unassigned and
+          // categories via the ledger, never touching an account's own balance directly.
+          await api("POST", "/quick-assign", { month, scope: { kind: "all" }, mode: pick(QUICK_ASSIGN_MODES) });
       }
     }
 
@@ -229,6 +237,7 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
 
   it("rejects every randomly generated invalid operation with the correct status and error code", async () => {
     const random = randomGenerator(23);
+    const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
 
     async function expectRejection(
@@ -338,5 +347,35 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
 
     // no token at all: re-confirms 0.1.2's own guarantee, as part of this same run
     await expectRejection("GET", "/budget-months/2026-06", undefined, 401, undefined, {});
+
+    // a read-only member (#24): rejected from a randomly picked write, but reads still work
+    const readOnlyToken = await realm.getTokenForNewUser();
+    await fetch(`${server.baseUrl}/workspaces/${workspaceId}/accounts`, {
+      headers: { authorization: `Bearer ${readOnlyToken}` },
+    });
+    const readOnlySubject = decodeJwt(readOnlyToken).sub;
+    const { rows: readOnlyRows } = await superuserPool.query<{ id: string }>(
+      "SELECT id FROM users WHERE keycloak_subject = $1",
+      [readOnlySubject],
+    );
+    const readOnlyUserId = readOnlyRows[0]?.id;
+    assert.ok(readOnlyUserId, "expected the user mapper to have created a local user for the read-only subject");
+    await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'read_only')", [
+      readOnlyUserId,
+      workspaceId,
+    ]);
+    const readOnlyWrite = pick([
+      { method: "POST", path: "/quick-assign", body: { month: "2026-06", scope: { kind: "all" }, mode: "cover_overspending" } },
+      { method: "POST", path: "/assignments", body: { entries: [{ month: "2026-06", sourceCategoryId: null, destinationCategoryId: categoryIds[0], amountCents: amount(1000) }] } },
+      { method: "POST", path: `/accounts/${checkingId}/transactions`, body: { occurredAt: "2026-06-10", splits: [{ categoryId: categoryIds[0], amountCents: -amount(1000) }] } },
+    ]);
+    await expectRejection("POST", readOnlyWrite.path, readOnlyWrite.body, 403, undefined, {
+      authorization: `Bearer ${readOnlyToken}`,
+      "content-type": "application/json",
+    });
+    const readOnlyRead = await fetch(`${server.baseUrl}/workspaces/${workspaceId}/budget-months/2026-06`, {
+      headers: { authorization: `Bearer ${readOnlyToken}` },
+    });
+    assert.equal(readOnlyRead.status, 200);
   });
 });
