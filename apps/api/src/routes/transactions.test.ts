@@ -156,6 +156,16 @@ describe("transactions routes", () => {
     assert.equal(response.json().error, "split_mismatch");
   });
 
+  it("rejects a split naming an unknown category, instead of a raw 500", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { occurredAt: "2026-09-20", splits: [{ categoryId: randomUUID(), amountCents: -100 }] },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
   it("refuses to update a reconciled transaction", async () => {
     const created = await app.fastify.inject({
       method: "POST",

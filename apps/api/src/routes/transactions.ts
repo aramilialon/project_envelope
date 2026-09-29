@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
 import {
@@ -40,6 +41,11 @@ function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {
   return splits;
 }
 
+/** The first split's categoryId that does not name a category of this workspace, if any. */
+function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonly SplitInput[]): string | undefined {
+  return splits.map((s) => s.categoryId).find((id): id is string => id !== null && !categoryIds.has(id));
+}
+
 export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = [preHandler, requireWriteAccess];
@@ -57,6 +63,14 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
       ? (body.status as TransactionStatus)
       : undefined;
+
+    const categories = await listCategories(request.db!, request.workspace!.id);
+    const categoryIds = new Set(categories.map((c) => c.id));
+    const unknownCategoryId = findUnknownCategoryId(categoryIds, splits);
+    if (unknownCategoryId) {
+      await reply.code(400).send({ error: `categoryId "${unknownCategoryId}" does not name a category of this workspace` });
+      return;
+    }
 
     try {
       const transaction = await createTransaction(request.db!, {
@@ -95,6 +109,16 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
       ? (body.status as TransactionStatus)
       : undefined;
+
+    if (splits) {
+      const categories = await listCategories(request.db!, request.workspace!.id);
+      const categoryIds = new Set(categories.map((c) => c.id));
+      const unknownCategoryId = findUnknownCategoryId(categoryIds, splits);
+      if (unknownCategoryId) {
+        await reply.code(400).send({ error: `categoryId "${unknownCategoryId}" does not name a category of this workspace` });
+        return;
+      }
+    }
 
     try {
       const result = await updateTransaction(request.db!, request.workspace!.id, transactionId, {

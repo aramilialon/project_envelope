@@ -9,6 +9,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
+import { generateKeyPair, SignJWT } from "jose";
+
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
@@ -78,5 +80,30 @@ describe("smoke: 0.1.2 Authentication, against the real process", () => {
     const token = await realm.getUserToken();
     const response = await fetch(`${prodServer.baseUrl}/me`, { headers: { authorization: `Bearer ${token}` } });
     assert.equal(response.status, 404);
+  });
+
+  it("rejects a real request with a tampered signature, not just a missing header", async () => {
+    const token = await realm.getUserToken();
+    const tampered = `${token.slice(0, -4)}abcd`;
+    const response = await fetch(`${server.baseUrl}/me`, { headers: { authorization: `Bearer ${tampered}` } });
+    assert.equal(response.status, 401);
+  });
+
+  it("rejects a real request with a token issued for a different audience", async () => {
+    const token = await realm.getTokenWithMismatchedAudience();
+    const response = await fetch(`${server.baseUrl}/me`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(response.status, 401);
+  });
+
+  it("rejects a real request with a token forged by an untrusted key", async () => {
+    const { privateKey } = await generateKeyPair("RS256");
+    const forged = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256" })
+      .setIssuer(realm.issuer)
+      .setAudience(realm.audience)
+      .setExpirationTime("5m")
+      .sign(privateKey);
+    const response = await fetch(`${server.baseUrl}/me`, { headers: { authorization: `Bearer ${forged}` } });
+    assert.equal(response.status, 401);
   });
 });

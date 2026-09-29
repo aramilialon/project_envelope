@@ -23,10 +23,12 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: `previousMonth`, the complement of `nextMonth` (`#19`).
 - `apps/api`: quick assign (`POST /workspaces/:workspaceId/quick-assign`) — fund the targets, cover overspending, cover the cards' debt, repeat last month's assigned or spent amounts, each scoped to all categories or one group, as one assignment-ledger batch; categories are funded in table order until unassigned money runs out (`#19`).
 - `apps/api`: every endpoint that changes budget data now rejects a `read_only` member with 403 (`requireWriteAccess`, chained after workspace membership); `owner` and `editor` are unaffected, and a `read_only` member can still read everything (`#24`).
+- `apps/api`: 0.1.3's checkpoint smoke test against the real process, randomized rather than scripted (ADR 0007) — a positive scenario (including quick assign) whose expected budget invariant is computed independently from the same randomly generated data, and a negative scenario covering every rejection this milestone added, including a `read_only` member's; the 0.1.0 and 0.1.2 smoke tests get the same positive/negative discipline (`#25`).
 
 ### Fixed
 
 - `apps/api`: a date-only `occurredAt` was anchored to the database connection's own time zone instead of the workspace's, producing the wrong `budgetDate` for a workspace west of Greenwich; also affected `accounts.createdAt`/`closedAt`, returned as a `Date` object instead of the declared `string` by every repository reading a `timestamptz` column (`#13`).
+- `apps/api`: a transaction split naming a category that does not exist in the workspace hit the database's own foreign-key constraint instead of a clean `400`, found while writing #25's randomized negative smoke test (`#25`).
 
 ### Changed
 
