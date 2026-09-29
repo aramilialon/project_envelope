@@ -31,6 +31,17 @@ export function nextMonth(month: Month): Month {
   return `${year}-${String(monthNumber + 1).padStart(2, "0")}`;
 }
 
+/** Returns the preceding month: "2027-01" becomes "2026-12". */
+export function previousMonth(month: Month): Month {
+  assertMonth(month);
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  if (monthNumber === 1) {
+    return `${year - 1}-12`;
+  }
+  return `${year}-${String(monthNumber - 1).padStart(2, "0")}`;
+}
+
 /** Negative if a comes before b, zero if equal, positive if after. */
 export function compareMonths(a: Month, b: Month): number {
   assertMonth(a);

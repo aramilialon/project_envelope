@@ -112,6 +112,11 @@ export async function getGoal(db: DbPool | DbClient, workspaceId: string, catego
   return row ? toGoalRecord(row) : undefined;
 }
 
+export async function listGoals(db: DbPool | DbClient, workspaceId: string): Promise<GoalRecord[]> {
+  const { rows } = await db.query<GoalRow>(`SELECT ${GOAL_COLUMNS} FROM goals WHERE workspace_id = $1`, [workspaceId]);
+  return rows.map(toGoalRecord);
+}
+
 /** Returns true if a goal was found and removed. */
 export async function deleteGoal(db: DbPool | DbClient, workspaceId: string, categoryId: string): Promise<boolean> {
   const { rowCount } = await db.query("DELETE FROM goals WHERE workspace_id = $1 AND category_id = $2", [
@@ -121,7 +126,8 @@ export async function deleteGoal(db: DbPool | DbClient, workspaceId: string, cat
   return (rowCount ?? 0) > 0;
 }
 
-function toCoreTarget(goal: GoalRecord): Target {
+/** Exported for #19 (quick assign), which computes progress for every category in scope at once. */
+export function toCoreTarget(goal: GoalRecord): Target {
   switch (goal.kind) {
     case "monthly":
       return { kind: "monthly", amount: goal.amountCents };
