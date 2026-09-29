@@ -144,4 +144,37 @@ describe("budget routes", () => {
     assert.equal(response.statusCode, 400);
     assert.equal(response.json().error, "invalid_month");
   });
+
+  it("lists unassigned money as a problem, and does not flag a category that is not overspent", async () => {
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/budget-months/2026-09/problems`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    const problems = response.json().problems as Array<{ kind: string; categoryId?: string }>;
+    assert.ok(problems.some((p) => p.kind === "unassigned_money"));
+    assert.ok(!problems.some((p) => p.categoryId === categoryId));
+  });
+
+  it("lists an overspent category as a problem", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: auth,
+      payload: { occurredAt: "2026-09-15", splits: [{ categoryId, amountCents: -50_000 }] },
+    });
+
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/budget-months/2026-09/problems`,
+      headers: auth,
+    });
+    assert.equal(response.statusCode, 200);
+    const problems = response.json().problems as Array<{ kind: string; categoryId?: string; amountCents: number }>;
+    const problem = problems.find((p) => p.categoryId === categoryId);
+    assert.equal(problem?.kind, "overspent_category");
+    assert.equal(problem?.amountCents, 20_000); // 40000 assigned - 10000 - 50000 spent = -20000 available
+  });
 });
