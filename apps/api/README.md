@@ -46,6 +46,8 @@ pnpm --filter @envelope/api dev          # start with auto-restart on file chang
 pnpm --filter @envelope/api start        # start once
 pnpm --filter @envelope/api migrate      # apply pending migrations
 pnpm --filter @envelope/api test         # integration tests, then smoke tests, each in its own clearly separated node --test run
+pnpm --filter @envelope/api test:integration   # only the integration tests
+pnpm --filter @envelope/api test:smoke         # only the smoke tests (ADR 0007) — CI runs these as their own named step
 pnpm --filter @envelope/api typecheck
 ```
 

@@ -80,4 +80,29 @@ jobs:
       - run: pnpm typecheck
       - name: Apply database migrations
         run: pnpm --filter @envelope/api migrate
-      - run: pnpm test
+
+      # One named step per package and test kind (ADR 0007), instead of a single
+      # "Run pnpm test": the job summary itself says where a failure is. Each step
+      # runs even if an earlier one failed ("if: always()"), so a failure in
+      # packages/core does not hide whether apps/api's own tests still pass; the
+      # final step fails the job if any of them did not succeed.
+      - name: Run pnpm test - packages/core - unit
+        id: core_unit
+        run: pnpm --filter @envelope/core test
+      - name: Run pnpm test - apps/api - integration
+        id: api_integration
+        if: always()
+        run: pnpm --filter @envelope/api test:integration
+      - name: Run pnpm test - apps/api - smoke
+        id: api_smoke
+        if: always()
+        run: pnpm --filter @envelope/api test:smoke
+      - name: Check test results
+        if: always()
+        run: |
+          if [ "${{ steps.core_unit.outcome }}" != "success" ] ||
+             [ "${{ steps.api_integration.outcome }}" != "success" ] ||
+             [ "${{ steps.api_smoke.outcome }}" != "success" ]; then
+            echo "::error::At least one test step failed; see above."
+            exit 1
+          fi

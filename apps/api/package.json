@@ -9,7 +9,9 @@
     "dev": "node --watch --env-file-if-exists=.env src/main.ts",
     "start": "node --env-file-if-exists=.env src/main.ts",
     "migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
-    "test": "node --test --test-concurrency=1 $(find src -name '*.test.ts' -not -path 'src/smoke/*') && echo && echo '== Smoke tests (ADR 0007) ==' && node --test --test-concurrency=1 $(find src/smoke -name '*.test.ts')",
+    "test:integration": "node --test --test-concurrency=1 $(find src -name '*.test.ts' -not -path 'src/smoke/*')",
+    "test:smoke": "node --test --test-concurrency=1 $(find src/smoke -name '*.test.ts')",
+    "test": "pnpm run test:integration && echo && echo '== Smoke tests (ADR 0007) ==' && pnpm run test:smoke",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
