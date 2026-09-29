@@ -11,6 +11,7 @@ The domain logic of envelope: the budget rules, and later portfolios and rebalan
 | `src/month.ts` | "YYYY-MM" months and "YYYY-MM-DD" dates: validation, month of a date, next month, comparison, ranges |
 | `src/budget/transactions.ts` | From individual transactions to monthly totals: income, splits, transfers, card payments, off-budget accounts |
 | `src/budget/budget-month.ts` | One budget month: unassigned money, rollover, cash and credit overspending, credit card payment categories |
+| `src/budget/targets.ts` | The four target kinds (monthly amount, amount by a date, repeating expense, balance to keep): what each asks this month, what is missing, progress |
 | `src/index.ts` | What the package exposes to the apps |
 | `*.test.ts` | Tests, next to the file they check |
 

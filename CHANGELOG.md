@@ -15,6 +15,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: transfers between accounts, as two linked transactions (`transferId`), created atomically; a transfer between two on-budget credit cards is rejected, matching `packages/core`'s own current limitation (`#14`).
 - `apps/api`: the assignment ledger (ADR 0008) — assign, unassign and move money as a batch of append-only entries sharing one `batch_id`; undo a whole batch or a single entry, as new reversing rows, never an edit; a category's assigned amount per month is derived from the ledger, never stored (`#15`).
 - `apps/api`: the budget month endpoint (`GET /workspaces/:workspaceId/budget-months/:month`), wiring accounts, transactions and the assignment ledger into `@envelope/core`'s `computeBudgetMonth`, joined with each category's name, group and sort order (`#16`).
+- `@envelope/core`: `computeTarget` for the four target kinds (monthly amount, amount by a date, repeating expense, balance to keep) — what each asks this month, what is still missing, and progress (`#17`).
 
 ### Fixed
 

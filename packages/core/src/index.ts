@@ -18,3 +18,14 @@ export type {
 export { computeBudgetMonth } from "./budget/budget-month.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";
 export { aggregateTransactions, UNASSIGNED } from "./budget/transactions.ts";
+export type {
+  BalanceTarget,
+  ByDateTarget,
+  CategoryTargetState,
+  MonthlyTarget,
+  RepeatingTarget,
+  RepeatInterval,
+  Target,
+  TargetProgress,
+} from "./budget/targets.ts";
+export { computeTarget } from "./budget/targets.ts";
