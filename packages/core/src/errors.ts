@@ -21,7 +21,10 @@ export type ValidationErrorCode =
   | "uncategorized_transaction"
   | "split_mismatch"
   | "unsupported_transaction"
-  | "invalid_ofx_transaction";
+  | "invalid_ofx_transaction"
+  | "invalid_qif_transaction"
+  | "ambiguous_date_format"
+  | "ambiguous_decimal_separator";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
