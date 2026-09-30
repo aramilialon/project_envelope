@@ -14,6 +14,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: two offline devices independently undoing the same assignment-ledger row no longer surfaces as a raw error on the one that syncs second — recognized as "already undone by the other device" and dropped silently, the same outcome as undoing an already-undone row through the existing API (`#43`).
 - `apps/api`: `GET /workspaces/:workspaceId/changes` — the download side of the sync protocol: every field-level change later than the clock a device last saw, or all of them for a first sync, ordered the same way `compareHlc` would; a read-only member can call it, unlike the upload side (`#44`).
 - `apps/api`: an incoming field-level change to a reconciled transaction is now rejected outright (`"locked"`), design.md's "the server rejects later changes" — checked before clock resolution even runs, and never recorded, so a retry after the transaction unlocks (`#32`) is unaffected by the rejected attempt (`#45`).
+- `apps/api`: 0.1.6's checkpoint smoke test against the real process (ADR 0007) — two simulated devices, each with its own HLC and offline queue, make offline edits including a genuine conflict on the same field; syncing converges both to the same result, the later clock wins the conflict, neither device's own non-conflicting edit is lost, and a resent change never creates a duplicate `change_log` row (`#46`).
 
 ## [0.1.5] - 2026-09-30
 
