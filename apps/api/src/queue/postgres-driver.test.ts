@@ -4,8 +4,9 @@ import { after, before, describe, it } from "node:test";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
-import { createPostgresQueueDriver } from "./postgres-driver.ts";
+import { createPostgresQueueDriver, processJob } from "./postgres-driver.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -26,19 +27,23 @@ async function waitUntil(check: () => boolean, timeoutMs = 10_000): Promise<void
 
 describe("postgres queue driver", () => {
   let superuserPool: DbPool;
+  let appPool: DbPool;
 
   before(async () => {
     superuserPool = createPool(databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureQueueRoleLogin(superuserPool);
+    await ensureAppRoleLogin(superuserPool);
+    appPool = createPool(appConnectionString(databaseUrl));
   });
 
   after(async () => {
+    await appPool.end();
     await superuserPool.end();
   });
 
   it("enqueues a job and a registered worker processes it", async () => {
-    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
     const jobType = `test-job-${randomUUID()}`;
 
@@ -55,7 +60,7 @@ describe("postgres queue driver", () => {
   });
 
   it("ignores a second enqueue with the same deduplication key while the first is still unprocessed", async () => {
-    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
     const jobType = `test-dedupe-${randomUUID()}`;
 
@@ -83,7 +88,7 @@ describe("postgres queue driver", () => {
   });
 
   it("writes the job in the caller's own transaction, rolling back together with it", async () => {
-    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
     const jobType = `test-outbox-${randomUUID()}`;
 
@@ -112,7 +117,7 @@ describe("postgres queue driver", () => {
   });
 
   it("registers a periodic schedule without throwing", async () => {
-    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
     const jobType = `test-schedule-${randomUUID()}`;
 
@@ -125,5 +130,85 @@ describe("postgres queue driver", () => {
     assert.equal(rows[0]?.cron, "0 0 1 * *");
 
     await driver.stop();
+  });
+
+});
+
+/**
+ * processJob directly (#36): fast and deterministic, no pg-boss delivery or polling interval
+ * involved — these are the module's own idempotency guarantees, tested as unit tests against
+ * a real processed_jobs table, not as a slow round-trip through the whole driver.
+ */
+describe("processJob (#36)", () => {
+  let superuserPool: DbPool;
+  let appPool: DbPool;
+
+  before(async () => {
+    superuserPool = createPool(databaseUrl);
+    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
+    await ensureAppRoleLogin(superuserPool);
+    appPool = createPool(appConnectionString(databaseUrl));
+  });
+
+  after(async () => {
+    await appPool.end();
+    await superuserPool.end();
+  });
+
+  it("runs the handler and marks the job processed", async () => {
+    const jobType = `test-${randomUUID()}`;
+    const jobId = randomUUID();
+    let received: { n: number } | undefined;
+
+    await processJob(appPool, jobType, jobId, { n: 1 }, async (data) => {
+      received = data;
+    });
+
+    assert.deepEqual(received, { n: 1 });
+    const { rows } = await appPool.query("SELECT job_type FROM processed_jobs WHERE job_id = $1", [jobId]);
+    assert.equal(rows[0]?.job_type, jobType);
+  });
+
+  it("discards a repeat job id without running the handler again", async () => {
+    const jobType = `test-${randomUUID()}`;
+    const jobId = randomUUID();
+    let runs = 0;
+    const handler = async (): Promise<void> => {
+      runs++;
+    };
+
+    await processJob(appPool, jobType, jobId, {}, handler);
+    await processJob(appPool, jobType, jobId, {}, handler);
+
+    assert.equal(runs, 1, "the second delivery of the same job id must never reach the handler");
+  });
+
+  it("sweeps rows past the 30-day retention before inserting the new one", async () => {
+    const staleJobId = randomUUID();
+    await appPool.query(
+      "INSERT INTO processed_jobs (job_id, job_type, processed_at) VALUES ($1, 'stale-job-type', now() - interval '31 days')",
+      [staleJobId],
+    );
+
+    await processJob(appPool, `test-${randomUUID()}`, randomUUID(), {}, async () => {});
+
+    const { rows } = await appPool.query("SELECT 1 FROM processed_jobs WHERE job_id = $1", [staleJobId]);
+    assert.equal(rows.length, 0, "a processed_jobs row past the 30-day retention must be swept");
+  });
+
+  it("lets a genuine handler error propagate, and does not mark the job processed", async () => {
+    const jobType = `test-${randomUUID()}`;
+    const jobId = randomUUID();
+
+    await assert.rejects(
+      () =>
+        processJob(appPool, jobType, jobId, {}, async () => {
+          throw new Error("a real bug in the handler, not a duplicate delivery");
+        }),
+      /a real bug in the handler/,
+    );
+
+    const { rows } = await appPool.query("SELECT 1 FROM processed_jobs WHERE job_id = $1", [jobId]);
+    assert.equal(rows.length, 0, "a failed attempt must roll back its own processed_jobs row too, so pg-boss's retry gets a clean slate");
   });
 });

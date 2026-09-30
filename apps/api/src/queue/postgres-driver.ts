@@ -4,10 +4,23 @@
  */
 import { PgBoss } from "pg-boss";
 
-import type { DbClient } from "../db/pool.ts";
+import type { DbClient, DbPool } from "../db/pool.ts";
 import type { EnqueueOptions, JobHandler, QueueDriver } from "./driver.ts";
 
-export function createPostgresQueueDriver(connectionString: string): QueueDriver {
+/** Postgres's own code for a unique-constraint violation. */
+const UNIQUE_VIOLATION = "23505";
+const PROCESSED_JOB_RETENTION = "30 days";
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === UNIQUE_VIOLATION;
+}
+
+/**
+ * `appPool` is `envelope_app`'s own pool (ADR 0006): a job's effects, and the `processed_jobs`
+ * idempotency marker (#36), are domain writes and belong on that connection, never on this
+ * driver's own `envelope_queue` one (which pg-boss's own bookkeeping uses).
+ */
+export function createPostgresQueueDriver(connectionString: string, appPool: DbPool): QueueDriver {
   const boss = new PgBoss(connectionString);
   const knownQueues = new Set<string>();
 
@@ -45,9 +58,9 @@ export function createPostgresQueueDriver(connectionString: string): QueueDriver
       await boss.stop();
     },
 
-    async enqueue<T extends object>(jobType: string, data: T, options: EnqueueOptions = {}, db?: DbClient): Promise<void> {
+    async enqueue<T extends object>(jobType: string, data: T, options: EnqueueOptions = {}, db?: DbClient): Promise<string | null> {
       await ensureQueue(jobType);
-      await boss.send(jobType, data, {
+      return boss.send(jobType, data, {
         ...(options.runAt ? { startAfter: options.runAt } : {}),
         ...(options.deduplicationKey ? { singletonKey: options.deduplicationKey } : {}),
         ...(options.retryLimit !== undefined ? { retryLimit: options.retryLimit } : {}),
@@ -66,9 +79,44 @@ export function createPostgresQueueDriver(connectionString: string): QueueDriver
       await ensureQueue(jobType);
       await boss.work<T>(jobType, async (jobs) => {
         for (const job of jobs) {
-          await handler(job.data);
+          await processJob(appPool, jobType, job.id, job.data, handler);
         }
       });
     },
   };
+}
+
+/**
+ * One delivery, one transaction: sweeps rows past the 30-day retention (design.md), inserts
+ * this job's id, then runs the handler through the same client — all committing or rolling
+ * back together. A repeat delivery's insert hits the unique constraint on `job_id`: rolled
+ * back and discarded, the handler never runs, and the job is still reported as handled (no
+ * exception escapes), so pg-boss does not retry a delivery that already succeeded once.
+ *
+ * Exported so #36's own guarantees (idempotency, the 30-day sweep, a genuine handler error
+ * still propagating) can be tested directly against a real `processed_jobs` table, without
+ * going through pg-boss's own asynchronous delivery and polling interval.
+ */
+export async function processJob<T extends object>(
+  appPool: DbPool,
+  jobType: string,
+  jobId: string,
+  data: T,
+  handler: JobHandler<T>,
+): Promise<void> {
+  const client = await appPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(`DELETE FROM processed_jobs WHERE processed_at < now() - interval '${PROCESSED_JOB_RETENTION}'`);
+    await client.query("INSERT INTO processed_jobs (job_id, job_type) VALUES ($1, $2)", [jobId, jobType]);
+    await handler(data, client);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    if (!isUniqueViolation(error)) {
+      throw error;
+    }
+  } finally {
+    client.release();
+  }
 }

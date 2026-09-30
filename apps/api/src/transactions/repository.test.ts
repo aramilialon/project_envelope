@@ -369,7 +369,7 @@ describe("transactions repository", () => {
   });
 
   it("queues a budget-recompute job in the same transaction as the write that triggers it, and rolls both back together (#35)", async () => {
-    const queue = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    const queue = createPostgresQueueDriver(queueConnectionString(databaseUrl), pool);
     await queue.start();
     const received: unknown[] = [];
     await queue.work("budget-recompute", async (data) => {

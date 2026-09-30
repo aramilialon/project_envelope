@@ -15,18 +15,28 @@ export interface EnqueueOptions {
   readonly retryLimit?: number;
 }
 
-export type JobHandler<T> = (data: T) => Promise<void>;
+/**
+ * `db` is a transaction opened just for this delivery (#36): the module has already inserted
+ * this job's id into `processed_jobs` inside it, so whatever the handler writes through `db`
+ * commits or rolls back together with that idempotency marker, in one step.
+ */
+export type JobHandler<T> = (data: T, db: DbClient) => Promise<void>;
 
 export interface QueueDriver {
   /**
-   * Queues a job. Given `db` (a request's own transaction client), the job commits or rolls
-   * back together with whatever data triggered it — the same connection the caller is already
+   * Queues a job, returning its id (or `null` if `deduplicationKey` matched a job already
+   * pending). Given `db` (a request's own transaction client), the job commits or rolls back
+   * together with whatever data triggered it — the same connection the caller is already
    * inside, not a second one (#35's own concern is wiring this into specific write paths).
    */
-  enqueue<T extends object>(jobType: string, data: T, options?: EnqueueOptions, db?: DbClient): Promise<void>;
+  enqueue<T extends object>(jobType: string, data: T, options?: EnqueueOptions, db?: DbClient): Promise<string | null>;
   /** Registers a periodic job (a cron expression), such as the monthly portfolio check. */
   schedule<T extends object>(jobType: string, cron: string, data?: T): Promise<void>;
-  /** Registers the function that runs a job type. */
+  /**
+   * Registers the function that runs a job type. A repeat delivery of the same job id is
+   * discarded before the handler ever runs (`processed_jobs`, #36) — job authors get this for
+   * free, they never have to check it themselves.
+   */
   work<T extends object>(jobType: string, handler: JobHandler<T>): Promise<void>;
   start(): Promise<void>;
   stop(): Promise<void>;
