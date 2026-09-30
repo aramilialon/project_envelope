@@ -1,4 +1,4 @@
-import type { CsvDateFormat, CsvMapping, DecimalSeparator } from "@envelope/core";
+import type { CsvDateFormat, CsvMapping, DecimalSeparator, QifDateFormat, QifHints } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
@@ -12,14 +12,28 @@ import {
   saveImportMapping,
   stageCsvImport,
   stageOfxImport,
+  stageQifImport,
   type StagedTransactionDecision,
   type StageImportResult,
 } from "../import/repository.ts";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
 const DECIMAL_SEPARATORS: readonly DecimalSeparator[] = [".", ","];
-const IMPORT_FORMATS = ["csv", "ofx"] as const;
+const QIF_DATE_FORMATS: readonly QifDateFormat[] = ["DD/MM/YYYY", "MM/DD/YYYY"];
+const IMPORT_FORMATS = ["csv", "ofx", "qif"] as const;
 type ImportFormat = (typeof IMPORT_FORMATS)[number];
+
+function parseQifHints(body: Record<string, unknown>): QifHints {
+  const { dateFormat, decimalSeparator } = body;
+  return {
+    ...(typeof dateFormat === "string" && QIF_DATE_FORMATS.includes(dateFormat as QifDateFormat)
+      ? { dateFormat: dateFormat as QifDateFormat }
+      : {}),
+    ...(typeof decimalSeparator === "string" && DECIMAL_SEPARATORS.includes(decimalSeparator as DecimalSeparator)
+      ? { decimalSeparator: decimalSeparator as DecimalSeparator }
+      : {}),
+  };
+}
 
 function parseMapping(body: Record<string, unknown>): CsvMapping | undefined {
   const { hasHeaderRow, dateColumn, dateFormat, descriptionColumn, decimalSeparator, memoColumn, amountColumn, outflowColumn, inflowColumn } =
@@ -119,6 +133,15 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
       let result: StageImportResult;
       if (format === "ofx") {
         result = await stageOfxImport(request.db!, request.workspace!.id, accountId, content, closingBalanceCents);
+      } else if (format === "qif") {
+        result = await stageQifImport(
+          request.db!,
+          request.workspace!.id,
+          accountId,
+          content,
+          parseQifHints(body),
+          closingBalanceCents,
+        );
       } else {
         const mapping =
           body.mapping !== undefined
