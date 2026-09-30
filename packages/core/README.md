@@ -14,6 +14,7 @@ The domain logic of envelope: the budget rules, and later portfolios and rebalan
 | `src/budget/targets.ts` | The four target kinds (monthly amount, amount by a date, repeating expense, balance to keep): what each asks this month, what is missing, progress |
 | `src/budget/days-of-buffer.ts` | Amount-weighted average days between a euro coming in and being spent, first in first out, over the outflows of the last 30 days |
 | `src/import/duplicate-detection.ts` | Matches an import's rows against an account's existing transactions: the bank's own transaction id, or otherwise the same amount within a 3-day window; each existing transaction matches at most one row |
+| `src/import/csv.ts` | Parses a mapped CSV file's rows: one amount column or separate outflow/inflow columns, three date formats, either decimal separator, an optional header row and memo column |
 | `src/index.ts` | What the package exposes to the apps |
 | `*.test.ts` | Tests, next to the file they check |
 
