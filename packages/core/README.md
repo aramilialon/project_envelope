@@ -19,6 +19,7 @@ The domain logic of envelope: the budget rules, and later portfolios and rebalan
 | `src/import/ofx.ts` | Parses an OFX statement download's `<STMTTRN>` transactions, no mapping needed; reads both OFX 1.x's unclosed SGML tags and OFX 2.x's closed XML tags the same way |
 | `src/import/qif.ts` | Parses a QIF file's `D`/`P`/`M`/`T` transaction fields, no column mapping; its date order and decimal separator, unlike OFX's, are not standardized across sources — both are inferred from the file's own data, or an explicit hint, before parsing a single transaction |
 | `src/import/camt053.ts` | Parses an ISO 20022 CAMT.053 statement's `<Ntry>` entries, no mapping and no date/decimal ambiguity (ISO 20022 fixes both); the counterparty name and remittance info come from the entry's first transaction detail, when the bank includes one |
+| `src/sync/hlc.ts` | Hybrid logical clock (design.md, "Field-level change protocol"): `nextHlc` ticks a device's own clock forward even if its wall clock disagrees with or runs behind a previous value; `compareHlc` gives every two changes a total, deterministic order for "last write wins" |
 | `src/index.ts` | What the package exposes to the apps |
 | `*.test.ts` | Tests, next to the file they check |
 
