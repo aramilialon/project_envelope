@@ -24,6 +24,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - `apps/api`: `JobHandler` now also receives the job's own id, alongside its data and transaction client, so a handler can use it as its own idempotency key for an external effect (`#40`).
 
+### Fixed
+
+- `apps/api`: a request's transaction committed in an `onResponse` hook, which runs *after* the response has already been sent to the client — a write's own response could be observed before its transaction had actually committed, or, on a crash in that narrow window, before it ever would. Moved to `onSend`, which runs before the response is flushed, so a response is only ever seen once its own transaction has genuinely committed (`#294`).
+
 ## [0.1.4] - 2026-09-30
 
 ### Added

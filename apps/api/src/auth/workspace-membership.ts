@@ -3,8 +3,15 @@
  * local user's membership in the workspace the request names, and opens the
  * request's single database transaction with the session variables ADR
  * 0006's Row-Level Security policies read (SET LOCAL app.user_id /
- * app.workspace_id). registerWorkspaceScope's onResponse/onError hooks
- * commit or roll back that same transaction once the response is ready.
+ * app.workspace_id). registerWorkspaceScope's onSend/onError hooks commit or
+ * roll back that same transaction.
+ *
+ * onSend, not onResponse (#294): onResponse runs *after* the response has
+ * already been sent — a client could see a success response for a write
+ * whose transaction had not committed yet, or, on a crash in that narrow
+ * window, never would. onSend runs, and is awaited, before the response is
+ * actually flushed, so the client only ever sees a response once its
+ * transaction has genuinely committed.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
@@ -24,8 +31,9 @@ export function registerWorkspaceScope(app: FastifyInstance): void {
     await releaseRequestTransaction(request, "ROLLBACK");
   });
 
-  app.addHook("onResponse", async (request) => {
+  app.addHook("onSend", async (request, _reply, payload) => {
     await releaseRequestTransaction(request, "COMMIT");
+    return payload;
   });
 }
 
