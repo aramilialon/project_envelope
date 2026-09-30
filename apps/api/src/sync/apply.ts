@@ -23,7 +23,7 @@ export interface IncomingChange {
   readonly value: unknown;
 }
 
-export type ApplyOutcome = "applied" | "stale" | "unsupported_field";
+export type ApplyOutcome = "applied" | "stale" | "unsupported_field" | "locked";
 
 type FieldApplier = (db: DbPool | DbClient, workspaceId: string, entityId: string, value: unknown) => Promise<void>;
 
@@ -42,15 +42,37 @@ const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
 };
 
 /**
+ * "Reconciled transactions carry a plaintext 'locked' flag: the server rejects later changes"
+ * (design.md) — a rule of the protocol itself, checked before clock resolution even runs, not
+ * a per-field concern. Every field currently wired up belongs to `transactions`; extend this
+ * once another entity gains a lock of its own.
+ */
+async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+  if (!fieldName.startsWith("transactions.")) {
+    return false;
+  }
+  const { rows } = await db.query<{ status: string }>("SELECT status FROM transactions WHERE id = $1 AND workspace_id = $2", [
+    entityId,
+    workspaceId,
+  ]);
+  return rows[0]?.status === "reconciled";
+}
+
+/**
  * `unsupported_field` for anything not in `FIELD_APPLIERS` — recorded nowhere, since there is
  * nowhere to apply it to; the caller reports it back to the device rather than silently
- * dropping it. The reconciled-transaction "locked" flag (design.md) is not enforced here yet:
- * that is #45's own job, layered on top of this same function.
+ * dropping it. `locked` is likewise never recorded: unlike a merely stale change (superseded,
+ * but a legitimate part of the entity's history), a rejected one never happened as far as this
+ * entity is concerned — if the device retries after the entity unlocks (#32), it can still
+ * apply then, undistorted by a change_log row from while it was refused.
  */
 export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: string, change: IncomingChange): Promise<ApplyOutcome> {
   const applier = FIELD_APPLIERS[change.fieldName];
   if (!applier) {
     return "unsupported_field";
+  }
+  if (await isLocked(db, workspaceId, change.fieldName, change.entityId)) {
+    return "locked";
   }
 
   const current = await getLatestChange(db, workspaceId, change.entityId, change.fieldName);

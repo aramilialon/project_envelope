@@ -160,6 +160,38 @@ describe("sync routes (#43, #44)", () => {
     assert.equal(transactions.find((t) => t.id === transactionId)?.memo, "later");
   });
 
+  it("rejects a change to a reconciled transaction as locked (#45)", async () => {
+    const reconciled = await superuserPool.query<{ id: string }>(
+      "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, now(), 'reconciled') RETURNING id",
+      [workspaceId, accountId],
+    );
+    const reconciledTransactionId = reconciled.rows[0]!.id;
+
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        changes: [
+          {
+            id: randomUUID(),
+            entityId: reconciledTransactionId,
+            fieldName: "transactions.memo",
+            hlc: { physical: 1000, counter: 0, deviceId: "d" },
+            value: "should not apply",
+          },
+        ],
+      },
+    });
+
+    assert.equal(response.statusCode, 201);
+    const { results } = response.json() as { results: { outcome: string }[] };
+    assert.deepEqual(
+      results.map((r) => r.outcome),
+      ["locked"],
+    );
+  });
+
   it("downloads every change when given no since, in clock order", async () => {
     const entityId = randomUUID();
     await app.fastify.inject({
