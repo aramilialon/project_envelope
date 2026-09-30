@@ -29,5 +29,6 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 | `0017_processed_jobs.sql` | `processed_jobs` (#36) — no Row-Level Security (a job id is not a workspace concept); `envelope_app` gets `SELECT`/`INSERT`/`DELETE`, the last one for sweeping rows past the 30-day retention |
 | `0018_push_notifications.sql` | `device_tokens` (#39) — scoped by `app_user_id()`, not a workspace: a user's own devices, shared across every workspace they belong to; `notification_deliveries`, one row per (job, device), reached only through `device_tokens` so it needs no `app_user_id()` policy of its own |
 | `0019_notified_budget_problems.sql` | `notified_budget_problems` (#40) — a workspace/month's last-known budget problems, so the `budget-recompute` job notifies only on a new or changed one; no unique constraint (a nullable `category_id`), reconciled application-side instead |
+| `0020_change_log.sql` | `change_log` (#42) — one row per field-level change (design.md, "Field-level change protocol"): entity id, field name, HLC (hybrid logical clock), device id, value. `id` has no default: it is generated on the device, and is the idempotency key a repeated network retry relies on |
 
 Not here yet: every portfolio table (`instruments`, `trades`, `allocation_node`...), which belongs to a later step of the roadmap.

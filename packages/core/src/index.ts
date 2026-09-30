@@ -40,3 +40,5 @@ export { parseOfx } from "./import/ofx.ts";
 export type { QifDateFormat, QifDecimalSeparator, QifHints } from "./import/qif.ts";
 export { parseQif } from "./import/qif.ts";
 export { parseCamt053 } from "./import/camt053.ts";
+export type { Hlc } from "./sync/hlc.ts";
+export { compareHlc, nextHlc } from "./sync/hlc.ts";
