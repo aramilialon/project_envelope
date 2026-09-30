@@ -10,6 +10,7 @@ import {
   getImportMapping,
   listStagedTransactions,
   saveImportMapping,
+  stageCamt053Import,
   stageCsvImport,
   stageOfxImport,
   stageQifImport,
@@ -20,7 +21,7 @@ import {
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
 const DECIMAL_SEPARATORS: readonly DecimalSeparator[] = [".", ","];
 const QIF_DATE_FORMATS: readonly QifDateFormat[] = ["DD/MM/YYYY", "MM/DD/YYYY"];
-const IMPORT_FORMATS = ["csv", "ofx", "qif"] as const;
+const IMPORT_FORMATS = ["csv", "ofx", "qif", "camt053"] as const;
 type ImportFormat = (typeof IMPORT_FORMATS)[number];
 
 function parseQifHints(body: Record<string, unknown>): QifHints {
@@ -142,6 +143,8 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
           parseQifHints(body),
           closingBalanceCents,
         );
+      } else if (format === "camt053") {
+        result = await stageCamt053Import(request.db!, request.workspace!.id, accountId, content, closingBalanceCents);
       } else {
         const mapping =
           body.mapping !== undefined

@@ -7,6 +7,7 @@
 import {
   detectDuplicates,
   isValidationError,
+  parseCamt053,
   parseCsv,
   parseOfx,
   parseQif,
@@ -209,6 +210,17 @@ export async function stageQifImport(
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
   return stageParsedRows(db, workspaceId, accountId, parseQif(qifContent, hints), closingBalanceCents);
+}
+
+/** CAMT.053 is self-describing too, and has no date/decimal ambiguity to resolve, unlike QIF (#31). */
+export async function stageCamt053Import(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  camt053Content: string,
+  closingBalanceCents?: number,
+): Promise<StageImportResult> {
+  return stageParsedRows(db, workspaceId, accountId, parseCamt053(camt053Content), closingBalanceCents);
 }
 
 /** Sweeps rows past the 7-day expiry (design.md) before listing what remains — no queue dependency, since the queue module (0.1.6) does not exist yet. */

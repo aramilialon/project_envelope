@@ -15,6 +15,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `POST .../import` accepts `format: "ofx"`, staging an OFX file's transactions the same way as CSV; a confirmed transaction keeps the bank's own transaction id (OFX's FITID), so a later re-import of the same statement matches it precisely instead of only by amount and date (`#29`).
 - `@envelope/core`: `parseQif` — parses a QIF file's transactions, no column mapping needed; unlike OFX, QIF's date order and decimal separator are not standardized, so both are inferred from the file's own data first, falling back to an "ambiguous_date_format"/"ambiguous_decimal_separator" `ValidationError` asking for an explicit hint only when the file gives no evidence either way (`#30`).
 - `apps/api`: `POST .../import` accepts `format: "qif"`, with optional `dateFormat`/`decimalSeparator` hints for an ambiguous file (`#30`).
+- `@envelope/core`: `parseCamt053` — parses an ISO 20022 CAMT.053 statement's entries, no column mapping and no date/decimal ambiguity (ISO 20022 fixes both, unlike OFX's date order and QIF's date order and decimal separator); the counterparty name and remittance info come from the entry's first transaction detail, when the bank includes one (`#31`).
+- `apps/api`: `POST .../import` accepts `format: "camt053"` (`#31`).
 
 ### Fixed
 
