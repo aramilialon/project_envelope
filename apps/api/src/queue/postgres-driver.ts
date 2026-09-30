@@ -109,7 +109,7 @@ export async function processJob<T extends object>(
     await client.query("BEGIN");
     await client.query(`DELETE FROM processed_jobs WHERE processed_at < now() - interval '${PROCESSED_JOB_RETENTION}'`);
     await client.query("INSERT INTO processed_jobs (job_id, job_type) VALUES ($1, $2)", [jobId, jobType]);
-    await handler(data, client);
+    await handler(data, client, jobId);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

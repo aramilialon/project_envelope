@@ -1,7 +1,10 @@
 import { buildApp } from "./app.ts";
-import { loadConfig, loadQueueConfig } from "./config.ts";
+import { loadConfig, loadPushConfig, loadQueueConfig } from "./config.ts";
 import { createPool } from "./db/pool.ts";
+import { createBudgetRecomputeHandler } from "./notifications/budget-recompute-job.ts";
+import { createPushDrivers } from "./notifications/index.ts";
 import { createQueueDriver } from "./queue/index.ts";
+import { BUDGET_RECOMPUTE_JOB } from "./queue/job-types.ts";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -10,6 +13,8 @@ async function main(): Promise<void> {
   const queuePool = createPool(config.databaseUrl);
   const queue = createQueueDriver(loadQueueConfig(), queuePool);
   await queue.start();
+  const pushDrivers = createPushDrivers(loadPushConfig());
+  await queue.work(BUDGET_RECOMPUTE_JOB, createBudgetRecomputeHandler(pushDrivers));
 
   const app = buildApp(config, queue);
 

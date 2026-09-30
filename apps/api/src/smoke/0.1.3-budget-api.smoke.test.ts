@@ -27,6 +27,7 @@ import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../test-helpers/vapid-keys.ts";
 import { startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -81,6 +82,9 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
       PORT: "3904",
       APP_DATABASE_URL: appConnectionString(databaseUrl),
       QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
+      VAPID_SUBJECT: TEST_VAPID_SUBJECT,
+      VAPID_PUBLIC_KEY: TEST_VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       KEYCLOAK_ISSUER: realm.issuer,
       KEYCLOAK_AUDIENCE: realm.audience,
       LOG_LEVEL: "fatal",
