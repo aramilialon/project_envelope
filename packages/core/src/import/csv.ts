@@ -13,6 +13,7 @@ import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
+import type { ImportRow } from "./row.ts";
 
 export type CsvDateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
 export type DecimalSeparator = "." | ",";
@@ -34,12 +35,8 @@ export type CsvMapping = (AmountColumnMapping | SplitColumnMapping) & {
   readonly memoColumn?: number;
 };
 
-export interface CsvRow {
-  readonly date: LocalDate;
-  readonly payee: string;
-  readonly memo?: string;
-  readonly amountCents: Cents;
-}
+/** CSV never carries a bank transaction id: `externalId` is always absent (see `ImportRow`). */
+export type CsvRow = ImportRow;
 
 /** One CSV line's fields, honoring double-quoted fields (with embedded commas, and "" as an escaped quote). */
 function splitCsvLine(line: string): string[] {

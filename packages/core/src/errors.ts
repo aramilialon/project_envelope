@@ -20,7 +20,8 @@ export type ValidationErrorCode =
   | "duplicate_card_balance"
   | "uncategorized_transaction"
   | "split_mismatch"
-  | "unsupported_transaction";
+  | "unsupported_transaction"
+  | "invalid_ofx_transaction";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
