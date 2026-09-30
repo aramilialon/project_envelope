@@ -27,5 +27,6 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 | `0015_reconciliation.sql` | `reconciliations` (one row per completed reconciliation, `broken_at` set when a transaction it reconciled is unlocked), `transactions.reconciliation_id` |
 | `0016_queue_role.sql` | The `envelope_queue` role (#34) — pg-boss's own connection, granted `CREATE` on the database so it can manage its own `pgboss` schema, which cannot be captured as a fixed migration (dynamic per-queue DDL) |
 | `0017_processed_jobs.sql` | `processed_jobs` (#36) — no Row-Level Security (a job id is not a workspace concept); `envelope_app` gets `SELECT`/`INSERT`/`DELETE`, the last one for sweeping rows past the 30-day retention |
+| `0018_push_notifications.sql` | `device_tokens` (#39) — scoped by `app_user_id()`, not a workspace: a user's own devices, shared across every workspace they belong to; `notification_deliveries`, one row per (job, device), reached only through `device_tokens` so it needs no `app_user_id()` policy of its own |
 
 Not here yet: every portfolio table (`instruments`, `trades`, `allocation_node`...), which belongs to a later step of the roadmap.

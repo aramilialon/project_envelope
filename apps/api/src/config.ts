@@ -29,6 +29,13 @@ export interface QueueConfig {
   readonly databaseUrl: string;
 }
 
+/** VAPID keys for the `web` push adapter (#39); `ios`/`android` are stubs, needing no config yet. */
+export interface PushConfig {
+  readonly vapidSubject: string;
+  readonly vapidPublicKey: string;
+  readonly vapidPrivateKey: string;
+}
+
 const LOG_LEVELS: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -53,6 +60,18 @@ export function loadQueueConfig(env: NodeJS.ProcessEnv = process.env): QueueConf
   return {
     driver: parseQueueDriver(env, "QUEUE_DRIVER", "postgres"),
     databaseUrl: requireEnv(env, "QUEUE_DATABASE_URL"),
+  };
+}
+
+/**
+ * The push module (#39) needs VAPID credentials, loaded separately from `Config` the same way
+ * `loadQueueConfig` is, so `loadConfig`'s many existing callers stay untouched.
+ */
+export function loadPushConfig(env: NodeJS.ProcessEnv = process.env): PushConfig {
+  return {
+    vapidSubject: requireEnv(env, "VAPID_SUBJECT"),
+    vapidPublicKey: requireEnv(env, "VAPID_PUBLIC_KEY"),
+    vapidPrivateKey: requireEnv(env, "VAPID_PRIVATE_KEY"),
   };
 }
 
