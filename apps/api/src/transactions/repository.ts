@@ -2,6 +2,7 @@ import { assertCents, monthOf, ValidationError } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { QueueDriver } from "../queue/index.ts";
+import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
 
 /**
  * Queued in the same transaction as the write that triggers it (design.md, "Notifications";
@@ -9,17 +10,10 @@ import type { QueueDriver } from "../queue/index.ts";
  * affected categories is queued." Deduplicated per workspace and month, so a burst of writes
  * (a transfer's two legs, several transactions in one import) collapses into one pending job
  * instead of piling up — the "exclusive" queue policy (#34) already rejects the repeats.
- * Processing this job (recomputing categories, notifying members) is #40's own concern; this
- * only queues it. `queue` is optional so every caller that has no use for it (most tests) is
- * unaffected.
+ * Processing this job (recomputing categories, notifying members, #40) reads `queue.work`'s
+ * own registration in main.ts; this only queues it. `queue` is optional so every caller that
+ * has no use for it (most tests) is unaffected.
  */
-const BUDGET_RECOMPUTE_JOB = "budget-recompute";
-
-interface BudgetRecomputeJobData {
-  readonly workspaceId: string;
-  readonly transactionId: string;
-}
-
 async function enqueueBudgetRecompute(
   queue: QueueDriver | undefined,
   db: DbPool | DbClient,
@@ -31,7 +25,7 @@ async function enqueueBudgetRecompute(
   const month = monthOf(record.budgetDate);
   await queue.enqueue<BudgetRecomputeJobData>(
     BUDGET_RECOMPUTE_JOB,
-    { workspaceId: record.workspaceId, transactionId: record.id },
+    { workspaceId: record.workspaceId, transactionId: record.id, month },
     { deduplicationKey: `${BUDGET_RECOMPUTE_JOB}:${record.workspaceId}:${month}` },
     // Only meaningful when `db` is actually the caller's own request-scoped transaction client,
     // which it always is at every call site that also supplies a `queue` (routes/transactions.ts).

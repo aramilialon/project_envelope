@@ -437,12 +437,12 @@ In an encrypted workspace the server sees which fields change and when, but not 
 
 ### Notifications
 
-- **Budget, plaintext workspace.** When a change reaches the server, a job that recomputes the affected categories is queued in the same transaction. If a category goes negative, a purchase exceeds the available balance, or money arrives to be assigned, the server immediately sends a push to every member of the workspace. Resolving any of these — moving money, assigning the new income — needs the `owner` or `editor` role: a `read-only` member is notified but cannot act on it.
+- **Budget, plaintext workspace.** When a change reaches the server, a job that recomputes the affected categories is queued in the same transaction. If a category goes negative, a purchase exceeds the available balance, or money arrives to be assigned, the server immediately sends a push to every member of the workspace — but only when that problem is new or its amount has changed since the last check, not every time the job runs while it persists unchanged. Resolving any of these — moving money, assigning the new income — needs the `owner` or `editor` role: a `read-only` member is notified but cannot act on it.
 - **Budget, on the device making the change.** The alert appears immediately, computed locally by the shared core, even offline. The server's push reaches the other members; for the author of the change, the notification id prevents a duplicate.
 - **Budget, encrypted workspace.** The server sends only a silent notification ("there are updates"); the device syncs, computes and shows the alert. On iOS silent notifications can be delayed: this must be measured.
 - **Portfolio.** Monthly rebalancing check: a server job for plaintext workspaces, a scheduled notification on the device for encrypted ones.
 - **Channels and preferences.** Push on iOS and Android, Web Push in the browser; users choose which alerts they receive and on which devices.
-- **Storage.** A notification → destination table (the notification's content plus which device tokens it goes to) is enough; wording and where each one links to are designed later, when notifications are actually built (0.1.5).
+- **Storage.** A notification → destination table (the notification's content plus which device tokens it goes to) is enough. Wording: the budget alert's title/body is composed server-side in the recipient's own `language`, from a small, self-contained English/Italian lookup local to `apps/api` (ADR 0004's catalog-based i18n library is chosen in "phase 1", the web app; a push notification has no UI on the receiving end to translate a code, unlike a `ValidationError`). Where each one links to is still open, for the web app.
 
 ### Mobile-specific features
 

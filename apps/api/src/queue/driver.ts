@@ -18,9 +18,12 @@ export interface EnqueueOptions {
 /**
  * `db` is a transaction opened just for this delivery (#36): the module has already inserted
  * this job's id into `processed_jobs` inside it, so whatever the handler writes through `db`
- * commits or rolls back together with that idempotency marker, in one step.
+ * commits or rolls back together with that idempotency marker, in one step. `jobId` is that
+ * same id, for a handler that needs it as its own idempotency key for an external effect (#40:
+ * a push notification's own dedup, design.md's "the phone replaces a duplicate instead of
+ * showing it twice").
  */
-export type JobHandler<T> = (data: T, db: DbClient) => Promise<void>;
+export type JobHandler<T> = (data: T, db: DbClient, jobId: string) => Promise<void>;
 
 export interface QueueDriver {
   /**

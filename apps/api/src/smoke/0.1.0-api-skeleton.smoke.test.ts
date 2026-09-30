@@ -12,6 +12,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
+import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../test-helpers/vapid-keys.ts";
 import { startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -37,6 +38,9 @@ describe("smoke: 0.1.0 API skeleton, against the real process", () => {
       PORT: "3901",
       APP_DATABASE_URL: appConnectionString(databaseUrl),
       QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
+      VAPID_SUBJECT: TEST_VAPID_SUBJECT,
+      VAPID_PUBLIC_KEY: TEST_VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       // /health does not touch Keycloak: any well-formed values satisfy loadConfig's validation.
       KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
       KEYCLOAK_AUDIENCE: "envelope-api",
