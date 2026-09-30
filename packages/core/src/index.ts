@@ -39,3 +39,4 @@ export { parseCsv } from "./import/csv.ts";
 export { parseOfx } from "./import/ofx.ts";
 export type { QifDateFormat, QifDecimalSeparator, QifHints } from "./import/qif.ts";
 export { parseQif } from "./import/qif.ts";
+export { parseCamt053 } from "./import/camt053.ts";

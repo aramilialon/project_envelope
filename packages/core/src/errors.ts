@@ -23,6 +23,7 @@ export type ValidationErrorCode =
   | "unsupported_transaction"
   | "invalid_ofx_transaction"
   | "invalid_qif_transaction"
+  | "invalid_camt053_entry"
   | "ambiguous_date_format"
   | "ambiguous_decimal_separator";
 
