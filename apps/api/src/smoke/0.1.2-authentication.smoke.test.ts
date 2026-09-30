@@ -15,6 +15,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -38,11 +39,13 @@ describe("smoke: 0.1.2 Authentication, against the real process", () => {
     superuserPool = createPool(databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
+    await ensureQueueRoleLogin(superuserPool);
     realm = await setUpKeycloakTestRealm();
 
     const baseEnv = {
       HOST: "127.0.0.1",
       APP_DATABASE_URL: appConnectionString(databaseUrl),
+      QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
       KEYCLOAK_ISSUER: realm.issuer,
       KEYCLOAK_AUDIENCE: realm.audience,
       LOG_LEVEL: "fatal",

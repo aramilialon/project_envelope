@@ -27,6 +27,18 @@ export function createPostgresQueueDriver(connectionString: string): QueueDriver
   return {
     async start(): Promise<void> {
       await boss.start();
+      // envelope_app (ADR 0006) writes a job through its own request-scoped transaction (#35),
+      // never through this driver's own envelope_queue connection — so it needs SELECT/INSERT
+      // on pgboss's tables, present and future, without the CREATE privilege only envelope_queue
+      // (this schema's owner) holds. Re-run every start: harmless once granted, and covers a
+      // queue created after an earlier start already ran this once.
+      await boss
+        .getDb()
+        .executeSql(
+          "GRANT USAGE ON SCHEMA pgboss TO envelope_app; " +
+            "GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA pgboss TO envelope_app; " +
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA pgboss GRANT SELECT, INSERT ON TABLES TO envelope_app;",
+        );
     },
 
     async stop(): Promise<void> {

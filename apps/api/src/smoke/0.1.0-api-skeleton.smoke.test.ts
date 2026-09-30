@@ -11,6 +11,7 @@ import { after, before, describe, it } from "node:test";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -29,11 +30,13 @@ describe("smoke: 0.1.0 API skeleton, against the real process", () => {
     superuserPool = createPool(databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
+    await ensureQueueRoleLogin(superuserPool);
 
     server = await startServer({
       HOST: "127.0.0.1",
       PORT: "3901",
       APP_DATABASE_URL: appConnectionString(databaseUrl),
+      QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
       // /health does not touch Keycloak: any well-formed values satisfy loadConfig's validation.
       KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
       KEYCLOAK_AUDIENCE: "envelope-api",

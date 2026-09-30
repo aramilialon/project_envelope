@@ -4,6 +4,7 @@ import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
+import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
   createTransfer,
@@ -46,7 +47,7 @@ function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonl
   return splits.map((s) => s.categoryId).find((id): id is string => id !== null && !categoryIds.has(id));
 }
 
-export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): void {
+export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, queue?: QueueDriver): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = [preHandler, requireWriteAccess];
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
@@ -73,16 +74,20 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
     }
 
     try {
-      const transaction = await createTransaction(request.db!, {
-        workspaceId: request.workspace!.id,
-        accountId,
-        occurredAt,
-        splits,
-        ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
-        ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
-        ...(status ? { status } : {}),
-        ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
-      });
+      const transaction = await createTransaction(
+        request.db!,
+        {
+          workspaceId: request.workspace!.id,
+          accountId,
+          occurredAt,
+          splits,
+          ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
+          ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
+          ...(status ? { status } : {}),
+          ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
+        },
+        queue,
+      );
       await reply.code(201).send(transaction);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
@@ -162,16 +167,20 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool): 
       : undefined;
 
     try {
-      const transfer = await createTransfer(request.db!, {
-        workspaceId: request.workspace!.id,
-        sourceAccountId,
-        destinationAccountId,
-        occurredAt,
-        amountCents,
-        ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
-        ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
-        ...(status ? { status } : {}),
-      });
+      const transfer = await createTransfer(
+        request.db!,
+        {
+          workspaceId: request.workspace!.id,
+          sourceAccountId,
+          destinationAccountId,
+          occurredAt,
+          amountCents,
+          ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
+          ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
+          ...(status ? { status } : {}),
+        },
+        queue,
+      );
       await reply.code(201).send(transfer);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {

@@ -1,6 +1,43 @@
-import { assertCents, ValidationError } from "@envelope/core";
+import { assertCents, monthOf, ValidationError } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import type { QueueDriver } from "../queue/index.ts";
+
+/**
+ * Queued in the same transaction as the write that triggers it (design.md, "Notifications";
+ * #35), so it is never lost: "when a change reaches the server, a job that recomputes the
+ * affected categories is queued." Deduplicated per workspace and month, so a burst of writes
+ * (a transfer's two legs, several transactions in one import) collapses into one pending job
+ * instead of piling up — the "exclusive" queue policy (#34) already rejects the repeats.
+ * Processing this job (recomputing categories, notifying members) is #40's own concern; this
+ * only queues it. `queue` is optional so every caller that has no use for it (most tests) is
+ * unaffected.
+ */
+const BUDGET_RECOMPUTE_JOB = "budget-recompute";
+
+interface BudgetRecomputeJobData {
+  readonly workspaceId: string;
+  readonly transactionId: string;
+}
+
+async function enqueueBudgetRecompute(
+  queue: QueueDriver | undefined,
+  db: DbPool | DbClient,
+  record: TransactionRecord,
+): Promise<void> {
+  if (!queue) {
+    return;
+  }
+  const month = monthOf(record.budgetDate);
+  await queue.enqueue<BudgetRecomputeJobData>(
+    BUDGET_RECOMPUTE_JOB,
+    { workspaceId: record.workspaceId, transactionId: record.id },
+    { deduplicationKey: `${BUDGET_RECOMPUTE_JOB}:${record.workspaceId}:${month}` },
+    // Only meaningful when `db` is actually the caller's own request-scoped transaction client,
+    // which it always is at every call site that also supplies a `queue` (routes/transactions.ts).
+    db as DbClient,
+  );
+}
 
 export type TransactionStatus = "pending" | "cleared" | "reconciled";
 
@@ -158,7 +195,11 @@ async function insertTransactionRow(db: DbPool | DbClient, input: InsertTransact
   return row.id;
 }
 
-export async function createTransaction(db: DbPool | DbClient, input: CreateTransactionInput): Promise<TransactionRecord> {
+export async function createTransaction(
+  db: DbPool | DbClient,
+  input: CreateTransactionInput,
+  queue?: QueueDriver,
+): Promise<TransactionRecord> {
   validateSplits(input.splits, input.amountCents);
 
   const id = await insertTransactionRow(db, {
@@ -176,6 +217,7 @@ export async function createTransaction(db: DbPool | DbClient, input: CreateTran
   if (!record) {
     throw new Error("createTransaction: the transaction just inserted was not found");
   }
+  await enqueueBudgetRecompute(queue, db, record);
   return record;
 }
 
@@ -206,7 +248,7 @@ export interface TransferRecord {
  * does not support yet (#260): rejected here too, before either leg is
  * written, instead of only failing later when the budget month is computed.
  */
-export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput): Promise<TransferRecord> {
+export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput, queue?: QueueDriver): Promise<TransferRecord> {
   assertCents(input.amountCents);
   if (input.amountCents <= 0) {
     throw new ValidationError("invalid_amount", "a transfer amount must be positive", { amount: input.amountCents });
@@ -257,6 +299,8 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
   if (!sourceRecord || !destinationRecord) {
     throw new Error("createTransfer: a leg just inserted was not found");
   }
+  await enqueueBudgetRecompute(queue, db, sourceRecord);
+  await enqueueBudgetRecompute(queue, db, destinationRecord);
   return { source: sourceRecord, destination: destinationRecord };
 }
 
