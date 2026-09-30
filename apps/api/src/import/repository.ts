@@ -9,11 +9,13 @@ import {
   isValidationError,
   parseCsv,
   parseOfx,
+  parseQif,
   sumCents,
   type CsvMapping,
   type ExistingTransaction,
   type ImportedTransaction,
   type ImportRow,
+  type QifHints,
 } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -189,6 +191,23 @@ export async function stageOfxImport(
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
   return stageParsedRows(db, workspaceId, accountId, parseOfx(ofxContent), closingBalanceCents);
+}
+
+/**
+ * QIF is self-describing too, but its date order and decimal separator are
+ * not standardized: `parseQif` infers them from the file's own data, or
+ * throws an "ambiguous_date_format"/"ambiguous_decimal_separator"
+ * `ValidationError` asking for an explicit hint in `hints` (#30).
+ */
+export async function stageQifImport(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  qifContent: string,
+  hints: QifHints = {},
+  closingBalanceCents?: number,
+): Promise<StageImportResult> {
+  return stageParsedRows(db, workspaceId, accountId, parseQif(qifContent, hints), closingBalanceCents);
 }
 
 /** Sweeps rows past the 7-day expiry (design.md) before listing what remains — no queue dependency, since the queue module (0.1.6) does not exist yet. */

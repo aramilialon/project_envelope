@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
-import type { CsvMapping } from "@envelope/core";
+import { isValidationError, type CsvMapping } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
@@ -14,6 +14,7 @@ import {
   saveImportMapping,
   stageCsvImport,
   stageOfxImport,
+  stageQifImport,
 } from "./repository.ts";
 
 function ofxTransaction(fitid: string, date: string, amountCents: number, payee: string): string {
@@ -23,6 +24,13 @@ function ofxTransaction(fitid: string, date: string, amountCents: number, payee:
     `<STMTTRN><DTPOSTED>${date.replace(/-/g, "")}000000<TRNAMT>${amount}<FITID>${fitid}<NAME>${payee}</STMTTRN>` +
     "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"
   );
+}
+
+// A day past 12 settles the DD/MM/YYYY heuristic; the caller picks a date and amount accordingly.
+function qifTransaction(date: string, amountCents: number, payee: string): string {
+  const [year, month, day] = date.split("-") as [string, string, string];
+  const amount = (amountCents / 100).toFixed(2).replace(".", ",");
+  return `!Type:Bank\nD${day}/${month}/${year}\nP${payee}\nT${amount}\n^\n`;
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -268,6 +276,31 @@ describe("import repository", () => {
     const result = await stageOfxImport(pool, workspaceId, accountId, secondImport);
     assert.equal(result.duplicateCount, 1);
     assert.ok(result.staged[0]?.duplicateOf);
+  });
+
+  it("stages a QIF transaction, inferring its date format and decimal separator", async () => {
+    const content = qifTransaction("2026-10-21", -1234, "Bakery");
+    const result = await stageQifImport(pool, workspaceId, accountId, content);
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0]?.amountCents, -1234);
+    assert.equal(result.staged[0]?.payee, "Bakery");
+    assert.equal(result.staged[0]?.externalId, null); // QIF carries no bank transaction id, unlike OFX
+  });
+
+  it("propagates an ambiguous QIF date format as a ValidationError instead of guessing", async () => {
+    const content = "!Type:Bank\nD05/06/2026\nPUnclear\nT-10,00\n^\n";
+    await assert.rejects(
+      () => stageQifImport(pool, workspaceId, accountId, content),
+      (error: unknown) => isValidationError(error, "ambiguous_date_format"),
+    );
+  });
+
+  it("honors an explicit QIF hint instead of the heuristic", async () => {
+    // "05/06" is ambiguous either way; DD/MM would give month "06", MM/DD gives month "05" — checking
+    // just the month (not the exact day) keeps this independent of #278's date read-back bug.
+    const content = "!Type:Bank\nD05/06/2026\nPExplicit\nT-10,00\n^\n";
+    const result = await stageQifImport(pool, workspaceId, accountId, content, { dateFormat: "MM/DD/YYYY" });
+    assert.ok(result.staged[0]?.occurredAt.startsWith("2026-05"));
   });
 
   it("rejects a row named in the confirmation with no category, transfer or income recognition", async () => {

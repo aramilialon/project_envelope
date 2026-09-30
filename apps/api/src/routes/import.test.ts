@@ -191,6 +191,43 @@ describe("import routes", () => {
     assert.equal(result.staged[0].externalId, "OFX-ROUTE-1");
   });
 
+  it("imports a QIF file, inferring its date format and decimal separator with no mapping at all", async () => {
+    const content = "!Type:Bank\nD21/10/2026\nPBakery\nT-12,34\n^\n";
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content, format: "qif" },
+    });
+    assert.equal(imported.statusCode, 201);
+    const result = imported.json();
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0].amountCents, -1234);
+  });
+
+  it("rejects an ambiguous QIF file with a translatable error, and accepts an explicit hint instead", async () => {
+    const content = "!Type:Bank\nD05/06/2026\nPUnclear\nT-10,00\n^\n";
+    const auth = { authorization: `Bearer ${token}` };
+
+    const ambiguous = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content, format: "qif" },
+    });
+    assert.equal(ambiguous.statusCode, 400);
+    assert.equal(ambiguous.json().error, "ambiguous_date_format");
+
+    const withHint = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content, format: "qif", dateFormat: "MM/DD/YYYY" },
+    });
+    assert.equal(withHint.statusCode, 201);
+  });
+
   it("rejects an import with no mapping given and none saved", async () => {
     const response = await app.fastify.inject({
       method: "POST",
