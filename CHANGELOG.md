@@ -17,6 +17,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `POST .../import` accepts `format: "qif"`, with optional `dateFormat`/`decimalSeparator` hints for an ambiguous file (`#30`).
 - `@envelope/core`: `parseCamt053` — parses an ISO 20022 CAMT.053 statement's entries, no column mapping and no date/decimal ambiguity (ISO 20022 fixes both, unlike OFX's date order and QIF's date order and decimal separator); the counterparty name and remittance info come from the entry's first transaction detail, when the bank includes one (`#31`).
 - `apps/api`: `POST .../import` accepts `format: "camt053"` (`#31`).
+- `apps/api`: reconciliation — `GET /workspaces/:workspaceId/accounts/:accountId/reconciliation-candidates` lists pending and tickable cleared transactions up to a date; `POST .../reconciliations` compares the ticked total (plus the last reconciliation's own balance) against a statement balance, either completing the reconciliation on a zero difference, suggesting a pending or unticked transaction that exactly explains a real one, or resolving it with an adjustment transaction given in the same call; `POST /workspaces/:workspaceId/transactions/:transactionId/unlock-reconciliation` reopens a reconciled transaction, an audited action (`#216`) that marks its reconciliation broken until redone. A transaction's status can now only reach `reconciled` through this flow, never a direct update (`#32`).
 
 ### Fixed
 
