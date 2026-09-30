@@ -58,11 +58,11 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 
 Every change reaches `main` through a pull request that the maintainer reviews and merges. Details in [docs/how-to/work-with-issues-and-pull-requests.md](docs/how-to/work-with-issues-and-pull-requests.md).
 
-- **Never** commit on `main`, push to `main`, merge or approve a pull request, force-push, or skip hooks. `.claude/settings.json` denies these commands; do not try other forms of them.
+- **Never** commit on `main`, push to `main`, approve a pull request, force-push, or skip hooks. `.claude/settings.json` denies these commands; do not try other forms of them.
 - Work on the issue's milestone. Create a branch `<type>/<issue>-<short-description>` from an up-to-date `main` (types: `feat`, `fix`, `chore`, `docs`).
 - Commit messages in English, first line `<type>(<scope>): <description>` in imperative mood, and `Refs #<issue>` in the body. Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; scopes: `core`, `api`, `web`, `mobile`, `infra`, `deps` (optional); `!` after the type or scope marks a breaking change. The `commit-msg` hook rejects other formats.
 - The pull request title follows the same format: with "Squash and merge" it becomes the commit message on `main`, and CI checks it.
-- When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`), then stop and report the pull request link.
+- When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`). Once the GitHub Actions CI run on that pull request has completed successfully, merge it (squash) and report the link; do not merge before CI finishes.
 - Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
 - Releases (tags, GitHub releases) are done only when asked.
 
