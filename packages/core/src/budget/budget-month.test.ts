@@ -68,6 +68,71 @@ describe("computeBudgetMonth", () => {
     assert.equal(october.unassigned, 35000); // 500 − 100 − 50 = €350
   });
 
+  it("a scheduled item not yet recorded reserves its amount, net from available", () => {
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [{ month: "2026-09", amount: 100000 }],
+      assignments: [{ categoryId: "rent", month: "2026-09", amount: 90000 }],
+      activity: [],
+      scheduledItems: [{ categoryId: "rent", amount: 90000 }],
+    };
+
+    const result = computeBudgetMonth(input, "2026-09");
+
+    const rent = category(result.categories, "rent");
+    assert.equal(rent.reserved, 90000);
+    assert.equal(rent.available, 0); // 900 assigned − 900 reserved
+    assert.equal(result.reserved, 90000);
+  });
+
+  it("a reservation beyond what a category can cover is a warning, not overspending", () => {
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [{ month: "2026-09", amount: 50000 }],
+      assignments: [{ categoryId: "rent", month: "2026-09", amount: 50000 }],
+      activity: [],
+      scheduledItems: [{ categoryId: "rent", amount: 80000 }],
+    };
+
+    const result = computeBudgetMonth(input, "2026-09");
+
+    const rent = category(result.categories, "rent");
+    assert.equal(rent.available, -30000); // reservation exceeds what is assigned
+    assert.equal(rent.cashOverspending, 0, "a reservation shortfall must never count as overspending");
+    assert.equal(rent.creditOverspending, 0);
+    assert.equal(result.overspentLastMonth, 0);
+  });
+
+  it("reservations do not carry over: a fresh month starts with none of the last one's shortfall", () => {
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [
+        { month: "2026-09", amount: 50000 },
+        { month: "2026-10", amount: 50000 },
+      ],
+      assignments: [
+        { categoryId: "rent", month: "2026-09", amount: 50000 },
+        { categoryId: "rent", month: "2026-10", amount: 50000 },
+      ],
+      activity: [],
+      // Only ever reserves against the month actually requested (no month field of its own).
+      scheduledItems: [{ categoryId: "rent", amount: 80000 }],
+    };
+
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(category(september.categories, "rent").available, -30000);
+
+    const october = computeBudgetMonth(input, "2026-10");
+    // September's reservation shortfall never counted as real overspending (the previous test),
+    // so it neither zeroed carriedOver nor reduced it: October's own carriedOver is September's
+    // full, un-reserved 50000, on top of which October assigns another 50000 and reapplies the
+    // very same still-outstanding item — 100000 now comfortably covers the 80000 reservation,
+    // unaffected by September ever having fallen short of it.
+    assert.equal(category(october.categories, "rent").carriedOver, 50000);
+    assert.equal(category(october.categories, "rent").available, 20000);
+    assert.equal(october.overspentLastMonth, 0);
+  });
+
   it("money assigned to future months reduces unassigned money immediately", () => {
     const input: BudgetInput = {
       categoryIds: ["rent"],

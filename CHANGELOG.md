@@ -12,6 +12,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - Docs: ADR 0009 — FormatJS chosen as the i18n library for the web app (and later the mobile app), over i18next and Lingui: its own message format is ICU MessageFormat, and its key + default-message idiom matches ADR 0004's stable-key lookup directly (`#47`).
 - `apps/web`: the web app's own skeleton — a Vite + React installable PWA shell (`vite-plugin-pwa`), connected to `apps/api`'s `/health` endpoint as the one thing this bootstrap proves, no real screen yet beyond that placeholder (`#48`).
 - `apps/api`: CORS (`@fastify/cors`), restricted to the web app's own origin (`WEB_ORIGIN`, defaulting to Vite's own dev server port) — needed for a browser to call the API at all (`#48`).
+- `@envelope/core`: `computeBudgetMonth` reserves money for scheduled transactions not yet recorded — `BudgetInput.scheduledItems`, `CategoryMonth`/`BudgetMonth.reserved`. A category's `available` is net of it, but a reservation beyond what a category can cover is a warning, never overspending, and never carries over to the next month the way real overspending does (design.md, "Scheduled transactions") (`#250`).
 
 ## [0.1.6] - 2026-09-30
 

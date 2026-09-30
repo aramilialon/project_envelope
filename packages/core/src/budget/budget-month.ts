@@ -28,6 +28,15 @@
  *      so it is taken from unassigned money the following month.
  *    The overspending is attributed to credit card spending first, up to the
  *    amount spent with cards in that category and month.
+ * 7. A scheduled transaction not yet recorded reserves its amount in its
+ *    category for the month being computed (design.md, "Scheduled
+ *    transactions"): `available` is net of it, but a reservation beyond what
+ *    a category can cover is a warning, not overspending — nothing has
+ *    actually happened yet, so it never feeds `creditOverspending`/
+ *    `cashOverspending` or the next month's carried-over balance.
+ *    Reservations never carry over: they only ever apply to the month
+ *    actually requested, not to the earlier months this function also closes
+ *    out along the way.
  *
  * Coverage is decided on the month's final numbers: assigning more money to a
  * category later in the month also funds the credit card spending made
@@ -88,6 +97,18 @@ export interface CardBalance {
   readonly owed: Cents;
 }
 
+/**
+ * A scheduled transaction not yet recorded, reserving `amount` in its category for the month
+ * being computed (design.md, "Scheduled transactions"). No `month` of its own: unlike income,
+ * assignments and activity, a reservation is never walked across months — the caller passes
+ * only the items that reserve against the one month `computeBudgetMonth` is asked for.
+ */
+export interface ScheduledItem {
+  readonly categoryId: string;
+  /** Always positive: the expense's own amount, not yet spent. */
+  readonly amount: Cents;
+}
+
 export interface BudgetInput {
   /** Regular categories. */
   readonly categoryIds: readonly string[];
@@ -98,6 +119,8 @@ export interface BudgetInput {
   readonly activity: readonly Activity[];
   readonly cardPayments?: readonly CardPayment[];
   readonly cardBalances?: readonly CardBalance[];
+  /** Scheduled transactions not yet recorded, for the month being computed. */
+  readonly scheduledItems?: readonly ScheduledItem[];
 }
 
 export interface CategoryMonth {
@@ -117,6 +140,12 @@ export interface CategoryMonth {
   /** Rest of a negative `available` (taken from unassigned money next month if left uncovered). */
   readonly cashOverspending: Cents;
   /**
+   * Money reserved by scheduled transactions not yet recorded (`BudgetInput.scheduledItems`);
+   * `available` already has this subtracted. A category can go negative from this alone
+   * without it counting as overspending — see rule 7 above.
+   */
+  readonly reserved: Cents;
+  /**
    * Payment categories only: how much of the card's real balance (`BudgetInput.cardBalances`)
    * assigned money does not cover yet — `max(0, owed - available)`. Derived fresh every call,
    * never persisted or carried to the next month; 0 when no `cardBalances` entry is given.
@@ -133,6 +162,8 @@ export interface BudgetMonth {
   readonly overspentLastMonth: Cents;
   /** Total credit overspending in this month's categories. */
   readonly creditOverspending: Cents;
+  /** Total reserved by this month's categories (`CategoryMonth.reserved`, summed). */
+  readonly reserved: Cents;
   readonly categories: readonly CategoryMonth[];
   readonly paymentCategories: readonly CategoryMonth[];
 }
@@ -198,6 +229,16 @@ function validate(input: BudgetInput, month: Month): void {
     }
     seenBalances.add(item.paymentCategoryId);
   }
+  for (const item of input.scheduledItems ?? []) {
+    assertCents(item.amount, "scheduled item");
+    if (item.amount <= 0) {
+      throw new ValidationError("invalid_amount", "a scheduled item's amount must be positive", {
+        label: "scheduled item",
+        value: String(item.amount),
+      });
+    }
+    if (!regular.has(item.categoryId)) unknown(item.categoryId);
+  }
 }
 
 interface MonthState {
@@ -219,6 +260,8 @@ function computeMonth(
     creditBy: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
     paymentsBy: ReadonlyMap<string, Cents>;
     cardBalanceBy: ReadonlyMap<string, Cents>;
+    /** Only ever non-empty for the month actually requested (rule 7: reservations do not carry over). */
+    reservedBy: ReadonlyMap<string, Cents>;
   },
 ): MonthState {
   const paymentIds = input.paymentCategoryIds ?? [];
@@ -254,7 +297,22 @@ function computeMonth(
       toCover -= covered;
     }
 
-    return { categoryId: id, carriedOver, assigned, activity, available, creditOverspending, cashOverspending, uncovered: 0 };
+    // Rule 7: a reservation is subtracted from the reported available, but never counted as
+    // overspending — overspent/creditOverspending/cashOverspending above already used the
+    // available amount before this subtraction.
+    const reserved = data.reservedBy.get(id) ?? 0;
+
+    return {
+      categoryId: id,
+      carriedOver,
+      assigned,
+      activity,
+      available: available - reserved,
+      creditOverspending,
+      cashOverspending,
+      reserved,
+      uncovered: 0,
+    };
   });
 
   const paymentCategories = paymentIds.map((id): CategoryMonth => {
@@ -272,6 +330,9 @@ function computeMonth(
       available,
       creditOverspending: 0,
       cashOverspending: Math.max(0, -available),
+      // Payment categories never receive a scheduled item directly (rule 7: a scheduled
+      // card expense reserves in its own spending category, the same as a cash one).
+      reserved: 0,
       // max(0, available): an overpayment already reduces available and next month's
       // unassigned (cashOverspending); counting its negative available again here
       // would double the same shortfall into both mechanisms.
@@ -308,7 +369,9 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   for (const p of input.cardPayments ?? []) addTo(paymentsBy, key(p.paymentCategoryId, p.month), p.amount);
   const cardBalanceBy = new Map<string, Cents>();
   for (const b of input.cardBalances ?? []) cardBalanceBy.set(b.paymentCategoryId, b.owed);
-  const data = { assignedBy, activityBy, creditBy, paymentsBy, cardBalanceBy };
+  const reservedBy = new Map<string, Cents>();
+  for (const s of input.scheduledItems ?? []) addTo(reservedBy, s.categoryId, s.amount);
+  const data = { assignedBy, activityBy, creditBy, paymentsBy, cardBalanceBy, reservedBy: new Map<string, Cents>() };
 
   // 2. Find the first month with data: the computation starts there.
   let firstMonth = month;
@@ -332,8 +395,9 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     overspentLastMonth = cashOverspentThisMonth;
   }
 
-  // 4. The requested month, still open.
-  const current = computeMonth(input, month, carried, data);
+  // 4. The requested month, still open. Reservations (rule 7) apply only here, never to the
+  // earlier months just closed above.
+  const current = computeMonth(input, month, carried, { ...data, reservedBy });
 
   // 5. Unassigned = income so far − everything assigned (future too) − past cash overspending.
   let incomeSoFar = 0;
@@ -356,6 +420,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     assignedInFuture,
     overspentLastMonth,
     creditOverspending: current.categories.reduce((sum, c) => sum + c.creditOverspending, 0),
+    reserved: current.categories.reduce((sum, c) => sum + c.reserved, 0),
     categories: current.categories,
     paymentCategories: current.paymentCategories,
   };

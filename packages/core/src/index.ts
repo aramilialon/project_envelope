@@ -14,6 +14,7 @@ export type {
   CardPayment,
   CategoryMonth,
   Income,
+  ScheduledItem,
 } from "./budget/budget-month.ts";
 export { computeBudgetMonth } from "./budget/budget-month.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";

@@ -135,9 +135,11 @@ function randomGenerator(seed: number): () => number {
 describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
   //   unassigned money + available of every category and payment category
-  //   + assigned in future + this month's credit overspending
+  //   + assigned in future + this month's credit overspending + this month's reserved
   //   = balance of the on-budget cash accounts
-  // Credit overspending is added back because it is spending that no cash covers yet: card debt.
+  // Credit overspending is added back because it is spending that no cash covers yet: card
+  // debt. Reserved is added back for the same reason: a scheduled item not yet recorded has
+  // not moved any real cash either, only reduced a category's own reported available.
   it("balances on 300 random histories", () => {
     const random = randomGenerator(7);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
@@ -224,6 +226,9 @@ describe("budget invariant with accounts and credit cards", () => {
           amount: amount(100000) - 30000,
         })),
         cardBalances,
+        // Not yet recorded, so no real cash moved for these — reserved is added back below,
+        // the same way creditOverspending already is.
+        scheduledItems: Array.from({ length: 5 }, () => ({ categoryId: pick(categoryIds), amount: amount(50000) })),
       };
       const month = pick(months);
 
@@ -233,7 +238,8 @@ describe("budget invariant with accounts and credit cards", () => {
         result.unassigned +
         [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
         result.assignedInFuture +
-        result.creditOverspending;
+        result.creditOverspending +
+        result.reserved;
       const cashBalance = transactions
         .filter((t) => (t.accountId === "checking" || t.accountId === "wallet") && t.date.slice(0, 7) <= month)
         .reduce((sum, t) => sum + t.amount, 0);
