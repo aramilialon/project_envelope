@@ -17,6 +17,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - Docs: a how-to guide for self-hosting push notifications — generating a VAPID key pair for the `web` adapter, and why `ios`/`android` have nothing to configure yet (`#41`).
 - `@envelope/core`: a hybrid logical clock (HLC) — `nextHlc` ticks a device's own clock forward even if its wall clock disagrees with or runs behind a previous value, `compareHlc` gives any two changes a total, deterministic order, the basis for the sync protocol's "last write wins" (design.md, "Field-level change protocol") (`#42`).
 - `apps/api`: `change_log`, one row per field-level change (entity id, field name, HLC, device id, value); `recordChange` is idempotent on the change's own id, so a repeated network retry never creates a duplicate row; `getLatestChange` reads the current winner for one entity's field (`#42`).
+- `apps/api`: `POST /workspaces/:workspaceId/changes` applies a device's own queued field changes, converging to the change with the later clock regardless of arrival order, through an explicit allowlist of supported fields (`transactions.memo`/`transactions.payee` for now) rather than building `UPDATE` SQL from the device-supplied field name directly (`#43`).
+- `apps/api`: two offline devices independently undoing the same assignment-ledger row no longer surfaces as a raw error on the one that syncs second — recognized as "already undone by the other device" and dropped silently, the same outcome as undoing an already-undone row through the existing API (`#43`).
 
 ### Changed
 

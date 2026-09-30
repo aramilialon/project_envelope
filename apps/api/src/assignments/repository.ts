@@ -32,7 +32,7 @@ export interface CreateAssignmentBatchInput {
   readonly entries: readonly AssignmentEntryInput[];
 }
 
-interface AssignmentEntryRow {
+export interface AssignmentEntryRow {
   readonly id: string;
   readonly batch_id: string;
   readonly workspace_id: string;
@@ -127,12 +127,31 @@ export async function createAssignmentBatch(
   return records;
 }
 
+/** Postgres's own code for a unique-constraint violation. */
+const UNIQUE_VIOLATION = "23505";
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === UNIQUE_VIOLATION;
+}
+
 /**
  * Reverses every row of `rows` that does not already have a reverser, as one
  * new batch: source and destination swapped, same amount, `reverses` set to
  * the row it undoes.
+ *
+ * `findUndoneRows`'s own check already keeps a single request from reversing the same row
+ * twice, but two offline devices can each queue their own reversal of the same row while
+ * neither has seen the other's — the second one to sync still passes that check (its own
+ * `SELECT` ran before the first device's `INSERT` committed), and only collides here, on
+ * `reverses`'s unique constraint (#43). That collision means "already undone by the other
+ * device," not a real error (design.md): this row is dropped from the result silently, and the
+ * rest of the batch still reverses normally.
+ *
+ * Exported, with `findUndoneRows` below, so this exact race can be tested directly and
+ * deterministically (call it twice with the same already-fetched row) rather than through two
+ * genuinely concurrent requests, whose interleaving a test cannot reliably control (#43).
  */
-async function reverseRows(
+export async function reverseRows(
   db: DbPool | DbClient,
   workspaceId: string,
   author: string,
@@ -141,24 +160,30 @@ async function reverseRows(
   const batchId = randomUUID();
   const records: AssignmentEntryRecord[] = [];
   for (const row of rows) {
-    const { rows: inserted } = await db.query<AssignmentEntryRow>(
-      `INSERT INTO assignment_ledger
-         (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses)
-       VALUES ($1, $2, ($3 || '-01')::date, $4, $5, $6, $7, $8)
-       RETURNING ${ENTRY_COLUMNS}`,
-      [batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id],
-    );
-    const reversed = inserted[0];
-    if (!reversed) {
-      throw new Error("reverseRows: INSERT ... RETURNING produced no row");
+    try {
+      const { rows: inserted } = await db.query<AssignmentEntryRow>(
+        `INSERT INTO assignment_ledger
+           (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses)
+         VALUES ($1, $2, ($3 || '-01')::date, $4, $5, $6, $7, $8)
+         RETURNING ${ENTRY_COLUMNS}`,
+        [batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id],
+      );
+      const reversed = inserted[0];
+      if (!reversed) {
+        throw new Error("reverseRows: INSERT ... RETURNING produced no row");
+      }
+      records.push(toEntryRecord(reversed));
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
     }
-    records.push(toEntryRecord(reversed));
   }
   return records;
 }
 
 /** Rows of `batchId` (or a single row) that do not already have a reverser. */
-async function findUndoneRows(
+export async function findUndoneRows(
   db: DbPool | DbClient,
   workspaceId: string,
   where: string,
@@ -218,7 +243,10 @@ export async function undoAssignmentEntry(
   if (undone.length === 0) {
     return "already_reversed";
   }
-  return reverseRows(db, workspaceId, author, undone);
+  const reversed = await reverseRows(db, workspaceId, author, undone);
+  // The only row this call cared about lost the race to another device between the check
+  // above and reverseRows's own INSERT (#43) — the same outcome as having lost it earlier.
+  return reversed.length === 0 ? "already_reversed" : reversed;
 }
 
 export interface AssignmentTotal {

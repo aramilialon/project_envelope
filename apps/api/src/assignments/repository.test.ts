@@ -8,7 +8,9 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import {
   createAssignmentBatch,
+  findUndoneRows,
   listAssignmentTotals,
+  reverseRows,
   undoAssignmentBatch,
   undoAssignmentEntry,
 } from "./repository.ts";
@@ -282,5 +284,29 @@ describe("assignment ledger repository", () => {
   it("undoing an unknown row reports not_found", async () => {
     const result = await undoAssignmentEntry(pool, workspaceId, randomUUID(), authorId);
     assert.equal(result, "not_found");
+  });
+
+  it("drops a row that lost the race to another device's reversal, instead of throwing (#43)", async () => {
+    // Two offline devices each queue their own undo of the same row, from their own,
+    // independently stale view that it is still undone: `findUndoneRows` here stands in for
+    // that view, fetched once and reused for both "devices" so the second reverseRows call
+    // sees the row as undoable even though the first call has, by then, already reversed it —
+    // deterministically, with no real concurrency needed to trigger the exact race (design.md:
+    // "already undone by the other device," not a real error).
+    const original = await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2027-05", sourceCategoryId: null, destinationCategoryId: categoryId, amountCents: 75 }],
+    });
+    const staleView = await findUndoneRows(pool, workspaceId, "id = $2", [original[0]!.id]);
+
+    const firstDevice = await reverseRows(pool, workspaceId, authorId, staleView);
+    assert.equal(firstDevice.length, 1, "the first device to sync reverses the row normally");
+
+    const secondDevice = await reverseRows(pool, workspaceId, authorId, staleView);
+    assert.deepEqual(secondDevice, [], "the second device's own reversal must be dropped silently, not thrown");
+
+    const { rows } = await pool.query("SELECT count(*) FROM assignment_ledger WHERE reverses = $1", [original[0]!.id]);
+    assert.equal(Number(rows[0]!.count), 1, "only one reversal of the same row must ever exist");
   });
 });
