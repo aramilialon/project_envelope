@@ -6,6 +6,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Added
+
+- `apps/api`: the queue module's `QueueDriver` interface (`enqueue`, `schedule`, `work`) and its `postgres` adapter (pg-boss), the only file allowed to import it (design.md, "Queue module"). Every queue it creates uses the `exclusive` policy, so a repeat `deduplicationKey` is rejected instead of merely recorded; `enqueue` accepts the caller's own transaction client, so the job commits or rolls back with the data that triggered it, pg-boss's own job table doubling as the outbox. A new `envelope_queue` role (its own migration) gives pg-boss the schema-management privilege `envelope_app` deliberately does not have, without widening the running server's own connection (`#34`).
+
 ## [0.1.4] - 2026-09-30
 
 ### Added
