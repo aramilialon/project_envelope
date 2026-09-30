@@ -9,6 +9,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Added
 
 - `@envelope/core`: `daysBetween` (promoted from a private helper in `computeDaysOfBuffer`) and `detectDuplicates` — matches an import's rows against an account's existing transactions, by the bank's own transaction id or otherwise the same amount within a 3-day window, each existing transaction matched at most once (`#27`).
+- `@envelope/core`: `parseCsv` — parses a mapped CSV file's rows (one amount column or separate outflow/inflow columns, three date formats, either decimal separator, an optional header row and memo column) (`#28`).
+- `apps/api`: CSV import — a column mapping remembered per account (`PUT`/`GET .../import-mapping`); `POST .../import` parses a file and stages its rows, matching duplicates against the account's existing transactions and comparing the file's closing balance, when given, with the account's projected balance; `GET .../staged-transactions` lists them, sweeping any past the 7-day expiry; `POST .../staged-transactions/confirm` confirms a batch of per-row decisions (category, income, or transfer to another account) into real transactions, clearing a matched existing transaction instead of duplicating it (`#28`).
 
 ## [0.1.3] - 2026-09-29
 

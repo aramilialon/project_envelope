@@ -1,0 +1,270 @@
+/**
+ * Import staging (design.md, "Import and reconciliation"): a saved CSV
+ * column mapping per account, and the staging area a parsed file's rows land
+ * in before they become real transactions.
+ */
+
+import {
+  detectDuplicates,
+  isValidationError,
+  parseCsv,
+  sumCents,
+  type CsvMapping,
+  type ExistingTransaction,
+  type ImportedTransaction,
+} from "@envelope/core";
+
+import type { DbClient, DbPool } from "../db/pool.ts";
+import { createTransaction, createTransfer, listTransactionsForAccount, updateTransaction } from "../transactions/repository.ts";
+
+const STAGING_EXPIRY_INTERVAL = "7 days";
+
+export async function getImportMapping(db: DbPool | DbClient, workspaceId: string, accountId: string): Promise<CsvMapping | undefined> {
+  const { rows } = await db.query<{ mapping: CsvMapping }>(
+    "SELECT mapping FROM import_mappings WHERE workspace_id = $1 AND account_id = $2",
+    [workspaceId, accountId],
+  );
+  return rows[0]?.mapping;
+}
+
+export async function saveImportMapping(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  mapping: CsvMapping,
+): Promise<CsvMapping> {
+  await db.query(
+    `INSERT INTO import_mappings (account_id, workspace_id, mapping)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (account_id) DO UPDATE SET mapping = $3, updated_at = now()`,
+    [accountId, workspaceId, JSON.stringify(mapping)],
+  );
+  return mapping;
+}
+
+export interface StagedTransactionRecord {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly accountId: string;
+  readonly occurredAt: string;
+  readonly payee: string | null;
+  readonly memo: string | null;
+  readonly amountCents: number;
+  /** Set when duplicate detection matched this row against a transaction already in the account. */
+  readonly duplicateOf: string | null;
+  readonly createdAt: string;
+}
+
+interface StagedTransactionRow {
+  readonly id: string;
+  readonly workspace_id: string;
+  readonly account_id: string;
+  readonly occurred_at: Date;
+  readonly payee: string | null;
+  readonly memo: string | null;
+  readonly amount_cents: string;
+  readonly duplicate_of: string | null;
+  readonly created_at: Date;
+}
+
+const STAGED_COLUMNS = "id, workspace_id, account_id, occurred_at, payee, memo, amount_cents, duplicate_of, created_at";
+
+function toStagedRecord(row: StagedTransactionRow): StagedTransactionRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    accountId: row.account_id,
+    occurredAt: row.occurred_at.toISOString().slice(0, 10),
+    payee: row.payee,
+    memo: row.memo,
+    amountCents: Number(row.amount_cents),
+    duplicateOf: row.duplicate_of,
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+export interface ClosingBalanceComparison {
+  readonly statementCents: number;
+  /** The account's current balance plus this import's non-duplicate rows. */
+  readonly projectedCents: number;
+  readonly differenceCents: number;
+}
+
+export interface StageCsvImportResult {
+  readonly staged: readonly StagedTransactionRecord[];
+  readonly duplicateCount: number;
+  readonly closingBalance?: ClosingBalanceComparison;
+}
+
+/**
+ * Parses a CSV file's content and stages its rows, matching each one against
+ * the account's existing transactions (`detectDuplicates`, #27) so a matched
+ * row is confirmed as clearing that transaction instead of creating a new
+ * one. The file itself is never stored (design.md: "The file is read to
+ * extract its rows and is not stored").
+ */
+export async function stageCsvImport(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  csvContent: string,
+  mapping: CsvMapping,
+  closingBalanceCents?: number,
+): Promise<StageCsvImportResult> {
+  const parsedRows = parseCsv(csvContent, mapping);
+
+  const existingTransactions = await listTransactionsForAccount(db, workspaceId, accountId);
+  const existing: ExistingTransaction[] = existingTransactions.map((t) => ({
+    id: t.id,
+    date: t.budgetDate,
+    amount: sumCents(t.splits.map((s) => s.amountCents)),
+  }));
+  const incoming: ImportedTransaction[] = parsedRows.map((r) => ({ date: r.date, amount: r.amountCents }));
+  const matches = detectDuplicates(incoming, existing);
+  const duplicateOfByIndex = new Map(matches.map((m) => [m.incomingIndex, m.existingId]));
+
+  const staged: StagedTransactionRecord[] = [];
+  for (const [index, row] of parsedRows.entries()) {
+    const { rows } = await db.query<StagedTransactionRow>(
+      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, duplicate_of)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING ${STAGED_COLUMNS}`,
+      [workspaceId, accountId, row.date, row.payee || null, row.memo ?? null, row.amountCents, duplicateOfByIndex.get(index) ?? null],
+    );
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("stageCsvImport: INSERT ... RETURNING produced no row");
+    }
+    staged.push(toStagedRecord(inserted));
+  }
+
+  const currentBalanceCents = sumCents(existing.map((e) => e.amount));
+  const newRowsCents = sumCents(parsedRows.filter((_, index) => !duplicateOfByIndex.has(index)).map((r) => r.amountCents));
+  const projectedCents = currentBalanceCents + newRowsCents;
+
+  return {
+    staged,
+    duplicateCount: matches.length,
+    ...(closingBalanceCents !== undefined
+      ? { closingBalance: { statementCents: closingBalanceCents, projectedCents, differenceCents: closingBalanceCents - projectedCents } }
+      : {}),
+  };
+}
+
+/** Sweeps rows past the 7-day expiry (design.md) before listing what remains — no queue dependency, since the queue module (0.1.6) does not exist yet. */
+export async function listStagedTransactions(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+): Promise<StagedTransactionRecord[]> {
+  await db.query(`DELETE FROM staged_transactions WHERE workspace_id = $1 AND created_at < now() - interval '${STAGING_EXPIRY_INTERVAL}'`, [
+    workspaceId,
+  ]);
+  const { rows } = await db.query<StagedTransactionRow>(
+    `SELECT ${STAGED_COLUMNS} FROM staged_transactions WHERE workspace_id = $1 AND account_id = $2 ORDER BY occurred_at, created_at`,
+    [workspaceId, accountId],
+  );
+  return rows.map(toStagedRecord);
+}
+
+export type StagedTransactionDecision =
+  | { readonly stagedTransactionId: string; readonly kind: "income" }
+  | { readonly stagedTransactionId: string; readonly kind: "category"; readonly categoryId: string }
+  | { readonly stagedTransactionId: string; readonly kind: "transfer"; readonly otherAccountId: string }
+  /** A row named in the confirmation with no category, transfer or income recognition — blocks only that row (design.md, #28's own acceptance criteria). */
+  | { readonly stagedTransactionId: string; readonly kind: "invalid" };
+
+export type ConfirmationOutcome =
+  | { readonly stagedTransactionId: string; readonly outcome: "confirmed"; readonly transactionId: string }
+  | { readonly stagedTransactionId: string; readonly outcome: "duplicate_cleared"; readonly transactionId: string }
+  | { readonly stagedTransactionId: string; readonly outcome: "rejected"; readonly code: string }
+  | { readonly stagedTransactionId: string; readonly outcome: "not_found" };
+
+/**
+ * Confirms each decision independently: one row failing (an unsupported
+ * transfer, a zero-or-negative amount) is reported as "rejected" and leaves
+ * that row staged for a retry, rather than aborting the rest of the batch
+ * (design.md: only a row *included in the confirmation* needs a category,
+ * transfer or income recognition — the others are unaffected).
+ */
+export async function confirmStagedTransactions(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  decisions: readonly StagedTransactionDecision[],
+): Promise<ConfirmationOutcome[]> {
+  const outcomes: ConfirmationOutcome[] = [];
+  for (const decision of decisions) {
+    const { rows } = await db.query<StagedTransactionRow>(
+      `SELECT ${STAGED_COLUMNS} FROM staged_transactions WHERE id = $1 AND workspace_id = $2 AND account_id = $3`,
+      [decision.stagedTransactionId, workspaceId, accountId],
+    );
+    const row = rows[0];
+    if (!row) {
+      outcomes.push({ stagedTransactionId: decision.stagedTransactionId, outcome: "not_found" });
+      continue;
+    }
+    const staged = toStagedRecord(row);
+
+    if (staged.duplicateOf) {
+      // Flagging it in the confirmation is enough (design.md): the existing transaction already has a
+      // category, so this row needs no category/transfer/income recognition of its own.
+      // Already reconciled or already cleared: still a resolved duplicate, nothing more to change.
+      await updateTransaction(db, workspaceId, staged.duplicateOf, { status: "cleared" });
+      await db.query("DELETE FROM staged_transactions WHERE id = $1", [staged.id]);
+      outcomes.push({ stagedTransactionId: staged.id, outcome: "duplicate_cleared", transactionId: staged.duplicateOf });
+      continue;
+    }
+
+    if (decision.kind === "invalid") {
+      outcomes.push({ stagedTransactionId: staged.id, outcome: "rejected", code: "missing_categorization" });
+      continue;
+    }
+
+    try {
+      const transactionId = await confirmAsNewTransaction(db, workspaceId, staged, decision);
+      await db.query("DELETE FROM staged_transactions WHERE id = $1", [staged.id]);
+      outcomes.push({ stagedTransactionId: staged.id, outcome: "confirmed", transactionId });
+    } catch (error) {
+      if (!isValidationError(error)) {
+        throw error;
+      }
+      outcomes.push({ stagedTransactionId: staged.id, outcome: "rejected", code: error.code });
+    }
+  }
+  return outcomes;
+}
+
+async function confirmAsNewTransaction(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  staged: StagedTransactionRecord,
+  decision: StagedTransactionDecision,
+): Promise<string> {
+  if (decision.kind === "transfer") {
+    const isOutflow = staged.amountCents < 0;
+    const transfer = await createTransfer(db, {
+      workspaceId,
+      sourceAccountId: isOutflow ? staged.accountId : decision.otherAccountId,
+      destinationAccountId: isOutflow ? decision.otherAccountId : staged.accountId,
+      occurredAt: staged.occurredAt,
+      amountCents: Math.abs(staged.amountCents),
+      status: "cleared",
+      ...(staged.payee ? { payee: staged.payee } : {}),
+      ...(staged.memo ? { memo: staged.memo } : {}),
+    });
+    return transfer.source.accountId === staged.accountId ? transfer.source.id : transfer.destination.id;
+  }
+
+  const categoryId = decision.kind === "category" ? decision.categoryId : null;
+  const transaction = await createTransaction(db, {
+    workspaceId,
+    accountId: staged.accountId,
+    occurredAt: staged.occurredAt,
+    status: "cleared",
+    ...(staged.payee ? { payee: staged.payee } : {}),
+    ...(staged.memo ? { memo: staged.memo } : {}),
+    splits: [{ categoryId, amountCents: staged.amountCents }],
+  });
+  return transaction.id;
+}

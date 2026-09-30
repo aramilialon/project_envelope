@@ -12,6 +12,7 @@ import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerDaysOfBufferRoutes } from "./routes/days-of-buffer.ts";
 import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
+import { registerImportRoutes } from "./routes/import.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerQuickAssignRoutes } from "./routes/quick-assign.ts";
 import { registerTransactionsRoutes } from "./routes/transactions.ts";
@@ -56,6 +57,7 @@ export function buildApp(config: Config): App {
   registerCategoriesRoutes(fastify, pool);
   registerDaysOfBufferRoutes(fastify, pool);
   registerGoalsRoutes(fastify, pool);
+  registerImportRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
