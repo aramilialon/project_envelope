@@ -183,8 +183,17 @@ $ docker exec -it envelope-postgres-1 psql -U envelope -d envelope \
   -c "ALTER ROLE envelope_app WITH LOGIN PASSWORD '<a password you pick>';" \
   -c "ALTER ROLE envelope_queue WITH LOGIN PASSWORD '<a different password you pick>';"
 $ nano .env                 # set APP_DATABASE_URL and QUEUE_DATABASE_URL to those passwords
+```
+
+The server also needs a VAPID key pair for the Web Push adapter (`#39`), even in development — the `budget-recompute` job (`#40`) can send through it:
+
+```bash
+$ npx web-push generate-vapid-keys
+$ nano .env                 # set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to the pair just printed
 $ pnpm --filter @envelope/api dev
 ```
+
+Obtaining and configuring these (and, later, APNs/FCM) for a real self-hosted deployment is its own guide: [self-hosting push notifications](how-to/self-host-push-notifications.md).
 
 The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` only need to look valid for now: nothing calls Keycloak yet outside the tests.
 
