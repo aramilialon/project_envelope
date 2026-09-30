@@ -90,3 +90,25 @@ export async function getLatestChange(
   const row = rows[0];
   return row ? toChangeRecord(row) : undefined;
 }
+
+/**
+ * Every change later than `since` (design.md: "each device downloads the changes that arrived
+ * after the last clock value it has seen", #44) — every change at all when `since` is omitted,
+ * for a device syncing for the first time. Ordered the same way `compareHlc` would: the row
+ * comparison `(hlc_physical, hlc_counter, device_id) > (...)` is exactly that ordering in SQL.
+ */
+export async function listChangesSince(db: DbPool | DbClient, workspaceId: string, since?: Hlc): Promise<ChangeRecord[]> {
+  const { rows } = await db.query<ChangeLogRow>(
+    since
+      ? `SELECT id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value, received_at
+         FROM change_log
+         WHERE workspace_id = $1 AND (hlc_physical, hlc_counter, device_id) > ($2, $3, $4)
+         ORDER BY hlc_physical, hlc_counter, device_id`
+      : `SELECT id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value, received_at
+         FROM change_log
+         WHERE workspace_id = $1
+         ORDER BY hlc_physical, hlc_counter, device_id`,
+    since ? [workspaceId, since.physical, since.counter, since.deviceId] : [workspaceId],
+  );
+  return rows.map(toChangeRecord);
+}

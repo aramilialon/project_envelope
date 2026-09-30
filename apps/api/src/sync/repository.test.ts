@@ -6,7 +6,7 @@ import type { Hlc } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { getLatestChange, recordChange } from "./repository.ts";
+import { getLatestChange, listChangesSince, recordChange } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -120,5 +120,102 @@ describe("change log repository (#42)", () => {
   it("returns undefined when a field has no recorded change yet", async () => {
     const latest = await getLatestChange(pool, workspaceId, randomUUID(), "transactions.memo");
     assert.equal(latest, undefined);
+  });
+});
+
+describe("listChangesSince (#44)", () => {
+  let pool: DbPool;
+  const workspaceIds: string[] = [];
+
+  before(async () => {
+    pool = createPool(databaseUrl);
+    await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+  });
+
+  after(async () => {
+    await pool.query("DELETE FROM workspaces WHERE id = ANY($1)", [workspaceIds]);
+    await pool.end();
+  });
+
+  function hlc(physical: number, counter = 0, deviceId = "device-a"): Hlc {
+    return { physical, counter, deviceId };
+  }
+
+  /** Its own workspace per test: listChangesSince returns every change of a workspace, so tests sharing one would leak into each other. */
+  async function newWorkspace(): Promise<string> {
+    const id = randomUUID();
+    workspaceIds.push(id);
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Test', 'EUR', 'UTC')", [id]);
+    return id;
+  }
+
+  it("returns every change when since is omitted, ordered by clock", async () => {
+    const workspaceId = await newWorkspace();
+    const entityId = randomUUID();
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "b" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "a" });
+
+    const changes = await listChangesSince(pool, workspaceId);
+    assert.deepEqual(
+      changes.map((c) => c.value),
+      ["a", "b"],
+    );
+  });
+
+  it("returns only changes later than the given clock", async () => {
+    const workspaceId = await newWorkspace();
+    const entityId = randomUUID();
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "first" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "second" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(3000), value: "third" });
+
+    const changes = await listChangesSince(pool, workspaceId, hlc(1000));
+    assert.deepEqual(
+      changes.map((c) => c.value),
+      ["second", "third"],
+    );
+  });
+
+  it("breaks a tie on physical/counter by device id, the same order compareHlc gives", async () => {
+    const workspaceId = await newWorkspace();
+    const entityId = randomUUID();
+    await recordChange(pool, {
+      id: randomUUID(),
+      workspaceId,
+      entityId,
+      fieldName: "transactions.memo",
+      hlc: hlc(5000, 0, "device-z"),
+      value: "z",
+    });
+    await recordChange(pool, {
+      id: randomUUID(),
+      workspaceId,
+      entityId,
+      fieldName: "transactions.payee",
+      hlc: hlc(5000, 0, "device-a"),
+      value: "a",
+    });
+
+    const changes = await listChangesSince(pool, workspaceId, hlc(4000));
+    assert.deepEqual(
+      changes.map((c) => c.value),
+      ["a", "z"],
+    );
+  });
+
+  it("excludes another workspace's changes", async () => {
+    const workspaceId = await newWorkspace();
+    const otherWorkspaceId = await newWorkspace();
+    await recordChange(pool, {
+      id: randomUUID(),
+      workspaceId: otherWorkspaceId,
+      entityId: randomUUID(),
+      fieldName: "transactions.memo",
+      hlc: hlc(1000),
+      value: "not mine",
+    });
+
+    const changes = await listChangesSince(pool, workspaceId);
+    assert.deepEqual(changes, []);
   });
 });

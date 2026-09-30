@@ -19,6 +19,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `change_log`, one row per field-level change (entity id, field name, HLC, device id, value); `recordChange` is idempotent on the change's own id, so a repeated network retry never creates a duplicate row; `getLatestChange` reads the current winner for one entity's field (`#42`).
 - `apps/api`: `POST /workspaces/:workspaceId/changes` applies a device's own queued field changes, converging to the change with the later clock regardless of arrival order, through an explicit allowlist of supported fields (`transactions.memo`/`transactions.payee` for now) rather than building `UPDATE` SQL from the device-supplied field name directly (`#43`).
 - `apps/api`: two offline devices independently undoing the same assignment-ledger row no longer surfaces as a raw error on the one that syncs second — recognized as "already undone by the other device" and dropped silently, the same outcome as undoing an already-undone row through the existing API (`#43`).
+- `apps/api`: `GET /workspaces/:workspaceId/changes` — the download side of the sync protocol: every field-level change later than the clock a device last saw, or all of them for a first sync, ordered the same way `compareHlc` would; a read-only member can call it, unlike the upload side (`#44`).
 
 ### Changed
 
