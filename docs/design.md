@@ -442,7 +442,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 - **Budget, encrypted workspace.** The server sends only a silent notification ("there are updates"); the device syncs, computes and shows the alert. On iOS silent notifications can be delayed: this must be measured.
 - **Portfolio.** Monthly rebalancing check: a server job for plaintext workspaces, a scheduled notification on the device for encrypted ones.
 - **Channels and preferences.** Push on iOS and Android, Web Push in the browser; users choose which alerts they receive and on which devices.
-- **Storage.** A notification → destination table (the notification's content plus which device tokens it goes to) is enough. Wording: the budget alert's title/body is composed server-side in the recipient's own `language`, from a small, self-contained English/Italian lookup local to `apps/api` (ADR 0004's catalog-based i18n library is chosen in "phase 1", the web app; a push notification has no UI on the receiving end to translate a code, unlike a `ValidationError`). Where each one links to is still open, for the web app.
+- **Storage.** A notification → destination table (the notification's content plus which device tokens it goes to) is enough. Wording: the budget alert's title/body is composed server-side in the recipient's own `language`, from a small, self-contained English/Italian lookup local to `apps/api` (ADR 0009's catalog-based i18n library, FormatJS, is for the apps, not the server; a push notification has no UI on the receiving end to translate a code, unlike a `ValidationError`). Where each one links to is still open, for the web app.
 
 ### Mobile-specific features
 
