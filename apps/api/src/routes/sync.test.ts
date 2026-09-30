@@ -22,7 +22,7 @@ if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
   throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
 }
 
-describe("sync routes (#43)", () => {
+describe("sync routes (#43, #44)", () => {
   let superuserPool: DbPool;
   let realm: KeycloakTestRealm;
   let app: App;
@@ -151,10 +151,6 @@ describe("sync routes (#43)", () => {
       ["applied", "stale", "unsupported_field"],
     );
 
-    // Reads back through the app's own request cycle, not a raw pool query: the write's
-    // transaction only commits in an onResponse hook (auth/workspace-membership.ts), which
-    // this same POST's own inject() does not wait for — a genuine gap between "response sent"
-    // and "committed" inherent to Fastify's hook ordering, not specific to this endpoint.
     const listed = await app.fastify.inject({
       method: "GET",
       url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
@@ -162,5 +158,79 @@ describe("sync routes (#43)", () => {
     });
     const { transactions } = listed.json() as { transactions: { id: string; memo: string | null }[] };
     assert.equal(transactions.find((t) => t.id === transactionId)?.memo, "later");
+  });
+
+  it("downloads every change when given no since, in clock order", async () => {
+    const entityId = randomUUID();
+    await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        changes: [
+          { id: randomUUID(), entityId, fieldName: "transactions.memo", hlc: { physical: 9000, counter: 0, deviceId: "d" }, value: "b" },
+          { id: randomUUID(), entityId, fieldName: "transactions.memo", hlc: { physical: 8000, counter: 0, deviceId: "d" }, value: "a" },
+        ],
+      },
+    });
+
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    const { changes } = response.json() as { changes: { entityId: string; value: unknown }[] };
+    const mine = changes.filter((c) => c.entityId === entityId);
+    assert.deepEqual(
+      mine.map((c) => c.value),
+      ["a", "b"],
+    );
+  });
+
+  it("downloads only changes later than the given since clock", async () => {
+    const entityId = randomUUID();
+    await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        changes: [
+          { id: randomUUID(), entityId, fieldName: "transactions.memo", hlc: { physical: 10000, counter: 0, deviceId: "d" }, value: "old" },
+          { id: randomUUID(), entityId, fieldName: "transactions.memo", hlc: { physical: 11000, counter: 0, deviceId: "d" }, value: "new" },
+        ],
+      },
+    });
+
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/changes?sincePhysical=10000&sinceCounter=0&sinceDeviceId=d`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 200);
+    const { changes } = response.json() as { changes: { entityId: string; value: unknown }[] };
+    assert.deepEqual(
+      changes.filter((c) => c.entityId === entityId).map((c) => c.value),
+      ["new"],
+    );
+  });
+
+  it("rejects a partial since (not all three of physical/counter/deviceId given)", async () => {
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/changes?sincePhysical=1000`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  it("allows a read-only member to download changes", async () => {
+    const readOnlyToken = await tokenFor("read_only");
+    const response = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${readOnlyToken}` },
+    });
+    assert.equal(response.statusCode, 200);
   });
 });
