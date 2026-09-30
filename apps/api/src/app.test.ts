@@ -131,3 +131,60 @@ describe("every route rejects a missing or foreign token", () => {
     assert.equal(response.statusCode, 200);
   });
 });
+
+describe("CORS (#48)", () => {
+  let superuserPool: DbPool;
+  let realm: KeycloakTestRealm;
+  let app: App;
+
+  before(async () => {
+    superuserPool = createPool(databaseUrl);
+    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
+    await ensureAppRoleLogin(superuserPool);
+    realm = await setUpKeycloakTestRealm();
+
+    app = buildApp(
+      loadConfig({
+        APP_DATABASE_URL: appConnectionString(databaseUrl),
+        KEYCLOAK_ISSUER: realm.issuer,
+        KEYCLOAK_AUDIENCE: realm.audience,
+        WEB_ORIGIN: "http://localhost:5173",
+      }),
+    );
+  });
+
+  after(async () => {
+    await app.close();
+    await realm.teardown();
+    await superuserPool.end();
+  });
+
+  it("answers with the configured web origin, not a hardcoded one", async () => {
+    // @fastify/cors, given a single string (not a function or a regex), always answers with
+    // that exact value regardless of the request's own Origin header — the real enforcement
+    // happens client-side, in the browser, which discards a response whose header does not
+    // match its own origin. What this proves is that the value comes from WEB_ORIGIN, not a
+    // hardcoded string: a differently configured app answers with its own origin instead.
+    const response = await app.fastify.inject({ method: "GET", url: "/health", headers: { origin: "http://localhost:5173" } });
+    assert.equal(response.headers["access-control-allow-origin"], "http://localhost:5173");
+
+    const otherApp = buildApp(
+      loadConfig({
+        APP_DATABASE_URL: appConnectionString(databaseUrl),
+        KEYCLOAK_ISSUER: realm.issuer,
+        KEYCLOAK_AUDIENCE: realm.audience,
+        WEB_ORIGIN: "https://envelope.example.net",
+      }),
+    );
+    try {
+      const otherResponse = await otherApp.fastify.inject({
+        method: "GET",
+        url: "/health",
+        headers: { origin: "http://localhost:5173" },
+      });
+      assert.equal(otherResponse.headers["access-control-allow-origin"], "https://envelope.example.net");
+    } finally {
+      await otherApp.close();
+    }
+  });
+});

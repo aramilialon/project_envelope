@@ -1,3 +1,4 @@
+import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 
 import { createAuthPreHandler, createTokenVerifier } from "./auth/token-verifier.ts";
@@ -44,6 +45,9 @@ export function buildApp(config: Config, queue?: QueueDriver): App {
 
   const fastify = Fastify({ logger: loggerOptions });
   const pool = createPool(config.databaseUrl);
+
+  // The web app (#48) calls this API from its own origin; nothing else needs to.
+  void fastify.register(cors, { origin: config.webOrigin });
 
   const verifier = createTokenVerifier(config);
   const authPreHandler = createAuthPreHandler(verifier);

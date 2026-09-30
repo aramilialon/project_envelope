@@ -208,14 +208,28 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
 
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
 
-## 10. Editing the code
+## 10. The web app (`apps/web`)
+
+With the API from the previous section still running:
+
+```bash
+$ cd ~/envelope/apps/web
+$ cp .env.example .env
+$ pnpm --filter @envelope/web dev
+```
+
+Browse to `http://localhost:5173`: the placeholder screen reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
+
+See [`apps/web/README.md`](../apps/web/README.md) for the rest.
+
+## 11. Editing the code
 
 Any editor works. Two common options:
 
 - **On the VM:** `vim` or `nano` over SSH.
 - **From the laptop:** an editor with remote SSH support, such as Visual Studio Code with the Remote - SSH extension. Files stay on the VM; the laptop only shows them.
 
-## 11. Daily workflow
+## 12. Daily workflow
 
 Changes reach `main` only through pull requests: see [Work with issues, pull requests and releases](how-to/work-with-issues-and-pull-requests.md). Once per clone, activate the hook that refuses direct pushes to `main`:
 
