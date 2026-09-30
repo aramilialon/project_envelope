@@ -59,6 +59,10 @@ describe("applyIncomingChange (#43)", () => {
     return { physical, counter, deviceId };
   }
 
+  async function reconcile(transactionId: string): Promise<void> {
+    await pool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [transactionId]);
+  }
+
   it("applies a first change to the real column", async () => {
     const transactionId = await createTestTransaction();
     const outcome = await applyIncomingChange(pool, workspaceId, {
@@ -159,5 +163,56 @@ describe("applyIncomingChange (#43)", () => {
     assert.equal(outcome, "unsupported_field");
     const { rows } = await pool.query("SELECT 1 FROM change_log WHERE id = $1", [changeId]);
     assert.equal(rows.length, 0, "an unsupported field must not be recorded either, since there is nowhere to apply it");
+  });
+
+  it("rejects a change to a reconciled transaction, without recording or applying it (#45)", async () => {
+    const transactionId = await createTestTransaction();
+    await applyIncomingChange(pool, workspaceId, {
+      id: randomUUID(),
+      entityId: transactionId,
+      fieldName: "transactions.memo",
+      hlc: hlc(1000),
+      value: "before reconciling",
+    });
+    await reconcile(transactionId);
+    const changeId = randomUUID();
+
+    const outcome = await applyIncomingChange(pool, workspaceId, {
+      id: changeId,
+      entityId: transactionId,
+      fieldName: "transactions.memo",
+      hlc: hlc(2000),
+      value: "after reconciling",
+    });
+
+    assert.equal(outcome, "locked");
+    assert.equal(await memoOf(transactionId), "before reconciling", "a locked transaction's field must not change");
+    const { rows } = await pool.query("SELECT 1 FROM change_log WHERE id = $1", [changeId]);
+    assert.equal(rows.length, 0, "a rejected change must not be recorded either, so a retry after unlocking is unaffected by it");
+  });
+
+  it("applies again once a reconciled transaction is unlocked", async () => {
+    const transactionId = await createTestTransaction();
+    await reconcile(transactionId);
+    const rejected = await applyIncomingChange(pool, workspaceId, {
+      id: randomUUID(),
+      entityId: transactionId,
+      fieldName: "transactions.memo",
+      hlc: hlc(1000),
+      value: "while locked",
+    });
+    assert.equal(rejected, "locked");
+
+    await pool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [transactionId]);
+    const retried = await applyIncomingChange(pool, workspaceId, {
+      id: randomUUID(),
+      entityId: transactionId,
+      fieldName: "transactions.memo",
+      hlc: hlc(1000),
+      value: "after unlocking",
+    });
+
+    assert.equal(retried, "applied");
+    assert.equal(await memoOf(transactionId), "after unlocking");
   });
 });
