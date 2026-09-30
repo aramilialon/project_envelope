@@ -228,6 +228,24 @@ describe("import routes", () => {
     assert.equal(withHint.statusCode, 201);
   });
 
+  it("imports a CAMT.053 file with no mapping at all, keeping the account servicer's own reference", async () => {
+    const content =
+      "<Ntry><Amt>15.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-10</Dt></BookgDt>" +
+      "<AcctSvcrRef>CAMT-ROUTE-1</AcctSvcrRef><NtryDtls><TxDtls><RltdPties><Cdtr><Nm>Coffee shop</Nm></Cdtr>" +
+      "</RltdPties></TxDtls></NtryDtls></Ntry>";
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content, format: "camt053" },
+    });
+    assert.equal(imported.statusCode, 201);
+    const result = imported.json();
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0].externalId, "CAMT-ROUTE-1");
+  });
+
   it("rejects an import with no mapping given and none saved", async () => {
     const response = await app.fastify.inject({
       method: "POST",

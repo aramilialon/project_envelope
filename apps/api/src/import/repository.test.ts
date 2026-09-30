@@ -12,6 +12,7 @@ import {
   getImportMapping,
   listStagedTransactions,
   saveImportMapping,
+  stageCamt053Import,
   stageCsvImport,
   stageOfxImport,
   stageQifImport,
@@ -31,6 +32,17 @@ function qifTransaction(date: string, amountCents: number, payee: string): strin
   const [year, month, day] = date.split("-") as [string, string, string];
   const amount = (amountCents / 100).toFixed(2).replace(".", ",");
   return `!Type:Bank\nD${day}/${month}/${year}\nP${payee}\nT${amount}\n^\n`;
+}
+
+function camt053Entry(acctSvcrRef: string, date: string, amountCents: number, payee: string): string {
+  const isDebit = amountCents < 0;
+  const amount = (Math.abs(amountCents) / 100).toFixed(2);
+  const counterpartyTag = isDebit ? "Cdtr" : "Dbtr";
+  return (
+    `<Ntry><Amt>${amount}</Amt><CdtDbtInd>${isDebit ? "DBIT" : "CRDT"}</CdtDbtInd>` +
+    `<BookgDt><Dt>${date}</Dt></BookgDt><AcctSvcrRef>${acctSvcrRef}</AcctSvcrRef>` +
+    `<NtryDtls><TxDtls><RltdPties><${counterpartyTag}><Nm>${payee}</Nm></${counterpartyTag}></RltdPties></TxDtls></NtryDtls></Ntry>`
+  );
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -307,6 +319,29 @@ describe("import repository", () => {
     const content = "!Type:Bank\nD05/06/2026\nPExplicit\nT-10,00\n^\n";
     const result = await stageQifImport(pool, workspaceId, accountId, content, { dateFormat: "MM/DD/YYYY" });
     assert.ok(result.staged[0]?.occurredAt.startsWith("2026-05"));
+  });
+
+  it("stages a CAMT.053 entry, keeping the account servicer's own reference", async () => {
+    const content = camt053Entry("CAMT-STAGE-1", "2026-11-10", -1500, "Bakery");
+    const result = await stageCamt053Import(pool, workspaceId, accountId, content);
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0]?.externalId, "CAMT-STAGE-1");
+    assert.equal(result.staged[0]?.amountCents, -1500);
+    assert.equal(result.staged[0]?.payee, "Bakery");
+  });
+
+  it("matches a re-imported CAMT.053 entry by its AcctSvcrRef, even outside the 3-day date window", async () => {
+    const firstImport = camt053Entry("CAMT-REIMPORT-1", "2026-11-01", -2000, "Bookstore");
+    const staged = await stageCamt053Import(pool, workspaceId, accountId, firstImport);
+    const confirmed = await confirmStagedTransactions(pool, workspaceId, accountId, [
+      { stagedTransactionId: staged.staged[0]!.id, kind: "category", categoryId },
+    ]);
+    assert.equal(confirmed[0]?.outcome, "confirmed");
+
+    const secondImport = camt053Entry("CAMT-REIMPORT-1", "2026-11-20", -2000, "Bookstore");
+    const result = await stageCamt053Import(pool, workspaceId, accountId, secondImport);
+    assert.equal(result.duplicateCount, 1);
+    assert.ok(result.staged[0]?.duplicateOf);
   });
 
   it("rejects a row named in the confirmation with no category, transfer or income recognition", async () => {
