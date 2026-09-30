@@ -6,6 +6,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-30
+
 ### Added
 
 - `@envelope/core`: `daysBetween` (promoted from a private helper in `computeDaysOfBuffer`) and `detectDuplicates` — matches an import's rows against an account's existing transactions, by the bank's own transaction id or otherwise the same amount within a 3-day window, each existing transaction matched at most once (`#27`).
