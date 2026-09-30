@@ -9,6 +9,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Added
 
 - Docs: UX and visual design for the web app (`docs/ux/README.md`) — a screen inventory against the existing mockups, the navigation structure, a reusable component catalog, the accessibility baseline every mockup already follows, and the translation-key convention (ADR 0004) screens must use instead of literal text; a new sign-in mockup, the one screen design.md still listed as undesigned (`#70`).
+- Docs: ADR 0009 — FormatJS chosen as the i18n library for the web app (and later the mobile app), over i18next and Lingui: its own message format is ICU MessageFormat, and its key + default-message idiom matches ADR 0004's stable-key lookup directly (`#47`).
 
 ## [0.1.6] - 2026-09-30
 

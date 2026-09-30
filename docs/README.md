@@ -25,6 +25,10 @@
 | [0003](adr/0003-core-tests-with-node-test.md) | Core tests with `node:test`, no dependencies |
 | [0004](adr/0004-internationalization.md) | English source, translatable UI, locale-aware formatting |
 | [0005](adr/0005-plain-sql-and-node-postgres.md) | Plain SQL migrations and node-postgres |
+| [0006](adr/0006-row-level-security.md) | Row-Level Security with session variables, enforced against a dedicated role |
+| [0007](adr/0007-per-milestone-smoke-tests.md) | Each backend milestone gets a smoke test against the real process |
+| [0008](adr/0008-assignment-ledger.md) | Monthly assignments as an append-only ledger, not mutable totals |
+| [0009](adr/0009-i18n-library.md) | FormatJS for the web app's i18n library |
 
 ## Rule
 
