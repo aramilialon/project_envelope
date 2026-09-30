@@ -75,6 +75,15 @@ export function monthOf(date: LocalDate): Month {
   return date.slice(0, 7);
 }
 
+/** Whole calendar days from `from` to `to` (negative if `to` comes first). */
+export function daysBetween(from: LocalDate, to: LocalDate): number {
+  assertDate(from);
+  assertDate(to);
+  const asUtc = (date: LocalDate): number =>
+    Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)));
+  return Math.round((asUtc(to) - asUtc(from)) / 86_400_000);
+}
+
 /** Every month from `from` to `to`, both included. Empty if `from` is after `to`. */
 export function monthRange(from: Month, to: Month): Month[] {
   const months: Month[] = [];

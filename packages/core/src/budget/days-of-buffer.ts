@@ -13,7 +13,7 @@
  */
 
 import { assertCents, type Cents } from "../money.ts";
-import { assertDate, type LocalDate } from "../month.ts";
+import { assertDate, daysBetween, type LocalDate } from "../month.ts";
 
 export interface BufferAccount {
   readonly id: string;
@@ -27,12 +27,6 @@ export interface CashMovement {
   readonly amount: Cents;
   /** Set when this movement is one leg of a transfer; names the other leg's account. */
   readonly transferAccountId?: string;
-}
-
-function daysBetween(from: LocalDate, to: LocalDate): number {
-  const asUtc = (date: LocalDate): number =>
-    Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)));
-  return Math.round((asUtc(to) - asUtc(from)) / 86_400_000);
 }
 
 interface QueuedInflow {
