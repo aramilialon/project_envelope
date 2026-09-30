@@ -8,10 +8,12 @@ import {
   detectDuplicates,
   isValidationError,
   parseCsv,
+  parseOfx,
   sumCents,
   type CsvMapping,
   type ExistingTransaction,
   type ImportedTransaction,
+  type ImportRow,
 } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -50,6 +52,8 @@ export interface StagedTransactionRecord {
   readonly payee: string | null;
   readonly memo: string | null;
   readonly amountCents: number;
+  /** The source format's own transaction id, when it carries one (OFX's FITID, #29). */
+  readonly externalId: string | null;
   /** Set when duplicate detection matched this row against a transaction already in the account. */
   readonly duplicateOf: string | null;
   readonly createdAt: string;
@@ -63,11 +67,13 @@ interface StagedTransactionRow {
   readonly payee: string | null;
   readonly memo: string | null;
   readonly amount_cents: string;
+  readonly external_id: string | null;
   readonly duplicate_of: string | null;
   readonly created_at: Date;
 }
 
-const STAGED_COLUMNS = "id, workspace_id, account_id, occurred_at, payee, memo, amount_cents, duplicate_of, created_at";
+const STAGED_COLUMNS =
+  "id, workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of, created_at";
 
 function toStagedRecord(row: StagedTransactionRow): StagedTransactionRecord {
   return {
@@ -78,6 +84,7 @@ function toStagedRecord(row: StagedTransactionRow): StagedTransactionRecord {
     payee: row.payee,
     memo: row.memo,
     amountCents: Number(row.amount_cents),
+    externalId: row.external_id,
     duplicateOf: row.duplicate_of,
     createdAt: row.created_at.toISOString(),
   };
@@ -90,50 +97,61 @@ export interface ClosingBalanceComparison {
   readonly differenceCents: number;
 }
 
-export interface StageCsvImportResult {
+export interface StageImportResult {
   readonly staged: readonly StagedTransactionRecord[];
   readonly duplicateCount: number;
   readonly closingBalance?: ClosingBalanceComparison;
 }
 
 /**
- * Parses a CSV file's content and stages its rows, matching each one against
- * the account's existing transactions (`detectDuplicates`, #27) so a matched
- * row is confirmed as clearing that transaction instead of creating a new
- * one. The file itself is never stored (design.md: "The file is read to
- * extract its rows and is not stored").
+ * Stages already-parsed rows (from any import source), matching each one
+ * against the account's existing transactions (`detectDuplicates`, #27) so a
+ * matched row is confirmed as clearing that transaction instead of creating
+ * a new one. The source file itself is never stored (design.md: "The file
+ * is read to extract its rows and is not stored").
  */
-export async function stageCsvImport(
+async function stageParsedRows(
   db: DbPool | DbClient,
   workspaceId: string,
   accountId: string,
-  csvContent: string,
-  mapping: CsvMapping,
+  parsedRows: readonly ImportRow[],
   closingBalanceCents?: number,
-): Promise<StageCsvImportResult> {
-  const parsedRows = parseCsv(csvContent, mapping);
-
+): Promise<StageImportResult> {
   const existingTransactions = await listTransactionsForAccount(db, workspaceId, accountId);
   const existing: ExistingTransaction[] = existingTransactions.map((t) => ({
     id: t.id,
     date: t.budgetDate,
     amount: sumCents(t.splits.map((s) => s.amountCents)),
+    ...(t.externalId ? { externalId: t.externalId } : {}),
   }));
-  const incoming: ImportedTransaction[] = parsedRows.map((r) => ({ date: r.date, amount: r.amountCents }));
+  const incoming: ImportedTransaction[] = parsedRows.map((r) => ({
+    date: r.date,
+    amount: r.amountCents,
+    ...(r.externalId ? { externalId: r.externalId } : {}),
+  }));
   const matches = detectDuplicates(incoming, existing);
   const duplicateOfByIndex = new Map(matches.map((m) => [m.incomingIndex, m.existingId]));
 
   const staged: StagedTransactionRecord[] = [];
   for (const [index, row] of parsedRows.entries()) {
     const { rows } = await db.query<StagedTransactionRow>(
-      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, duplicate_of)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING ${STAGED_COLUMNS}`,
-      [workspaceId, accountId, row.date, row.payee || null, row.memo ?? null, row.amountCents, duplicateOfByIndex.get(index) ?? null],
+      [
+        workspaceId,
+        accountId,
+        row.date,
+        row.payee || null,
+        row.memo ?? null,
+        row.amountCents,
+        row.externalId ?? null,
+        duplicateOfByIndex.get(index) ?? null,
+      ],
     );
     const inserted = rows[0];
     if (!inserted) {
-      throw new Error("stageCsvImport: INSERT ... RETURNING produced no row");
+      throw new Error("stageParsedRows: INSERT ... RETURNING produced no row");
     }
     staged.push(toStagedRecord(inserted));
   }
@@ -149,6 +167,28 @@ export async function stageCsvImport(
       ? { closingBalance: { statementCents: closingBalanceCents, projectedCents, differenceCents: closingBalanceCents - projectedCents } }
       : {}),
   };
+}
+
+export async function stageCsvImport(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  csvContent: string,
+  mapping: CsvMapping,
+  closingBalanceCents?: number,
+): Promise<StageImportResult> {
+  return stageParsedRows(db, workspaceId, accountId, parseCsv(csvContent, mapping), closingBalanceCents);
+}
+
+/** OFX is self-describing (design.md): no column mapping, unlike CSV. */
+export async function stageOfxImport(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  ofxContent: string,
+  closingBalanceCents?: number,
+): Promise<StageImportResult> {
+  return stageParsedRows(db, workspaceId, accountId, parseOfx(ofxContent), closingBalanceCents);
 }
 
 /** Sweeps rows past the 7-day expiry (design.md) before listing what remains — no queue dependency, since the queue module (0.1.6) does not exist yet. */
@@ -264,6 +304,7 @@ async function confirmAsNewTransaction(
     status: "cleared",
     ...(staged.payee ? { payee: staged.payee } : {}),
     ...(staged.memo ? { memo: staged.memo } : {}),
+    ...(staged.externalId ? { externalId: staged.externalId } : {}),
     splits: [{ categoryId, amountCents: staged.amountCents }],
   });
   return transaction.id;

@@ -13,7 +13,17 @@ import {
   listStagedTransactions,
   saveImportMapping,
   stageCsvImport,
+  stageOfxImport,
 } from "./repository.ts";
+
+function ofxTransaction(fitid: string, date: string, amountCents: number, payee: string): string {
+  const amount = (amountCents / 100).toFixed(2);
+  return (
+    "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>" +
+    `<STMTTRN><DTPOSTED>${date.replace(/-/g, "")}000000<TRNAMT>${amount}<FITID>${fitid}<NAME>${payee}</STMTTRN>` +
+    "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>"
+  );
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -234,6 +244,30 @@ describe("import repository", () => {
 
     const remaining = await listStagedTransactions(pool, workspaceId, accountId);
     assert.ok(remaining.some((r) => r.id === badRow!.id)); // left staged for a retry
+  });
+
+  it("stages an OFX transaction, keeping the bank's own transaction id", async () => {
+    const content = ofxTransaction("OFX-STAGE-1", "2026-10-10", -1500, "Coffee shop");
+    const result = await stageOfxImport(pool, workspaceId, accountId, content);
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0]?.externalId, "OFX-STAGE-1");
+    assert.equal(result.staged[0]?.amountCents, -1500);
+    assert.equal(result.staged[0]?.payee, "Coffee shop");
+  });
+
+  it("matches a re-imported OFX row by its external id, even outside the 3-day date window", async () => {
+    const firstImport = ofxTransaction("OFX-REIMPORT-1", "2026-10-01", -2000, "Bookstore");
+    const staged = await stageOfxImport(pool, workspaceId, accountId, firstImport);
+    const confirmed = await confirmStagedTransactions(pool, workspaceId, accountId, [
+      { stagedTransactionId: staged.staged[0]!.id, kind: "category", categoryId },
+    ]);
+    assert.equal(confirmed[0]?.outcome, "confirmed");
+
+    // A later re-download of the same statement, the bank now reporting a different date for the same FITID.
+    const secondImport = ofxTransaction("OFX-REIMPORT-1", "2026-10-20", -2000, "Bookstore");
+    const result = await stageOfxImport(pool, workspaceId, accountId, secondImport);
+    assert.equal(result.duplicateCount, 1);
+    assert.ok(result.staged[0]?.duplicateOf);
   });
 
   it("rejects a row named in the confirmation with no category, transfer or income recognition", async () => {
