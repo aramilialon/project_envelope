@@ -21,7 +21,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | Path | Contents |
 | --- | --- |
 | `packages/core` | Pure domain logic, no dependencies: money, months and dates, budget month, credit cards, transaction aggregation |
-| `apps/` | `api` (next), then `web` and `mobile` |
+| `apps/` | `api`, `web` (Vite + React PWA shell so far), then `mobile` |
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, bound to 127.0.0.1 |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |

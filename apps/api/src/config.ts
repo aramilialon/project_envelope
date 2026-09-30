@@ -21,6 +21,8 @@ export interface Config {
   readonly nodeEnv: string;
   readonly keycloakIssuer: string;
   readonly keycloakAudience: string;
+  /** The web app's own origin (#48), the only one the API's CORS policy allows. */
+  readonly webOrigin: string;
 }
 
 export interface QueueConfig {
@@ -48,6 +50,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     nodeEnv: env.NODE_ENV || "development",
     keycloakIssuer: requireEnv(env, "KEYCLOAK_ISSUER"),
     keycloakAudience: requireEnv(env, "KEYCLOAK_AUDIENCE"),
+    webOrigin: env.WEB_ORIGIN || "http://localhost:5173",
   };
 }
 

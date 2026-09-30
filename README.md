@@ -77,7 +77,8 @@ pnpm test
 | --- | --- |
 | `packages/core` | Pure domain logic: money, months, budget month, credit cards, transaction aggregation. No network or database |
 | `apps/api` | The server: Fastify, PostgreSQL through plain SQL, Keycloak for sign-in |
-| `apps/` | Next: `web` (browser) and `mobile` (Expo) |
+| `apps/web` | The browser app: Vite, React, a PWA shell so far |
+| `apps/` | Next: `mobile` (Expo) |
 | `infra/` | `docker-compose` for local development (PostgreSQL, Keycloak) and the Ansible playbook for the development machine |
 | `docs/` | Design document, getting started, how-to guides, decision records, glossary, interface mockups |
 | `scripts/` | GitHub setup (labels, milestones, protected main) and Git hooks |

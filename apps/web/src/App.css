@@ -1,0 +1,29 @@
+.placeholder {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.mark {
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+  margin: 0;
+}
+
+.status {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status-ok {
+  color: var(--pen);
+}
+
+.status-error {
+  color: var(--red);
+}

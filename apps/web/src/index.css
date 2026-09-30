@@ -1,0 +1,63 @@
+/*
+ * Design tokens from docs/design.md, "User interface" — the same custom properties every
+ * mockup in docs/ux/mockups/ uses, so a new screen stays consistent by construction. Only
+ * colour is defined here; the Archivo type family is added once a real screen needs it
+ * (design.md: the app must self-host its fonts, unlike the mockups' own Google Fonts link).
+ */
+:root {
+  --desk: #ecece8;
+  --paper: #ffffff;
+  --ink: #1a1c22;
+  --muted: #686c76;
+  --rule: #d3d4cf;
+  --pen: #2340a0;
+  --pen-ink: #ffffff;
+  --red: #b3241b;
+  --amber: #e2a62c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --desk: #131418;
+    --paper: #1b1d22;
+    --ink: #ecedf0;
+    --muted: #979ba6;
+    --rule: #343740;
+    --pen: #93a8f4;
+    --pen-ink: #0e1426;
+    --red: #d2392e;
+    --amber: #d9a23a;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --desk: #131418;
+  --paper: #1b1d22;
+  --ink: #ecedf0;
+  --muted: #979ba6;
+  --rule: #343740;
+  --pen: #93a8f4;
+  --pen-ink: #0e1426;
+  --red: #d2392e;
+  --amber: #d9a23a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--desk);
+  color: var(--ink);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+#root {
+  min-height: 100vh;
+}

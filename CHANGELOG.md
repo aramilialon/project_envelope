@@ -10,6 +10,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - Docs: UX and visual design for the web app (`docs/ux/README.md`) — a screen inventory against the existing mockups, the navigation structure, a reusable component catalog, the accessibility baseline every mockup already follows, and the translation-key convention (ADR 0004) screens must use instead of literal text; a new sign-in mockup, the one screen design.md still listed as undesigned (`#70`).
 - Docs: ADR 0009 — FormatJS chosen as the i18n library for the web app (and later the mobile app), over i18next and Lingui: its own message format is ICU MessageFormat, and its key + default-message idiom matches ADR 0004's stable-key lookup directly (`#47`).
+- `apps/web`: the web app's own skeleton — a Vite + React installable PWA shell (`vite-plugin-pwa`), connected to `apps/api`'s `/health` endpoint as the one thing this bootstrap proves, no real screen yet beyond that placeholder (`#48`).
+- `apps/api`: CORS (`@fastify/cors`), restricted to the web app's own origin (`WEB_ORIGIN`, defaulting to Vite's own dev server port) — needed for a browser to call the API at all (`#48`).
 
 ## [0.1.6] - 2026-09-30
 
