@@ -119,6 +119,12 @@ describe("import repository", () => {
     assert.equal(result.staged[0]?.payee, "Grocery store");
   });
 
+  it("keeps a staged row's date exactly as given, independent of the server process's own time zone (#278)", async () => {
+    const content = "Date,Description,Amount\n2026-01-31,Late night purchase,-1.00\n";
+    const result = await stageCsvImport(pool, workspaceId, accountId, content, MAPPING);
+    assert.equal(result.staged[0]?.occurredAt, "2026-01-31");
+  });
+
   it("matches a staged row against an existing transaction within the 3-day window", async () => {
     const existing = await createTransaction(pool, {
       workspaceId,
