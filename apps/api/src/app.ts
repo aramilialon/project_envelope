@@ -18,6 +18,7 @@ import { registerImportRoutes } from "./routes/import.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerQuickAssignRoutes } from "./routes/quick-assign.ts";
 import { registerReconciliationRoutes } from "./routes/reconciliation.ts";
+import { registerScheduledTransactionsRoutes } from "./routes/scheduled-transactions.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { registerTransactionsRoutes } from "./routes/transactions.ts";
 
@@ -72,6 +73,7 @@ export function buildApp(config: Config, queue?: QueueDriver): App {
   registerImportRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
+  registerScheduledTransactionsRoutes(fastify, pool);
   registerSyncRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool, queue);
   // Not a committed product feature yet, only a real route for #10's global

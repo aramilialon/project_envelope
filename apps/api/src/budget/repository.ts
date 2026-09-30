@@ -16,6 +16,7 @@ import { listAssignmentTotals } from "../assignments/repository.ts";
 import { listAccounts, type AccountRecord } from "../accounts/repository.ts";
 import { listCategories, listCategoryGroups, type CategoryGroupRecord, type CategoryRecord } from "../categories/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { listReservationsForMonth } from "../scheduled-transactions/repository.ts";
 import { listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
 
 export interface BudgetMonthCategory {
@@ -30,6 +31,7 @@ export interface BudgetMonthCategory {
   readonly available: number;
   readonly creditOverspending: number;
   readonly cashOverspending: number;
+  readonly reserved: number;
   readonly uncovered: number;
 }
 
@@ -39,6 +41,7 @@ export interface BudgetMonthResponse {
   readonly assignedInFuture: number;
   readonly overspentLastMonth: number;
   readonly creditOverspending: number;
+  readonly reserved: number;
   readonly categories: readonly BudgetMonthCategory[];
   readonly paymentCategories: readonly BudgetMonthCategory[];
 }
@@ -137,17 +140,18 @@ function joinCategory(
     available: categoryMonth.available,
     creditOverspending: categoryMonth.creditOverspending,
     cashOverspending: categoryMonth.cashOverspending,
+    reserved: categoryMonth.reserved,
     uncovered: categoryMonth.uncovered,
   };
 }
 
 /**
- * Wires accounts, categorized activity and the assignment ledger (#15) into
- * `packages/core`'s `computeBudgetMonth`, joined with each category's name,
- * group and sort order. `computeBudgetMonth` recomputes every month since
- * the workspace's first data to get rollover right, so this loads every
- * transaction and assignment unconditionally, not just `month`'s own —
- * accepted for now (no pagination or date-bounding), worth revisiting if it
+ * Wires accounts, categorized activity, the assignment ledger (#15) and the month's own
+ * not-yet-recorded scheduled transactions (#22, #250) into `packages/core`'s
+ * `computeBudgetMonth`, joined with each category's name, group and sort order.
+ * `computeBudgetMonth` recomputes every month since the workspace's first data to get
+ * rollover right, so this loads every transaction and assignment unconditionally, not just
+ * `month`'s own — accepted for now (no pagination or date-bounding), worth revisiting if it
  * becomes a real cost.
  */
 export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string, month: string): Promise<BudgetMonthResponse> {
@@ -182,6 +186,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
     month: t.month,
     amount: t.amountCents,
   }));
+  const scheduledItems = await listReservationsForMonth(db, workspaceId, month);
 
   const budgetMonth = computeBudgetMonth(
     {
@@ -192,6 +197,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
       activity: aggregated.activity,
       cardPayments: aggregated.cardPayments,
       cardBalances,
+      scheduledItems,
     },
     month,
   );
@@ -205,6 +211,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
     assignedInFuture: budgetMonth.assignedInFuture,
     overspentLastMonth: budgetMonth.overspentLastMonth,
     creditOverspending: budgetMonth.creditOverspending,
+    reserved: budgetMonth.reserved,
     categories: budgetMonth.categories.map((c) => joinCategory(c, categoriesById, groupsById)),
     paymentCategories: budgetMonth.paymentCategories.map((c) => joinCategory(c, categoriesById, groupsById)),
   };

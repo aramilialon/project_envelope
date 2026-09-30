@@ -27,7 +27,8 @@ export type ValidationErrorCode =
   | "ambiguous_date_format"
   | "ambiguous_decimal_separator"
   | "unknown_transaction"
-  | "direct_reconciliation_not_allowed";
+  | "direct_reconciliation_not_allowed"
+  | "invalid_recurrence";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

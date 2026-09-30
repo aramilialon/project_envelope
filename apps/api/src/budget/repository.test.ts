@@ -8,6 +8,7 @@ import { createAssignmentBatch } from "../assignments/repository.ts";
 import { createTransaction } from "../transactions/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import { createScheduledTransaction } from "../scheduled-transactions/repository.ts";
 import { getBudgetMonth, listBudgetProblems } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -192,5 +193,27 @@ describe("budget month repository", () => {
     const problems = await listBudgetProblems(pool, workspaceId, "2026-11");
     const problem = problems.find((p) => p.categoryId === cardCategory!.categoryId && p.kind === "uncovered_card_debt");
     assert.equal(problem?.amountCents, cardCategory!.uncovered);
+  });
+
+  it("surfaces a scheduled transaction's reservation as reserved money, net from available, only in its own due month", async () => {
+    await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId: checkingAccountId,
+      nextDueDate: "2027-01-05",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId, amountCents: 15_000 }],
+    });
+
+    const january = await getBudgetMonth(pool, workspaceId, "2027-01");
+    const groceries = january.categories.find((c) => c.categoryId === categoryId);
+    assert.equal(groceries?.reserved, 15_000);
+    assert.equal(january.reserved, 15_000);
+
+    // design.md, "Scheduled transactions": reservations do not carry over to another month.
+    const december = await getBudgetMonth(pool, workspaceId, "2026-12");
+    const groceriesDecember = december.categories.find((c) => c.categoryId === categoryId);
+    assert.equal(groceriesDecember?.reserved, 0);
+    assert.equal(december.reserved, 0);
   });
 });
