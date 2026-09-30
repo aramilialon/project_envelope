@@ -16,6 +16,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: `parseQif` — parses a QIF file's transactions, no column mapping needed; unlike OFX, QIF's date order and decimal separator are not standardized, so both are inferred from the file's own data first, falling back to an "ambiguous_date_format"/"ambiguous_decimal_separator" `ValidationError` asking for an explicit hint only when the file gives no evidence either way (`#30`).
 - `apps/api`: `POST .../import` accepts `format: "qif"`, with optional `dateFormat`/`decimalSeparator` hints for an ambiguous file (`#30`).
 
+### Fixed
+
+- `apps/api`: a staged transaction's date came back a calendar day early whenever the server process ran outside UTC, since `node-postgres` reads a plain `date` column at midnight in its own time zone; now read as text (`to_char`) like every other date in the codebase (`#278`).
+
 ## [0.1.3] - 2026-09-29
 
 ### Added

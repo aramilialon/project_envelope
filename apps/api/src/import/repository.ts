@@ -65,7 +65,8 @@ interface StagedTransactionRow {
   readonly id: string;
   readonly workspace_id: string;
   readonly account_id: string;
-  readonly occurred_at: Date;
+  /** Read as text (`to_char`, below), not `node-postgres`'s own `date` parsing: that reads a `date` value as midnight in the server process's own time zone, not UTC (#278). */
+  readonly occurred_at: string;
   readonly payee: string | null;
   readonly memo: string | null;
   readonly amount_cents: string;
@@ -75,14 +76,14 @@ interface StagedTransactionRow {
 }
 
 const STAGED_COLUMNS =
-  "id, workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of, created_at";
+  "id, workspace_id, account_id, to_char(occurred_at, 'YYYY-MM-DD') AS occurred_at, payee, memo, amount_cents, external_id, duplicate_of, created_at";
 
 function toStagedRecord(row: StagedTransactionRow): StagedTransactionRecord {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
     accountId: row.account_id,
-    occurredAt: row.occurred_at.toISOString().slice(0, 10),
+    occurredAt: row.occurred_at,
     payee: row.payee,
     memo: row.memo,
     amountCents: Number(row.amount_cents),
