@@ -148,3 +148,107 @@ describe("workspace membership, chained after auth and user mapping", () => {
     assert.equal(response.statusCode, 400);
   });
 });
+
+/**
+ * Its own pool and app, with no Keycloak involved at all (a fake preHandler sets
+ * `request.userId` directly): `registerWorkspaceScope`'s commit hook is what is under test
+ * here, and nothing else should touch this pool while the one test below patches it.
+ */
+describe("registerWorkspaceScope's commit timing (#294)", () => {
+  let pool: DbPool;
+  let app: FastifyInstance;
+  let workspaceId: string;
+  let userId: string;
+
+  before(async () => {
+    pool = createPool(databaseUrl);
+    await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+
+    workspaceId = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Test', 'EUR', 'UTC')", [
+      workspaceId,
+    ]);
+    const user = await pool.query<{ id: string }>(
+      "INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id",
+      [randomUUID(), `${randomUUID()}@example.com`],
+    );
+    userId = user.rows[0]!.id;
+    await pool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')", [userId, workspaceId]);
+
+    app = Fastify();
+    registerWorkspaceScope(app);
+    app.post(
+      "/workspaces/:workspaceId/write-marker",
+      { preHandler: [async (request) => { request.userId = userId; }, createWorkspaceMembershipPreHandler(pool)] },
+      async (request) => {
+        const { marker } = request.body as { marker: string };
+        await request.db!.query("INSERT INTO audit_log (workspace_id, user_id, action) VALUES ($1, $2, $3)", [
+          request.workspace!.id,
+          null,
+          marker,
+        ]);
+        return { ok: true };
+      },
+    );
+  });
+
+  after(async () => {
+    await app.close();
+    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+    await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+    await pool.end();
+  });
+
+  it("does not let the response be observed until COMMIT has actually resolved", async () => {
+    // Real timing is not reliable enough to prove this on its own (COMMIT usually finishes
+    // fast regardless of which hook runs it): instead, an artificial delay on the COMMIT query
+    // itself, deterministic either way — if the response can be observed before that delay
+    // elapses, the app is not genuinely waiting for it (onResponse, #294's bug); if not, it is
+    // (onSend, the fix).
+    const poolAny = pool as unknown as { connect: (...args: unknown[]) => Promise<{ query: (...args: unknown[]) => unknown }> };
+    const originalConnect = poolAny.connect.bind(poolAny);
+    let commitResolvedAt = 0;
+    const COMMIT_DELAY_MS = 150;
+
+    poolAny.connect = async (...args: unknown[]) => {
+      // pg's own Pool.query() (used by after()'s cleanup queries on this same pool) acquires
+      // its connection through this same method, but in its callback form — pass those
+      // straight through unpatched, since only the promise form (no args, as
+      // createWorkspaceMembershipPreHandler uses) is what this test cares about wrapping.
+      if (typeof args[0] === "function") {
+        return originalConnect(...args);
+      }
+      const client = await originalConnect(...args);
+      const originalQuery = client.query.bind(client);
+      // Forwards every argument, not just (text, params): once released, this same client is
+      // recycled by the pool for later, unrelated queries — some issued in pg's own callback
+      // style (text, values, callback), whose callback this must not silently drop.
+      client.query = async (...queryArgs: unknown[]) => {
+        if (queryArgs[0] === "COMMIT") {
+          await new Promise((resolve) => setTimeout(resolve, COMMIT_DELAY_MS));
+          commitResolvedAt = Date.now();
+        }
+        return originalQuery(...queryArgs);
+      };
+      return client;
+    };
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/write-marker`,
+        payload: { marker: `marker-${randomUUID()}` },
+      });
+      const responseObservedAt = Date.now();
+
+      assert.equal(response.statusCode, 200);
+      assert.ok(commitResolvedAt > 0, "COMMIT must have run and resolved by the time the response is observed");
+      assert.ok(
+        responseObservedAt >= commitResolvedAt,
+        "the response must not be observable before its own transaction's COMMIT has resolved",
+      );
+    } finally {
+      poolAny.connect = originalConnect;
+    }
+  });
+});
