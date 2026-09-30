@@ -8,6 +8,7 @@
 | [Decisions (ADR)](adr/) | Why a solution was chosen, and which alternatives were discarded |
 | [Glossary](glossary.md) | Financial and technical terms used in the code |
 | [Mockups](ux/mockups/) | Interactive mockups of the interface, open them in a browser; described in the design document's "User interface" section |
+| [UX and visual design](ux/README.md) | Screen inventory, navigation structure, reusable component catalog and accessibility baseline (#70) |
 
 ## How-to guides
 
