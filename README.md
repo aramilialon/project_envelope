@@ -55,7 +55,7 @@
 | 0.1.3 | Budget API | Released |
 | 0.1.4 | Import | Released |
 | 0.1.5 | Queue and notifications | Released |
-| 0.1.6 | Offline sync | In progress |
+| 0.1.6 | Offline sync | Released |
 | 0.1.7 – 0.1.8 | Web app, then a real month of a household budget run with the app alone | Planned |
 | 0.2.x | Portfolios, prices, allocation and rebalancing | Planned |
 | 0.3.x | Mobile app | Planned |

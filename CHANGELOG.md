@@ -6,6 +6,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-09-30
+
 ### Added
 
 - `@envelope/core`: a hybrid logical clock (HLC) — `nextHlc` ticks a device's own clock forward even if its wall clock disagrees with or runs behind a previous value, `compareHlc` gives any two changes a total, deterministic order, the basis for the sync protocol's "last write wins" (design.md, "Field-level change protocol") (`#42`).
