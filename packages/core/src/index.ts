@@ -4,7 +4,7 @@ export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
 export type { LocalDate, Month } from "./month.ts";
-export { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
+export { assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
 export type {
   Activity,
   Assignment,
@@ -31,3 +31,5 @@ export type {
 export { computeTarget } from "./budget/targets.ts";
 export type { BufferAccount, CashMovement } from "./budget/days-of-buffer.ts";
 export { computeDaysOfBuffer } from "./budget/days-of-buffer.ts";
+export type { DuplicateMatch, ExistingTransaction, ImportedTransaction } from "./import/duplicate-detection.ts";
+export { detectDuplicates } from "./import/duplicate-detection.ts";
