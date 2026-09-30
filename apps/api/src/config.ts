@@ -6,6 +6,11 @@
 
 export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 
+/** Selects the queue driver (design.md, "Queue module"); `postgres` (pg-boss) is the only one so far. */
+export type QueueDriverName = "postgres";
+
+const QUEUE_DRIVERS: readonly QueueDriverName[] = ["postgres"];
+
 export interface Config {
   readonly host: string;
   readonly port: number;
@@ -16,6 +21,12 @@ export interface Config {
   readonly nodeEnv: string;
   readonly keycloakIssuer: string;
   readonly keycloakAudience: string;
+}
+
+export interface QueueConfig {
+  readonly driver: QueueDriverName;
+  /** envelope_queue's own connection (#34): pg-boss manages its own schema, which needs DDL envelope_app deliberately cannot do. */
+  readonly databaseUrl: string;
 }
 
 const LOG_LEVELS: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
@@ -31,6 +42,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     keycloakIssuer: requireEnv(env, "KEYCLOAK_ISSUER"),
     keycloakAudience: requireEnv(env, "KEYCLOAK_AUDIENCE"),
   };
+}
+
+/**
+ * The queue module (#34) needs its own connection (envelope_queue, not
+ * envelope_app), the same way the migration runner does below — loaded
+ * separately so `loadConfig` and its many existing callers stay untouched.
+ */
+export function loadQueueConfig(env: NodeJS.ProcessEnv = process.env): QueueConfig {
+  return {
+    driver: parseQueueDriver(env, "QUEUE_DRIVER", "postgres"),
+    databaseUrl: requireEnv(env, "QUEUE_DATABASE_URL"),
+  };
+}
+
+function parseQueueDriver(env: NodeJS.ProcessEnv, name: string, defaultValue: QueueDriverName): QueueDriverName {
+  const value = env[name] ?? defaultValue;
+  if (!QUEUE_DRIVERS.includes(value as QueueDriverName)) {
+    throw new Error(`${name} must be one of ${QUEUE_DRIVERS.join(", ")}, got "${value}"`);
+  }
+  return value as QueueDriverName;
 }
 
 /**
