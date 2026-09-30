@@ -454,7 +454,7 @@ In an encrypted workspace the server sees which fields change and when, but not 
 
 ## User interface
 
-The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request. The screenshots in the repository README come from these mockups (`docs/ux/screenshots/`); update them when a mockup they show changes.
+The interactive mockups in [docs/ux/mockups/](ux/mockups/) (open them in a browser) are the reference for layout, states, interactions and copy: [the budget month](ux/mockups/budget-month.html), [the account register](ux/mockups/account-register.html), [import and reconciliation](ux/mockups/import-reconciliation.html), [settings and first run](ux/mockups/settings-first-run.html), [sign-in](ux/mockups/sign-in.html) and [the portfolio](ux/mockups/portfolio.html). They show the Italian translation with sample data; English stays the source language. Where an implementation needs to differ from the mockup, agree it in the issue first and update the mockup and this section in the same pull request. The screenshots in the repository README come from these mockups (`docs/ux/screenshots/`); update them when a mockup they show changes. [`docs/ux/README.md`](ux/README.md) indexes every screen against its mockup, the navigation structure, a reusable component catalog and the accessibility baseline (#70).
 
 ### Principles
 
@@ -516,7 +516,7 @@ One column: month, unassigned money, days of buffer, and a link with the number 
 
 ### Screens still to design
 
-Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: sign-in and invitations; for later milestones, reports, prices and manual prices, ETF look-through, well-known allocations and the CAPE-based target.
+Each gets a mockup in `docs/ux/mockups/` before the milestone that builds it starts: invitations (joining an existing workspace, not needed by 0.1.7 — see `docs/ux/README.md`); for later milestones, reports, prices and manual prices, ETF look-through, well-known allocations and the CAPE-based target.
 
 ## Open source, hosting and market data
 
