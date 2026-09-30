@@ -6,7 +6,18 @@ import { isValidationError } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import { createPostgresQueueDriver } from "../queue/postgres-driver.ts";
+import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { createTransaction, createTransfer, listTransactionsForAccount, updateTransaction } from "./repository.ts";
+
+async function waitUntil(check: () => boolean, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (check()) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`condition not met within ${timeoutMs}ms`);
+}
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -29,6 +40,7 @@ describe("transactions repository", () => {
   before(async () => {
     pool = createPool(databaseUrl);
     await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+    await ensureQueueRoleLogin(pool);
 
     workspaceId = randomUUID();
     await pool.query(
@@ -354,5 +366,56 @@ describe("transactions repository", () => {
     const destination = await listTransactionsForAccount(pool, workspaceId, savingsAccountId);
     const remaining = destination.find((t) => t.id === transfer.destination.id);
     assert.equal(remaining?.transferId, null);
+  });
+
+  it("queues a budget-recompute job in the same transaction as the write that triggers it, and rolls both back together (#35)", async () => {
+    const queue = createPostgresQueueDriver(queueConnectionString(databaseUrl));
+    await queue.start();
+    const received: unknown[] = [];
+    await queue.work("budget-recompute", async (data) => {
+      received.push(data);
+    });
+
+    // Committed: the transaction and its job both persist.
+    const client = await pool.connect();
+    let committedId: string | undefined;
+    try {
+      await client.query("BEGIN");
+      const committed = await createTransaction(
+        client,
+        { workspaceId, accountId, occurredAt: "2026-09-14", splits: [{ categoryId, amountCents: -100 }] },
+        queue,
+      );
+      committedId = committed.id;
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
+    await waitUntil(() => received.some((d) => (d as { transactionId: string }).transactionId === committedId));
+
+    // Rolled back: neither the transaction row nor its job survive.
+    const rollbackClient = await pool.connect();
+    let rolledBackId: string | undefined;
+    try {
+      await rollbackClient.query("BEGIN");
+      const rolledBack = await createTransaction(
+        rollbackClient,
+        { workspaceId, accountId, occurredAt: "2026-12-15", splits: [{ categoryId, amountCents: -200 }] },
+        queue,
+      );
+      rolledBackId = rolledBack.id;
+      await rollbackClient.query("ROLLBACK");
+    } finally {
+      rollbackClient.release();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // long enough for at least one poll, had the job survived
+    assert.ok(
+      !received.some((d) => (d as { transactionId: string }).transactionId === rolledBackId),
+      "a job queued inside a rolled-back transaction must never have been delivered",
+    );
+    const rolledBackTransaction = await pool.query("SELECT 1 FROM transactions WHERE id = $1", [rolledBackId]);
+    assert.equal(rolledBackTransaction.rows.length, 0, "the rolled-back transaction row must not exist either");
+
+    await queue.stop();
   });
 });

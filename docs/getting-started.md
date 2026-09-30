@@ -176,12 +176,13 @@ $ nano .env                 # set DATABASE_URL's password to the one in infra/.e
 $ pnpm --filter @envelope/api migrate
 ```
 
-Migrations create the `envelope_app` role but never give it a password (ADR 0006: that would mean committing a real credential). Give it one, once per Postgres instance:
+Migrations create the `envelope_app` and `envelope_queue` roles but never give them a password (ADR 0006: that would mean committing a real credential). Give them one, once per Postgres instance:
 
 ```bash
 $ docker exec -it envelope-postgres-1 psql -U envelope -d envelope \
-  -c "ALTER ROLE envelope_app WITH LOGIN PASSWORD '<a password you pick>';"
-$ nano .env                 # set APP_DATABASE_URL to that password
+  -c "ALTER ROLE envelope_app WITH LOGIN PASSWORD '<a password you pick>';" \
+  -c "ALTER ROLE envelope_queue WITH LOGIN PASSWORD '<a different password you pick>';"
+$ nano .env                 # set APP_DATABASE_URL and QUEUE_DATABASE_URL to those passwords
 $ pnpm --filter @envelope/api dev
 ```
 

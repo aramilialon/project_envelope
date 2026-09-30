@@ -5,6 +5,7 @@ import { createUserMapperPreHandler } from "./auth/user-mapper.ts";
 import { registerWorkspaceScope } from "./auth/workspace-membership.ts";
 import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
+import type { QueueDriver } from "./queue/index.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerAssignmentsRoutes } from "./routes/assignments.ts";
 import { registerBudgetRoutes } from "./routes/budget.ts";
@@ -30,7 +31,12 @@ export interface App {
   close(): Promise<void>;
 }
 
-export function buildApp(config: Config): App {
+/**
+ * `queue`, when given, lets a write path enqueue a job in the same transaction as the data
+ * that triggers it (#35). Omitted, routes work exactly as before: no queue, no job enqueued —
+ * every existing test that builds an app without one keeps working unchanged.
+ */
+export function buildApp(config: Config, queue?: QueueDriver): App {
   const loggerOptions = config.logPretty
     ? { level: config.logLevel, transport: { target: "pino-pretty" } }
     : { level: config.logLevel };
@@ -61,7 +67,7 @@ export function buildApp(config: Config): App {
   registerImportRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
-  registerTransactionsRoutes(fastify, pool);
+  registerTransactionsRoutes(fastify, pool, queue);
   // Not a committed product feature yet, only a real route for #10's global
   // preHandlers to protect ahead of the Budget API's own routes (#235).
   if (config.nodeEnv !== "production") {
