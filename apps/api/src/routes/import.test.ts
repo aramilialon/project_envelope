@@ -173,6 +173,24 @@ describe("import routes", () => {
     assert.ok(listed.json().staged.some((row: { id: string }) => row.id === result.staged[0].id));
   });
 
+  it("imports an OFX file with no mapping at all, keeping the bank's own transaction id", async () => {
+    const content =
+      "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKTRANLIST>" +
+      "<STMTTRN><DTPOSTED>20261010000000<TRNAMT>-15.00<FITID>OFX-ROUTE-1<NAME>Coffee shop</STMTTRN>" +
+      "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content, format: "ofx" },
+    });
+    assert.equal(imported.statusCode, 201);
+    const result = imported.json();
+    assert.equal(result.staged.length, 1);
+    assert.equal(result.staged[0].externalId, "OFX-ROUTE-1");
+  });
+
   it("rejects an import with no mapping given and none saved", async () => {
     const response = await app.fastify.inject({
       method: "POST",

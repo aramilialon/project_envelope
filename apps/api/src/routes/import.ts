@@ -11,11 +11,15 @@ import {
   listStagedTransactions,
   saveImportMapping,
   stageCsvImport,
+  stageOfxImport,
   type StagedTransactionDecision,
+  type StageImportResult,
 } from "../import/repository.ts";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
 const DECIMAL_SEPARATORS: readonly DecimalSeparator[] = [".", ","];
+const IMPORT_FORMATS = ["csv", "ofx"] as const;
+type ImportFormat = (typeof IMPORT_FORMATS)[number];
 
 function parseMapping(body: Record<string, unknown>): CsvMapping | undefined {
   const { hasHeaderRow, dateColumn, dateFormat, descriptionColumn, decimalSeparator, memoColumn, amountColumn, outflowColumn, inflowColumn } =
@@ -105,25 +109,27 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
       await reply.code(400).send({ error: "invalid import: content is required" });
       return;
     }
-    const mapping =
-      body.mapping !== undefined
-        ? parseMapping(body.mapping as Record<string, unknown>)
-        : await getImportMapping(request.db!, request.workspace!.id, accountId);
-    if (!mapping) {
-      await reply.code(400).send({ error: "no CSV mapping given, and none saved for this account" });
-      return;
-    }
+    const format: ImportFormat =
+      typeof body.format === "string" && IMPORT_FORMATS.includes(body.format as ImportFormat)
+        ? (body.format as ImportFormat)
+        : "csv";
     const closingBalanceCents = typeof body.closingBalanceCents === "number" ? body.closingBalanceCents : undefined;
 
     try {
-      const result = await stageCsvImport(
-        request.db!,
-        request.workspace!.id,
-        accountId,
-        content,
-        mapping,
-        closingBalanceCents,
-      );
+      let result: StageImportResult;
+      if (format === "ofx") {
+        result = await stageOfxImport(request.db!, request.workspace!.id, accountId, content, closingBalanceCents);
+      } else {
+        const mapping =
+          body.mapping !== undefined
+            ? parseMapping(body.mapping as Record<string, unknown>)
+            : await getImportMapping(request.db!, request.workspace!.id, accountId);
+        if (!mapping) {
+          await reply.code(400).send({ error: "no CSV mapping given, and none saved for this account" });
+          return;
+        }
+        result = await stageCsvImport(request.db!, request.workspace!.id, accountId, content, mapping, closingBalanceCents);
+      }
       await reply.code(201).send(result);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {

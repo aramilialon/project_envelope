@@ -33,5 +33,7 @@ export type { BufferAccount, CashMovement } from "./budget/days-of-buffer.ts";
 export { computeDaysOfBuffer } from "./budget/days-of-buffer.ts";
 export type { DuplicateMatch, ExistingTransaction, ImportedTransaction } from "./import/duplicate-detection.ts";
 export { detectDuplicates } from "./import/duplicate-detection.ts";
+export type { ImportRow } from "./import/row.ts";
 export type { CsvDateFormat, CsvMapping, CsvRow, DecimalSeparator } from "./import/csv.ts";
 export { parseCsv } from "./import/csv.ts";
+export { parseOfx } from "./import/ofx.ts";

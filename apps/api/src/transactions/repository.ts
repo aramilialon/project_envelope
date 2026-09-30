@@ -29,6 +29,8 @@ export interface TransactionRecord {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly transferId: string | null;
+  /** The bank's own transaction id, kept from a confirmed import row that carried one (OFX's FITID, #29), for a later re-import's duplicate detection. */
+  readonly externalId: string | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
 }
@@ -44,6 +46,7 @@ export interface CreateTransactionInput {
   readonly splits: readonly SplitInput[];
   /** Optional cross-check (a receipt or statement total): if given, must equal the sum of `splits`. */
   readonly amountCents?: number;
+  readonly externalId?: string;
 }
 
 export interface UpdateTransactionInput {
@@ -57,7 +60,7 @@ export interface UpdateTransactionInput {
 const TRANSACTION_COLUMNS = `
   t.id, t.workspace_id, t.account_id, t.occurred_at,
   to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS budget_date,
-  t.payee, t.memo, t.status, t.transfer_id, t.created_at
+  t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.created_at
 `;
 
 interface TransactionRow {
@@ -71,6 +74,7 @@ interface TransactionRow {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly transfer_id: string | null;
+  readonly external_id: string | null;
   readonly created_at: Date;
 }
 
@@ -122,6 +126,7 @@ interface InsertTransactionRowInput {
   readonly payee: string | null;
   readonly memo: string | null;
   readonly status: TransactionStatus;
+  readonly externalId: string | null;
 }
 
 /**
@@ -135,16 +140,16 @@ async function insertTransactionRow(db: DbPool | DbClient, input: InsertTransact
   // silently anchor a naive timestamp to its own session time zone.
   const anchored = HAS_EXPLICIT_OFFSET.test(input.occurredAt);
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO transactions (workspace_id, account_id, occurred_at, payee, memo, status)
+    `INSERT INTO transactions (workspace_id, account_id, occurred_at, payee, memo, status, external_id)
      VALUES (
        $1, $2,
        CASE WHEN $7 THEN $3::timestamptz
             ELSE $3::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $1)
        END,
-       $4, $5, $6
+       $4, $5, $6, $8
      )
      RETURNING id`,
-    [input.workspaceId, input.accountId, input.occurredAt, input.payee, input.memo, input.status, anchored],
+    [input.workspaceId, input.accountId, input.occurredAt, input.payee, input.memo, input.status, anchored, input.externalId],
   );
   const row = rows[0];
   if (!row) {
@@ -163,6 +168,7 @@ export async function createTransaction(db: DbPool | DbClient, input: CreateTran
     payee: input.payee ?? null,
     memo: input.memo ?? null,
     status: input.status ?? "pending",
+    externalId: input.externalId ?? null,
   });
   await insertSplits(db, input.workspaceId, id, input.splits);
 
@@ -267,6 +273,7 @@ async function insertTransferLeg(
     payee: input.payee ?? null,
     memo: input.memo ?? null,
     status: input.status ?? "pending",
+    externalId: null,
   });
   await insertSplits(db, input.workspaceId, id, [{ categoryId: null, amountCents: signedAmountCents }]);
   return id;
@@ -407,6 +414,7 @@ function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]
     memo: row.memo,
     status: row.status,
     transferId: row.transfer_id,
+    externalId: row.external_id,
     createdAt: row.created_at.toISOString(),
     splits,
   };
