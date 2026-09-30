@@ -234,6 +234,21 @@ describe("transactions repository", () => {
     assert.equal(result, "reconciled");
   });
 
+  it("rejects a direct status update to reconciled, outside the dedicated reconciliation flow (#32)", async () => {
+    const created = await createTransaction(pool, {
+      workspaceId,
+      accountId,
+      occurredAt: "2026-09-06",
+      status: "cleared",
+      splits: [{ categoryId, amountCents: -100 }],
+    });
+
+    await assert.rejects(
+      () => updateTransaction(pool, workspaceId, created.id, { status: "reconciled" }),
+      (error: unknown) => isValidationError(error, "direct_reconciliation_not_allowed"),
+    );
+  });
+
   it("updating an unknown transaction reports not_found", async () => {
     const result = await updateTransaction(pool, workspaceId, randomUUID(), { payee: "Nobody" });
     assert.equal(result, "not_found");

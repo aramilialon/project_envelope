@@ -345,6 +345,11 @@ export async function updateTransaction(
   if (existing.status === "reconciled") {
     return "reconciled";
   }
+  if (patch.status === "reconciled") {
+    // Reconciled is only ever reached through the dedicated reconciliation flow (#32),
+    // which ties the transaction to the reconciliations row that reconciled it.
+    throw new ValidationError("direct_reconciliation_not_allowed", "a transaction becomes reconciled only through the reconciliation endpoint");
+  }
   if (patch.splits !== undefined) {
     validateSplits(patch.splits, patch.amountCents);
   }

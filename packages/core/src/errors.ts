@@ -25,7 +25,9 @@ export type ValidationErrorCode =
   | "invalid_qif_transaction"
   | "invalid_camt053_entry"
   | "ambiguous_date_format"
-  | "ambiguous_decimal_separator";
+  | "ambiguous_decimal_separator"
+  | "unknown_transaction"
+  | "direct_reconciliation_not_allowed";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
