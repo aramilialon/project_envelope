@@ -297,7 +297,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             <label htmlFor="tx-category">{intl.formatMessage({ id: "transactions.form.category", defaultMessage: "Category" })}</label>
             <select id="tx-category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
               {kind === "in" ? (
-                <option value="">{intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Ready to assign" })}</option>
+                <option value="">{intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" })}</option>
               ) : (
                 <option value="">{intl.formatMessage({ id: "transactions.form.chooseCategoryOption", defaultMessage: "Choose a category" })}</option>
               )}

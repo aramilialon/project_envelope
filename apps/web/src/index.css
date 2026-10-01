@@ -107,7 +107,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--desk);
+  background: var(--paper);
   color: var(--ink);
   font-family: var(--font);
   font-size: 14px;
@@ -116,6 +116,45 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+.btn {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  border-color: var(--pen);
+  background: var(--pen);
+  color: var(--pen-ink);
+  font-weight: 600;
+}
+
+.plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plain.danger {
+  color: var(--red-text);
 }
 
 /* The "envelope" wordmark, shown on its own on every unauthenticated/pre-workspace screen

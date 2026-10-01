@@ -15,8 +15,9 @@
 
 .app-layout .bt {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 22px;
+  gap: 10px 22px;
 }
 
 .app-layout .brand {
@@ -68,4 +69,14 @@
   flex: 1;
   min-width: 0;
   padding: 22px 30px 30px;
+}
+
+@media (max-width: 600px) {
+  .app-layout .band {
+    padding: 14px 16px 18px;
+  }
+
+  .app-layout .main {
+    padding: 18px 16px 24px;
+  }
 }
