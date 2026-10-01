@@ -1,110 +1,87 @@
 <!doctype html>
 <!--
-  Interactive mockup of the budget month (desktop and phone): the month's table,
-  targets, overspending, assigning and moving money through the assignment
-  ledger (ADR 0008), scheduled transactions that reserve money, and the debt of
-  credit cards (docs/design.md, "Credit cards" and "Scheduled transactions").
+  Interactive mockup of the budget month (desktop and phone): a mariner band with
+  navigation, the month and unassigned money; the month's timeline and the "to do"
+  list; one bar per category, whose detail opens in its own row; month-wide tools
+  (summary, targets, scheduled, quick assign, move money) in a side sheet.
   Reference for docs/design.md, "User interface". Open it in a browser; it has
-  no build step and no dependencies except the Archivo font from Google Fonts
-  (the app itself must self-host its fonts). The UI copy is the Italian
-  translation; English stays the source language of the app. The script checks
-  the budget invariant after every change and logs an error if it breaks.
+  no build step and no dependencies except the Bricolage Grotesque and Figtree
+  fonts from Google Fonts (the app itself must self-host its fonts). The UI copy
+  is the Italian translation; English stays the source language of the app. The
+  script checks the budget invariant after every change and logs an error if it
+  breaks.
 -->
 <html lang="it">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>envelope - budget month mockup</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Figtree:wght@400..700&display=swap">
 <style>
-[hidden]{display:none!important}
 html,body{margin:0}
+/* Layout: a mariner band (navigation, month, unassigned money) over the month's timeline and "to do",
+   then one bar per category; a category's detail opens in its row, month-wide tools in a side sheet. */
 :root{
-  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
-  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
-  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
-  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
-  --amber:#E2A62C; --amber-ink:#2E2104;
-  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
-  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
-  --warn:#8C5300;
-  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --desk:#E4ECF5; --paper:#FFFFFF; --paper-2:#F2F6FB;
+  --ink:#13263A; --ink-2:#3E5267; --muted:#627589;
+  --rule:#D2DDE9; --rule-soft:#E8EEF5; --rule-strong:#13263A;
+  --pen:#1E5A92; --pen-ink:#FFFFFF; --pen-soft:#DCE8F5;
+  --band:#173B60; --band-ink:#FFFFFF; --band-2:#24507D; --band-muted:#B4C8DD;
+  --bar:#79AADB; --spent:#CBD6E1;
+  --amber:#DE9F2F; --amber-ink:#2E2104;
+  --red:#C2412D; --red-ink:#FFFFFF; --red-text:#AE3826;
+  --hatch:#DE9F2F; --hatch-bg:#FCF0D6; --hatch-ink:#3B2A07;
+  --warn:#8A5A04;
+  --font:'Figtree','Helvetica Neue',Arial,sans-serif;
+  --display:'Bricolage Grotesque','Figtree','Helvetica Neue',Arial,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
-    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
-    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
-    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
-    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
-    --amber:#D9A23A; --amber-ink:#1F1602;
-    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
-    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
-    --warn:#EBB765;
+    --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+    --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+    --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+    --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+    --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+    --bar:#4277AC; --spent:#383D45;
+    --amber:#D19A35; --amber-ink:#1F1602;
+    --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+    --hatch:#D19A35; --hatch-bg:#3A2E14; --hatch-ink:#F7E3B5;
+    --warn:#ECBA6A;
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
-  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
-  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
-  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
-  --amber:#D9A23A; --amber-ink:#1F1602;
-  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
-  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
-  --warn:#EBB765;
+  --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+  --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+  --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+  --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+  --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+  --bar:#4277AC; --spent:#383D45;
+  --amber:#D19A35; --amber-ink:#1F1602;
+  --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+  --hatch:#D19A35; --hatch-bg:#3A2E14; --hatch-ink:#F7E3B5;
+  --warn:#ECBA6A;
 }
 *{box-sizing:border-box}
-body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+
 button,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--pen);outline-offset:2px}
 .n{font-variant-numeric:tabular-nums lining-nums}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .cond{font-stretch:78%}
-.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
 
 /* Page strip */
-.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
-.strip p{margin:0;color:var(--muted);max-width:70ch}
-.strip b{color:var(--ink);font-weight:600}
-.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
-.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
-.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
-.scroller{overflow-x:auto;border:1px solid var(--rule)}
 
 /* Desktop */
-.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
-.side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
-.brand{display:flex;flex-direction:column;gap:2px}
-.brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
-.ws{display:flex;align-items:center;gap:6px;padding:0;border:0;background:transparent;color:var(--ink-2)}
-.nav{display:flex;flex-direction:column}
-.nav button{padding:7px 0;border:0;background:transparent;text-align:left;font-size:15px;color:var(--ink-2)}
-.nav button[aria-current]{color:var(--ink);font-weight:700}
-.nav button[aria-current]::before{content:"";display:inline-block;width:6px;height:6px;margin:0 8px 2px 0;background:var(--ink)}
-.ledger{display:flex;flex-direction:column}
-.ledger h5{margin:0 0 6px;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
-.lr{display:flex;align-items:baseline;gap:6px;padding:4px 0;font-size:13px;white-space:nowrap}
-.lr .dots{flex:1;border-bottom:1px dotted var(--rule);transform:translateY(-3px)}
-.lr.total{margin-top:4px;padding-top:6px;border-top:1px solid var(--rule);font-weight:600}
 .neg{color:var(--red-text)}
 .plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
-.me{margin-top:auto;display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--ink-2)}
 
 .main{display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
-.head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
-.month{display:flex;align-items:center;gap:4px}
-.month h3{margin:0 8px;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;white-space:nowrap}
 .arrow{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
-.facts{display:flex;gap:22px;margin-top:10px;color:var(--muted);white-space:nowrap}
-.facts b{color:var(--ink);font-weight:600}
 
 /* Ready to assign */
-.rta{display:flex;align-items:center;gap:22px;padding:12px 12px 12px 18px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--paper)}
-.rta small{display:block;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
-.rta .amt{font-size:30px;font-weight:700;font-stretch:85%;line-height:1.1}
-.rta .amt.low{color:var(--red-text)}
 .btn{min-height:38px;padding:0 14px;border:1px solid var(--rule);border-radius:3px;background:var(--paper);font-weight:500;white-space:nowrap}
 .btn:disabled{opacity:.45;cursor:default}
 .btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
@@ -114,23 +91,8 @@ button{cursor:pointer}
 .tabs button{padding:8px 0 9px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);white-space:nowrap}
 .tabs button[aria-pressed="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
 .acts{display:flex;gap:8px;padding-bottom:8px;margin-left:auto}
-.notice{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--red-text);border-bottom:1px solid var(--rule-soft)}
-.notice .plain{color:var(--red-text);text-decoration:underline;text-underline-offset:3px}
 
-.cols{display:grid;grid-template-columns:minmax(0,1fr) 118px 118px 138px;align-items:center;column-gap:0}
-.th{padding:12px 0 8px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);align-items:end}
-.th .t{display:flex;flex-direction:column;align-items:flex-end;padding-right:10px;gap:1px}
-.th .t .n{font-size:13px;letter-spacing:0;text-transform:none;color:var(--ink);font-weight:600;font-stretch:100%}
-.gr{padding-top:18px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%;font-size:14px;letter-spacing:.2px}
-.gr button{display:flex;align-items:center;gap:6px;min-height:32px;padding:0;border:0;background:transparent;font-weight:700;text-align:left}
-.gr button svg{transition:transform .15s}
-.gr button[aria-expanded="false"] svg{transform:rotate(-90deg)}
-.gr .r{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
 .r{text-align:right;padding-right:10px}
-.row{width:100%;min-height:46px;padding:6px 0 6px 22px;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
-.row:hover{background:var(--paper-2)}
-.row[aria-pressed="true"]{background:var(--pen-soft)}
-.row .r{color:var(--ink-2)}
 .cn{display:flex;flex-direction:column;gap:3px;min-width:0}
 .cn b{font-weight:500}
 .goal{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
@@ -172,16 +134,6 @@ button{cursor:pointer}
 .phones{display:flex;flex-wrap:wrap;gap:40px;align-items:flex-start;padding:24px 0}
 .phone{position:relative;width:390px;max-width:100%;height:800px;border:1px solid var(--rule);border-radius:30px;background:var(--paper);overflow:hidden}
 .ph-in{height:100%;overflow-y:auto;padding:20px 16px 100px}
-.ph-top{display:flex;align-items:center;justify-content:space-between}
-.ph-top h3{margin:0;font-size:24px;font-weight:700;font-stretch:72%;text-align:center}
-.ph-top small{display:block;text-align:center;color:var(--muted);font-size:12px}
-.ph-rta{margin-top:14px}
-.ph-rta .amt{font-size:26px}
-.ph-facts{display:flex;justify-content:space-between;gap:10px;margin:12px 0 4px;font-size:13px;color:var(--muted)}
-.ph-facts b{color:var(--ink)}
-.ph-facts .plain{color:var(--red-text)}
-.pg{display:flex;justify-content:space-between;padding:16px 0 6px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
-.pg .n{font-weight:600;font-stretch:100%;font-size:13px;color:var(--ink-2)}
 .pc{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:52px;padding:6px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
 .pc .amt-cell{min-width:0}
 .pc b{font-weight:500;font-size:15px}
@@ -201,14 +153,6 @@ button{cursor:pointer}
 .count.none{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--rule)}
 
 /* Selectable groups */
-.gr .gh{display:flex;align-items:center;gap:2px}
-.gr .chev{display:inline-flex;align-items:center;justify-content:center;width:28px;min-height:32px;padding:0;border:0;background:transparent}
-.gr .chev svg{transition:transform .15s}
-.gr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
-.gr .gname{min-height:32px;padding:0 6px;border:0;background:transparent;font-weight:700;text-align:left;border-radius:2px}
-.gr .gname:hover{text-decoration:underline;text-underline-offset:3px}
-.gr.on{background:var(--pen-soft)}
-.gr .flag{margin-left:8px}
 .jump{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
 .jump:hover b{text-decoration:underline;text-underline-offset:3px}
 .jump b{font-weight:500}
@@ -220,16 +164,11 @@ button{cursor:pointer}
 .gstats b.bad{color:var(--red-text)} .gstats b.warn{color:var(--warn)}
 
 /* Phone: collapsible groups and detail screen */
-.pg{align-items:center;padding:12px 0 4px}
-.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-weight:700;font-stretch:78%;text-align:left}
-.pg button svg{transition:transform .15s}
-.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
 .pc{cursor:pointer}
 .pc .go{color:var(--muted);flex-shrink:0}
 .ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
 .ph-detail{display:flex;flex-direction:column;gap:18px}
 .closer{align-self:flex-end;font-size:13px}
-.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
 .btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
 .types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
 .types legend{padding:0 0 6px;font-weight:600}
@@ -245,7 +184,6 @@ button{cursor:pointer}
 .money-in input{flex:1;min-width:0;min-height:40px;padding:0 10px;border:0;background:transparent;font-variant-numeric:tabular-nums;font-size:16px;outline:none}
 .money-in span{padding:0 10px;color:var(--muted)}
 .preview{padding:12px 14px;border:1px solid var(--rule);background:var(--paper-2);line-height:1.6}
-.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .danger{color:var(--red-text);margin-left:auto}
 .goal-row{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;padding:8px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
 .goal-row > span:first-child{display:flex;flex-direction:column}
@@ -260,15 +198,9 @@ button{cursor:pointer}
 .big.short{color:var(--warn)}
 .res b{color:var(--ink-2);font-weight:600}
 .res.need{color:var(--warn);font-weight:600}
-.row.sel{background:var(--pen-soft)}
-.cnb{padding:0;border:0;background:transparent;text-align:left;cursor:pointer;color:inherit}
-.row .asg{cursor:text;border-bottom:1px dotted transparent}
-.row:hover .asg{border-bottom-color:var(--muted)}
 .asg-in{width:104px;min-height:32px;padding:0 8px;border:1px solid var(--pen);border-radius:3px;background:var(--paper);text-align:right;font:inherit;font-weight:600;color:var(--ink)}
 .toast{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--rule-soft);color:var(--ink-2)}
 .toast span{flex:1}
-.info{display:flex;align-items:center;gap:10px;padding:10px 0;color:var(--ink-2);border-bottom:1px solid var(--rule-soft)}
-.info .plain{text-decoration:underline;text-underline-offset:3px}
 .quiet{color:var(--muted)!important;font-weight:500!important}
 .sch{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:4px 10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--rule-soft)}
 .sch > small{color:var(--muted);font-size:12px}
@@ -293,12 +225,168 @@ button{cursor:pointer}
 .pc .cn{flex:1;min-width:0}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+[hidden]{display:none!important}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.strip{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.strip p{margin:0;color:var(--muted);max-width:72ch}
+.strip b{color:var(--ink);font-weight:600}
+.views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
+.views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
+.views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border-radius:16px}
+/* Sentence case everywhere: the uppercase labels of the first mockups are gone. */
+.where,.sec h5{font-size:13px;font-weight:600;font-stretch:100%;letter-spacing:0;text-transform:none}
+.where{color:var(--muted)}
+.sec h5{border-bottom-color:var(--rule)}
+.insp h4,.ph-detail h4{font-family:var(--display);font-stretch:92%;letter-spacing:-.4px}
+.big{font-family:var(--display);font-stretch:92%}
+.btn{border-radius:10px;padding:0 16px}
+.amt-cell{border-radius:7px;padding:3px 10px}
+.amt-cell.cash,.amt-cell.short{border-radius:7px}
+.amt-cell.credit{border-radius:7px;border:0;box-shadow:inset 0 0 0 1px var(--hatch)}
+.tag{font-stretch:100%;font-size:10.5px;font-weight:700;letter-spacing:.5px}
+.meter{height:3px;border-radius:3px;overflow:hidden}
+.meter i{height:100%}
+.cover,.preview{border-radius:12px}
+.cover select,.field select,.money-in{border-radius:10px}
+.gstats{border-radius:12px;overflow:hidden}
+.count{font-stretch:100%}
+
+/* Desktop */
+.desk{min-width:1180px;display:grid;grid-template-columns:minmax(0,1fr) 370px;grid-template-rows:auto 1fr;background:var(--paper)}
+.desk.nopanel{grid-template-columns:minmax(0,1fr)}
+.band{grid-column:1 / -1;display:flex;flex-direction:column;gap:18px;padding:14px 30px 22px;background:var(--band);color:var(--band-ink)}
+.bt{display:flex;align-items:center;gap:22px}
+.brand{font-family:var(--display);font-size:21px;font-weight:700;letter-spacing:-.3px}
+.tnav{display:flex;gap:4px}
+.tnav button{min-height:34px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--band-muted)}
+.tnav button[aria-current]{background:var(--band-2);color:var(--band-ink);font-weight:600}
+.bt .ws{margin-left:auto;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--band-ink)}
+.bt .me{border:0;background:transparent;color:var(--band-muted)}
+.bm{display:flex;align-items:flex-end;gap:28px}
+.mnav{display:flex;align-items:center;gap:8px;color:var(--band-muted);font-size:13px}
+.mnav .arrow{width:30px;height:30px;border:0;border-radius:8px;background:var(--band-2);color:var(--band-ink)}
+.month{margin:4px 0 0;font-family:var(--display);font-size:46px;line-height:1;font-weight:700;letter-spacing:-1px;font-stretch:88%;white-space:nowrap}
+.month small{margin-left:8px;font-size:20px;font-weight:600;color:var(--band-muted);letter-spacing:0}
+.rta{display:flex;align-items:center;gap:20px;padding:12px 12px 12px 20px;border-radius:14px;background:var(--band-2)}
+.rta small{display:block;font-size:13px;color:var(--band-muted)}
+.rta .amt{display:block;font-family:var(--display);font-size:30px;line-height:1.05;font-weight:700}
+.rta .amt.low{color:#FFB4A6}
+.band .btn.primary,.ph-band .btn.primary{border-color:var(--band-ink);background:var(--band-ink);color:var(--band)}
+.facts{margin-left:auto;display:flex;gap:22px;padding-bottom:6px;color:var(--band-muted);white-space:nowrap}
+.facts b{color:var(--band-ink);font-weight:600}
+.main{grid-row:2;display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.over{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:22px;align-items:start}
+.time,.todo{border-radius:14px;background:var(--desk);padding:16px 18px 12px}
+.time h5,.todo h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 6px;font-family:var(--display);font-size:17px;font-weight:700}
+.todo h5 span{font-family:var(--font);font-size:13px;font-weight:500;color:var(--muted)}
+.time svg{display:block;width:100%;height:auto}
+.t-note{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.t-axis{stroke:var(--ink-2);stroke-width:1.5}
+.t-day{fill:var(--muted);font-size:11px}
+.t-future{fill:var(--paper);opacity:.55}
+.t-today{stroke:var(--pen);stroke-width:2}
+.t-today-l{fill:var(--pen);font-size:12px;font-weight:700}
+.t-stem{stroke-width:5;stroke-linecap:round}
+.ph-time .t-stem{stroke-width:4}
+.t-stem.t-out{stroke:var(--ink)}
+.t-stem.t-out.plan{stroke:var(--ink-2);stroke-dasharray:2 3;stroke-linecap:butt}
+.t-stem.t-in{stroke:var(--pen)}
+.t-stem.t-in.plan{stroke-dasharray:2 3;stroke-linecap:butt}
+.t-stem.t-late{stroke:var(--hatch);stroke-dasharray:3 3;stroke-linecap:butt}
+.t-l{font-size:12px;fill:var(--ink-2);paint-order:stroke;stroke:var(--desk);stroke-width:4px;stroke-linejoin:round}
+.t-l.t-in{fill:var(--pen);font-weight:700}
+.t-l.t-late{fill:var(--warn);font-weight:700}
+.todo-i{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;width:100%;padding:9px 0;border:0;border-bottom:1px solid var(--rule);background:transparent;text-align:left}
+.todo-i:last-of-type{border-bottom:0}
+.todo-i b{font-weight:600}
+.todo-i small{display:block;color:var(--muted);font-size:12.5px}
+.todo-i > .n{text-align:right;font-weight:600}
+.todo-i .go-l{display:block;color:var(--pen);font-weight:600;font-size:12.5px}
+.todo-i:hover b{text-decoration:underline;text-underline-offset:3px}
+.dot{width:13px;height:13px;margin-top:4px;border-radius:50%;border:2px solid var(--muted)}
+.dot.r{border-color:var(--red);background:var(--red)}
+.dot.w{border-color:var(--hatch);background:var(--hatch-bg)}
+.bar-tools{margin-top:24px}
+.toast{margin-top:4px}
+.bgr{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding:6px 12px 6px 6px;border-radius:10px;background:var(--paper-2)}
+.bgr .gh{display:flex;align-items:center;gap:4px}
+.bgr .chev{display:inline-flex;align-items:center;justify-content:center;width:30px;min-height:32px;padding:0;border:0;background:transparent}
+.bgr .chev svg{transition:transform .15s}
+.bgr .chev[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.bgr .gname{min-height:32px;padding:0 6px;border:0;border-radius:6px;background:transparent;font-family:var(--display);font-size:16px;font-weight:700;text-align:left}
+.bgr .gname:hover{text-decoration:underline;text-underline-offset:3px}
+.bgr.on{background:var(--pen-soft)}
+.bgr .gsum{font-weight:600;color:var(--ink-2)}
+.brow{display:grid;grid-template-columns:270px minmax(0,1fr) 150px;align-items:center;gap:18px;width:100%;min-height:52px;padding:8px 12px;border:0;border-radius:12px;background:transparent;text-align:left}
+.brow:hover{background:var(--paper-2)}
+.brow[aria-expanded="true"]{background:var(--pen-soft)}
+.brow .cn b{font-weight:600}
+.spent{font-size:12.5px;color:var(--muted)}
+.bar{position:relative;display:block;height:14px}
+.bar .tr{position:absolute;left:0;top:0;bottom:0;width:82%;border-radius:7px;background:var(--bar);overflow:hidden}
+.bar .tr.empty{background:var(--rule-soft)}
+.bar .sp{position:absolute;left:0;top:0;bottom:0;background:var(--spent)}
+.bar .rs{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)}
+.bar .tail{position:absolute;top:0;bottom:0;border-radius:0 7px 7px 0}
+.bar .tail.cash{background:var(--red)}
+.bar .tail.credit{background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)}
+.bar .tail.short{border:1.5px dashed var(--warn);border-left:0}
+.bar .uc{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)}
+.inl{position:relative;margin:2px 0 10px 12px;padding:18px 20px 4px;border-radius:14px;background:var(--desk)}
+.inl .closer{position:absolute;top:12px;right:16px}
+.inl-c{columns:3 250px;column-gap:30px}
+.inl-c > *{break-inside:avoid;margin-bottom:18px}
+.inl-c .cover{background:var(--paper)}
+.asg-l label{flex:0 0 auto}
+.asg-l .asg-in{margin-left:auto}
+.asg-h{display:block;margin-top:4px;color:var(--muted);font-size:12px}
+.insp{grid-row:2;background:var(--paper-2);border-left:1px solid var(--rule)}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:22px;height:10px;border-radius:5px;margin-right:6px;vertical-align:-1px}
+
+/* Phone */
+.phone{border-radius:30px;border:1px solid var(--rule)}
+.ph-in{display:flex;flex-direction:column;gap:14px;padding:0 16px 100px}
+#ph-home{display:flex;flex-direction:column;gap:14px}
+#ph-home[hidden]{display:none}
+.ph-band{margin:0 -16px;padding:18px 16px 16px;display:flex;flex-direction:column;gap:12px;background:var(--band);color:var(--band-ink)}
+.ph-top{display:flex;align-items:center;justify-content:space-between}
+.ph-top .arrow{width:36px;height:36px;border:0;border-radius:10px;background:var(--band-2);color:var(--band-ink)}
+.ph-top h3{margin:0;font-family:var(--display);font-size:30px;line-height:1;font-weight:700;letter-spacing:-.6px;text-align:center}
+.ph-top small{display:block;text-align:center;color:var(--band-muted);font-size:12px}
+.ph-rta{padding:12px 12px 12px 16px}
+.ph-rta .amt{font-size:24px}
+.ph-time{padding:8px 8px 4px;border-radius:14px;background:var(--desk)}
+.ph-time svg{display:block;width:100%;height:auto}
+.ph-todo h5{display:flex;justify-content:space-between;align-items:baseline;margin:0;font-family:var(--display);font-size:16px;font-weight:700}
+.ph-todo h5 span{font-family:var(--font);font-size:12.5px;font-weight:500;color:var(--muted)}
+.ph-todo .todo-i{padding:8px 0}
+.ph-todo .go-l{display:none}
+.pg{display:flex;justify-content:space-between;align-items:center;padding:8px 0 2px}
+.pg button{display:flex;align-items:center;gap:6px;min-height:40px;padding:0;border:0;background:transparent;font-family:var(--display);font-size:16px;font-weight:700;text-align:left}
+.pg button svg{transition:transform .15s}
+.pg button[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.pg .n{font-weight:600;font-size:13px;color:var(--ink-2)}
+.pc2{flex-direction:column;align-items:stretch;gap:7px;padding:9px 0}
+.pc2 .pt{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.pc2 .bar{height:10px}
+.ph-detail{padding-top:14px}
+.tabbar .add{border-radius:12px}
+.ph-note h3{font-family:var(--display);font-stretch:100%}
+.ph-toast{margin-top:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, budget month mockup for the web MVP. The interface is shown in its Italian translation, with sample data of a household on 25 September 2026 that matches the accounts to the cent. Select categories and groups, filter, cover overspending, create and edit targets; click an assigned amount to change it, and try Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
+    <p><b>envelope</b>, budget month mockup. The interface is shown in its Italian translation, with sample data of a household on 25 September 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “Da fare” (to do), the timeline, Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -307,47 +395,36 @@ button{cursor:pointer}
 
   <section id="view-desk" role="tabpanel" aria-labelledby="tab-desk">
     <div class="scroller">
-      <div class="desk">
-        <nav class="side" aria-label="Main (mockup)">
-          <div class="brand">
-            <b>envelope</b>
+      <div class="desk nopanel">
+        <header class="band">
+          <div class="bt">
+            <span class="brand">envelope</span>
+            <nav class="tnav" aria-label="Main (mockup)"><button type="button" aria-current="page">Budget</button><button type="button">Conti</button><button type="button">Portafoglio</button></nav>
             <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <button type="button" class="me">Giorgio</button>
           </div>
-          <div class="nav">
-            <button type="button" aria-current="page">Budget</button>
-            <button type="button">Conti</button>
-            <button type="button">Portafoglio</button>
-          </div>
-          <div class="ledger" id="side-budget"></div>
-          <div class="ledger">
-            <h5>Fuori budget</h5>
-            <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
-            <div class="lr"><span>Mutuo casa</span><span class="dots"></span><span class="n neg">−96.300,00</span></div>
-          </div>
-          <button type="button" class="plain">+ Aggiungi conto</button>
-          <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
-        </nav>
-
-        <div class="main">
-          <div class="head">
+          <div class="bm">
             <div>
-              <div class="month">
-                <button type="button" class="arrow" aria-label="Mese precedente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
-                <h3>Settembre 2026</h3>
-                <button type="button" class="arrow" aria-label="Mese successivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
-              </div>
-              <div class="facts">
-                <span>Giorni di margine <b>38 giorni</b></span>
-                <span>Già assegnati a ottobre <b class="n" id="future"></b></span>
-                <span>Prenotato per le programmate <b class="n" id="resv"></b></span>
-              </div>
+              <div class="mnav"><button type="button" class="arrow" aria-label="Mese precedente"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button><span>agosto · ottobre</span><button type="button" class="arrow" aria-label="Mese successivo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button></div>
+              <h3 class="month">Settembre<small>2026</small></h3>
             </div>
             <div class="rta">
               <div><small>Da assegnare</small><span class="amt n" id="rta"></span></div>
               <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
             </div>
+            <div class="facts">
+              <span>Prenotato <b class="n" id="resv"></b></span>
+              <span>Già assegnati a ottobre <b class="n" id="future"></b></span>
+              <span>Giorni di margine <b>38</b></span>
+            </div>
           </div>
+        </header>
 
+        <div class="main">
+          <div class="over">
+            <div class="time" id="time"></div>
+            <div class="todo" id="todo"></div>
+          </div>
           <div class="bar-tools">
             <div class="tabs" role="group" aria-label="Filtra le categorie" id="filters"></div>
             <div class="acts">
@@ -359,23 +436,12 @@ button{cursor:pointer}
               <button type="button" class="btn" id="reset" disabled title="Annulla l’ultima assegnazione">Annulla</button>
             </div>
           </div>
-
-          <div class="notice" role="status" id="notice" hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path></svg>
-            <span><b id="notice-text"></b> Coprile spostando denaro da altre categorie prima della fine del mese.</span>
-            <button type="button" class="plain" id="notice-show">Mostra</button>
-          </div>
-          <div class="info" role="status" id="notice2" hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
-            <span id="notice2-text"></span>
-            <button type="button" class="plain" data-panel="sched">Apri le programmate</button>
-          </div>
           <div class="toast" role="status" aria-live="polite" id="toast" hidden></div>
-
           <div id="table"></div>
+          <div class="legend" aria-hidden="true"><span><i style="background:var(--spent)"></i>speso</span><span><i style="background:var(--bar)"></i>ancora disponibile</span><span><i style="background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)"></i>prenotato</span><span><i style="background:var(--red)"></i>sforato in contanti</span><span><i style="background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)"></i>sforato con la carta, debito da coprire</span><span><i style="border:1.5px dashed var(--warn)"></i>prenotato oltre il disponibile</span></div>
         </div>
 
-        <aside class="insp" aria-label="Pannello di dettaglio" id="insp" hidden></aside>
+        <aside class="insp" aria-label="Pannello degli strumenti" id="insp" hidden></aside>
       </div>
     </div>
   </section>
@@ -385,26 +451,26 @@ button{cursor:pointer}
       <div class="phone">
         <div class="ph-in">
           <div id="ph-home">
-          <div class="ph-top">
-            <button type="button" class="arrow" aria-label="Mese precedente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
-            <div><h3>Settembre 2026</h3><small>Famiglia</small></div>
-            <button type="button" class="arrow" aria-label="Mese successivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
-          </div>
-          <div class="rta ph-rta">
-            <div style="flex:1"><small>Da assegnare</small><span class="amt n" id="ph-rta"></span></div>
-            <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
-          </div>
-          <div class="ph-facts">
-            <span>Giorni di margine <b>38 giorni</b></span>
-            <button type="button" class="plain" id="ph-over"></button>
-          </div>
-          <div class="toast ph-toast" role="status" aria-live="polite" id="ph-toast" hidden></div>
-          <div id="ph-list"></div>
+            <div class="ph-band">
+              <div class="ph-top">
+                <button type="button" class="arrow" aria-label="Mese precedente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+                <div><h3>Settembre</h3><small>Famiglia · 2026</small></div>
+                <button type="button" class="arrow" aria-label="Mese successivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+              </div>
+              <div class="rta ph-rta">
+                <div style="flex:1"><small>Da assegnare</small><span class="amt n" id="ph-rta"></span></div>
+                <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
+              </div>
+            </div>
+            <div class="ph-time" id="ph-time"></div>
+            <div class="toast ph-toast" role="status" aria-live="polite" id="ph-toast" hidden></div>
+            <div class="ph-todo" id="ph-todo"></div>
+            <div id="ph-list"></div>
           </div>
           <div id="ph-detail" class="ph-detail" hidden></div>
         </div>
         <nav class="tabbar" aria-label="Main (phone mockup)">
-          <button type="button" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"></rect><path d="m3 6 9 7 9-7"></path></svg>Budget</button>
+          <button type="button" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>Budget</button>
           <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Conti</button>
           <button type="button" class="add" aria-label="Nuova transazione"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
           <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portafoglio</button>
@@ -414,12 +480,11 @@ button{cursor:pointer}
       <div class="ph-note">
         <h3>On the phone</h3>
         <ul>
-          <li>Only the available amount per category: tap a category to see its detail, tap a group's name to collapse or expand it.</li>
+          <li>The desktop's order in one column: the band with the month and unassigned money, a small timeline, the first three things to do, then the bars.</li>
+          <li>The small timeline keeps only the marks and the income still to come; in a bar, the name and available amount sit above the bar, which takes the full width.</li>
+          <li>Tapping a category or a thing to do opens its detail full screen, with its scheduled transactions (Record, Skip) and the month's assignments (Undo).</li>
+          <li>"Assign" opens the same form as the desktop, full screen, for this month or a future one.</li>
           <li>The central button opens quick expense entry, in three taps.</li>
-          <li>Groups with overspending move to the top, so the problem is visible at once.</li>
-          <li>"Assign" opens the same form as the desktop, full screen: from unassigned money to a category, for this month or a future one.</li>
-          <li>A category's detail lists its scheduled transactions, with Record and Skip, and the month's assignments, each with Undo.</li>
-          <li>Same data as the desktop: covering an overspend there changes it here too.</li>
         </ul>
       </div>
     </div>
@@ -551,7 +616,7 @@ button{cursor:pointer}
   var state = {
     sel: null, edit: null, targets: {}, collapsed: {}, filter: 'all', src: null, ph: null, phCollapsed: {},
     entries: [], seq: 0, batch: 0, income: 0, cashD: {}, cardD: {}, rec: {}, sched: SCHED.map(function (s) { return Object.assign({}, s, { due: Object.assign({}, s.due) }); }),
-    mv: null, qa: { kind: 'targets', scope: 'all' }, sf: null, toast: null, focusAsg: null
+    mv: null, qa: { kind: 'targets', scope: 'all' }, sf: null, toast: null, focusAsg: null, incomeTx: []
   };
 
   // ---- Ledger ----
@@ -606,6 +671,7 @@ button{cursor:pointer}
     var a = acct(s.acc);
     if (s.income) {
       state.income += s.amount; state.cashD[s.acc] = (state.cashD[s.acc] || 0) + s.amount;
+      if (ymOf(s.due) === CUR) state.incomeTx.push({ d: s.due.d, amount: s.amount, payee: s.payee });
       state.toast = { text: 'Registrata l’entrata ' + s.payee + ' (' + f(s.amount) + '): è in «da assegnare».' };
     } else {
       (state.rec[s.cat] = state.rec[s.cat] || []).push({ tx: [dLabel(s.due), s.payee, a.name, -s.amount], amount: s.amount, card: a.card ? a.id : null });
@@ -852,6 +918,13 @@ button{cursor:pointer}
   }
 
   // ---- Category detail, for the desktop panel (prefix "") and the phone screen (prefix "ph-") ----
+  // On the desktop the assigned amount is a field: a new amount, or +20 / -15, then Enter.
+  function asgLine(x, p) {
+    if (p) return line('Assegnato a settembre', f(x.assigned));
+    return '<div class="qa asg-l" style="color:var(--ink-2);cursor:default"><label for="asg-' + x.c.id + '">Assegnato a settembre</label><span class="dots"></span>' +
+      '<input type="text" inputmode="decimal" class="asg-in n" id="asg-' + x.c.id + '" data-asg="' + x.c.id + '" value="' + amountStr(x.assigned) + '" aria-describedby="asg-h"></div>' +
+      '<small class="asg-h" id="asg-h">Scrivi un importo o +20 / −15, poi Invio.</small>';
+  }
   function catDetail(byId, x, p) {
     if (x.c.payment) return payDetail(byId, x, p);
     var st = status(x), t = target(x), deficit = Math.max(0, -x.real);
@@ -890,11 +963,11 @@ button{cursor:pointer}
     var sch = state.sched.filter(function (s) { return s.cat === x.c.id; }).sort(function (a, b) { return ymOf(a.due) * 40 + a.due.d - (ymOf(b.due) * 40 + b.due.d); });
     var mv = '<button type="button" class="plain" data-mvopen="' + (deficit > 0 || x.short > 0 ? 'to:' : 'from:') + x.c.id + '">Sposta denaro</button>';
 
-    return (p ? '' : CLOSE) + '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(x.c.name) + '</h4></div>' +
+    return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(x.c.name) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">' + LABEL[st] + '</span>' +
       '<span class="big n ' + st + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
       cover +
-      '<div class="sec"><h5><span>Conto del mese</span>' + mv + '</h5>' + line('Riportato da agosto', f(x.c.carried)) + line('Assegnato a settembre', f(x.assigned)) +
+      '<div class="sec"><h5><span>Conto del mese</span>' + mv + '</h5>' + line('Riportato da agosto', f(x.c.carried)) + asgLine(x, p) +
       line('Movimenti', f(x.activity)) + (x.reserved ? line('Prenotato per le programmate', f(-x.reserved)) : '') + line('Disponibile', f(x.avail)) + '</div>' +
       (sch.length ? '<div class="sec"><h5>Spese programmate</h5>' + sch.map(function (s) { return schedRow(s, false); }).join('') + '</div>' : '') +
       (t ? '<div class="sec"><h5><span>Obiettivo</span><button type="button" class="plain" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Modifica</button></h5><span>' + esc(t.label) + '</span>' +
@@ -921,13 +994,13 @@ button{cursor:pointer}
     var txs = (c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · è debito, non conta nei movimenti' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
-    return (p ? '' : CLOSE) + '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' +
+    return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">Messi da parte per pagare la carta</span>' +
       '<span class="big n ' + (x.cash > 0 ? 'cash' : x.avail > 0 ? 'pos' : 'zero') + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
       '<div class="sec"><h5><span>Debito della carta</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Sposta denaro qui</button></h5>' + line('Saldo della carta', f(-x.debt)) + line('Messi da parte', f(Math.max(0, x.avail))) +
       line('Da coprire', f(x.uncovered), x.uncovered > 0 ? 'warnl' : '') +
       (x.uncovered > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assegna ' + f(can) + ' da «da assegnare»</button>' : '') + '</div>' +
-      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(c.carried)) + line('Assegnato a settembre', f(x.assigned)) +
+      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(c.carried)) + asgLine(x, p) +
       line('Spese con la carta coperte', f(x.covered)) + line('Pagamenti della carta', f(c.paid)) + line('Disponibile', f(x.avail)) + '</div>' +
       '<div class="sec"><h5>Assegnazioni di settembre</h5>' + histHtml(c.id) + '</div>' +
       '<div class="sec"><h5>Movimenti di settembre</h5>' + txs + '</div>';
@@ -990,7 +1063,7 @@ button{cursor:pointer}
       '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Soldi nei conti in budget (carte escluse)</span><span class="dots"></span><span class="n">' + f(r + sums.avail + sums.reserved + future() + sums.credit) + '</span></div>' +
       '<p class="explain" style="font-size:13px">Il budget torna sempre con i conti: ogni euro nei conti è da assegnare, in una categoria, prenotato per una spesa programmata, già assegnato ai mesi futuri o serve a coprire spese fatte con la carta.' +
       (starts.length ? ' Il saldo iniziale della ' + starts.map(function (k) { return byId[k].c.name; }).join(' e della ') + ' non entra: è debito che avevi già, non soldi usciti dai conti.' : '') + '</p></div>' +
-      '<p class="explain" style="font-size:13px;color:var(--muted)">Seleziona una categoria o un gruppo per vederne il dettaglio; clicca di nuovo sulla voce selezionata per chiudere il pannello.</p>';
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Clicca su una categoria per aprirne il dettaglio nella sua riga, o sul nome di un gruppo per vederne il riepilogo qui.</p>';
   }
 
   // ---- Move money: one form for "Assign" (from unassigned) and "Move money" (between categories) ----
@@ -1204,25 +1277,138 @@ button{cursor:pointer}
     return true;
   }
 
-  function sideHtml() {
-    var cash = ACCTS.filter(function (a) { return !a.card; }), cards = ACCTS.filter(function (a) { return a.card; });
-    var tot = 0;
-    var rows = cash.map(function (a) { var b = a.bal + (state.cashD[a.id] || 0); tot += b; return '<div class="lr"><span>' + a.name + '</span><span class="dots"></span><span class="n">' + amountStr(b) + '</span></div>'; }).join('') +
-      cards.map(function (a) { var b = cardBal(a.id); tot += b; return '<div class="lr"><span>' + a.name + '</span><span class="dots"></span><span class="n neg">' + amountStr(b).replace('-', '−') + '</span></div>'; }).join('');
-    return '<h5>In budget</h5>' + rows + '<div class="lr total"><span>Totale</span><span class="dots"></span><span class="n' + (tot < 0 ? ' neg' : '') + '">' + f(tot) + '</span></div>';
+  // ---- The month's shape: bars, the timeline and "to do" ----
+  function spentOf(x) { return Math.max(0, -x.activity); }
+  function budgetOf(x) { return Math.max(0, x.c.carried + x.assigned); }
+  function pct(v, of) { return of > 0 ? Math.max(0, Math.min(100, v / of * 100)) : 0; }
+  // A bar: its track (82 % of the width) is what the category was given; spent, reserved and what is left
+  // sit inside it; overspending and reservations beyond it stick out past the end, at most 18 %.
+  function barHtml(x) {
+    var W = 82, TAIL = 18;
+    if (x.c.payment) {
+      if (x.debt <= 0) return '<span class="bar"><span class="tr"></span></span>';
+      var cov = pct(Math.max(0, x.avail), x.debt);
+      return '<span class="bar" aria-hidden="true"><span class="tr"><span class="uc" style="left:' + cov.toFixed(1) + '%;width:' + (100 - cov).toFixed(1) + '%"></span></span></span>';
+    }
+    var B = budgetOf(x), S = spentOf(x), R = x.reserved;
+    var sp, rs, over = 0, kind = '';
+    if (B > 0) {
+      sp = pct(Math.min(S, B), B);
+      rs = pct(Math.min(R, Math.max(0, B - S)), B);
+      over = Math.max(0, S + R - B) / B * W;
+    } else { sp = 0; rs = 0; over = S + R > 0 ? TAIL : 0; }
+    if (x.credit > 0) kind = 'credit'; else if (x.cash > 0) kind = 'cash'; else if (x.short > 0) kind = 'short';
+    return '<span class="bar" aria-hidden="true"><span class="tr' + (B > 0 ? '' : ' empty') + '"><span class="sp" style="width:' + sp.toFixed(1) + '%"></span>' +
+      (rs > 0 ? '<span class="rs" style="left:' + sp.toFixed(1) + '%;width:' + rs.toFixed(1) + '%"></span>' : '') + '</span>' +
+      (over > 0 && kind ? '<span class="tail ' + kind + '" style="left:' + W + '%;width:' + Math.min(TAIL, over).toFixed(1) + '%"></span>' : '') + '</span>';
+  }
+  function spentLine(x) {
+    if (x.c.payment) return '';
+    var B = budgetOf(x), S = spentOf(x);
+    var card = x.credit > 0 ? ' con la carta' : '';
+    return '<small class="spent n">' + (S > 0 ? f(S) + ' spesi' + card + (B > 0 ? ' di ' + f(B) : '') : (B > 0 ? f(B) + ' da spendere' : 'nessun movimento')) + '</small>';
+  }
+  function rowLines(x) { return spentLine(x) + subLines(x); }
+
+  function events(byId) {
+    var ev = [];
+    GROUPS.forEach(function (g) {
+      g.cats.forEach(function (c) {
+        (c.txs || []).concat((state.rec[c.id] || []).map(function (r) { return r.tx; })).forEach(function (t) {
+          if (t[4] === 'start') return;
+          ev.push({ d: Number(String(t[0]).split(' ')[0]), amount: -t[3], label: t[1], kind: 'out' });
+        });
+      });
+    });
+    state.incomeTx.forEach(function (t) { ev.push({ d: t.d, amount: t.amount, label: t.payee, kind: 'in' }); });
+    state.sched.forEach(function (s) {
+      if (ymOf(s.due) !== CUR) return;
+      ev.push({ d: s.due.d, amount: s.amount, label: s.payee, kind: s.income ? 'in-plan' : overdue(s.due) ? 'late' : 'plan' });
+    });
+    return ev;
+  }
+  var SHORT = { 'Banca, rata mutuo': 'mutuo', 'Trasferimento a Broker ETF': 'piano di accumulo', 'Pagamento della carta': 'Visa', 'Clinica veterinaria': 'veterinario', 'Tecnico caldaia': 'caldaia', 'Stipendio di Anna': 'stipendio', 'Film e serie in streaming': 'streaming', 'Supermercato': 'spesa' };
+  function short(s) { return SHORT[s] || s.toLowerCase(); }
+  function euros(c) { return (c / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
+  // The month as a line of days: outflows below it, income above, dashed what has not happened yet.
+  function timelineSvg(byId, compact) {
+    var W = compact ? 330 : 660, H = compact ? 120 : 200, AX = compact ? 62 : 100, X0 = compact ? 12 : 20, X1 = W - (compact ? 12 : 20);
+    function x(d) { return X0 + (d - 1) * (X1 - X0) / 29; }
+    function len(c) { var v = Math.sqrt(c / 100) * (compact ? 0.7 : 1.15) + (compact ? 6 : 10); return Math.min(compact ? 40 : 72, v); }
+    var byDay = {};
+    events(byId).forEach(function (e) {
+      var k = e.kind + ':' + e.d;
+      if (!byDay[k]) byDay[k] = { d: e.d, kind: e.kind, amount: 0, labels: [] };
+      byDay[k].amount += e.amount; byDay[k].labels.push(e.label);
+    });
+    var list = Object.keys(byDay).map(function (k) { return byDay[k]; });
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc('Settembre giorno per giorno: ' + list.slice().sort(function (a, b) { return a.d - b.d; }).map(function (e) { return e.d + ' ' + e.labels.map(short).join(' e ') + ' ' + euros(e.amount) + ' €' + (e.kind === 'late' ? ' da registrare' : e.kind === 'plan' || e.kind === 'in-plan' ? ' in programma' : ''); }).join('; ') + '. Oggi è il 25.') + '">';
+    var tx = x(TODAY.d);
+    out += '<rect x="' + tx + '" y="4" width="' + (X1 - tx + 6) + '" height="' + (H - 18) + '" class="t-future"/>';
+    out += '<line x1="' + X0 + '" y1="' + AX + '" x2="' + X1 + '" y2="' + AX + '" class="t-axis"/>';
+    [1, 8, 15, 22, 30].forEach(function (d) { if (compact && (d === 8 || d === 22)) return; out += '<text x="' + x(d) + '" y="' + (H - 3) + '" text-anchor="middle" class="t-day">' + d + '</text>'; });
+    out += '<line x1="' + tx + '" y1="6" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - (compact ? 4 : 6)) + '" y="16" class="t-today-l" text-anchor="end">' + (compact ? 'oggi' : 'oggi, ' + TODAY.d) + '</text>';
+    // Labels: the four largest recorded outflows, everything still to come, and income.
+    var big = list.filter(function (e) { return e.kind === 'out'; }).sort(function (a, b) { return b.amount - a.amount; }).slice(0, 4);
+    var lanes = { up: [], down: [] };
+    list.sort(function (a, b) { return a.d - b.d; }).forEach(function (e) {
+      var up = e.kind === 'in' || e.kind === 'in-plan', L = len(e.amount), y2 = up ? AX - L : AX + L;
+      var cls = e.kind === 'out' ? 't-out' : e.kind === 'in' ? 't-in' : e.kind === 'in-plan' ? 't-in plan' : e.kind === 'late' ? 't-late' : 't-out plan';
+      out += '<line x1="' + x(e.d) + '" y1="' + AX + '" x2="' + x(e.d) + '" y2="' + y2 + '" class="t-stem ' + cls + '"/>';
+      var labelled = !compact ? (e.kind !== 'out' || big.indexOf(e) >= 0) : up;
+      if (!labelled) return;
+      var text = compact ? '+' + euros(e.amount) : e.labels.map(short).join(', ') + ' ' + (up ? '+' : '') + euros(e.amount) + (e.kind === 'late' ? ', da registrare' : '');
+      var lane = up ? lanes.up : lanes.down, ly = y2 + (up ? 4 : 0), lx = x(e.d) + 6;
+      var w = text.length * (compact ? 6 : 6.4);
+      // A label never crosses the "today" line: past events end before it, future ones start after it.
+      var past = e.d < TODAY.d;
+      if (past && lx + w > tx - 4) lx = x(e.d) - 6 - w;
+      if (!past && lx + w > W - 2) { lx = Math.max(tx + 4, W - 2 - w); ly = up ? y2 - 6 : y2 + 14; }
+      // Push a label down (or up) a line when it would run into the previous one.
+      for (var i = 0; i < lane.length; i++) { if (lx < lane[i].x2 + 4 && lx + w > lane[i].x1 - 4 && Math.abs(ly - lane[i].y) < 13) { ly += up ? -13 : 13; i = -1; } }
+      lane.push({ x1: lx, x2: lx + w, y: ly });
+      out += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" class="t-l ' + cls + '">' + esc(text) + '</text>';
+    });
+    return out + '</svg>';
+  }
+  function todos(byId) {
+    var list = [];
+    Object.keys(byId).forEach(function (k) {
+      var x = byId[k];
+      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: 'sforata in contanti: va coperta entro il 30', amount: x.cash + x.credit, cat: k });
+      else if (x.credit > 0) list.push({ dot: 'w', title: 'Coprire ' + x.c.name, sub: 'sforata con la carta: altrimenti resta debito sulla carta', amount: x.credit, cat: k });
+    });
+    state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
+      list.push({ dot: '', title: 'Registrare ' + s.payee, sub: 'programmata del ' + dLabel(s.due) + ', non ancora nel conto', amount: s.amount, rec: s.id });
+    });
+    Object.keys(byId).forEach(function (k) {
+      var x = byId[k];
+      if (x.short > 0 && x.credit + x.cash === 0) {
+        var s = schedThisMonth(k)[0];
+        list.push({ dot: 'w', title: x.c.name + ': non basta per le programmate', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + 'mancano', amount: x.short, cat: k });
+      }
+    });
+    Object.keys(byId).forEach(function (k) { var x = byId[k]; if (x.uncovered > 0) list.push({ dot: 'w', title: 'Debito da coprire: ' + x.c.name, sub: x.c.start ? 'saldo iniziale della carta' : 'spese con la carta senza soldi messi da parte', amount: x.uncovered, cat: k }); });
+    var need = Object.keys(byId).filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
+    if (need.length) list.push({ dot: '', title: need.length === 1 ? 'Finanziare l’obiettivo di ' + byId[need[0]].c.name : 'Finanziare ' + need.length + ' obiettivi', sub: 'quello che manca questo mese', amount: sum(need, function (k) { return target(byId[k]).need; }), fund: need.length === 1 ? need[0] : 'all' });
+    if (rta() < 0) list.unshift({ dot: 'r', title: 'Hai assegnato più di quello che hai', sub: 'togli soldi da qualche categoria', amount: -rta(), panel: 'move' });
+    return list;
+  }
+  function todoHtml(byId, max) {
+    var list = todos(byId), shown = max ? list.slice(0, max) : list;
+    if (!list.length) return '<h5>Da fare</h5><p class="explain">Niente da sistemare questo mese.</p>';
+    return '<h5>Da fare <span>' + (list.length === 1 ? '1 cosa' : list.length + ' cose') + '</span></h5>' + shown.map(function (t) {
+      var act = t.rec ? ' data-rec="' + t.rec + '"' : t.fund ? ' data-fund="' + t.fund + '"' : t.panel ? ' data-panel="' + t.panel + '"' : ' data-' + (max ? 'phcat' : 'cat') + '="' + t.cat + '" data-todo="1"';
+      var verb = t.rec ? 'Registra' : t.fund ? 'Finanzia' : t.panel ? 'Sposta' : 'Apri';
+      return '<button type="button" class="todo-i"' + act + '><span class="dot ' + t.dot + '"></span><span><b>' + esc(t.title) + '</b>' + (max ? '' : '<small>' + esc(t.sub) + '</small>') + '</span><span class="n">' + f(t.amount) + '<small class="go-l">' + verb + '</small></span></button>';
+    }).join('') + (max && list.length > max ? '<p class="explain" style="font-size:13px">e altre ' + (list.length - max) + '</p>' : '');
   }
 
-  function tableRow(x) {
-    var c = x.c, sel = state.sel === c.id;
-    if (sel) {
-      return '<div class="row cols sel" role="group" aria-label="' + esc(c.name) + '"><button type="button" class="cn cnb" data-cat="' + c.id + '" aria-pressed="true"><b>' + esc(c.name) + '</b>' + subLines(x) + '</button>' +
-        '<span class="r"><input type="text" inputmode="decimal" class="asg-in n" data-asg="' + c.id + '" value="' + amountStr(x.assigned) + '" aria-label="Assegnato a ' + esc(c.name) + '"></span>' +
-        '<span class="r n">' + f(x.activity) + '</span><span class="av">' + cell(x) + '</span></div>';
-    }
-    return '<button type="button" class="row cols" data-cat="' + c.id + '" aria-pressed="false">' +
-      '<span class="cn"><b>' + esc(c.name) + '</b>' + subLines(x) + '</span>' +
-      '<span class="r n asg" data-acol="1" title="Clicca per cambiare l’assegnato">' + f(x.assigned) + '</span><span class="r n">' + f(x.activity) + '</span>' +
-      '<span class="av">' + cell(x) + '</span></button>';
+  function rowHtml(x, phone) {
+    var c = x.c, open = !phone && state.sel === c.id;
+    if (phone) return '<button type="button" class="pc pc2" data-phcat="' + c.id + '"><span class="pt"><span class="cn"><b>' + esc(c.name) + '</b>' + subLines(x) + '</span><span style="display:flex;align-items:center;gap:6px">' + cell(x) + NEXT + '</span></span>' + barHtml(x) + '</button>';
+    return '<button type="button" class="brow" data-cat="' + c.id + '" aria-expanded="' + open + '"><span class="cn"><b>' + esc(c.name) + '</b>' + rowLines(x) + '</span>' + barHtml(x) + '<span class="av">' + cell(x) + '</span></button>' +
+      (open ? '<div class="inl" role="region" aria-label="Dettaglio di ' + esc(c.name) + '"><button type="button" class="plain closer" data-deselect="1" aria-label="Chiudi il dettaglio">× Chiudi</button><div class="inl-c">' + catDetail(compute(), x, '') + '</div></div>' : '');
   }
 
   function render() {
@@ -1232,72 +1418,57 @@ button{cursor:pointer}
     var overspent = keys.filter(function (k) { return byId[k].credit + byId[k].cash > 0; });
     var under = keys.filter(function (k) { return needsMoney(byId[k]); });
     var withMoney = keys.filter(function (k) { return byId[k].avail > 0; });
-    var overTotal = sum(overspent, function (k) { return byId[k].credit + byId[k].cash; });
     var reservedTotal = sum(keys, function (k) { return byId[k].reserved; });
     var r = rta();
 
-    el('side-budget').innerHTML = sideHtml();
     el('rta').textContent = f(r); el('ph-rta').textContent = f(r);
     el('rta').classList.toggle('low', r < 0); el('ph-rta').classList.toggle('low', r < 0);
     el('future').textContent = f(future());
     el('resv').textContent = f(reservedTotal);
+    el('time').innerHTML = '<h5>Settembre, giorno per giorno</h5>' + timelineSvg(byId, false) + '<p class="t-note">Sopra la linea le entrate, sotto le uscite; tratteggiato quello che deve ancora succedere, e la lunghezza cresce con l’importo.</p>';
+    el('todo').innerHTML = todoHtml(byId, 0);
 
     var FILTERS = [['all', 'Tutte', keys.length, 'neutral'], ['under', 'Da finanziare', under.length, 'under'], ['over', 'Sforate', overspent.length, 'over'], ['avail', 'Con disponibile', withMoney.length, 'neutral']];
     el('filters').innerHTML = FILTERS.map(function (fl) {
       return '<button type="button" data-filter="' + fl[0] + '" aria-pressed="' + (state.filter === fl[0]) + '">' + esc(fl[1]) + count(fl[2], fl[3]) + '</button>';
     }).join('');
-
-    el('notice').hidden = overspent.length === 0;
-    el('notice-text').textContent = (overspent.length === 1 ? '1 categoria sforata' : overspent.length + ' categorie sforate') + ' per ' + f(overTotal) + '.';
-    var late = state.sched.filter(function (s) { return overdue(s.due); });
-    el('notice2').hidden = late.length === 0;
-    el('notice2-text').textContent = late.length === 1 ? '1 spesa programmata da registrare: ' + late[0].payee + ', ' + dLabel(late[0].due) + '.' : late.length + ' spese programmate da registrare.';
     var lb = lastBatch();
     el('reset').disabled = lb === null;
     var t = state.toast;
     el('toast').hidden = !t;
     if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Chiudi il messaggio">×</button>';
 
-    // Table
-    var tA = 0, tAct = 0, tAv = 0, body = '';
+    // Bars
+    var body = '';
     GROUPS.forEach(function (g) {
       var s = groupSums(byId, g), rows = '';
-      tA += s.assigned; tAct += s.activity; tAv += s.avail;
-      g.cats.forEach(function (c) { var x = byId[c.id]; if (keep(x)) rows += tableRow(x); });
+      g.cats.forEach(function (c) { var x = byId[c.id]; if (keep(x)) rows += rowHtml(x, false); });
       if (!rows && state.filter !== 'all') return;
       var open = !state.collapsed[g.id], on = state.sel === 'g:' + g.id;
-      body += '<div class="gr cols' + (on ? ' on' : '') + '"><span class="gh">' +
+      body += '<div class="bgr' + (on ? ' on' : '') + '"><span class="gh">' +
         '<button type="button" class="chev" data-group="' + g.id + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Chiudi ' : 'Apri ') + esc(g.name) + '">' + CHEV + '</button>' +
         '<button type="button" class="gname" data-gsel="' + g.id + '" aria-pressed="' + on + '">' + esc(g.name) + '</button>' +
-        (s.over.length ? '<span class="count over flag n" title="Categorie sforate">' + s.over.length + '</span>' : '') + '</span>' +
-        '<span class="r n">' + f(s.assigned) + '</span><span class="r n">' + f(s.activity) + '</span><span class="r n">' + f(s.avail) + '</span></div>' + (open ? rows : '');
+        (s.over.length ? '<span class="count over n" title="Categorie sforate">' + s.over.length + '</span>' : '') + '</span>' +
+        '<span class="n gsum">' + f(s.avail) + '</span></div>' + (open ? rows : '');
     });
-    if (!body) body = '<div class="empty">Nessuna categoria con questo filtro.</div>';
-    el('table').innerHTML = '<div class="th cols"><span>Categoria</span>' +
-      '<span class="t">Assegnato<span class="n">' + f(tA) + '</span></span>' +
-      '<span class="t">Movimenti<span class="n">' + f(tAct) + '</span></span>' +
-      '<span class="t">Disponibile<span class="n">' + f(tAv) + '</span></span></div>' + body;
+    el('table').innerHTML = body || '<div class="empty">Nessuna categoria con questo filtro.</div>';
 
-    // Right-hand panel
+    // The side sheet holds the month-wide tools; a category's detail opens in its own row.
     var desk = document.querySelector('.desk');
-    var panelOpen = !!state.sel || !!(state.edit && state.edit.where === 'desk');
-    desk.classList.toggle('nopanel', !panelOpen);
-    el('insp').hidden = !panelOpen;
+    var sheet = (!!state.sel && !CAT[state.sel]) || !!(state.edit && state.edit.where === 'desk');
+    desk.classList.toggle('nopanel', !sheet);
+    el('insp').hidden = !sheet;
     ['overview', 'goals', 'quick', 'move', 'sched'].forEach(function (k) { var b = el('show-' + k); if (b) b.setAttribute('aria-pressed', String(state.sel === k)); });
-    if (!panelOpen) el('insp').innerHTML = '';
-    else if (state.edit && state.edit.where === 'desk') el('insp').innerHTML = editorHtml(byId, '');
+    if (!sheet) el('insp').innerHTML = '';
+    else if (state.edit && state.edit.where === 'desk') el('insp').innerHTML = CLOSE + editorHtml(byId, '');
     else if (state.sel === 'overview') el('insp').innerHTML = overview(byId, keys, overspent);
     else if (state.sel === 'goals') el('insp').innerHTML = goalsPanel(byId, keys);
     else if (state.sel === 'quick') el('insp').innerHTML = quickHtml(byId);
     else if (state.sel === 'move') el('insp').innerHTML = moveHtml(byId, '');
     else if (state.sel === 'sched') el('insp').innerHTML = schedPanel(byId);
-    else if (state.sel.indexOf('g:') === 0) el('insp').innerHTML = groupDetail(byId, GROUPS.filter(function (gg) { return 'g:' + gg.id === state.sel; })[0]);
-    else el('insp').innerHTML = catDetail(byId, byId[state.sel], '');
+    else el('insp').innerHTML = groupDetail(byId, GROUPS.filter(function (gg) { return 'g:' + gg.id === state.sel; })[0]);
 
     // Phone
-    var ph = el('ph-over');
-    ph.hidden = overspent.length === 0;
-    ph.textContent = overspent.length + (overspent.length === 1 ? ' sforata, ' : ' sforate, ') + f(overTotal);
     el('ph-toast').hidden = !t || !!state.ph;
     if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '');
     el('ph-home').hidden = !!state.ph;
@@ -1308,19 +1479,13 @@ button{cursor:pointer}
         : '<button type="button" class="ph-back" data-phback="1">' + BACK + (state.ph === 'move' && state.mvBack ? byId[state.mvBack].c.name : 'Budget') + '</button>' +
           (state.ph === 'move' ? moveHtml(byId, 'ph-') : catDetail(byId, byId[state.ph], 'ph-'));
     } else {
-      var order = GROUPS.slice().sort(function (a, b) {
-        var oa = a.cats.some(function (c) { return byId[c.id].credit + byId[c.id].cash > 0; }) ? 0 : 1;
-        var ob = b.cats.some(function (c) { return byId[c.id].credit + byId[c.id].cash > 0; }) ? 0 : 1;
-        return oa - ob;
-      });
-      el('ph-list').innerHTML = order.map(function (g) {
+      el('ph-time').innerHTML = timelineSvg(byId, true);
+      el('ph-todo').innerHTML = todoHtml(byId, 3);
+      el('ph-list').innerHTML = GROUPS.map(function (g) {
         var s = groupSums(byId, g), open = !state.phCollapsed[g.id];
         return '<div class="pg"><button type="button" data-phgroup="' + g.id + '" aria-expanded="' + open + '">' + CHEV + esc(g.name) +
           (s.over.length ? '<span class="count over n" style="margin-left:6px">' + s.over.length + '</span>' : '') + '</button><span class="n">' + f(s.avail) + '</span></div>' +
-          (open ? g.cats.map(function (c) {
-            var y = byId[c.id];
-            return '<button type="button" class="pc" data-phcat="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b>' + subLines(y) + '</span><span style="display:flex;align-items:center;gap:6px">' + cell(y) + NEXT + '</span></button>';
-          }).join('') : '');
+          (open ? g.cats.map(function (c) { return rowHtml(byId[c.id], true); }).join('') : '');
       }).join('');
     }
     if (state.focusAsg) {
@@ -1432,17 +1597,19 @@ button{cursor:pointer}
     }
     if (d.deselect) { state.sel = null; state.src = null; state.edit = null; state.mv = null; return render(); }
     // Clicking the assigned amount of a row selects it and opens the amount for editing.
-    if (d.cat && e.target.closest('[data-acol]')) { state.edit = null; state.sel = d.cat; state.src = null; state.focusAsg = d.cat; return render(); }
     // Clicking the selected category or group again clears the selection.
-    if (d.cat) { var same = state.sel === d.cat && (b.classList.contains('row') || b.classList.contains('cnb')); state.edit = null; state.sel = same ? null : d.cat; state.src = null; return render(); }
+    if (d.cat) {
+      var same = state.sel === d.cat && b.classList.contains('brow');
+      state.edit = null; state.sel = same ? null : d.cat; state.src = null; render();
+      if (!same) { var rowEl = document.querySelector('.brow[data-cat="' + d.cat + '"]'); if (rowEl && d.todo) rowEl.scrollIntoView({ block: 'nearest' }); }
+      return;
+    }
     if (d.gsel) { state.edit = null; state.sel = state.sel === 'g:' + d.gsel ? null : 'g:' + d.gsel; state.src = null; return render(); }
     if (d.group) { state.collapsed[d.group] = !state.collapsed[d.group]; return render(); }
     if (d.filter) { state.filter = d.filter; return render(); }
     if (d.phcat) { state.ph = d.phcat; state.src = null; render(); el('view-phone').querySelector('.ph-in').scrollTop = 0; return; }
     if (d.phback) { if (state.ph === 'move') { state.ph = state.mvBack || null; state.mv = null; } else state.ph = null; state.src = null; state.edit = null; return render(); }
     if (d.phgroup) { state.phCollapsed[d.phgroup] = !state.phCollapsed[d.phgroup]; return render(); }
-    if (b.id === 'notice-show') { state.filter = 'over'; return render(); }
-    if (b.id === 'ph-over') { state.filter = 'over'; show('desk'); return render(); }
   });
   function updatePreview() {
     var prev = el((state.edit.where === 'ph' ? 'ph-' : '') + 'gprev');

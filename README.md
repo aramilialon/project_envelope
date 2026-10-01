@@ -6,7 +6,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/budget-month-dark.png">
-  <img alt="The budget month: categories with assigned, activity and available amounts, overspent categories in red and amber, and the detail of the selected category on the right" src="docs/ux/screenshots/budget-month-light.png">
+  <img alt="The budget month: a mariner band with the month and unassigned money, the month as a timeline of days next to a to-do list, and every category as a bar of what it was given, spent and reserved, with overspending in red and amber" src="docs/ux/screenshots/budget-month-light.png">
 </picture>
 
 > `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. The screens on this page come from the [interactive mockups](docs/ux/mockups/); the mockups themselves show the Italian translation.

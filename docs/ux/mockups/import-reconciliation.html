@@ -2,7 +2,7 @@
 <!--
   Interactive mockup of statement import (file, columns, check, done) and reconciliation.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
-  step, no dependencies except the Archivo font from Google Fonts (the app itself
+  step, no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself
   self-hosts its fonts). The UI copy is the Italian translation; English stays
   the source language of the app. Sample data is fictional.
 -->
@@ -11,46 +11,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>envelope - import and reconciliation mockup</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Figtree:wght@400..700&display=swap">
 <style>
 [hidden]{display:none!important}
 html,body{margin:0}
 
 :root{
-  --desk:#ECECE8; --paper:#FFFFFF; --paper-2:#F6F6F3;
-  --ink:#1A1C22; --ink-2:#434751; --muted:#686C76;
-  --rule:#D3D4CF; --rule-soft:#E7E7E3; --rule-strong:#1A1C22;
-  --pen:#2340A0; --pen-ink:#FFFFFF; --pen-soft:#E9EDF9;
-  --amber:#E2A62C; --amber-ink:#2E2104;
-  --red:#B3241B; --red-ink:#FFFFFF; --red-text:#A3211A;
-  --hatch:#E2A62C; --hatch-bg:#FFF4D9; --hatch-ink:#3A2A05;
-  --warn:#8C5300;
-  --font:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --desk:#E4ECF5; --paper:#FFFFFF; --paper-2:#F2F6FB;
+  --ink:#13263A; --ink-2:#3E5267; --muted:#627589;
+  --rule:#D2DDE9; --rule-soft:#E8EEF5; --rule-strong:#13263A;
+  --pen:#1E5A92; --pen-ink:#FFFFFF; --pen-soft:#DCE8F5;
+  --band:#173B60; --band-ink:#FFFFFF; --band-2:#24507D; --band-muted:#B4C8DD;
+  --bar:#79AADB; --spent:#CBD6E1;
+  --amber:#DE9F2F; --amber-ink:#2E2104;
+  --red:#C2412D; --red-ink:#FFFFFF; --red-text:#AE3826;
+  --hatch:#DE9F2F; --hatch-bg:#FCF0D6; --hatch-ink:#3B2A07;
+  --warn:#8A5A04;
+  --font:'Figtree','Helvetica Neue',Arial,sans-serif;
+  --display:'Bricolage Grotesque','Figtree','Helvetica Neue',Arial,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
-    --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
-    --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
-    --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
-    --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
-    --amber:#D9A23A; --amber-ink:#1F1602;
-    --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
-    --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
-    --warn:#EBB765;
+    --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+    --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+    --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+    --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+    --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+    --bar:#4277AC; --spent:#383D45;
+    --amber:#D19A35; --amber-ink:#1F1602;
+    --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+    --hatch:#D19A35; --hatch-bg:#3A2E14; --hatch-ink:#F7E3B5;
+    --warn:#ECBA6A;
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
-  --desk:#131418; --paper:#1B1D22; --paper-2:#20232A;
-  --ink:#ECEDF0; --ink-2:#C5C8D0; --muted:#979BA6;
-  --rule:#343740; --rule-soft:#282A31; --rule-strong:#C5C8D0;
-  --pen:#93A8F4; --pen-ink:#0E1426; --pen-soft:#242C47;
-  --amber:#D9A23A; --amber-ink:#1F1602;
-  --red:#D2392E; --red-ink:#FFFFFF; --red-text:#F2877E;
-  --hatch:#C8922A; --hatch-bg:#33290F; --hatch-ink:#F7E2B0;
-  --warn:#EBB765;
+  --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+  --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+  --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+  --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+  --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+  --bar:#4277AC; --spent:#383D45;
+  --amber:#D19A35; --amber-ink:#1F1602;
+  --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+  --hatch:#D19A35; --hatch-bg:#3A2E14; --hatch-ink:#F7E3B5;
+  --warn:#ECBA6A;
 }
+
 *{box-sizing:border-box}
 body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
 button,select{font:inherit;color:inherit}
@@ -71,7 +79,7 @@ button{cursor:pointer}
 .scroller{overflow-x:auto;border:1px solid var(--rule)}
 
 /* Desktop */
-.desk{min-width:1360px;display:grid;grid-template-columns:230px minmax(0,1fr) 336px;background:var(--paper)}
+.desk{min-width:1360px;display:grid;grid-template-columns:minmax(0,1fr) 336px;background:var(--paper)}
 .side{display:flex;flex-direction:column;gap:26px;padding:20px 18px;background:var(--desk);border-right:1px solid var(--rule)}
 .brand{display:flex;flex-direction:column;gap:2px}
 .brand b{font-size:22px;font-weight:700;font-stretch:78%;letter-spacing:-.2px}
@@ -226,7 +234,7 @@ button{cursor:pointer}
 .ph-back{display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0;border:0;background:transparent;color:var(--pen);font-weight:600}
 .ph-detail{display:flex;flex-direction:column;gap:18px}
 .closer{align-self:flex-end;font-size:13px}
-.desk.nopanel{grid-template-columns:230px minmax(0,1fr)}
+.desk.nopanel{grid-template-columns:minmax(0,1fr)}
 .btn[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--paper)}
 .types{display:flex;flex-direction:column;margin:0;padding:0;border:0}
 .types legend{padding:0 0 6px;font-weight:600}
@@ -253,7 +261,7 @@ button{cursor:pointer}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
 
-.desk.one{grid-template-columns:230px minmax(0,1fr)}
+.desk.one{grid-template-columns:minmax(0,1fr)}
 .lr.on{font-weight:700}
 .lr.on span:first-child::before{content:"";display:inline-block;width:6px;height:6px;margin:0 6px 2px 0;background:var(--ink)}
 .crumb{color:var(--muted)}
@@ -329,6 +337,25 @@ table.map .raw{color:var(--muted);font-size:12px}
 .diff b.zero{color:var(--ink)}
 .clue{padding:10px 12px;border:1px solid var(--rule);background:var(--paper-2);font-size:13px;line-height:1.5}
 .sec h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule-strong);font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase}
+
+/* Mariner restyle (shared with the budget month): sentence-case labels, the display face for
+   titles and big figures, softer corners, and the navigation band that replaces the sidebar. */
+h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3px}
+.where,.sec h5,.ledger h5,.th,.lbl,.tag{font-stretch:100%}
+.where,.sec h5,.ledger h5{text-transform:none;letter-spacing:0;font-size:13px}
+.btn{border-radius:10px}
+.amt-cell,.amt-cell.cash,.amt-cell.credit,.amt-cell.short{border-radius:7px}
+.cover,.preview,.gstats{border-radius:12px}
+.field select,.money-in,.cover select{border-radius:10px}
+.scroller{border-radius:16px}
+.band2{grid-column:1 / -1;display:flex;align-items:center;gap:22px;padding:14px 30px;background:var(--band);color:var(--band-ink)}
+.band2 .brand2{font-family:var(--display);font-size:21px;font-weight:700;letter-spacing:-.3px}
+.band2 .tnav{display:flex;gap:4px}
+.band2 .tnav button{min-height:34px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--band-muted)}
+.band2 .tnav button[aria-current]{background:var(--band-2);color:var(--band-ink);font-weight:600}
+.band2 .ws2{margin-left:auto;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--band-ink)}
+.band2 .me2{border:0;background:transparent;color:var(--band-muted)}
+.desk > .side{display:none}
 </style>
 </head>
 <body>
@@ -343,6 +370,7 @@ table.map .raw{color:var(--muted);font-size:12px}
 
   <div class="scroller">
     <div class="desk one">
+        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button" aria-current="page">Conti</button><button type="button">Portafoglio</button></nav><button type="button" class="ws2">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
       <nav class="side" aria-label="Main (mockup)">
         <div class="brand">
           <b>envelope</b>

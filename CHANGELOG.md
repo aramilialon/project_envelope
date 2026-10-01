@@ -27,6 +27,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the account register — reached by clicking an account in the sidebar ledger, `/:workspaceId/accounts/:accountId` lists its transactions with a running balance (newest first), filters by status with counts, search, and a per-row status toggle (pending ↔ cleared); "New transaction"/edit creates or changes an outflow, inflow, transfer, or an outflow split across categories. New end-to-end test (`e2e/transactions.spec.ts`) (`#54`).
 - `apps/web`: "Targets" and "Quick assign", two new buttons on the budget month — "Targets" lists every target grouped by kind with what it still asks, "Fund all targets", and an editor for the four target kinds (monthly, by a date, repeating, balance to keep) with a live preview computed client-side; "Quick assign" funds the targets, covers overspending or the cards' debt, or repeats last month's assigned or spent amounts, scoped to all categories or one group. New end-to-end test (`e2e/targets.spec.ts`) (`#55`).
 
+### Changed
+
+- Documentation: a new visual design. A mariner band replaces the sidebar on every screen; the budget month shows the month as a timeline of days next to a "To do" list, and each category as a bar (given, spent, reserved, overspent past the end) instead of a table of assigned, activity and available; a category's detail opens in its own row and month-wide tools in a side sheet. New palette (pale sea blue, graphite in the dark theme), Bricolage Grotesque and Figtree instead of Archivo, sentence-case labels. All mockups, `docs/design.md` ("User interface"), `docs/ux/README.md` and the README screenshots follow it.
+
 ### Fixed
 
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client's `webOrigins` (`"+"`) did not actually cover the wildcard-port redirect URIs it was meant to derive from, so the browser blocked the token exchange's CORS request in every real sign-in attempt — sign-in (`#49`) redirected correctly but could never complete. Set to the known dev origins explicitly instead; found by `apps/web`'s new end-to-end test (`#308`).
