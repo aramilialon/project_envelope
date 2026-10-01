@@ -3,9 +3,9 @@ import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import SideSheet from "../layout/SideSheet.tsx";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
 import { createAccount, type AccountType } from "./api.ts";
-import "./AddAccountForm.css";
 
 const TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card"];
 
@@ -17,11 +17,11 @@ interface Props {
 }
 
 /**
- * The sidebar's "+ Add account" form (#51), a side panel like every other detail view in
- * `docs/ux/README.md`'s component catalog. No mockup draws this exact form — only the
- * onboarding's first-account step and the workspace-settings account list, each a different
- * shape — so it is composed from those same already-established pieces (`.types`/`.opt`
- * radiogroup, `.field`, money input) rather than inventing a new pattern.
+ * The "+ Add account" form (#51, moved from the sidebar to the Accounts screen by #323), in the
+ * shared `SideSheet`. No mockup draws this exact form — only the onboarding's first-account
+ * step and the workspace-settings account list, each a different shape — so it is composed
+ * from those same already-established pieces (`.types`/`.opt` radiogroup, `.field`, money
+ * input) rather than inventing a new pattern.
  */
 export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onCreated }: Props) {
   const intl = useIntl();
@@ -77,19 +77,7 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
   }
 
   return (
-    <div
-      className="side-panel"
-      role="dialog"
-      aria-modal="true"
-      aria-label={intl.formatMessage({ id: "accounts.form.title", defaultMessage: "Add account" })}
-    >
-      <div className="panel-head">
-        <h2>{intl.formatMessage({ id: "accounts.form.title", defaultMessage: "Add account" })}</h2>
-        <button type="button" className="plain" onClick={onClose}>
-          {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-        </button>
-      </div>
-
+    <SideSheet title={intl.formatMessage({ id: "accounts.form.title", defaultMessage: "Add account" })} onClose={onClose}>
       <form onSubmit={(event) => void handleSubmit(event)}>
         <div className="field">
           <label htmlFor="acc-name">{intl.formatMessage({ id: "accounts.form.name", defaultMessage: "Name" })}</label>
@@ -145,6 +133,6 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
           </button>
         </div>
       </form>
-    </div>
+    </SideSheet>
   );
 }

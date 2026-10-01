@@ -1,47 +1,103 @@
 /*
  * Design tokens from docs/design.md, "User interface" — the same custom properties every
- * mockup in docs/ux/mockups/ uses, so a new screen stays consistent by construction. Only
- * colour is defined here; the Archivo type family is added once a real screen needs it
- * (design.md: the app must self-host its fonts, unlike the mockups' own Google Fonts link).
+ * mockup in docs/ux/mockups/ uses, so a new screen stays consistent by construction. The
+ * light theme is a pale sea blue with white working surfaces under a mariner band; the dark
+ * theme is graphite, almost neutral, so the band stays the one strong colour in both.
  */
 :root {
-  --desk: #ecece8;
+  --desk: #e4ecf5;
   --paper: #ffffff;
-  --ink: #1a1c22;
-  --muted: #686c76;
-  --rule: #d3d4cf;
-  --pen: #2340a0;
+  --paper-2: #f2f6fb;
+  --band: #173b60;
+  --band-2: #24507d;
+  --band-ink: #ffffff;
+  --band-muted: #b4c8dd;
+  --ink: #13263a;
+  --ink-2: #3e5267;
+  --muted: #627589;
+  --rule: #d2dde9;
+  --rule-soft: #e8eef5;
+  --rule-strong: #13263a;
+  --pen: #1e5a92;
   --pen-ink: #ffffff;
-  --red: #b3241b;
-  --amber: #e2a62c;
+  --pen-soft: #dce8f5;
+  --bar: #79aadb;
+  --spent: #cbd6e1;
+  --red: #c2412d;
+  --red-ink: #ffffff;
+  --red-text: #ae3826;
+  --amber: #de9f2f;
+  --amber-ink: #2e2104;
+  --hatch: #de9f2f;
+  --hatch-bg: #fcf0d6;
+  --hatch-ink: #3b2a07;
+  --warn: #8a5a04;
+  --font: "Figtree Variable", "Helvetica Neue", Arial, sans-serif;
+  --display: "Bricolage Grotesque Variable", "Figtree Variable", "Helvetica Neue", Arial, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --desk: #131418;
-    --paper: #1b1d22;
-    --ink: #ecedf0;
-    --muted: #979ba6;
-    --rule: #343740;
-    --pen: #93a8f4;
-    --pen-ink: #0e1426;
-    --red: #d2392e;
-    --amber: #d9a23a;
+    --desk: #121417;
+    --paper: #1a1d21;
+    --paper-2: #20242a;
+    --band: #1d4570;
+    --band-2: #2b5888;
+    --band-ink: #f2f6fa;
+    --band-muted: #b0c6dd;
+    --ink: #e8ecf1;
+    --ink-2: #bdc4cd;
+    --muted: #8b939e;
+    --rule: #2d3137;
+    --rule-soft: #23272c;
+    --rule-strong: #bdc4cd;
+    --pen: #8dbceb;
+    --pen-ink: #0a1a2b;
+    --pen-soft: #1f3048;
+    --bar: #4277ac;
+    --spent: #383d45;
+    --red: #d9553f;
+    --red-ink: #ffffff;
+    --red-text: #f29c8c;
+    --amber: #d19a35;
+    --amber-ink: #1f1602;
+    --hatch: #d19a35;
+    --hatch-bg: #3a2e14;
+    --hatch-ink: #f7e3b5;
+    --warn: #ecba6a;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --desk: #131418;
-  --paper: #1b1d22;
-  --ink: #ecedf0;
-  --muted: #979ba6;
-  --rule: #343740;
-  --pen: #93a8f4;
-  --pen-ink: #0e1426;
-  --red: #d2392e;
-  --amber: #d9a23a;
+  --desk: #121417;
+  --paper: #1a1d21;
+  --paper-2: #20242a;
+  --band: #1d4570;
+  --band-2: #2b5888;
+  --band-ink: #f2f6fa;
+  --band-muted: #b0c6dd;
+  --ink: #e8ecf1;
+  --ink-2: #bdc4cd;
+  --muted: #8b939e;
+  --rule: #2d3137;
+  --rule-soft: #23272c;
+  --rule-strong: #bdc4cd;
+  --pen: #8dbceb;
+  --pen-ink: #0a1a2b;
+  --pen-soft: #1f3048;
+  --bar: #4277ac;
+  --spent: #383d45;
+  --red: #d9553f;
+  --red-ink: #ffffff;
+  --red-text: #f29c8c;
+  --amber: #d19a35;
+  --amber-ink: #1f1602;
+  --hatch: #d19a35;
+  --hatch-bg: #3a2e14;
+  --hatch-ink: #f7e3b5;
+  --warn: #ecba6a;
 }
 
 * {
@@ -53,7 +109,7 @@ body {
   min-height: 100vh;
   background: var(--desk);
   color: var(--ink);
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -63,8 +119,9 @@ body {
 }
 
 /* The "envelope" wordmark, shown on its own on every unauthenticated/pre-workspace screen
-   (sign-in, workspace gate/picker) and in the sidebar once a workspace is chosen. */
+   (sign-in, workspace gate/picker) and in the band's own brand slot once a workspace is chosen. */
 .mark {
+  font-family: var(--display);
   font-weight: 700;
   font-size: 22px;
   letter-spacing: 0.2px;

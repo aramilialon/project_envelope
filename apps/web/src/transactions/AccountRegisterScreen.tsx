@@ -257,7 +257,7 @@ export default function AccountRegisterScreen() {
         />
       )}
       {open !== null && open !== "new" && open.transaction.status === "reconciled" && (
-        <div className="side-panel" role="dialog" aria-modal="true">
+        <div className="side-sheet" role="dialog" aria-modal="true">
           <div className="panel-head">
             <h2>{open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}</h2>
             <button type="button" className="plain" onClick={() => setOpen(null)}>

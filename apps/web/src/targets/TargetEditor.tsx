@@ -117,7 +117,7 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
   }
 
   return (
-    <div className="side-panel target-editor" role="dialog" aria-modal="true" aria-label={categoryName}>
+    <div className="side-sheet target-editor" role="dialog" aria-modal="true" aria-label={categoryName}>
       <div className="panel-head">
         <h2>{categoryName}</h2>
         <button type="button" className="plain" onClick={onClose}>

@@ -1,103 +1,71 @@
 .app-layout {
   display: flex;
+  flex-direction: column;
   min-height: 100vh;
 }
 
-.app-layout .side {
-  width: 230px;
-  flex-shrink: 0;
+.app-layout .band {
   display: flex;
   flex-direction: column;
-  gap: 26px;
-  padding: 20px 18px;
-  background: var(--desk);
-  border-right: 1px solid var(--rule);
+  gap: 18px;
+  padding: 14px 30px 22px;
+  background: var(--band);
+  color: var(--band-ink);
+}
+
+.app-layout .bt {
+  display: flex;
+  align-items: center;
+  gap: 22px;
 }
 
 .app-layout .brand {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.app-layout .brand .mark {
-  margin: 0;
-  font-size: 20px;
+  font-family: var(--display);
+  font-size: 21px;
   font-weight: 700;
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
 }
 
-.app-layout .nav {
+.app-layout .tnav {
   display: flex;
-  flex-direction: column;
+  gap: 4px;
 }
 
-.app-layout .nav a {
-  padding: 7px 0;
+.app-layout .tnav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--band-muted);
   text-decoration: none;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--muted);
 }
 
-.app-layout .nav a[aria-current="page"] {
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.app-layout .ledger {
-  display: flex;
-  flex-direction: column;
-}
-
-.app-layout .ledger h5 {
-  margin: 0 0 6px;
-  font-size: 11px;
+.app-layout .tnav a[aria-current="page"] {
+  background: var(--band-2);
+  color: var(--band-ink);
   font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 
-.app-layout .ledger .lr {
-  width: 100%;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  font: inherit;
+.app-layout .workspace-switcher {
+  margin-left: auto;
+}
+
+.app-layout .who {
+  color: var(--band-muted);
   font-size: 13px;
-  cursor: pointer;
-}
-
-.app-layout .ledger .lr:hover {
-  text-decoration: underline;
-}
-
-.app-layout .plain {
-  align-self: flex-start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--pen);
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
 }
 
 .app-layout .me {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--ink);
+  border: 0;
+  background: transparent;
+  color: var(--band-muted);
+  font: inherit;
+  cursor: pointer;
 }
 
 .app-layout .main {
   flex: 1;
   min-width: 0;
-  padding: 22px 30px;
+  padding: 22px 30px 30px;
 }

@@ -62,7 +62,7 @@ export default function QuickAssignPanel({ workspaceId, month, groups, onClose, 
   }
 
   return (
-    <div className="side-panel quick-assign-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })}>
+    <div className="side-sheet quick-assign-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })}>
       <div className="panel-head">
         <h2>{intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })}</h2>
         <button type="button" className="plain" onClick={onClose}>

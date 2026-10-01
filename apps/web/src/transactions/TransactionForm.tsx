@@ -210,7 +210,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   return (
     <div
-      className="side-panel transaction-form"
+      className="side-sheet transaction-form"
       role="dialog"
       aria-modal="true"
       aria-label={intl.formatMessage(
