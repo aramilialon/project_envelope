@@ -32,6 +32,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | `workspaces.spec.ts` | The workspace switcher (`#50`): the empty-workspace message, skipping straight through a single workspace, the picker once a second one exists, and switching between them |
 | `accounts.spec.ts` | The accounts screen (`#51`): creating an account from the sidebar's "+ Add account", seeing it in the sidebar ledger, and closing it from the dedicated screen |
 | `categories.spec.ts` | The categories screen (`#52`): reaching it from the workspace switcher's "Workspace settings", adding a group and a category, then archiving the category |
+| `budget.spec.ts` | The budget month screen (`#53`): ready to assign at zero and the empty-categories message for a brand new workspace, and month navigation |
 
 ## In CI
 

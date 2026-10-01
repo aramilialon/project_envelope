@@ -10,7 +10,7 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 | Workspace switcher | part of the sidebar in [`budget-month.html`](mockups/budget-month.html) | #50 |
 | Accounts | ledger list and "+ Add account" in the sidebar, [`budget-month.html`](mockups/budget-month.html); full register in [`account-register.html`](mockups/account-register.html); listing and closing one composed from the workspace-settings account list in [`settings-first-run.html`](mockups/settings-first-run.html) | #51 |
 | Categories and groups | shown in the budget month's own table, [`budget-month.html`](mockups/budget-month.html); listed, created, archived and reordered in the workspace-settings "Categories" tab, [`settings-first-run.html`](mockups/settings-first-run.html) | #52 |
-| Budget month | [`budget-month.html`](mockups/budget-month.html) | #53 |
+| Budget month | [`budget-month.html`](mockups/budget-month.html) | #53 covers the table and ready-to-assign only (no editing yet); the side panel states are `#55`–`#57`, `#217` |
 | Transaction entry and list | [`account-register.html`](mockups/account-register.html) | #54 |
 | Quick assign and targets | side panel states "Quick assign" / "Targets" / "Target editor", [`budget-month.html`](mockups/budget-month.html) | #55 |
 | Move money between categories | side panel state "Assign / Move money", [`budget-month.html`](mockups/budget-month.html) | #56 |
