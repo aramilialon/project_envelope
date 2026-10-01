@@ -25,5 +25,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    // Vitest's own default include pattern also matches "*.spec.ts", which would otherwise
+    // pick up e2e/*.spec.ts (Playwright's own tests, run separately via `test:e2e`).
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

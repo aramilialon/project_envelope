@@ -85,10 +85,16 @@ if [[ -n "$CLIENT_INTERNAL_ID" ]]; then
 else
   echo "== Creating client \"$CLIENT_ID\""
   # Public (no secret) with PKCE: the web app is a browser-side SPA, not a
-  # confidential backend service. redirectUris/webOrigins are a permissive
-  # dev-only default (the web app's own dev server port is not decided yet,
-  # see docs/design.md's roadmap) — tighten both once it is, and for any
-  # non-development realm.
+  # confidential backend service. redirectUris is a permissive dev-only default
+  # (a wildcard port, in case the dev server ever runs on something other than
+  # Vite's own 5173) — tighten it for any non-development realm.
+  #
+  # webOrigins CANNOT use "+" (Keycloak's "same as the redirect URIs" shorthand)
+  # here: "+" does not expand a wildcard PORT in a redirect URI into a usable CORS
+  # origin, so the token endpoint ends up allowing no origin at all and the
+  # browser blocks the code-for-tokens exchange outright (#308, found after #49
+  # shipped with only mocked tests). List the known dev origins explicitly
+  # instead, and add to this list if the web app ever runs on another one.
   CLIENT_JSON=$(jq -n --arg clientId "$CLIENT_ID" '{
     clientId: $clientId,
     enabled: true,
@@ -97,11 +103,12 @@ else
     directAccessGrantsEnabled: false,
     serviceAccountsEnabled: false,
     redirectUris: ["http://localhost:*", "http://127.0.0.1:*"],
-    webOrigins: ["+"],
+    webOrigins: ["http://localhost:5173", "http://127.0.0.1:5173"],
     attributes: {
       "pkce.code.challenge.method": "S256",
-      # "+": same as the redirect URIs above. Needed for sign-out (#49): without it,
-      # Keycloak rejects the app's post-logout redirect outright.
+      # "+": same as the redirect URIs above — fine here, since the post-logout
+      # redirect itself is a page navigation, not a CORS-checked fetch. Needed
+      # for sign-out (#49): without it, Keycloak rejects the redirect outright.
       "post.logout.redirect.uris": "+"
     }
   }')
