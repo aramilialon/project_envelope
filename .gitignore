@@ -29,3 +29,4 @@ infra/ansible/vars.yml
 .DS_Store
 .idea/
 *.log
+.aider*
