@@ -6,6 +6,7 @@ import SignIn from "./auth/SignIn.tsx";
 import BudgetScreen from "./budget/BudgetScreen.tsx";
 import CategoriesScreen from "./categories/CategoriesScreen.tsx";
 import AppLayout from "./layout/AppLayout.tsx";
+import AccountRegisterScreen from "./transactions/AccountRegisterScreen.tsx";
 import WorkspaceGate from "./workspaces/WorkspaceGate.tsx";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
       <Route path="/:workspaceId" element={<AppLayout />}>
         <Route index element={<BudgetScreen />} />
         <Route path="accounts" element={<AccountsScreen />} />
+        <Route path="accounts/:accountId" element={<AccountRegisterScreen />} />
         <Route path="settings/categories" element={<CategoriesScreen />} />
       </Route>
     </Routes>

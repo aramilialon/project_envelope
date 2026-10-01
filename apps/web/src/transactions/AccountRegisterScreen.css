@@ -1,0 +1,212 @@
+.register-screen .acc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+}
+
+.register-screen .acc-head h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.register-screen .acc-head .sub {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.register-screen .bal {
+  display: flex;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--paper);
+}
+
+.register-screen .bal div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  border-right: 1px solid var(--rule);
+}
+
+.register-screen .bal div:last-child {
+  border-right: 0;
+}
+
+.register-screen .bal small {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.register-screen .bal .n {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.register-screen .bal .main .n {
+  font-size: 22px;
+}
+
+.register-screen .reg-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.register-screen .tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.register-screen .tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+  cursor: pointer;
+}
+
+.register-screen .tabs button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.register-screen .count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--rule);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.register-screen .tabs button[aria-pressed="true"] .count {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.register-screen .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.register-screen .search {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+}
+
+.register-screen .search input {
+  border: 0;
+  background: transparent;
+  min-width: 200px;
+  outline: none;
+  font: inherit;
+}
+
+.register-screen .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.register-screen .empty {
+  color: var(--muted);
+  padding: 24px 0;
+}
+
+.register-screen .register-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.register-screen .register-table th,
+.register-screen .register-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+}
+
+.register-screen .register-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--ink);
+}
+
+.register-screen .register-table .n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.register-screen .open-row {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+
+.register-screen .open-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.register-screen .status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.register-screen .status-cleared {
+  color: var(--pen);
+}
+
+.register-screen .status:disabled {
+  cursor: default;
+}

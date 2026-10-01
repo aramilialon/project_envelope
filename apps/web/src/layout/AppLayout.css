@@ -60,8 +60,19 @@
 }
 
 .app-layout .ledger .lr {
+  width: 100%;
   padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
   font-size: 13px;
+  cursor: pointer;
+}
+
+.app-layout .ledger .lr:hover {
+  text-decoration: underline;
 }
 
 .app-layout .plain {
