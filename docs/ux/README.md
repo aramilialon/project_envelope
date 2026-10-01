@@ -48,8 +48,8 @@ Extracted from patterns already repeated across the mockups — name them this w
 | Count badge | A small, coloured number (red for overspent, amber for underfunded) on a group row or a filter tab | Budget month table, toolbar |
 | Band | The mariner header: navigation, workspace switcher, user menu; on the budget month also the month and unassigned money | Every mockup |
 | Category bar | Track = what a category was given; spent, reserved and available inside; overspending or an uncovered reservation past the end; a payment category draws its debt | Budget month |
-| Timeline | The month's days as a line, outflows below, income above, dashed when still to come, a "today" line | Budget month (desktop and phone) |
-| To-do list | What needs attention, each with its amount and one action (Open, Record, Fund) | Budget month (desktop and phone) |
+| Timeline | The month's days as a line, outflows below, income above, dashed when still to come, a "today" line | Budget month (desktop and phone), account register (desktop) |
+| To-do list | What needs attention, each with its amount and one action (Open, Record, Fund, Mark, Reconcile) | Budget month (desktop and phone), account register (desktop and phone) |
 | Toast | A one-line confirmation after an action, with an optional "Undo" | Budget month, account register |
 | Row detail | A category's detail opened in place under its bar, in columns, closed with "× Close", the row again, or Esc | Budget month |
 | Side sheet | A fixed-width sheet on the right for month-wide tools and forms, closed with "× Close", the same button again, or Esc | Budget month, account register |
