@@ -4,7 +4,8 @@ import { after, before, describe, it } from "node:test";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { listWorkspaceMembers } from "./repository.ts";
+import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { listWorkspaceMembers, listWorkspacesForUser } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -59,5 +60,66 @@ describe("listWorkspaceMembers (#40)", () => {
     );
     const members = await listWorkspaceMembers(pool, workspace.rows[0]!.id);
     assert.deepEqual(members, []);
+  });
+});
+
+describe("listWorkspacesForUser (#50)", () => {
+  let superuserPool: DbPool;
+  let appPool: DbPool;
+
+  before(async () => {
+    superuserPool = createPool(databaseUrl);
+    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
+    await ensureAppRoleLogin(superuserPool);
+    appPool = createPool(appConnectionString(databaseUrl));
+  });
+
+  after(async () => {
+    await appPool.end();
+    await superuserPool.end();
+  });
+
+  it("lists every workspace a user belongs to, with their own role, through the restricted envelope_app connection", async () => {
+    const userId = (
+      await superuserPool.query<{ id: string }>(
+        "INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id",
+        [randomUUID(), `${randomUUID()}@example.com`],
+      )
+    ).rows[0]!.id;
+    const own = await superuserPool.query<{ id: string }>(
+      "INSERT INTO workspaces (name, base_currency, time_zone) VALUES ('Famiglia', 'EUR', 'UTC') RETURNING id",
+    );
+    const alsoOwn = await superuserPool.query<{ id: string }>(
+      "INSERT INTO workspaces (name, base_currency, time_zone) VALUES ('Personale', 'EUR', 'UTC') RETURNING id",
+    );
+    const notOwn = await superuserPool.query<{ id: string }>(
+      "INSERT INTO workspaces (name, base_currency, time_zone) VALUES ('Not mine', 'EUR', 'UTC') RETURNING id",
+    );
+    await superuserPool.query(
+      "INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'read_only')",
+      [userId, own.rows[0]!.id, alsoOwn.rows[0]!.id],
+    );
+
+    const workspaces = await listWorkspacesForUser(appPool, userId);
+
+    assert.deepEqual(workspaces, [
+      { id: own.rows[0]!.id, name: "Famiglia", role: "owner" },
+      { id: alsoOwn.rows[0]!.id, name: "Personale", role: "read_only" },
+    ]);
+    assert.ok(
+      !workspaces.some((w) => w.id === notOwn.rows[0]!.id),
+      "a workspace this user does not belong to must never be listed",
+    );
+  });
+
+  it("returns an empty list for a user with no memberships", async () => {
+    const userId = (
+      await superuserPool.query<{ id: string }>(
+        "INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id",
+        [randomUUID(), `${randomUUID()}@example.com`],
+      )
+    ).rows[0]!.id;
+
+    assert.deepEqual(await listWorkspacesForUser(appPool, userId), []);
   });
 });

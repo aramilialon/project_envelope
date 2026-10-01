@@ -12,6 +12,8 @@ const REALM = "envelope";
 export interface KeycloakTestUser {
   readonly username: string;
   readonly password: string;
+  /** Keycloak's own user id — the `sub` claim of any token issued to this user, and so the key `db.ts`'s `findUserIdBySubject` needs. */
+  readonly subject: string;
   teardown(): Promise<void>;
 }
 
@@ -64,6 +66,7 @@ export async function createTestUser(): Promise<KeycloakTestUser> {
   return {
     username,
     password,
+    subject: userId,
     async teardown() {
       const freshToken = await adminToken();
       await fetch(`${KEYCLOAK_URL}/admin/realms/${REALM}/users/${userId}`, {

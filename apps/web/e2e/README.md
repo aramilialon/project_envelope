@@ -15,17 +15,21 @@ Needs, already running:
 $ cd apps/web
 $ npx playwright install --with-deps chromium   # once, downloads a headless browser
 $ cp .env.example .env
-$ KEYCLOAK_ADMIN_PASSWORD=<password from infra/.env> pnpm test:e2e
+$ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
+  KEYCLOAK_ADMIN_PASSWORD=<password from infra/.env> \
+  pnpm test:e2e
 ```
 
-`keycloak-test-user.ts` creates a throwaway user in the real `envelope` realm through the admin API for each test (self-registration is disabled by design) and removes it afterward — nothing to set up by hand, and nothing left behind.
+`keycloak-test-user.ts` creates a throwaway user in the real `envelope` realm through the admin API for each test (self-registration is disabled by design) and removes it afterward — nothing to set up by hand, and nothing left behind. `db.ts` needs `DATABASE_URL` (the superuser connection, the same one `apps/api`'s own tests use for fixture setup — never the restricted `envelope_app` role, since this is test setup, not something exercising Row-Level Security) to create and remove a workspace/membership directly.
 
 ## Contents
 
 | File | What it does |
 | --- | --- |
-| `keycloak-test-user.ts` | `createTestUser()`: a throwaway Keycloak user (admin API), with `teardown()` to remove it |
+| `keycloak-test-user.ts` | `createTestUser()`: a throwaway Keycloak user (admin API), with `teardown()` to remove it; `subject` is Keycloak's own user id, the `sub` claim any token issued to them carries |
+| `db.ts` | `findUserIdBySubject(subject)`: the local `users.id` once the user-mapper preHandler has created it; `createWorkspaceWithMembership(userId, name, role?)`: a throwaway workspace with a membership, with `teardown()` to remove it |
 | `sign-in.spec.ts` | Signs in through the real Keycloak login form and back, and signs out again (`#49`) |
+| `workspaces.spec.ts` | The workspace switcher (`#50`): the empty-workspace message, skipping straight through a single workspace, the picker once a second one exists, and switching between them |
 
 ## In CI
 

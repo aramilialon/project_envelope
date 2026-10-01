@@ -18,6 +18,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client now also sets `post.logout.redirect.uris` (needed for sign-out to work at all) (`#49`).
 - `apps/web`: end-to-end tests (Playwright, headless Chromium) — `e2e/sign-in.spec.ts` drives a real sign-in and sign-out through the real "envelope" Keycloak realm, provisioning and removing a throwaway user through the admin API for each run (`#49`, `#63`).
 - `@envelope/core`: transfers between two on-budget credit cards — `BudgetInput.cardTransfers`, moving money between the two cards' own payment categories, capped at what the source actually holds (never pushing it negative). An amount the source cannot cover is never cash overspending (nothing real moved); it only ever shows up as the source's own uncovered debt, exactly as design.md's "Credit cards" describes. `apps/api`'s transfer endpoint no longer rejects this combination (`#260`).
+- `apps/api`: `GET /me/workspaces`, a real, always-registered endpoint — every workspace the signed-in user belongs to, with their own role in each; `workspaces`' own Row-Level Security policy gains the membership-based read allowance `memberships` already had (migration 0022), since `app.workspace_id` is never known before one is picked (`#50`).
+- `apps/web`: the workspace switcher — `react-router-dom` (`/` picks a workspace, `/:workspaceId` is everything after), skipping straight through to the only workspace when there is just one, a full-page picker when there are several, and a sidebar switcher popover once one is chosen. New end-to-end test (`e2e/workspaces.spec.ts`) (`#50`).
 
 ### Fixed
 

@@ -1,0 +1,45 @@
+import { fireEvent, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
+
+import { renderWithIntl } from "../test-utils.tsx";
+import * as workspacesApi from "./api.ts";
+import WorkspaceSwitcher from "./WorkspaceSwitcher.tsx";
+
+const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
+vi.mock("react-oidc-context", () => ({ useAuth }));
+
+function renderSwitcher() {
+  useAuth.mockReturnValue({ user: { access_token: "t" } });
+  vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+    { id: "ws-1", name: "Famiglia", role: "owner" },
+    { id: "ws-2", name: "Personale", role: "owner" },
+  ]);
+  return renderWithIntl(
+    <MemoryRouter initialEntries={["/ws-1"]}>
+      <Routes>
+        <Route path="/:workspaceId" element={<WorkspaceSwitcher />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe("WorkspaceSwitcher (#50)", () => {
+  it("shows the current workspace's name, and opens a popover listing every workspace", async () => {
+    renderSwitcher();
+
+    const button = await screen.findByRole("button", { name: "Famiglia" });
+    fireEvent.click(button);
+
+    expect(screen.getByRole("menuitem", { name: "Famiglia ✓" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Personale" })).toBeInTheDocument();
+  });
+
+  it("omits workspace settings and a 'new workspace' action: neither feature exists yet", async () => {
+    renderSwitcher();
+    fireEvent.click(await screen.findByRole("button", { name: "Famiglia" }));
+
+    expect(screen.queryByText(/settings/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/new workspace/i)).not.toBeInTheDocument();
+  });
+});
