@@ -61,3 +61,12 @@ body {
 #root {
   min-height: 100vh;
 }
+
+/* The "envelope" wordmark, shown on its own on every unauthenticated/pre-workspace screen
+   (sign-in, workspace gate/picker) and in the sidebar once a workspace is chosen. */
+.mark {
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+  margin: 0;
+}

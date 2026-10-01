@@ -1,0 +1,125 @@
+.budget-screen .head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+}
+
+.budget-screen .month {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.budget-screen .month h1 {
+  margin: 0;
+  min-width: 14ch;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.budget-screen .arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.budget-screen .facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.budget-screen .facts b {
+  color: var(--ink);
+}
+
+.budget-screen .rta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.budget-screen .rta .label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.budget-screen .rta .amt {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.budget-screen .rta .amt.low {
+  color: var(--red);
+}
+
+.budget-screen .empty {
+  color: var(--muted);
+}
+
+.budget-screen .budget-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.budget-screen .budget-table th,
+.budget-screen .budget-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--rule);
+}
+
+.budget-screen .budget-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--ink);
+}
+
+.budget-screen .budget-table .n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-screen .budget-table thead .total {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink);
+}
+
+.budget-screen .budget-table .group-row th,
+.budget-screen .budget-table .group-row td {
+  padding-top: 16px;
+  font-weight: 700;
+  background: var(--desk);
+}
+
+.budget-screen .budget-table .neg {
+  color: var(--red);
+  font-weight: 600;
+}
