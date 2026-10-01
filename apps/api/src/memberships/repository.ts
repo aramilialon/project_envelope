@@ -18,3 +18,42 @@ export async function listWorkspaceMembers(db: DbPool | DbClient, workspaceId: s
   );
   return rows.map((row) => ({ userId: row.user_id, language: row.language, locale: row.locale }));
 }
+
+export type WorkspaceRole = "owner" | "editor" | "read_only";
+
+export interface UserWorkspace {
+  readonly id: string;
+  readonly name: string;
+  readonly role: WorkspaceRole;
+}
+
+/**
+ * The workspaces a user belongs to, with their own role in each (#50, the workspace switcher).
+ * Unlike every other query in this codebase, there is no single workspace to scope this to —
+ * that is the whole point, picking one is what this list is for — so this opens its own short
+ * transaction with only `app.user_id` set (never `app.workspace_id`), relying on migration
+ * 0022's own membership-based RLS allowance on `workspaces` (and 0008's on `memberships`) rather
+ * than `workspace-membership.ts`'s usual per-request one.
+ */
+export async function listWorkspacesForUser(pool: DbPool, userId: string): Promise<UserWorkspace[]> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole }>(
+      `SELECT w.id, w.name, m.role
+       FROM memberships m
+       JOIN workspaces w ON w.id = m.workspace_id
+       WHERE m.user_id = $1
+       ORDER BY w.name`,
+      [userId],
+    );
+    await client.query("COMMIT");
+    return rows;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "react-intl";
 import { AuthProvider } from "react-oidc-context";
+import { BrowserRouter } from "react-router-dom";
 
 import App from "./App.tsx";
 import { oidcConfig } from "./auth/config.ts";
@@ -18,7 +19,9 @@ createRoot(root).render(
         and a real locale negotiation; "defaultMessage" alone covers every string until then. */}
     <IntlProvider locale="en" defaultLocale="en" messages={{}}>
       <AuthProvider {...oidcConfig}>
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </AuthProvider>
     </IntlProvider>
   </StrictMode>,
