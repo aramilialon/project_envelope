@@ -25,10 +25,14 @@ export interface UserWorkspace {
   readonly id: string;
   readonly name: string;
   readonly role: WorkspaceRole;
+  readonly baseCurrency: string;
 }
 
 /**
  * The workspaces a user belongs to, with their own role in each (#50, the workspace switcher).
+ * Also carries each workspace's `baseCurrency` (#51's account-creation form defaults new
+ * accounts to it, since a workspace's currency is fixed at creation — design.md's onboarding —
+ * and there is no other endpoint yet that exposes it to the web app).
  * Unlike every other query in this codebase, there is no single workspace to scope this to —
  * that is the whole point, picking one is what this list is for — so this opens its own short
  * transaction with only `app.user_id` set (never `app.workspace_id`), relying on migration
@@ -40,8 +44,8 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
-    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole }>(
-      `SELECT w.id, w.name, m.role
+    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole; base_currency: string }>(
+      `SELECT w.id, w.name, m.role, w.base_currency
        FROM memberships m
        JOIN workspaces w ON w.id = m.workspace_id
        WHERE m.user_id = $1
@@ -49,7 +53,7 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
       [userId],
     );
     await client.query("COMMIT");
-    return rows;
+    return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency }));
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

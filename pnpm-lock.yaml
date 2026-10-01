@@ -51,6 +51,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@envelope/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       oidc-client-ts:
         specifier: ^3.5.0
         version: 3.5.0

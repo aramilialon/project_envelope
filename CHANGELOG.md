@@ -20,10 +20,13 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: transfers between two on-budget credit cards — `BudgetInput.cardTransfers`, moving money between the two cards' own payment categories, capped at what the source actually holds (never pushing it negative). An amount the source cannot cover is never cash overspending (nothing real moved); it only ever shows up as the source's own uncovered debt, exactly as design.md's "Credit cards" describes. `apps/api`'s transfer endpoint no longer rejects this combination (`#260`).
 - `apps/api`: `GET /me/workspaces`, a real, always-registered endpoint — every workspace the signed-in user belongs to, with their own role in each; `workspaces`' own Row-Level Security policy gains the membership-based read allowance `memberships` already had (migration 0022), since `app.workspace_id` is never known before one is picked (`#50`).
 - `apps/web`: the workspace switcher — `react-router-dom` (`/` picks a workspace, `/:workspaceId` is everything after), skipping straight through to the only workspace when there is just one, a full-page picker when there are several, and a sidebar switcher popover once one is chosen. New end-to-end test (`e2e/workspaces.spec.ts`) (`#50`).
+- `apps/api`: `GET /me/workspaces` now also reports each workspace's `baseCurrency` (`#51`).
+- `apps/web`: the persistent sidebar (`AppLayout`) and the accounts screen — primary navigation (Budget, Accounts), the account ledger with "+ Add account", and a dedicated screen to list, create and close an account; the creation form has no dedicated mockup, so it is composed from the onboarding's first-account step and the workspace-settings account list instead. New end-to-end test (`e2e/accounts.spec.ts`) (`#51`).
 
 ### Fixed
 
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client's `webOrigins` (`"+"`) did not actually cover the wildcard-port redirect URIs it was meant to derive from, so the browser blocked the token exchange's CORS request in every real sign-in attempt — sign-in (`#49`) redirected correctly but could never complete. Set to the known dev origins explicitly instead; found by `apps/web`'s new end-to-end test (`#308`).
+- `apps/api`: `@fastify/cors`'s own default `methods` is `GET,HEAD,POST`, not every verb the API uses, so every PATCH/PUT/DELETE endpoint — closing an account among them — silently failed from a real browser while staying invisible to every mocked unit test and `.inject()`-based integration test. The CORS registration now lists every method the API actually uses; found by `apps/web`'s new end-to-end test (`#315`).
 
 ## [0.1.6] - 2026-09-30
 

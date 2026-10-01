@@ -30,6 +30,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | `db.ts` | `findUserIdBySubject(subject)`: the local `users.id` once the user-mapper preHandler has created it; `createWorkspaceWithMembership(userId, name, role?)`: a throwaway workspace with a membership, with `teardown()` to remove it |
 | `sign-in.spec.ts` | Signs in through the real Keycloak login form and back, and signs out again (`#49`) |
 | `workspaces.spec.ts` | The workspace switcher (`#50`): the empty-workspace message, skipping straight through a single workspace, the picker once a second one exists, and switching between them |
+| `accounts.spec.ts` | The accounts screen (`#51`): creating an account from the sidebar's "+ Add account", seeing it in the sidebar ledger, and closing it from the dedicated screen |
 
 ## In CI
 

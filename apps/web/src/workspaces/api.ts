@@ -7,6 +7,7 @@ export interface Workspace {
   readonly id: string;
   readonly name: string;
   readonly role: WorkspaceRole;
+  readonly baseCurrency: string;
 }
 
 export async function listMyWorkspaces(accessToken: string): Promise<Workspace[]> {

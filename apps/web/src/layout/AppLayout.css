@@ -1,0 +1,92 @@
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-layout .side {
+  width: 230px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 20px 18px;
+  background: var(--desk);
+  border-right: 1px solid var(--rule);
+}
+
+.app-layout .brand {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.app-layout .brand .mark {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.app-layout .nav {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-layout .nav a {
+  padding: 7px 0;
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.app-layout .nav a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.app-layout .ledger {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-layout .ledger h5 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.app-layout .ledger .lr {
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.app-layout .plain {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.app-layout .me {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.app-layout .main {
+  flex: 1;
+  min-width: 0;
+  padding: 22px 30px;
+}
