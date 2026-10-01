@@ -1,0 +1,74 @@
+.targets-panel .sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.targets-panel .sec h5 {
+  margin: 0 0 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.targets-panel .target-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.targets-panel .target-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.targets-panel .target-list .name {
+  flex: 1;
+}
+
+.targets-panel .goal-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.targets-panel .goal-row b {
+  font-weight: 500;
+}
+
+.targets-panel .goal-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.targets-panel .goal-row:hover b {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.targets-panel .plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

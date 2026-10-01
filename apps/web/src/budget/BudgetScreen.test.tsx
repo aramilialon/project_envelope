@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
+import * as targetsApi from "../targets/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as budgetApi from "./api.ts";
 import type { BudgetMonthCategory, BudgetMonthResponse } from "./api.ts";
@@ -157,5 +158,22 @@ describe("BudgetScreen (#53)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
     expect(await screen.findByText("Home")).toBeInTheDocument();
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth);
+  });
+
+  it("opens the Targets panel", async () => {
+    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Home");
+
+    fireEvent.click(screen.getByRole("button", { name: "Targets" }));
+    expect(await screen.findByRole("heading", { name: "Targets" })).toBeInTheDocument();
+  });
+
+  it("opens the Quick assign panel", async () => {
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Home");
+
+    fireEvent.click(screen.getByRole("button", { name: "Quick assign" }));
+    expect(await screen.findByRole("heading", { name: "Quick assign" })).toBeInTheDocument();
   });
 });

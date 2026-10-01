@@ -23,10 +23,11 @@ export type BudgetMonthState =
  * each category with its group's *name*, not its `sortOrder` — so this also fetches
  * `category-groups` (#52) for that.
  */
-export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthState {
+export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthState & { refetch(): void } {
   const auth = useAuth();
   const accessToken = auth.user?.access_token;
   const [state, setState] = useState<BudgetMonthState>({ status: "loading" });
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     if (!accessToken) {
@@ -69,7 +70,9 @@ export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthS
     return () => {
       cancelled = true;
     };
-  }, [accessToken, workspaceId, month]);
+  }, [accessToken, workspaceId, month, generation]);
 
-  return state;
+  const refetch = () => setGeneration((g) => g + 1);
+
+  return { ...state, refetch };
 }
