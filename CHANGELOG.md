@@ -16,6 +16,11 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: scheduled transactions (rent, salary, subscriptions) — `scheduled_transactions`/`scheduled_transaction_splits`, and `POST`/`GET`/`PATCH`/`DELETE /workspaces/:workspaceId/scheduled-transactions`: account, payee/memo, next due date, recurrence, one split per category (a single split is "a category", several are a split template), enough to materialize a transaction later without asking again. Manually managed for now — automatic firing on the due date needs the queue module (`#38`, milestone 0.1.5). The budget month endpoint now surfaces each category's `reserved` money, fed by the requested month's own not-yet-recorded items (`#22`).
 - `apps/web`: sign-in — Authorization Code + PKCE against the `envelope` Keycloak realm (`react-oidc-context`/`oidc-client-ts`), session handling and sign-out; `react-intl` (FormatJS, ADR 0009) wired in for the first time, `locale="en"` until `#62` adds the Italian catalog (`#49`).
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client now also sets `post.logout.redirect.uris` (needed for sign-out to work at all) (`#49`).
+- `apps/web`: end-to-end tests (Playwright, headless Chromium) — `e2e/sign-in.spec.ts` drives a real sign-in and sign-out through the real "envelope" Keycloak realm, provisioning and removing a throwaway user through the admin API for each run (`#49`, `#63`).
+
+### Fixed
+
+- `scripts/keycloak/bootstrap.sh`: the `envelope-api` client's `webOrigins` (`"+"`) did not actually cover the wildcard-port redirect URIs it was meant to derive from, so the browser blocked the token exchange's CORS request in every real sign-in attempt — sign-in (`#49`) redirected correctly but could never complete. Set to the known dev origins explicitly instead; found by `apps/web`'s new end-to-end test (`#308`).
 
 ## [0.1.6] - 2026-09-30
 

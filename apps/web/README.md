@@ -14,8 +14,10 @@ The web app: a Vite + React PWA that talks to `apps/api` over a real HTTP connec
 | `src/vite-env.d.ts` | Types `import.meta.env`: `VITE_API_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_KEYCLOAK_CLIENT_ID` |
 | `src/test-utils.tsx` | `renderWithIntl`: wraps a component in `IntlProvider` for tests — every component using `react-intl` needs it |
 | `src/test-setup.ts` | Vitest's own setup: `@testing-library/jest-dom` matchers, RTL's `cleanup` after every test (not automatic under Vitest, unlike Jest) |
-| `*.test.tsx` | Tests, next to the component they check (Vitest + React Testing Library); `react-oidc-context`'s `useAuth` is mocked, not exercised against a real Keycloak (no browser-driven end-to-end test exists yet for this app, `#63`) |
-| `vite.config.ts` | The dev server, the build, the PWA manifest (`vite-plugin-pwa`) and Vitest's own config, all in one file |
+| `*.test.tsx` | Unit tests, next to the component they check (Vitest + React Testing Library); `react-oidc-context`'s `useAuth` is mocked here — the real round trip is `e2e/`'s job |
+| `vite.config.ts` | The dev server, the build, the PWA manifest (`vite-plugin-pwa`) and Vitest's own config (`test.include` excludes `e2e/`, Playwright's own), all in one file |
+| `playwright.config.ts` | End-to-end config: starts `pnpm dev` for the run, headless Chromium only |
+| `e2e/` | End-to-end tests (Playwright), against a real Keycloak and `apps/api` — see `e2e/README.md` |
 
 ## Commands
 
@@ -23,6 +25,7 @@ The web app: a Vite + React PWA that talks to `apps/api` over a real HTTP connec
 pnpm --filter @envelope/web dev         # dev server with HMR
 pnpm --filter @envelope/web build       # typecheck, then production build
 pnpm --filter @envelope/web test        # Vitest
+pnpm --filter @envelope/web test:e2e    # Playwright, against a real Keycloak and apps/api (e2e/README.md)
 pnpm --filter @envelope/web typecheck   # tsc -b, no emit
 pnpm --filter @envelope/web lint        # oxlint
 ```
@@ -44,5 +47,7 @@ The API's own CORS policy (`WEB_ORIGIN`, `apps/api/.env.example`) must allow thi
 Screens follow [`docs/design.md`, "User interface"](../../docs/design.md#user-interface) and [`docs/ux/README.md`](../../docs/ux/README.md) (screen inventory, navigation, component catalog, accessibility baseline); a screen without a mockup in `docs/ux/mockups/` is not built from scratch (`CLAUDE.md`). The colour tokens in `src/index.css` are copied from there; no other colours. Text is self-hosted, not loaded from Google Fonts (unlike the mockups themselves) — not added yet, since no real screen needs the Archivo type family yet.
 
 ## Current limitations
+
+`e2e/sign-in.spec.ts` covers sign-in and sign-out end to end; it is what caught `#308` (the Keycloak client's `webOrigins` silently breaking the token exchange's CORS in every real browser, something a mocked `useAuth()` unit test cannot see) — fixed in `scripts/keycloak/bootstrap.sh`. Not wired into CI yet (`e2e/README.md`): `#63`'s own end-to-end coverage grows from here as later screens land.
 
 No routing and no real screen beyond the placeholder yet (`#50` onward). `react-intl` is wired in (`IntlProvider` at the root), but only `locale="en"` exists so far: every string is its own `defaultMessage`, with no Italian catalog or locale negotiation yet (`#62`). The sign-in screen's own error state shows the generic `signIn.error.generic` message plus the raw, untranslated `Error.message` from `oidc-client-ts` as its technical detail — deliberately simpler than `docs/ux/mockups/sign-in.html`'s illustrative `invalid_state` example, since the library does not expose a small, stable set of error codes to translate individually (`docs/ux/README.md` updated to match). The PWA manifest uses a single SVG icon; proper multi-resolution icons are a visual-design follow-up, not a blocker for an installable shell.

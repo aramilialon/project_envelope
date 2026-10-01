@@ -8,6 +8,11 @@ coverage/
 .turbo/
 *.tsbuildinfo
 
+# Playwright's own test output (apps/web/e2e)
+test-results/
+playwright-report/
+blob-report/
+
 # Secrets and local configuration: never in the repository
 .env
 .env.*
