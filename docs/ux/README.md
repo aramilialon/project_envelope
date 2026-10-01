@@ -56,7 +56,7 @@ Extracted from patterns already repeated across the mockups — name them this w
 
 Mockups show the Italian translation as literal strings because they have no build step; real screens never do. Every string a component or screen needs is a stable, dot-namespaced key resolved through the catalog, for example:
 
-- `signIn.tagline`, `signIn.action`, `signIn.error.invalidState`
+- `signIn.tagline`, `signIn.action`, `signIn.error.generic` (the lead sentence; the technical detail below it is the identity provider's own untranslated message, not a key of its own — `#49`)
 - `budgetMonth.unassigned.title`, `budgetMonth.category.reserved` (`{amount}`, `{payee}`, `{date}` as ICU MessageFormat variables)
 - `common.action.close`, `common.action.undo`
 

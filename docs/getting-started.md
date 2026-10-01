@@ -195,7 +195,7 @@ $ pnpm --filter @envelope/api dev
 
 Obtaining and configuring these (and, later, APNs/FCM) for a real self-hosted deployment is its own guide: [self-hosting push notifications](how-to/self-host-push-notifications.md).
 
-The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` only need to look valid for now: nothing calls Keycloak yet outside the tests.
+The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` must match the realm and client the previous section's `bootstrap.sh` created (its own defaults, `envelope`/`envelope-api`, already do) — the web app's own sign-in (`#49`, next section) is a real token from this Keycloak, verified against it on every request.
 
 Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm and their own `envelope_app` login through the admin API (no manual setup needed for tests specifically):
 
@@ -218,7 +218,7 @@ $ cp .env.example .env
 $ pnpm --filter @envelope/web dev
 ```
 
-Browse to `http://localhost:5173`: the placeholder screen reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
+Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in then lands back on the placeholder screen, which reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
 
 See [`apps/web/README.md`](../apps/web/README.md) for the rest.
 

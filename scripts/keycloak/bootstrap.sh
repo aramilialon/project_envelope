@@ -98,7 +98,12 @@ else
     serviceAccountsEnabled: false,
     redirectUris: ["http://localhost:*", "http://127.0.0.1:*"],
     webOrigins: ["+"],
-    attributes: {"pkce.code.challenge.method": "S256"}
+    attributes: {
+      "pkce.code.challenge.method": "S256",
+      # "+": same as the redirect URIs above. Needed for sign-out (#49): without it,
+      # Keycloak rejects the app's post-logout redirect outright.
+      "post.logout.redirect.uris": "+"
+    }
   }')
   CREATE_HEADERS=$(kc POST "/admin/realms/$REALM/clients" -f -H "Content-Type: application/json" -d "$CLIENT_JSON" -D - -o /dev/null)
   CLIENT_INTERNAL_ID=$(grep -i '^location:' <<<"$CREATE_HEADERS" | tr -d '\r' | sed 's#.*/##')
