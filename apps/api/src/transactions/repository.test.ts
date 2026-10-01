@@ -296,18 +296,18 @@ describe("transactions repository", () => {
     assert.equal(transfer.destination.splits[0]?.amountCents, 2000);
   });
 
-  it("rejects a transfer between two on-budget credit cards", async () => {
-    await assert.rejects(
-      () =>
-        createTransfer(pool, {
-          workspaceId,
-          sourceAccountId: creditCardAccountId,
-          destinationAccountId: otherCreditCardAccountId,
-          occurredAt: "2026-09-12",
-          amountCents: 1000,
-        }),
-      (error: unknown) => isValidationError(error, "unsupported_transaction"),
-    );
+  it("creates a transfer between two on-budget credit cards the same way, no special-casing (#260)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: creditCardAccountId,
+      destinationAccountId: otherCreditCardAccountId,
+      occurredAt: "2026-09-12",
+      amountCents: 1000,
+    });
+    assert.equal(transfer.source.accountId, creditCardAccountId);
+    assert.equal(transfer.source.splits[0]?.amountCents, -1000);
+    assert.equal(transfer.destination.accountId, otherCreditCardAccountId);
+    assert.equal(transfer.destination.splits[0]?.amountCents, 1000);
   });
 
   it("rejects a transfer to the same account", async () => {

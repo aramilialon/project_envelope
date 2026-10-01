@@ -11,6 +11,7 @@ const ACCOUNTS: readonly BudgetAccount[] = [
   { id: "checking", type: "cash", onBudget: true },
   { id: "savings", type: "cash", onBudget: true },
   { id: "visa", type: "credit", onBudget: true, paymentCategoryId: "visa-payment" },
+  { id: "amex", type: "credit", onBudget: true, paymentCategoryId: "amex-payment" },
   { id: "broker", type: "cash", onBudget: false },
 ];
 
@@ -78,6 +79,19 @@ describe("aggregateTransactions", () => {
     assert.deepEqual(result.cardPayments, [{ paymentCategoryId: "visa-payment", month: "2026-09", amount: 25000 }]);
     assert.deepEqual(result.activity, []);
     assert.deepEqual(result.income, []);
+  });
+
+  it("counts a transfer between two credit cards once, from the outflow leg (design.md, 'Credit cards')", () => {
+    const result = aggregateTransactions(ACCOUNTS, [
+      tx({ accountId: "visa", date: "2026-09-20", amount: -40000, transferAccountId: "amex" }),
+      tx({ accountId: "amex", date: "2026-09-20", amount: 40000, transferAccountId: "visa" }),
+    ]);
+
+    assert.deepEqual(result.cardTransfers, [
+      { sourcePaymentCategoryId: "visa-payment", destinationPaymentCategoryId: "amex-payment", month: "2026-09", amount: 40000 },
+    ]);
+    assert.deepEqual(result.cardPayments, []);
+    assert.deepEqual(result.activity, []);
   });
 
   it("treats a transfer to an off-budget account as categorized activity, and ignores off-budget accounts", () => {
@@ -163,7 +177,7 @@ describe("budget invariant with accounts and credit cards", () => {
 
       for (let i = 0; i < 40; i++) {
         const d = date();
-        switch (Math.floor(random() * 7)) {
+        switch (Math.floor(random() * 8)) {
           case 0: // income
             add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: UNASSIGNED });
             break;
@@ -201,6 +215,16 @@ describe("budget invariant with accounts and credit cards", () => {
             const a = amount(50000);
             add({ accountId: "checking", date: d, amount: -a, transferAccountId: "wallet" });
             add({ accountId: "wallet", date: d, amount: a, transferAccountId: "checking" });
+            break;
+          }
+          case 6: {
+            // card-to-card transfer (#260), both sides
+            const forward = random() < 0.5;
+            const source = forward ? "visa" : "amex";
+            const destination = forward ? "amex" : "visa";
+            const a = amount(50000);
+            add({ accountId: source, date: d, amount: -a, transferAccountId: destination });
+            add({ accountId: destination, date: d, amount: a, transferAccountId: source });
             break;
           }
           default: {

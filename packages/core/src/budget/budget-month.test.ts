@@ -171,6 +171,40 @@ describe("computeBudgetMonth", () => {
     assert.equal(computeBudgetMonth(input, "2026-09").unassigned, -5000);
   });
 
+  it("a credit-to-credit transfer moves what the source payment category holds, into the destination's", () => {
+    const input: BudgetInput = {
+      ...EMPTY,
+      paymentCategoryIds: ["a-payment", "b-payment"],
+      assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 50000 }],
+      cardTransfers: [
+        { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 50000 },
+      ],
+    };
+
+    const result = computeBudgetMonth(input, "2026-09");
+
+    assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+    assert.equal(category(result.paymentCategories, "b-payment").available, 50000);
+  });
+
+  it("a transfer beyond what the source holds moves only what it has, never as cash overspending", () => {
+    const input: BudgetInput = {
+      ...EMPTY,
+      paymentCategoryIds: ["a-payment", "b-payment"],
+      assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 30000 }],
+      cardTransfers: [
+        { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 50000 },
+      ],
+    };
+
+    const result = computeBudgetMonth(input, "2026-09");
+
+    const a = category(result.paymentCategories, "a-payment");
+    assert.equal(a.available, 0, "the source never goes negative from a transfer it cannot fully cover");
+    assert.equal(a.cashOverspending, 0, "an uncovered transfer is never cash overspending: nothing real moved");
+    assert.equal(category(result.paymentCategories, "b-payment").available, 30000);
+  });
+
   it("rejects invalid data with a translatable error code", () => {
     assert.throws(
       () => computeBudgetMonth(EMPTY, "2026-13"),
@@ -190,6 +224,34 @@ describe("computeBudgetMonth", () => {
     );
     assert.throws(
       () => computeBudgetMonth({ ...EMPTY, income: [{ month: "2026-09", amount: 10.5 }] }, "2026-09"),
+      (error) => isValidationError(error, "invalid_amount"),
+    );
+    assert.throws(
+      () =>
+        computeBudgetMonth(
+          {
+            ...EMPTY,
+            paymentCategoryIds: ["a-payment"],
+            cardTransfers: [
+              { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "missing", month: "2026-09", amount: 100 },
+            ],
+          },
+          "2026-09",
+        ),
+      (error) => isValidationError(error, "unknown_category") && error.details["categoryId"] === "missing",
+    );
+    assert.throws(
+      () =>
+        computeBudgetMonth(
+          {
+            ...EMPTY,
+            paymentCategoryIds: ["a-payment", "b-payment"],
+            cardTransfers: [
+              { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 0 },
+            ],
+          },
+          "2026-09",
+        ),
       (error) => isValidationError(error, "invalid_amount"),
     );
   });

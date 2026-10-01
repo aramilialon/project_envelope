@@ -20,7 +20,8 @@
  *   one per account, and needs no category:
  *   - cash to cash: no budget effect;
  *   - cash to credit card: a card payment, counted once, from the card side;
- *   - credit card to credit card: not supported yet (balance transfers).
+ *   - credit card to credit card: a card-to-card transfer (design.md, "Credit cards"), counted
+ *     once, from the outflow (negative) leg.
  *
  * Limitation of this version: income on a credit card (for example cashback)
  * is not modeled as a transaction here; the API composes it from an income
@@ -34,7 +35,7 @@ import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
 import type { LocalDate } from "../month.ts";
 import { monthOf } from "../month.ts";
-import type { Activity, CardPayment, Income } from "./budget-month.ts";
+import type { Activity, CardPayment, CardTransfer, Income } from "./budget-month.ts";
 
 /** Category id that marks income: money that stays unassigned until the user assigns it. */
 export const UNASSIGNED = "unassigned";
@@ -69,6 +70,7 @@ export interface AggregatedTransactions {
   readonly income: Income[];
   readonly activity: Activity[];
   readonly cardPayments: CardPayment[];
+  readonly cardTransfers: CardTransfer[];
 }
 
 function indexAccounts(accounts: readonly BudgetAccount[]): Map<string, BudgetAccount> {
@@ -111,6 +113,7 @@ export function aggregateTransactions(
   const income: Income[] = [];
   const activity: Activity[] = [];
   const cardPayments: CardPayment[] = [];
+  const cardTransfers: CardTransfer[] = [];
 
   for (const t of transactions) {
     const account = findAccount(byId, t.accountId);
@@ -122,11 +125,18 @@ export function aggregateTransactions(
       const other = findAccount(byId, t.transferAccountId);
       if (other.onBudget) {
         if (account.type === "credit" && other.type === "credit") {
-          throw new ValidationError(
-            "unsupported_transaction",
-            `transfers between credit cards are not supported yet (transaction "${t.id}")`,
-            { transactionId: t.id },
-          );
+          // Emitted once, from the outflow (negative) leg only, so the pair is not
+          // double-counted. Both sides are on-budget credit cards, so both are guaranteed a
+          // payment category (indexAccounts already validated it).
+          if (t.amount < 0 && account.paymentCategoryId !== undefined && other.paymentCategoryId !== undefined) {
+            cardTransfers.push({
+              sourcePaymentCategoryId: account.paymentCategoryId,
+              destinationPaymentCategoryId: other.paymentCategoryId,
+              month,
+              amount: -t.amount,
+            });
+          }
+          continue;
         }
         if (account.type === "credit" && account.paymentCategoryId !== undefined) {
           // The card side of a payment: an inflow on the card is money paid to it.
@@ -188,5 +198,5 @@ export function aggregateTransactions(
     activity.push(withCard({ categoryId: t.categoryId, month, amount: t.amount }));
   }
 
-  return { income, activity, cardPayments };
+  return { income, activity, cardPayments, cardTransfers };
 }
