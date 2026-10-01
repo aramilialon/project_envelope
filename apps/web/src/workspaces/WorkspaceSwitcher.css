@@ -23,11 +23,6 @@
 
 .workspace-switcher .ws svg {
   flex-shrink: 0;
-  transition: transform 0.15s;
-}
-
-.workspace-switcher .ws[aria-expanded="true"] svg {
-  transform: rotate(180deg);
 }
 
 .workspace-switcher .menu-pop {

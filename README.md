@@ -102,4 +102,4 @@ Code, comments, documentation and commit messages are in English. The interface 
 
 ## License
 
-[AGPL-3.0](LICENSE).
+[AGPL-3.0](LICENSE). Third-party fonts and other bundled assets keep their own licenses: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

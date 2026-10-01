@@ -25,7 +25,7 @@ export default defineConfig({
         // files (#323): without this, an installed, offline PWA would lose Bricolage
         // Grotesque/Figtree the moment the network is gone, even though self-hosting already
         // solved the "no third-party server" half of the problem.
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,md}"],
       },
     }),
   ],
