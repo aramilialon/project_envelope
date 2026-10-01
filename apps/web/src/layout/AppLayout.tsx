@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { NavLink, Outlet, useParams } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import AddAccountForm from "../accounts/AddAccountForm.tsx";
 import { useAccounts } from "../accounts/useAccounts.ts";
@@ -20,6 +20,7 @@ export default function AppLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const intl = useIntl();
   const auth = useAuth();
+  const navigate = useNavigate();
   const workspaces = useWorkspaces();
   const accounts = useAccounts(workspaceId!);
   const [addingAccount, setAddingAccount] = useState(false);
@@ -50,9 +51,9 @@ export default function AppLayout() {
           <div className="ledger">
             <h5>{intl.formatMessage({ id: "layout.ledger.onBudget", defaultMessage: "On budget" })}</h5>
             {onBudget.map((account) => (
-              <div className="lr" key={account.id}>
+              <button type="button" className="lr" key={account.id} onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}>
                 <span>{account.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -60,9 +61,9 @@ export default function AppLayout() {
           <div className="ledger">
             <h5>{intl.formatMessage({ id: "layout.ledger.offBudget", defaultMessage: "Off budget" })}</h5>
             {offBudget.map((account) => (
-              <div className="lr" key={account.id}>
+              <button type="button" className="lr" key={account.id} onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}>
                 <span>{account.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
