@@ -17,6 +17,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: sign-in — Authorization Code + PKCE against the `envelope` Keycloak realm (`react-oidc-context`/`oidc-client-ts`), session handling and sign-out; `react-intl` (FormatJS, ADR 0009) wired in for the first time, `locale="en"` until `#62` adds the Italian catalog (`#49`).
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client now also sets `post.logout.redirect.uris` (needed for sign-out to work at all) (`#49`).
 - `apps/web`: end-to-end tests (Playwright, headless Chromium) — `e2e/sign-in.spec.ts` drives a real sign-in and sign-out through the real "envelope" Keycloak realm, provisioning and removing a throwaway user through the admin API for each run (`#49`, `#63`).
+- `@envelope/core`: transfers between two on-budget credit cards — `BudgetInput.cardTransfers`, moving money between the two cards' own payment categories, capped at what the source actually holds (never pushing it negative). An amount the source cannot cover is never cash overspending (nothing real moved); it only ever shows up as the source's own uncovered debt, exactly as design.md's "Credit cards" describes. `apps/api`'s transfer endpoint no longer rejects this combination (`#260`).
 
 ### Fixed
 

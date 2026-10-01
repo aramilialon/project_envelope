@@ -267,17 +267,6 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
       }
     }
 
-    const cardA = await api<{ id: string }>("POST", "/accounts", {
-      name: "Card A",
-      type: "credit_card",
-      currency: "EUR",
-    }).then((a) => a.id);
-    const cardB = await api<{ id: string }>("POST", "/accounts", {
-      name: "Card B",
-      type: "credit_card",
-      currency: "EUR",
-    }).then((a) => a.id);
-
     // split sum mismatch
     await expectRejection(
       "POST",
@@ -293,15 +282,6 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
       `/accounts/${checkingId}/transactions`,
       { occurredAt: "2026-06-10", splits: [{ categoryId: randomUUID(), amountCents: -amount(1000) }] },
       400,
-    );
-
-    // credit-to-credit transfer
-    await expectRejection(
-      "POST",
-      "/transfers",
-      { sourceAccountId: cardA, destinationAccountId: cardB, occurredAt: "2026-06-10", amountCents: amount(1000) },
-      400,
-      "unsupported_transaction",
     );
 
     // transfer to the same account

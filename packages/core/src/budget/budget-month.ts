@@ -37,6 +37,11 @@
  *    Reservations never carry over: they only ever apply to the month
  *    actually requested, not to the earlier months this function also closes
  *    out along the way.
+ * 8. A transfer between two cards' payment categories (design.md, "Credit
+ *    cards") moves money from the source into the destination, up to what the
+ *    source actually holds — never pushing it negative. A part the source
+ *    cannot cover is never cash overspending (nothing real moved): it only
+ *    ever shows up as the source's own uncovered debt (`CardBalance`).
  *
  * Coverage is decided on the month's final numbers: assigning more money to a
  * category later in the month also funds the credit card spending made
@@ -109,6 +114,20 @@ export interface ScheduledItem {
   readonly amount: Cents;
 }
 
+/**
+ * A transfer between two on-budget credit cards' own payment categories (design.md, "Credit
+ * cards"): moves up to `amount`, capped at what the source payment category actually holds, into
+ * the destination's. Unlike a `ScheduledItem`, this is a real recorded event, carrying its own
+ * `month` and walked across months exactly like an `Assignment` or a `CardPayment`.
+ */
+export interface CardTransfer {
+  readonly sourcePaymentCategoryId: string;
+  readonly destinationPaymentCategoryId: string;
+  readonly month: Month;
+  /** Always positive: the amount requested, not necessarily the amount that actually moves. */
+  readonly amount: Cents;
+}
+
 export interface BudgetInput {
   /** Regular categories. */
   readonly categoryIds: readonly string[];
@@ -121,6 +140,8 @@ export interface BudgetInput {
   readonly cardBalances?: readonly CardBalance[];
   /** Scheduled transactions not yet recorded, for the month being computed. */
   readonly scheduledItems?: readonly ScheduledItem[];
+  /** Transfers between two cards' payment categories. */
+  readonly cardTransfers?: readonly CardTransfer[];
 }
 
 export interface CategoryMonth {
@@ -239,11 +260,92 @@ function validate(input: BudgetInput, month: Month): void {
     }
     if (!regular.has(item.categoryId)) unknown(item.categoryId);
   }
+  for (const item of input.cardTransfers ?? []) {
+    assertMonth(item.month);
+    assertCents(item.amount, "card transfer");
+    if (item.amount <= 0) {
+      throw new ValidationError("invalid_amount", "a card transfer's amount must be positive", {
+        label: "card transfer",
+        value: String(item.amount),
+      });
+    }
+    if (!payment.has(item.sourcePaymentCategoryId)) unknown(item.sourcePaymentCategoryId);
+    if (!payment.has(item.destinationPaymentCategoryId)) unknown(item.destinationPaymentCategoryId);
+  }
 }
 
 interface MonthState {
   readonly categories: CategoryMonth[];
   readonly paymentCategories: CategoryMonth[];
+}
+
+/**
+ * Computes every payment category's figures for one month, including rule 8's card-to-card
+ * transfers. A first pass settles each payment category's own carried/assigned/activity before
+ * any transfer; a second pass applies this month's transfers in a stable order (source, then
+ * destination), capping each one at the source's own remaining available so a source funding
+ * several transfers in the same month runs out deterministically.
+ */
+function computePaymentCategories(
+  paymentIds: readonly string[],
+  m: Month,
+  carried: ReadonlyMap<string, Cents>,
+  movedToPayment: ReadonlyMap<string, Cents>,
+  data: {
+    assignedBy: ReadonlyMap<string, Cents>;
+    paymentsBy: ReadonlyMap<string, Cents>;
+    cardBalanceBy: ReadonlyMap<string, Cents>;
+    cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
+  },
+): CategoryMonth[] {
+  const pre = paymentIds.map((id) => {
+    const carriedOver = carried.get(id) ?? 0;
+    const assigned = data.assignedBy.get(key(id, m)) ?? 0;
+    const activity = (movedToPayment.get(id) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
+    return { id, carriedOver, assigned, activity, available: carriedOver + assigned + activity };
+  });
+  const availableById = new Map(pre.map((p): [string, Cents] => [p.id, p.available]));
+
+  const transferDelta = new Map<string, Cents>();
+  const transfers = [...(data.cardTransfersBy.get(m) ?? [])].sort((a, b) => {
+    if (a.sourcePaymentCategoryId !== b.sourcePaymentCategoryId) {
+      return a.sourcePaymentCategoryId < b.sourcePaymentCategoryId ? -1 : 1;
+    }
+    return a.destinationPaymentCategoryId < b.destinationPaymentCategoryId ? -1 : 1;
+  });
+  for (const t of transfers) {
+    const remaining = availableById.get(t.sourcePaymentCategoryId) ?? 0;
+    const moved = Math.max(0, Math.min(t.amount, remaining));
+    availableById.set(t.sourcePaymentCategoryId, remaining - moved);
+    addTo(transferDelta, t.sourcePaymentCategoryId, -moved);
+    addTo(transferDelta, t.destinationPaymentCategoryId, moved);
+  }
+
+  return pre.map((p): CategoryMonth => {
+    const delta = transferDelta.get(p.id) ?? 0;
+    const activity = p.activity + delta;
+    const available = p.available + delta;
+    const owed = data.cardBalanceBy.get(p.id);
+    // Paying more than the payment category holds spends cash that had no job: cash
+    // overspending. A card-to-card transfer never pushes `available` below zero (it is
+    // already capped above), so it never contributes to this on its own.
+    return {
+      categoryId: p.id,
+      carriedOver: p.carriedOver,
+      assigned: p.assigned,
+      activity,
+      available,
+      creditOverspending: 0,
+      cashOverspending: Math.max(0, -available),
+      // Payment categories never receive a scheduled item directly (rule 7: a scheduled
+      // card expense reserves in its own spending category, the same as a cash one).
+      reserved: 0,
+      // max(0, available): an overpayment already reduces available and next month's
+      // unassigned (cashOverspending); counting its negative available again here
+      // would double the same shortfall into both mechanisms.
+      uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
+    };
+  });
 }
 
 /**
@@ -262,6 +364,7 @@ function computeMonth(
     cardBalanceBy: ReadonlyMap<string, Cents>;
     /** Only ever non-empty for the month actually requested (rule 7: reservations do not carry over). */
     reservedBy: ReadonlyMap<string, Cents>;
+    cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
   },
 ): MonthState {
   const paymentIds = input.paymentCategoryIds ?? [];
@@ -315,30 +418,7 @@ function computeMonth(
     };
   });
 
-  const paymentCategories = paymentIds.map((id): CategoryMonth => {
-    const carriedOver = carried.get(id) ?? 0;
-    const assigned = data.assignedBy.get(key(id, m)) ?? 0;
-    const activity = (movedToPayment.get(id) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
-    const available = carriedOver + assigned + activity;
-    const owed = data.cardBalanceBy.get(id);
-    // Paying more than the payment category holds spends cash that had no job: cash overspending.
-    return {
-      categoryId: id,
-      carriedOver,
-      assigned,
-      activity,
-      available,
-      creditOverspending: 0,
-      cashOverspending: Math.max(0, -available),
-      // Payment categories never receive a scheduled item directly (rule 7: a scheduled
-      // card expense reserves in its own spending category, the same as a cash one).
-      reserved: 0,
-      // max(0, available): an overpayment already reduces available and next month's
-      // unassigned (cashOverspending); counting its negative available again here
-      // would double the same shortfall into both mechanisms.
-      uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
-    };
-  });
+  const paymentCategories = computePaymentCategories(paymentIds, m, carried, movedToPayment, data);
 
   return { categories, paymentCategories };
 }
@@ -371,11 +451,31 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   for (const b of input.cardBalances ?? []) cardBalanceBy.set(b.paymentCategoryId, b.owed);
   const reservedBy = new Map<string, Cents>();
   for (const s of input.scheduledItems ?? []) addTo(reservedBy, s.categoryId, s.amount);
-  const data = { assignedBy, activityBy, creditBy, paymentsBy, cardBalanceBy, reservedBy: new Map<string, Cents>() };
+  const cardTransfersBy = new Map<Month, CardTransfer[]>();
+  for (const t of input.cardTransfers ?? []) {
+    const list = cardTransfersBy.get(t.month) ?? [];
+    list.push(t);
+    cardTransfersBy.set(t.month, list);
+  }
+  const data = {
+    assignedBy,
+    activityBy,
+    creditBy,
+    paymentsBy,
+    cardBalanceBy,
+    reservedBy: new Map<string, Cents>(),
+    cardTransfersBy,
+  };
 
   // 2. Find the first month with data: the computation starts there.
   let firstMonth = month;
-  for (const item of [...input.income, ...input.assignments, ...input.activity, ...(input.cardPayments ?? [])]) {
+  for (const item of [
+    ...input.income,
+    ...input.assignments,
+    ...input.activity,
+    ...(input.cardPayments ?? []),
+    ...(input.cardTransfers ?? []),
+  ]) {
     if (compareMonths(item.month, firstMonth) < 0) firstMonth = item.month;
   }
 

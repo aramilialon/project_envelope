@@ -12,6 +12,7 @@ export type {
   BudgetMonth,
   CardBalance,
   CardPayment,
+  CardTransfer,
   CategoryMonth,
   Income,
   ScheduledItem,

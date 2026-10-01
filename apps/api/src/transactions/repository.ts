@@ -236,11 +236,9 @@ export interface TransferRecord {
  * Creates a transfer as two linked `transactions` rows (`transfer_id`), each
  * with a single split whose `categoryId` is null — the transfer amount
  * itself here, not income (income is the only meaning `null` gets on a
- * non-transfer transaction; see `SplitInput`).
- *
- * Card-to-card is the one combination `packages/core`'s `aggregateTransactions`
- * does not support yet (#260): rejected here too, before either leg is
- * written, instead of only failing later when the budget month is computed.
+ * non-transfer transaction; see `SplitInput`). Card-to-card is a card-to-card
+ * transfer (#260), moving money between the two cards' payment categories
+ * once the budget month is computed, same as any other transfer here.
  */
 export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput, queue?: QueueDriver): Promise<TransferRecord> {
   assertCents(input.amountCents);
@@ -253,26 +251,14 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
     });
   }
 
-  const { rows } = await db.query<{ id: string; type: string; on_budget: boolean }>(
-    "SELECT id, type, on_budget FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+  const { rows } = await db.query<{ id: string }>(
+    "SELECT id FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],
   );
-  const byId = new Map(rows.map((row): [string, { type: string; onBudget: boolean }] => [
-    row.id,
-    { type: row.type, onBudget: row.on_budget },
-  ]));
-  const source = byId.get(input.sourceAccountId);
-  const destination = byId.get(input.destinationAccountId);
-  if (!source || !destination) {
-    const missing = source ? input.destinationAccountId : input.sourceAccountId;
+  const knownIds = new Set(rows.map((row) => row.id));
+  if (!knownIds.has(input.sourceAccountId) || !knownIds.has(input.destinationAccountId)) {
+    const missing = knownIds.has(input.sourceAccountId) ? input.destinationAccountId : input.sourceAccountId;
     throw new ValidationError("unknown_account", `unknown account: "${missing}"`, { accountId: missing });
-  }
-  if (source.type === "credit_card" && source.onBudget && destination.type === "credit_card" && destination.onBudget) {
-    throw new ValidationError(
-      "unsupported_transaction",
-      "transfers between two on-budget credit cards are not supported yet (#260)",
-      { accountId: input.sourceAccountId },
-    );
   }
 
   const sourceId = await insertTransferLeg(db, input, input.sourceAccountId, -input.amountCents);
