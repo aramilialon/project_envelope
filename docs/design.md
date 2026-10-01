@@ -473,8 +473,8 @@ The light theme is a pale sea blue with white working surfaces under a mariner b
 
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
-| `desk` | `#E4ECF5` | `#121417` | Page ground, the timeline and "To do" surfaces, a row's open detail |
-| `paper` / `paper-2` | `#FFFFFF` / `#F2F6FB` | `#1A1D21` / `#20242A` | Working surfaces; group rows and the side sheet |
+| `desk` | `#E4ECF5` | `#121417` | The timeline and "To do" surfaces, a row's open detail — never the page itself |
+| `paper` / `paper-2` | `#FFFFFF` / `#F2F6FB` | `#1A1D21` / `#20242A` | The page ground and working surfaces; group rows and the side sheet |
 | `band` / `band-2` | `#173B60` / `#24507D` | `#1D4570` / `#2B5888` | The mariner band; controls and the unassigned box inside it (`band-ink`, `band-muted` for its text) |
 | `ink` / `ink-2` | `#13263A` / `#3E5267` | `#E8ECF1` / `#BDC4CD` | Text and positive amounts |
 | `muted` | `#627589` | `#8B939E` | Secondary text, zero amounts |

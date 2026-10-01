@@ -50,8 +50,9 @@ test.describe("targets and quick assign (#55)", () => {
       await page.waitForURL(`/${workspace.id}`);
 
       await page.getByRole("button", { name: "Targets" }).click();
-      // Scoped to the dialog: the sidebar's own "+ Add account" button also matches "+ Add"
-      // under Playwright's default substring name matching.
+      // Scoped to the dialog and exact: Playwright's default name matching is substring, and a
+      // workspace with more than one category without a target yet would have several "+ Add"
+      // buttons in this same dialog.
       await page.getByRole("dialog", { name: "Targets" }).getByRole("button", { name: "+ Add", exact: true }).click();
       await page.getByLabel("Amount", { exact: true }).fill("60.00");
       await page.getByRole("button", { name: "Save" }).click();

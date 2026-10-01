@@ -56,7 +56,7 @@ export default function AccountRegisterScreen() {
   const { account, accounts, categories, transactions } = state;
   const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
-  const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Ready to assign" });
+  const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" });
   const transferLabel = intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" });
 
   const chronological = [...transactions].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
@@ -257,7 +257,7 @@ export default function AccountRegisterScreen() {
         />
       )}
       {open !== null && open !== "new" && open.transaction.status === "reconciled" && (
-        <div className="side-panel" role="dialog" aria-modal="true">
+        <div className="side-sheet" role="dialog" aria-modal="true">
           <div className="panel-head">
             <h2>{open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}</h2>
             <button type="button" className="plain" onClick={() => setOpen(null)}>

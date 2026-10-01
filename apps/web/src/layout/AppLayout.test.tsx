@@ -1,10 +1,9 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
-import * as accountsApi from "../accounts/api.ts";
-import * as workspacesApi from "../workspaces/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
+import * as workspacesApi from "../workspaces/api.ts";
 import AppLayout from "./AppLayout.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -30,9 +29,8 @@ function renderLayout() {
   );
 }
 
-describe("AppLayout (#51)", () => {
-  it("shows the primary navigation, with the current screen marked current", async () => {
-    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([]);
+describe("AppLayout (#323)", () => {
+  it("shows the band's primary navigation, with the current screen marked current", async () => {
     renderLayout();
 
     expect(await screen.findByRole("link", { name: "Budget" })).toHaveAttribute("aria-current", "page");
@@ -40,58 +38,27 @@ describe("AppLayout (#51)", () => {
   });
 
   it("omits Portfolio from the primary navigation: it has no screen yet", async () => {
-    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([]);
     renderLayout();
 
     await screen.findByRole("link", { name: "Budget" });
     expect(screen.queryByText(/portfolio/i)).not.toBeInTheDocument();
   });
 
-  it("lists open on-budget and off-budget accounts in the sidebar ledger, grouped", async () => {
-    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([
-      { id: "a1", workspaceId: "ws-1", name: "Checking", type: "checking", currency: "EUR", onBudget: true, paymentCategoryId: null, closedAt: null, createdAt: "2026-01-01" },
-      { id: "a2", workspaceId: "ws-1", name: "Mortgage", type: "checking", currency: "EUR", onBudget: false, paymentCategoryId: null, closedAt: null, createdAt: "2026-01-01" },
-      { id: "a3", workspaceId: "ws-1", name: "Closed account", type: "cash", currency: "EUR", onBudget: true, paymentCategoryId: null, closedAt: "2026-02-01", createdAt: "2026-01-01" },
-    ]);
+  it("shows the current workspace's name and the signed-in user", async () => {
     renderLayout();
 
-    expect(await screen.findByText("Checking")).toBeInTheDocument();
-    expect(screen.getByText("Mortgage")).toBeInTheDocument();
-    expect(screen.queryByText("Closed account")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Famiglia" })).toBeInTheDocument();
+    expect(screen.getByText("Giorgio")).toBeInTheDocument();
   });
 
-  it("opens the add-account form from the sidebar, and refreshes the ledger once created", async () => {
-    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([]);
-    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue({
-      id: "a1",
-      workspaceId: "ws-1",
-      name: "Checking",
-      type: "checking",
-      currency: "EUR",
-      onBudget: true,
-      paymentCategoryId: null,
-      closedAt: null,
-      createdAt: "2026-01-01",
-    });
+  it("no longer shows an account ledger or '+ Add account': both moved to the Accounts screen", async () => {
     renderLayout();
 
-    fireEvent.click(await screen.findByRole("button", { name: "+ Add account" }));
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Checking" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
-
-    await waitFor(() =>
-      expect(createAccount).toHaveBeenCalledWith("t", "ws-1", {
-        name: "Checking",
-        type: "checking",
-        currency: "EUR",
-        onBudget: true,
-      }),
-    );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await screen.findByRole("link", { name: "Budget" });
+    expect(screen.queryByRole("button", { name: "+ Add account" })).not.toBeInTheDocument();
   });
 
   it("signs out through react-oidc-context when the sign-out button is clicked", async () => {
-    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([]);
     const signoutRedirect = vi.fn();
     useAuth.mockReturnValue({ user: { access_token: "t", profile: { name: "Giorgio" } }, signoutRedirect });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([WORKSPACE]);

@@ -35,6 +35,23 @@
   font-weight: 600;
 }
 
+.accounts-screen .open-row {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+  color: var(--pen);
+  cursor: pointer;
+}
+
+.accounts-screen .open-row:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .accounts-screen .type,
 .accounts-screen .budget {
   color: var(--muted);

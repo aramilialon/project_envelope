@@ -1,28 +1,31 @@
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { useOutletContext, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
+import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
+import AddAccountForm from "./AddAccountForm.tsx";
 import { closeAccount, type Account } from "./api.ts";
-import type { AccountsState } from "./useAccounts.ts";
+import { useAccounts } from "./useAccounts.ts";
 import "./AccountsScreen.css";
 
-type Context = AccountsState & { refetch(): void };
-
 /**
- * The "Accounts" screen (#51): the list behind the sidebar's own ledger, where an account is
- * closed. Creating one is the sidebar's "+ Add account" button (`AppLayout`), not duplicated
- * here, since it is meant to be reachable from every screen, not just this one. Reopening a
- * closed account has no endpoint yet (`apps/api`'s `closeAccount` is one-way), so closed
- * accounts are listed read-only.
+ * The "Accounts" screen (#51): list, create, close an account. Fetches its own data (`#323`
+ * removed the band's old account ledger and its shared fetch along with it — nothing else
+ * needs this data now, so there is no reason to lift it back into `AppLayout`). An open
+ * account's own name opens its register (`#54`); reopening a closed one has no endpoint yet, so
+ * closed accounts are listed read-only.
  */
 export default function AccountsScreen() {
   const intl = useIntl();
   const auth = useAuth();
+  const navigate = useNavigate();
   const { workspaceId } = useParams<{ workspaceId: string }>();
-  const state = useOutletContext<Context>();
+  const workspaces = useWorkspaces();
+  const state = useAccounts(workspaceId!);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [addingAccount, setAddingAccount] = useState(false);
 
   if (state.status === "loading") {
     return (
@@ -40,6 +43,7 @@ export default function AccountsScreen() {
 
   const open = state.accounts.filter((a) => a.closedAt === null);
   const closed = state.accounts.filter((a) => a.closedAt !== null);
+  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
 
   async function handleClose(account: Account) {
     const accessToken = auth.user?.access_token;
@@ -60,12 +64,14 @@ export default function AccountsScreen() {
       <h1>{intl.formatMessage({ id: "accounts.title", defaultMessage: "Accounts" })}</h1>
 
       {open.length === 0 ? (
-        <p>{intl.formatMessage({ id: "accounts.empty", defaultMessage: "No accounts yet: add one from the sidebar." })}</p>
+        <p>{intl.formatMessage({ id: "accounts.empty", defaultMessage: "No accounts yet: add one below." })}</p>
       ) : (
         <ul className="account-list">
           {open.map((account) => (
             <li key={account.id}>
-              <span className="name">{account.name}</span>
+              <button type="button" className="open-row" onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}>
+                {account.name}
+              </button>
               <span className="type">{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</span>
               <span className="budget">
                 {account.onBudget
@@ -97,6 +103,22 @@ export default function AccountsScreen() {
             ))}
           </ul>
         </>
+      )}
+
+      <button type="button" className="plain" onClick={() => setAddingAccount(true)}>
+        {intl.formatMessage({ id: "layout.addAccount", defaultMessage: "+ Add account" })}
+      </button>
+
+      {addingAccount && currentWorkspace && (
+        <AddAccountForm
+          workspaceId={workspaceId!}
+          baseCurrency={currentWorkspace.baseCurrency}
+          onClose={() => setAddingAccount(false)}
+          onCreated={() => {
+            setAddingAccount(false);
+            state.refetch();
+          }}
+        />
       )}
     </div>
   );

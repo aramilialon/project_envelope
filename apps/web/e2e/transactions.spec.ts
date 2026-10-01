@@ -47,6 +47,9 @@ test.describe("account register (#54)", () => {
       await expect(page.getByText("Groceries")).toBeVisible();
 
       // Two accounts, so the transfer form has a real destination to pick.
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+
       await page.getByRole("button", { name: "+ Add account" }).click();
       await page.getByLabel("Name").fill("Checking");
       await page.getByRole("button", { name: "Add account", exact: true }).click();

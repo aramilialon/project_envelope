@@ -105,7 +105,7 @@ export default function BudgetScreen() {
           </span>
         </div>
         <div className="rta">
-          <span className="label">{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Ready to assign" })}</span>
+          <span className="label">{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Unassigned" })}</span>
           <span className={`amt${budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(budgetMonth.unassigned)}</span>
         </div>
       </div>

@@ -85,7 +85,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
 
   if (targets.status === "loading") {
     return (
-      <div className="side-panel targets-panel" role="dialog" aria-modal="true">
+      <div className="side-sheet targets-panel" role="dialog" aria-modal="true">
         <p role="status">{intl.formatMessage({ id: "targets.loading", defaultMessage: "Loading your targets…" })}</p>
       </div>
     );
@@ -93,7 +93,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
 
   if (targets.status === "error") {
     return (
-      <div className="side-panel targets-panel" role="dialog" aria-modal="true">
+      <div className="side-sheet targets-panel" role="dialog" aria-modal="true">
         <p role="alert">{intl.formatMessage({ id: "targets.error", defaultMessage: "We could not load your targets." })}</p>
       </div>
     );
@@ -113,7 +113,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
   }
 
   return (
-    <div className="side-panel targets-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" })}>
+    <div className="side-sheet targets-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" })}>
       <div className="panel-head">
         <h2>{intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" })}</h2>
         <button type="button" className="plain" onClick={onClose}>
