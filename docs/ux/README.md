@@ -12,7 +12,7 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 | Categories and groups | shown in the budget month's own table, [`budget-month.html`](mockups/budget-month.html); listed, created, archived and reordered in the workspace-settings "Categories" tab, [`settings-first-run.html`](mockups/settings-first-run.html) | #52 |
 | Budget month | [`budget-month.html`](mockups/budget-month.html) | #53 covers the table and ready-to-assign only (no editing yet); the side panel states are `#55`–`#57`, `#217` |
 | Transaction entry and list | [`account-register.html`](mockups/account-register.html) | #54 (no payee autocomplete, "last used category" hint, or live available-amount preview; "Import"/"Reconcile" are `#59`/`#60`) |
-| Quick assign and targets | side panel states "Quick assign" / "Targets" / "Target editor", [`budget-month.html`](mockups/budget-month.html) | #55 |
+| Quick assign and targets | side panel states "Quick assign" / "Targets" / "Target editor", [`budget-month.html`](mockups/budget-month.html) | #55 (quick assign has no live preview, and only 5 of the mockup's 6 modes — "cover scheduled" has no endpoint yet) |
 | Move money between categories | side panel state "Assign / Move money", [`budget-month.html`](mockups/budget-month.html) | #56 |
 | Credit card payment category | side panel state "Card payment category", [`budget-month.html`](mockups/budget-month.html) | #57 |
 | Days of buffer | header indicator, [`budget-month.html`](mockups/budget-month.html) | #58 |

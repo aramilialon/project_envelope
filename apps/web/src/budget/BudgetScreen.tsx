@@ -3,9 +3,13 @@ import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
 
+import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
+import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { useBudgetMonth, type BudgetGroup } from "./useBudgetMonth.ts";
 import "./BudgetScreen.css";
+
+type Panel = "quickAssign" | "targets" | null;
 
 function currentMonth(): string {
   const now = new Date();
@@ -34,19 +38,20 @@ function sum(group: BudgetGroup, field: "assigned" | "activity" | "available"): 
 }
 
 /**
- * The budget month screen (#53): ready to assign, every category's assigned/activity/available
- * and rollover across months — `docs/ux/mockups/budget-month.html`'s own table, without yet
- * the parts that belong to other issues (editing an assigned amount and the Assign/Move money
- * form are `#56`; targets and quick assign `#55`; the card-debt detail `#57`; scheduled
- * reservations `#217`; days of buffer `#58`). The "Assign" button that mockup draws is left
- * out for the same reason `AppLayout`/`WorkspaceSwitcher` already leave out buttons with
- * nowhere to go yet: it opens that same `#56` form.
+ * The budget month screen (#53, #55): ready to assign, every category's assigned/activity/
+ * available and rollover across months — `docs/ux/mockups/budget-month.html`'s own table — plus
+ * "Quick assign" and "Targets", the two toolbar actions `#55` adds. Still missing: editing an
+ * assigned amount and the Assign/Move money form (`#56`), the card-debt detail (`#57`),
+ * scheduled reservations (`#217`), days of buffer (`#58`). The mockup's "Assign" button and the
+ * rest of its toolbar (Summary, Scheduled, Move money, Undo) are left out for the same reason
+ * `AppLayout`/`WorkspaceSwitcher` already leave out buttons with nowhere to go yet.
  */
 export default function BudgetScreen() {
   const intl = useIntl();
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const workspaces = useWorkspaces();
   const [month, setMonth] = useState(currentMonth);
+  const [panel, setPanel] = useState<Panel>(null);
   const state = useBudgetMonth(workspaceId!, month);
 
   if (state.status === "loading") {
@@ -105,6 +110,15 @@ export default function BudgetScreen() {
         </div>
       </div>
 
+      <div className="acts">
+        <button type="button" className="btn" onClick={() => setPanel("targets")}>
+          {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
+        </button>
+        <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
+          {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
+        </button>
+      </div>
+
       {groups.length === 0 ? (
         <p className="empty">
           {intl.formatMessage({
@@ -150,6 +164,29 @@ export default function BudgetScreen() {
             </tbody>
           ))}
         </table>
+      )}
+
+      {panel === "targets" && (
+        <TargetsPanel
+          workspaceId={workspaceId!}
+          month={month}
+          categories={budgetMonth.categories}
+          currency={currency ?? "EUR"}
+          onClose={() => setPanel(null)}
+          onChanged={() => state.refetch()}
+        />
+      )}
+      {panel === "quickAssign" && (
+        <QuickAssignPanel
+          workspaceId={workspaceId!}
+          month={month}
+          groups={groups}
+          onClose={() => setPanel(null)}
+          onDone={() => {
+            setPanel(null);
+            state.refetch();
+          }}
+        />
       )}
     </div>
   );

@@ -1,0 +1,30 @@
+.target-editor .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.target-editor .preview {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  line-height: 1.6;
+}
+
+.target-editor .field select {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.target-editor .plain.danger {
+  color: var(--red);
+  margin-left: auto;
+}

@@ -34,6 +34,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | `categories.spec.ts` | The categories screen (`#52`): reaching it from the workspace switcher's "Workspace settings", adding a group and a category, then archiving the category |
 | `budget.spec.ts` | The budget month screen (`#53`): ready to assign at zero and the empty-categories message for a brand new workspace, and month navigation |
 | `transactions.spec.ts` | The account register (`#54`): reaching it from the sidebar ledger, adding an outflow with a category and a transfer to another account, and toggling a transaction's status |
+| `targets.spec.ts` | Targets and quick assign (`#55`): setting a monthly target on a category from the "Targets" panel, seeing it reflected there, and running "Quick assign" with its default scope and mode |
 
 ## In CI
 
