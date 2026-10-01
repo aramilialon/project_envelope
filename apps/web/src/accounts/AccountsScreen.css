@@ -1,0 +1,61 @@
+.accounts-screen h1 {
+  margin: 0 0 18px;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.accounts-screen h2 {
+  margin: 24px 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.accounts-screen .account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-screen .account-list li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.accounts-screen .account-list.closed li {
+  color: var(--muted);
+}
+
+.accounts-screen .name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.accounts-screen .type,
+.accounts-screen .budget {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.accounts-screen .plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--pen);
+}
+
+.accounts-screen .plain.danger {
+  color: var(--red);
+}
+
+.accounts-screen .plain:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

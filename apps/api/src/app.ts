@@ -49,7 +49,9 @@ export function buildApp(config: Config, queue?: QueueDriver): App {
   const pool = createPool(config.databaseUrl);
 
   // The web app (#48) calls this API from its own origin; nothing else needs to.
-  void fastify.register(cors, { origin: config.webOrigin });
+  // `@fastify/cors`'s own default `methods` is "GET,HEAD,POST" (not every verb this API uses),
+  // which silently blocked every PATCH/PUT/DELETE endpoint from a real browser until #315.
+  void fastify.register(cors, { origin: config.webOrigin, methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"] });
 
   const verifier = createTokenVerifier(config);
   const authPreHandler = createAuthPreHandler(verifier);

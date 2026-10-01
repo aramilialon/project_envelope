@@ -44,7 +44,9 @@ describe("WorkspaceGate (#50)", () => {
   });
 
   it("skips straight to the only workspace when there is exactly one", async () => {
-    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([{ id: "ws-1", name: "Famiglia", role: "owner" }]);
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    ]);
     renderGate();
 
     expect(await screen.findByText("Landed on a workspace")).toBeInTheDocument();
@@ -52,8 +54,8 @@ describe("WorkspaceGate (#50)", () => {
 
   it("shows the picker when there is more than one workspace", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner" },
-      { id: "ws-2", name: "Personale", role: "owner" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR" },
     ]);
     renderGate();
 

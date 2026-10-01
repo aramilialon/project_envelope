@@ -103,8 +103,8 @@ describe("listWorkspacesForUser (#50)", () => {
     const workspaces = await listWorkspacesForUser(appPool, userId);
 
     assert.deepEqual(workspaces, [
-      { id: own.rows[0]!.id, name: "Famiglia", role: "owner" },
-      { id: alsoOwn.rows[0]!.id, name: "Personale", role: "read_only" },
+      { id: own.rows[0]!.id, name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+      { id: alsoOwn.rows[0]!.id, name: "Personale", role: "read_only", baseCurrency: "EUR" },
     ]);
     assert.ok(
       !workspaces.some((w) => w.id === notOwn.rows[0]!.id),

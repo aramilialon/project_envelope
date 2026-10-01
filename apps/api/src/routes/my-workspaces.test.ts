@@ -82,7 +82,8 @@ describe("GET /me/workspaces (#50)", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 200);
-    assert.deepEqual(response.json().workspaces, [{ id: workspaceId, name: "Famiglia", role: "owner" }]);
+    assert.deepEqual(response.json().workspaces, [
+      { id: workspaceId, name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    ]);
   });
-
 });

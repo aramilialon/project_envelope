@@ -1,0 +1,134 @@
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 360px;
+  max-width: 100vw;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 22px 24px;
+  background: var(--paper);
+  border-left: 1px solid var(--rule);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.1);
+}
+
+.side-panel .panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.side-panel .panel-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.side-panel form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.side-panel .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.side-panel .field label {
+  font-weight: 600;
+}
+
+.side-panel .field input {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.side-panel .types {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.side-panel .types legend {
+  padding: 0 0 6px;
+  font-weight: 600;
+}
+
+.side-panel .opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+}
+
+.side-panel .opt input {
+  accent-color: var(--pen);
+}
+
+.side-panel .chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.side-panel .chk input {
+  accent-color: var(--pen);
+}
+
+.side-panel .hint.bad {
+  margin: 0;
+  color: var(--red);
+}
+
+.side-panel .row-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.side-panel .btn {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.side-panel .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.side-panel .btn.primary {
+  border-color: var(--pen);
+  background: var(--pen);
+  color: var(--pen-ink);
+  font-weight: 600;
+}
+
+.side-panel .plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}

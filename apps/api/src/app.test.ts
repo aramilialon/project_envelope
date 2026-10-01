@@ -187,4 +187,18 @@ describe("CORS (#48)", () => {
       await otherApp.close();
     }
   });
+
+  it("allows PATCH, PUT and DELETE preflight requests, not just @fastify/cors's own GET/HEAD/POST default (#315)", async () => {
+    const response = await app.fastify.inject({
+      method: "OPTIONS",
+      url: "/workspaces/00000000-0000-0000-0000-000000000000/accounts/00000000-0000-0000-0000-000000000000/close",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "authorization",
+      },
+    });
+    assert.equal(response.statusCode, 204);
+    assert.equal(response.headers["access-control-allow-methods"], "GET, HEAD, POST, PATCH, PUT, DELETE");
+  });
 });
