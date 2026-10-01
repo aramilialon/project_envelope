@@ -36,11 +36,11 @@
 
 | Sign in | Choose a workspace |
 | --- | --- |
-| [![The sign-in screen: a wordmark, a tagline and a single "Sign in" button — the app owns no credentials of its own, so this is a redirect, not a login form](docs/ux/screenshots/sign-in.png)](docs/ux/mockups/sign-in.html) | [![Choosing which workspace to work in, with two to pick from; skipped automatically when there is only one](docs/ux/screenshots/workspace-picker.png)](docs/ux/README.md#screen-inventory) |
+| [![The sign-in screen: a wordmark, a tagline and a single "Sign in" button — the app owns no credentials of its own, so this is a redirect, not a login form](docs/ux/screenshots/sign-in.png)](docs/ux/screenshots/sign-in.png) | [![Choosing which workspace to work in, with two to pick from; skipped automatically when there is only one](docs/ux/screenshots/workspace-picker.png)](docs/ux/screenshots/workspace-picker.png) |
 | **Account register** | **Reconciliation** |
-| [![An account register with cleared, pending and reconciled transactions, and a split transaction open for editing](docs/ux/screenshots/account-register.png)](docs/ux/mockups/account-register.html) | [![Reconciliation: the statement balance, the difference and a clue that points to the pending transaction that explains it](docs/ux/screenshots/reconciliation.png)](docs/ux/mockups/import-reconciliation.html) |
+| [![An account register with cleared, pending and reconciled transactions, and a split transaction open for editing](docs/ux/screenshots/account-register.png)](docs/ux/screenshots/account-register.png) | [![Reconciliation: the statement balance, the difference and a clue that points to the pending transaction that explains it](docs/ux/screenshots/reconciliation.png)](docs/ux/screenshots/reconciliation.png) |
 | **Portfolio** | **On the phone** |
-| [![A portfolio with its value against contributions over twelve months, the allocation bars against targets and thresholds, and the positions](docs/ux/screenshots/portfolio.png)](docs/ux/mockups/portfolio.html) | [![Three phone screens: the budget month, an account register and a portfolio with a small chart](docs/ux/screenshots/phones.png)](docs/ux/mockups/) |
+| [![A portfolio with its value against contributions over twelve months, the allocation bars against targets and thresholds, and the positions](docs/ux/screenshots/portfolio.png)](docs/ux/screenshots/portfolio.png) | [![Three phone screens: the budget month, an account register and a portfolio with a small chart](docs/ux/screenshots/phones.png)](docs/ux/screenshots/phones.png) |
 
 "Choose a workspace" is the one screenshot here from the real running app, not a mockup: no dedicated full-page mockup exists yet for it (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher), and it is still in English — the Italian catalog is `#62`'s own job.
 
