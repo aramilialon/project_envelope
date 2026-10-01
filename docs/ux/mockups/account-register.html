@@ -384,12 +384,58 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 .band2 .me2{border:0;background:transparent;color:var(--band-muted)}
 .desk > .side .brand,.desk > .side .nav,.desk > .side .me{display:none}
 .desk > .side{padding-top:22px;background:var(--paper-2)}
+/* Account header, timeline and to-do list (same components as the budget month) */
+.acc-head{align-items:flex-end}
+.acc-head .bal{display:none}
+.acc-bal{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}
+.acc-bal small{font-size:13px;color:var(--muted)}
+.acc-bal .big{font-family:var(--display);font-stretch:88%;font-size:46px;line-height:1;font-weight:700;letter-spacing:-.8px}
+.acc-facts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 20px;color:var(--muted);font-size:13px}
+.acc-facts b{color:var(--ink);font-weight:600}
+.desk:not(.nopanel) .acc-facts,.desk:not(.nopanel) .acc-bal small{display:none}
+.desk:not(.nopanel) .acc-bal .big{font-size:34px}
+.insight{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:22px;align-items:start;margin-top:22px}
+.desk:not(.nopanel) .insight{display:none}
+.time,.todo{border-radius:14px;background:var(--desk);padding:16px 18px 12px}
+.time h5,.todo h5{display:flex;justify-content:space-between;align-items:baseline;margin:0 0 6px;font-family:var(--display);font-size:17px;font-weight:700}
+.todo h5 span{font-family:var(--font);font-size:13px;font-weight:500;color:var(--muted)}
+.time svg{display:block;width:100%;height:auto}
+.t-note{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.t-axis{stroke:var(--ink-2);stroke-width:1.5}
+.t-day{fill:var(--muted);font-size:11px}
+.t-future{fill:var(--paper);opacity:.55}
+.t-today{stroke:var(--pen);stroke-width:2}
+.t-today-l{fill:var(--pen);font-size:12px;font-weight:700}
+.t-stem{stroke-width:5;stroke-linecap:round}
+.t-stem.t-out{stroke:var(--ink)}
+.t-stem.t-out.plan{stroke:var(--ink-2);stroke-dasharray:2 3;stroke-linecap:butt}
+.t-stem.t-in{stroke:var(--pen)}
+.t-stem.t-in.plan{stroke-dasharray:2 3;stroke-linecap:butt}
+.t-stem.t-late{stroke:var(--hatch);stroke-dasharray:3 3;stroke-linecap:butt}
+.t-l{font-size:12px;fill:var(--ink-2);paint-order:stroke;stroke:var(--desk);stroke-width:4px;stroke-linejoin:round}
+.t-l.t-in{fill:var(--pen);font-weight:700}
+.t-l.t-late{fill:var(--warn);font-weight:700}
+.todo-i{display:grid;grid-template-columns:18px minmax(0,1fr) auto;gap:10px;align-items:start;width:100%;padding:9px 0;border:0;border-bottom:1px solid var(--rule);background:transparent;text-align:left;color:inherit;text-decoration:none}
+.todo-i:last-of-type{border-bottom:0}
+.todo-i b{font-weight:600}
+.todo-i small{display:block;color:var(--muted);font-size:12.5px}
+.todo-i > .n{text-align:right;font-weight:600}
+.todo-i .go-l{display:block;color:var(--pen);font-weight:600;font-size:12.5px}
+.todo-i:hover b{text-decoration:underline;text-underline-offset:3px}
+.dot{width:13px;height:13px;margin-top:4px;border-radius:50%;border:2px solid var(--muted)}
+.dot.r{border-color:var(--red);background:var(--red)}
+.dot.w{border-color:var(--hatch);background:var(--hatch-bg)}
+.ph-todo{margin-top:10px;padding:10px 14px 6px;border-radius:14px;background:var(--desk)}
+.ph-todo h5{display:flex;justify-content:space-between;align-items:baseline;margin:0;font-family:var(--display);font-size:16px;font-weight:700}
+.ph-todo h5 span{font-family:var(--font);font-size:12.5px;font-weight:500;color:var(--muted)}
+.ph-todo .todo-i{padding:8px 0}
+.ph-todo .go-l{display:none}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories or tick transactions as cleared. On the phone: the accounts list, the register and quick entry.</p>
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories, tick transactions as cleared, or work through the "Da fare" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
     <div class="views" role="tablist" aria-label="Vista">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -432,12 +478,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
               <h3>Conto corrente</h3>
               <div class="sub">Conto in budget · ultima riconciliazione il 5 settembre, <span class="n">1.780,73 €</span></div>
             </div>
-            <div class="bal" aria-label="Saldi del conto">
-              <div><small>Verificato</small><span class="n" id="b-cleared"></span></div>
-              <div><small>In attesa</small><span class="n" id="b-pending"></span></div>
-              <div class="main"><small>Saldo</small><span class="n" id="b-total"></span></div>
+            <div class="acc-bal" aria-label="Saldi del conto">
+              <small>Saldo</small>
+              <span class="big n" id="b-total"></span>
+              <div class="acc-facts"><span>Verificato <b class="n" id="b-cleared"></b></span><span>In attesa <b class="n" id="b-pending"></b></span><span>Previsto a fine mese <b class="n" id="b-proj"></b></span></div>
             </div>
           </div>
+
+          <div class="insight" id="insight"></div>
 
           <div class="reg-tools">
             <div class="tabs" role="group" aria-label="Filtra le transazioni" id="reg-filters"></div>
@@ -571,10 +619,106 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     return hay.indexOf(state.q.toLowerCase()) >= 0;
   }
 
+  // ---- Scheduled transactions of this account (the same ones the budget month shows), timeline and to-do list
+  var TODAY = 25;
+  var SCHED = [
+    { id: 's-vet', payee: 'Clinica veterinaria', memo: 'richiamo del vaccino', cat: 'vet', amount: -4500, d: 22 },
+    { id: 's-stip', payee: 'Stipendio di Anna', amount: 245000, d: 27, income: true },
+    { id: 's-cald', payee: 'Tecnico caldaia', memo: 'revisione annuale', cat: 'manut', amount: -9000, d: 29 }
+  ];
+  var LABEL = { 'Banca, rata mutuo': 'mutuo', 'Operatore telefonico': 'telefono', 'Idraulico': 'idraulico', 'Fornitore energia': 'energia', 'Supermercato': 'spesa', 'Clinica veterinaria': 'veterinario', 'Grande magazzino': 'grande magazzino', 'Stipendio': 'stipendio', 'Stipendio di Anna': 'stipendio', 'Tecnico caldaia': 'caldaia' };
+  function lab(t) {
+    if (t.transfer) return ACC[t.transfer].type === 'credit' ? ACC[t.transfer].name : 'piano di accumulo';
+    return LABEL[t.payee] || t.payee.toLowerCase();
+  }
+  function euros(c) { return (Math.abs(c) / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
+  function events() {
+    var list = [];
+    TXS.forEach(function (t) { list.push({ d: Number(t.date.slice(8)), kind: t.amount > 0 ? 'in' : 'out', amount: Math.abs(t.amount), label: lab(t) }); });
+    SCHED.forEach(function (x) { list.push({ d: x.d, kind: x.d < TODAY ? 'late' : x.income ? 'in-plan' : 'plan', amount: Math.abs(x.amount), label: lab(x) }); });
+    return list;
+  }
+  function timelineSvg() {
+    var W = 660, H = 200, AX = 100, X0 = 20, X1 = W - 20;
+    function x(d) { return X0 + (d - 1) * (X1 - X0) / 29; }
+    function len(c) { return Math.min(72, Math.sqrt(c / 100) * 1.15 + 10); }
+    var byDay = {};
+    events().forEach(function (e) {
+      var k = e.kind + ':' + e.d;
+      if (!byDay[k]) byDay[k] = { d: e.d, kind: e.kind, amount: 0, labels: [] };
+      byDay[k].amount += e.amount; byDay[k].labels.push(e.label);
+    });
+    var list = Object.keys(byDay).map(function (k) { return byDay[k]; });
+    var desc = list.slice().sort(function (a, b) { return a.d - b.d; }).map(function (e) {
+      return e.d + ' ' + e.labels.join(' e ') + ' ' + euros(e.amount) + ' €' + (e.kind === 'late' ? ' da registrare' : e.kind === 'plan' || e.kind === 'in-plan' ? ' in programma' : '');
+    }).join('; ');
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc('Settembre giorno per giorno: ' + desc) + '">';
+    var tx = x(TODAY);
+    out += '<rect x="' + tx + '" y="4" width="' + (X1 - tx + 6) + '" height="' + (H - 18) + '" class="t-future"/>';
+    out += '<line x1="' + X0 + '" y1="' + AX + '" x2="' + X1 + '" y2="' + AX + '" class="t-axis"/>';
+    [1, 8, 15, 22, 30].forEach(function (d) { out += '<text x="' + x(d) + '" y="' + (H - 3) + '" text-anchor="middle" class="t-day">' + d + '</text>'; });
+    out += '<line x1="' + tx + '" y1="6" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - 6) + '" y="16" class="t-today-l" text-anchor="end">oggi, ' + TODAY + '</text>';
+    // Labels: the four largest recorded outflows, everything still to come, and income.
+    var big = list.filter(function (e) { return e.kind === 'out'; }).sort(function (a, b) { return b.amount - a.amount; }).slice(0, 4);
+    var lanes = { up: [], down: [] };
+    list.sort(function (a, b) { return a.d - b.d; }).forEach(function (e) {
+      var up = e.kind === 'in' || e.kind === 'in-plan', L = len(e.amount), y2 = up ? AX - L : AX + L;
+      var cls = e.kind === 'out' ? 't-out' : e.kind === 'in' ? 't-in' : e.kind === 'in-plan' ? 't-in plan' : e.kind === 'late' ? 't-late' : 't-out plan';
+      out += '<line x1="' + x(e.d) + '" y1="' + AX + '" x2="' + x(e.d) + '" y2="' + y2 + '" class="t-stem ' + cls + '"/>';
+      if (e.kind === 'out' && big.indexOf(e) < 0) return;
+      var text = e.labels.join(', ') + ' ' + (up ? '+' : '') + euros(e.amount) + (e.kind === 'late' ? ', da registrare' : '');
+      var lane = up ? lanes.up : lanes.down, ly = y2 + (up ? 4 : 0), lx = x(e.d) + 6, w = text.length * (up || e.kind === 'late' ? 7 : 6.4);
+      // A label never crosses the "today" line: past events end before it, future ones start after it.
+      var past = e.kind === 'out' || e.kind === 'in' || e.kind === 'late';
+      if (past && lx + w > tx - 4) lx = x(e.d) - 6 - w;
+      if (!past && lx + w > W - 2) { lx = Math.max(tx + 4, W - 2 - w); ly = up ? y2 - 6 : y2 + 14; }
+      for (var i = 0; i < lane.length; i++) { if (lx < lane[i].x2 + 4 && lx + w > lane[i].x1 - 4 && Math.abs(ly - lane[i].y) < 13) { ly += up ? -13 : 13; i = -1; } }
+      lane.push({ x1: lx, x2: lx + w, y: ly });
+      out += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" class="t-l ' + cls + '">' + esc(text) + '</text>';
+    });
+    return out + '</svg>';
+  }
+  function todos() {
+    var list = [], b = balances();
+    SCHED.filter(function (x) { return x.d < TODAY; }).forEach(function (x) {
+      list.push({ dot: '', title: 'Registrare ' + x.payee, sub: 'programmata del ' + dLabel('2026-09-' + (x.d < 10 ? '0' : '') + x.d) + ', non ancora nel conto', amount: Math.abs(x.amount), attr: ' data-tdrec="' + x.id + '"', verb: 'Registra' });
+    });
+    TXS.filter(function (t) { return t.status === 'pending'; }).forEach(function (t) {
+      list.push({ dot: '', title: 'Verificare ' + t.payee, sub: dLabel(t.date) + ', ancora in attesa della banca', amount: Math.abs(t.amount), attr: ' data-toggle="' + t.id + '"', verb: 'Segna' });
+    });
+    var nCleared = TXS.filter(function (t) { return t.status === 'cleared'; }).length;
+    if (nCleared) list.push({ dot: '', title: 'Riconciliare il conto', sub: nCleared + ' verificate dopo il 5 set', amount: b.cleared, href: 'import-reconciliation.html', verb: 'Riconcilia' });
+    return list;
+  }
+  function todoItems(list, max) {
+    return list.slice(0, max || list.length).map(function (t) {
+      var inner = '<span class="dot ' + t.dot + '"></span><span><b>' + esc(t.title) + '</b>' + (max ? '' : '<small>' + esc(t.sub) + '</small>') + '</span><span class="n">' + f(t.amount) + '<small class="go-l">' + t.verb + '</small></span>';
+      return t.href ? '<a class="todo-i" href="' + t.href + '">' + inner + '</a>' : '<button type="button" class="todo-i"' + t.attr + '>' + inner + '</button>';
+    }).join('');
+  }
+  function todoHtml(max) {
+    var list = todos();
+    if (!list.length) return '<h5>Da fare</h5><p class="explain">Niente da sistemare su questo conto.</p>';
+    return '<h5>Da fare <span>' + (list.length === 1 ? '1 cosa' : list.length + ' cose') + '</span></h5>' + todoItems(list, max) +
+      (max && list.length > max ? '<p class="explain" style="font-size:13px">e altre ' + (list.length - max) + '</p>' : '');
+  }
+  function projected() {
+    var p = balances().total;
+    SCHED.forEach(function (x) { p += x.amount; });
+    return p;
+  }
+  function renderInsight() {
+    el('b-proj').textContent = f(projected());
+    el('insight').innerHTML = '<div class="time"><h5>Settembre, giorno per giorno</h5>' + timelineSvg() +
+      '<p class="t-note">Entrate sopra la linea, uscite sotto; tratteggiato è quello che deve ancora arrivare, e il segno cresce con l’importo.</p></div>' +
+      '<div class="todo">' + todoHtml() + '</div>';
+  }
+
   function renderRegister() {
     var b = balances();
     el('b-cleared').textContent = f(b.cleared); el('b-pending').textContent = f(b.pending); el('b-total').textContent = f(b.total);
     el('side-bal').textContent = plainN(b.total);
+    renderInsight();
     var counts = { all: TXS.length, pending: 0, cleared: 0, locked: 0 };
     TXS.forEach(function (t) { counts[t.status]++; });
     var F = [['all', 'Tutte', 'neutral'], ['pending', 'In attesa', 'under'], ['cleared', 'Verificate', 'neutral'], ['locked', 'Riconciliate', 'neutral']];
@@ -624,8 +768,13 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     });
     return out;
   }
+  function draftFromSched(x) {
+    var d = draftFrom(null);
+    d.payee = x.payee; d.amountStr = amountStr(Math.abs(x.amount)); d.cat = x.cat || RTA_ID; d.memo = x.memo || ''; d.date = '2026-09-' + (x.d < 10 ? '0' : '') + x.d; d.sched = x.id;
+    return d;
+  }
   function draftFrom(t) {
-    if (!t) return { id: null, kind: 'out', date: '2026-09-26', payee: '', amountStr: '', cat: '', transfer: '', memo: '', cleared: false, split: false, lines: [] };
+    if (!t) return { id: null, kind: 'out', date: '2026-09-25', payee: '', amountStr: '', cat: '', transfer: '', memo: '', cleared: false, split: false, lines: [] };
     return {
       id: t.id, kind: t.transfer ? 'transfer' : t.amount > 0 ? 'in' : 'out', date: t.date, payee: t.payee,
       amountStr: amountStr(Math.abs(t.amount)), cat: t.cat || '', transfer: t.transfer || '', memo: t.memo || '', cleared: t.status !== 'pending',
@@ -738,6 +887,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       if (!d.split) LAST_CAT[t.payee] = d.cat;
     }
     if (!d.id) TXS.push(t);
+    if (d.sched) SCHED = SCHED.filter(function (x) { return x.id !== d.sched; });
     state.sel = state.where === 'desk' ? t.id : null; state.draft = null; state.errors = [];
     if (state.where === 'ph') ph.screen = 'register';
     renderAll();
@@ -790,7 +940,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function phRegisterHtml() {
     var b = balances(), rows = sorted().reverse().filter(phMatches), html = '', day = null;
     rows.forEach(function (t) {
-      if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === '2026-09-26' ? 'Oggi' : LONGDAY.format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
+      if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === '2026-09-25' ? 'Oggi' : LONGDAY.format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
       var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       html += '<div class="ph-tx"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
         '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
@@ -801,7 +951,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     return '<div class="ph-h"><button type="button" class="ph-back" data-phscreen="accounts">‹ Conti</button><button type="button" class="btn primary" data-phnew="1">+ Nuova</button></div>' +
       '<div class="ph-h" style="margin-top:6px"><h3>Conto corrente</h3></div>' +
       '<div class="ph-bal"><b class="n">' + f(b.total) + '</b><span class="n">verificato ' + f(b.cleared) + ' · in attesa ' + f(b.pending) + '</span></div>' +
-      '<label class="ph-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Cerca"></label>' +
+      '<div class="ph-todo">' + todoHtml(2) + '</div>' +
+      '<label class="ph-search" style="margin-top:12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Cerca"></label>' +
       '<div class="ph-chips">' + chips + '</div>' + html;
   }
   function phAccountsHtml() {
@@ -853,6 +1004,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       state.where = 'desk'; state.sel = d.open; state.draft = draftFrom(TXS.filter(function (x) { return x.id === d.open; })[0]); state.errors = [];
       return renderAll();
     }
+    if (d.tdrec) {
+      var sc = SCHED.filter(function (x) { return x.id === d.tdrec; })[0];
+      state.where = 'desk'; state.sel = null; state.draft = draftFromSched(sc); state.errors = []; renderAll(); var pa = el('tx-amt'); if (pa) pa.focus(); return;
+    }
     if (d.close) { state.sel = null; state.draft = null; state.errors = []; return renderAll(); }
     if (d.unlock) { state.draft.locked = false; var tt = TXS.filter(function (x) { return x.id === state.draft.id; })[0]; tt.status = 'cleared'; return renderAll(); }
     if (d.split === 'on') {
@@ -886,7 +1041,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var cents = qeCents();
       CAT[qe.cat].avail -= cents;
       qe.done = { amount: -cents, payee: qe.payee || 'Spesa', cat: CAT[qe.cat].name, after: CAT[qe.cat].avail, acc: { visa: 'Visa', cc: 'Conto corrente', cont: 'Contanti' }[qe.acc] };
-      if (qe.acc === 'cc') TXS.push(tx({ date: '2026-09-26', payee: qe.done.payee, amount: -cents, cat: qe.cat, status: 'pending' }));
+      if (qe.acc === 'cc') TXS.push(tx({ date: '2026-09-25', payee: qe.done.payee, amount: -cents, cat: qe.cat, status: 'pending' }));
       return renderAll();
     }
   });

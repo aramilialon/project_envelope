@@ -30,6 +30,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Changed
 
 - Documentation: a new visual design. A mariner band replaces the sidebar on every screen; the budget month shows the month as a timeline of days next to a "To do" list, and each category as a bar (given, spent, reserved, overspent past the end) instead of a table of assigned, activity and available; a category's detail opens in its own row and month-wide tools in a side sheet. New palette (pale sea blue, graphite in the dark theme), Bricolage Grotesque and Figtree instead of Archivo, sentence-case labels. All mockups, `docs/design.md` ("User interface"), `docs/ux/README.md` and the README screenshots follow it.
+- Documentation: the account register takes on the budget month's visual language — the balance large in the display face with the projected balance at month end, the same timeline for the account's own days, and a "To do" list (record an overdue scheduled transaction, mark a pending one as cleared, reconcile) instead of a bordered row of three balances; the mockup, `docs/design.md`, `docs/ux/README.md` and the README screenshots are updated.
 
 ### Fixed
 
