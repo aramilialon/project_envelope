@@ -7,9 +7,12 @@ import "./WorkspaceSwitcher.css";
 
 /**
  * The sidebar's workspace switcher (#50, `docs/ux/mockups/settings-first-run.html`): a button
- * naming the current workspace, opening a popover listing every workspace the user belongs to.
- * "Workspace settings" and "+ New workspace", also drawn in that mockup, are left out — neither
- * feature exists yet, and a button that does nothing is worse than no button.
+ * naming the current workspace, opening a popover listing every workspace the user belongs to,
+ * and "Workspace settings" (#52 gives it its first real destination, the categories screen;
+ * only one settings section exists so far, so the button goes straight to it rather than an
+ * empty settings shell with a single tab). "+ New workspace", also drawn in that mockup, stays
+ * left out — that feature still has no screen, and a button that does nothing is worse than no
+ * button.
  */
 export default function WorkspaceSwitcher() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -48,6 +51,17 @@ export default function WorkspaceSwitcher() {
               {workspace.id === workspaceId ? " ✓" : ""}
             </button>
           ))}
+          <hr />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              navigate(`/${workspaceId}/settings/categories`);
+            }}
+          >
+            {intl.formatMessage({ id: "workspaceSwitcher.settings", defaultMessage: "Workspace settings" })}
+          </button>
         </div>
       )}
     </div>

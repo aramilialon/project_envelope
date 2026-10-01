@@ -8,8 +8,8 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 | --- | --- | --- |
 | Sign-in | [`sign-in.html`](mockups/sign-in.html) | #49 |
 | Workspace switcher | part of the sidebar in [`budget-month.html`](mockups/budget-month.html) | #50 |
-| Accounts | ledger list in the sidebar, [`budget-month.html`](mockups/budget-month.html); full register in [`account-register.html`](mockups/account-register.html) | #51 |
-| Categories and groups | the budget month's own table, [`budget-month.html`](mockups/budget-month.html) | #52 |
+| Accounts | ledger list and "+ Add account" in the sidebar, [`budget-month.html`](mockups/budget-month.html); full register in [`account-register.html`](mockups/account-register.html); listing and closing one composed from the workspace-settings account list in [`settings-first-run.html`](mockups/settings-first-run.html) | #51 |
+| Categories and groups | shown in the budget month's own table, [`budget-month.html`](mockups/budget-month.html); listed, created, archived and reordered in the workspace-settings "Categories" tab, [`settings-first-run.html`](mockups/settings-first-run.html) | #52 |
 | Budget month | [`budget-month.html`](mockups/budget-month.html) | #53 |
 | Transaction entry and list | [`account-register.html`](mockups/account-register.html) | #54 |
 | Quick assign and targets | side panel states "Quick assign" / "Targets" / "Target editor", [`budget-month.html`](mockups/budget-month.html) | #55 |
@@ -20,7 +20,7 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 | Reconciliation | [`import-reconciliation.html`](mockups/import-reconciliation.html) | #60 |
 | Instant notifications and unresolved problems | "Notices" line and toast, [`budget-month.html`](mockups/budget-month.html) | #61 |
 | Scheduled transactions panel | side panel state "Scheduled", [`budget-month.html`](mockups/budget-month.html) | #217 |
-| Settings and first run | [`settings-first-run.html`](mockups/settings-first-run.html) | (0.1.8 and later) |
+| Settings and first run | [`settings-first-run.html`](mockups/settings-first-run.html) | the "Categories" tab lands early, with #51/#52; the rest is (0.1.8 and later) |
 | Portfolio | [`portfolio.html`](mockups/portfolio.html) | (0.2.x) |
 
 Sign-in is the one screen this issue adds: every other screen above already had a mockup before 0.1.7 started. A screen whose 0.1.7 issue is not in this table has no mockup yet — stop and ask for one, or propose it in its own pull request (`CLAUDE.md`).

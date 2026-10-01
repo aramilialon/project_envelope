@@ -22,6 +22,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the workspace switcher — `react-router-dom` (`/` picks a workspace, `/:workspaceId` is everything after), skipping straight through to the only workspace when there is just one, a full-page picker when there are several, and a sidebar switcher popover once one is chosen. New end-to-end test (`e2e/workspaces.spec.ts`) (`#50`).
 - `apps/api`: `GET /me/workspaces` now also reports each workspace's `baseCurrency` (`#51`).
 - `apps/web`: the persistent sidebar (`AppLayout`) and the accounts screen — primary navigation (Budget, Accounts), the account ledger with "+ Add account", and a dedicated screen to list, create and close an account; the creation form has no dedicated mockup, so it is composed from the onboarding's first-account step and the workspace-settings account list instead. New end-to-end test (`e2e/accounts.spec.ts`) (`#51`).
+- `apps/web`: the categories and groups screen — reached from the workspace switcher's new "Workspace settings" entry, `/:workspaceId/settings/categories` lists every group and its categories, creates, archives (one-way, no restore yet) and reorders both. Composed from the workspace-settings "Categories" tab mockup, since no dedicated screen mockup exists; a newly created group or category is named upfront rather than renamed in place afterward, since `apps/api` has no rename endpoint. New end-to-end test (`e2e/categories.spec.ts`) (`#52`).
 
 ### Fixed
 

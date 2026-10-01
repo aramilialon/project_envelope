@@ -19,6 +19,7 @@ function renderSwitcher() {
     <MemoryRouter initialEntries={["/ws-1"]}>
       <Routes>
         <Route path="/:workspaceId" element={<WorkspaceSwitcher />} />
+        <Route path="/:workspaceId/settings/categories" element={<p>Landed on workspace settings</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -35,11 +36,18 @@ describe("WorkspaceSwitcher (#50)", () => {
     expect(screen.getByRole("menuitem", { name: "Personale" })).toBeInTheDocument();
   });
 
-  it("omits workspace settings and a 'new workspace' action: neither feature exists yet", async () => {
+  it("offers workspace settings, going straight to categories (#52)", async () => {
     renderSwitcher();
     fireEvent.click(await screen.findByRole("button", { name: "Famiglia" }));
 
-    expect(screen.queryByText(/settings/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Workspace settings" }));
+    expect(await screen.findByText("Landed on workspace settings")).toBeInTheDocument();
+  });
+
+  it("still leaves out a 'new workspace' action: that feature has no screen yet", async () => {
+    renderSwitcher();
+    fireEvent.click(await screen.findByRole("button", { name: "Famiglia" }));
+
     expect(screen.queryByText(/new workspace/i)).not.toBeInTheDocument();
   });
 });

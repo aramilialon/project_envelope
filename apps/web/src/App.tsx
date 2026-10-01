@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom";
 
 import AccountsScreen from "./accounts/AccountsScreen.tsx";
 import SignIn from "./auth/SignIn.tsx";
+import CategoriesScreen from "./categories/CategoriesScreen.tsx";
 import Home from "./Home.tsx";
 import AppLayout from "./layout/AppLayout.tsx";
 import WorkspaceGate from "./workspaces/WorkspaceGate.tsx";
@@ -20,6 +21,7 @@ export default function App() {
       <Route path="/:workspaceId" element={<AppLayout />}>
         <Route index element={<Home />} />
         <Route path="accounts" element={<AccountsScreen />} />
+        <Route path="settings/categories" element={<CategoriesScreen />} />
       </Route>
     </Routes>
   );
