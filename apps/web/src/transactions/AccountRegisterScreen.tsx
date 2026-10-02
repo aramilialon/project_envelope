@@ -1,10 +1,11 @@
-import { formatMoney } from "@envelope/core";
+import { currencyDecimals, formatMoney } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
+import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { categoryLabel } from "./categoryLabel.ts";
@@ -25,14 +26,68 @@ function rowLabel(transaction: Transaction, categories: Parameters<typeof catego
   return categoryLabel(transaction.splits[0]?.categoryId ?? null, categories, unassignedLabel);
 }
 
+/** "11 Oct" — never the raw "YYYY-MM-DD" the API returns. */
+function shortDate(iso: string, locale: string): string {
+  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
+  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/** A day-group header on the phone layout: "Friday, 9 October". */
+function longDay(iso: string, locale: string): string {
+  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
+  return new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/** The browser's own local "today", for the phone list's "Today" day header — a display nicety, not business logic. */
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/** A plain formatted number, no currency symbol — the desktop table's own Outflow/Inflow/Balance cells, whose column header already says what they are. */
+function plainAmount(cents: number, locale: string, currency: string): string {
+  const decimals = currencyDecimals(currency);
+  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(cents / 10 ** decimals);
+}
+
+function StatusIcon({ status }: { readonly status: TransactionStatus }) {
+  if (status === "reconciled") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="5" y="11" width="14" height="10" rx="1" />
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+      </svg>
+    );
+  }
+  if (status === "cleared") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" />
+        <path d="m8 12.5 2.6 2.6L16.5 9" stroke="var(--paper)" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  );
+}
+
 /**
- * The account register (#54): reached by clicking an account in the sidebar ledger
- * (`AppLayout`). Balances, filter tabs with counts, search, the transaction list with a running
- * balance (newest first), and the "+ New transaction"/edit side panel (`TransactionForm`) for
- * outflows, inflows, transfers and splits. "Import" and "Reconcile", also drawn in the mockup,
- * are left out — they have no screen yet (`#59`, `#60`), the same reasoning `AppLayout` already
- * uses for its own omitted buttons. A reconciled transaction opens a read-only summary instead
- * of the form: `apps/api` has no endpoint to unlock one yet.
+ * The account register (#54, #323, #333): reached from the Accounts screen. Balances, filter
+ * tabs with counts, search, the transaction list with a running balance (newest first), and the
+ * "+ New transaction"/edit side panel (`TransactionForm`) for outflows, inflows, transfers and
+ * splits. "Import" and "Reconcile", also drawn in the mockup, are left out — they have no screen
+ * yet (`#59`, `#60`). A reconciled transaction opens a read-only summary instead of the form:
+ * `apps/api` has no endpoint to unlock one yet.
+ *
+ * Two list renderings share the same data (`visible`): a table at desktop width, and below
+ * 600px a day-grouped list (`docs/ux/mockups/account-register.html`'s own "Phone" view) — a
+ * table simply has no narrow-width shape of its own, unlike the budget month's bars. Which one
+ * is visible is plain CSS (`AccountRegisterScreen.css`), not a `matchMedia` check, so there is no
+ * flash of the wrong one while React decides. The projected balance at month end (`#337`) and
+ * this account's own timeline/"To do" (`#337`) are not this issue's job.
  */
 export default function AccountRegisterScreen() {
   const intl = useIntl();
@@ -40,6 +95,7 @@ export default function AccountRegisterScreen() {
   const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   const workspaces = useWorkspaces();
   const state = useAccountRegister(workspaceId!, accountId!);
+  const isPhone = usePhoneWidth();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState<"new" | { transaction: Transaction } | null>(null);
@@ -55,7 +111,9 @@ export default function AccountRegisterScreen() {
 
   const { account, accounts, categories, transactions } = state;
   const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
-  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
+  const resolvedCurrency = currency ?? "EUR";
+  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: resolvedCurrency });
+  const plain = (cents: number) => plainAmount(cents, intl.locale, resolvedCurrency);
   const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" });
   const transferLabel = intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" });
 
@@ -119,6 +177,32 @@ export default function AccountRegisterScreen() {
     ["reconciled", intl.formatMessage({ id: "register.filter.reconciled", defaultMessage: "Reconciled" })],
   ];
 
+  function statusAriaLabel(status: TransactionStatus): string {
+    return status === "reconciled"
+      ? intl.formatMessage({ id: "register.status.reconciled", defaultMessage: "Reconciled" })
+      : intl.formatMessage(
+          { id: "register.status.toggle", defaultMessage: "{status}: change status" },
+          {
+            status:
+              status === "pending"
+                ? intl.formatMessage({ id: "register.status.pending", defaultMessage: "Pending" })
+                : intl.formatMessage({ id: "register.status.cleared", defaultMessage: "Cleared" }),
+          },
+        );
+  }
+
+  const today = todayIso();
+  const groups: { day: string; rows: typeof visible }[] = [];
+  for (const row of visible) {
+    const day = row.transaction.budgetDate;
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) {
+      last.rows.push(row);
+    } else {
+      groups.push({ day, rows: [row] });
+    }
+  }
+
   return (
     <div className="register-screen">
       <div className="acc-head">
@@ -132,18 +216,16 @@ export default function AccountRegisterScreen() {
             {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
           </p>
         </div>
-        <div className="bal">
-          <div>
-            <small>{intl.formatMessage({ id: "register.cleared", defaultMessage: "Cleared" })}</small>
-            <span className="n">{money(total - pendingTotal)}</span>
-          </div>
-          <div>
-            <small>{intl.formatMessage({ id: "register.pending", defaultMessage: "Pending" })}</small>
-            <span className="n">{money(pendingTotal)}</span>
-          </div>
-          <div className="main">
-            <small>{intl.formatMessage({ id: "register.total", defaultMessage: "Balance" })}</small>
-            <span className="n">{money(total)}</span>
+        <div className="acc-bal" aria-label={intl.formatMessage({ id: "register.balances", defaultMessage: "Account balances" })}>
+          <small>{intl.formatMessage({ id: "register.total", defaultMessage: "Balance" })}</small>
+          <span className="big n">{money(total)}</span>
+          <div className="acc-facts">
+            <span>
+              {intl.formatMessage({ id: "register.cleared", defaultMessage: "Cleared" })} <b className="n">{money(total - pendingTotal)}</b>
+            </span>
+            <span>
+              {intl.formatMessage({ id: "register.pending", defaultMessage: "Pending" })} <b className="n">{money(pendingTotal)}</b>
+            </span>
           </div>
         </div>
       </div>
@@ -174,6 +256,39 @@ export default function AccountRegisterScreen() {
 
       {visible.length === 0 ? (
         <p className="empty">{intl.formatMessage({ id: "register.empty", defaultMessage: "No transactions match this filter." })}</p>
+      ) : isPhone ? (
+        <div className="phone-register">
+          {groups.map(({ day, rows }) => (
+            <div key={day}>
+              <div className="ph-day">{day === today ? intl.formatMessage({ id: "register.today", defaultMessage: "Today" }) : longDay(day, intl.locale)}</div>
+              {rows.map(({ transaction }) => {
+                const amount = totalOf(transaction);
+                const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
+                const subtitle = rowLabel(transaction, categories, unassignedLabel, splitLabel, transferLabel) + (transaction.memo ? ` · ${transaction.memo}` : "");
+                return (
+                  <div key={transaction.id} className="ph-tx">
+                    <button type="button" className="open" onClick={() => setOpen({ transaction })}>
+                      <span className="who">
+                        <b>{transaction.payee ?? ""}</b>
+                        <small>{subtitle}</small>
+                      </span>
+                      <span className={`amt n${amount > 0 ? " in" : ""}`}>{money(amount)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`st status-${transaction.status}`}
+                      disabled={transaction.status === "reconciled" || togglingId === transaction.id}
+                      aria-label={statusAriaLabel(transaction.status)}
+                      onClick={() => void toggleStatus(transaction)}
+                    >
+                      <StatusIcon status={transaction.status} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       ) : (
         <table className="register-table">
           <thead>
@@ -198,27 +313,15 @@ export default function AccountRegisterScreen() {
                       type="button"
                       className={`status status-${transaction.status}`}
                       disabled={transaction.status === "reconciled" || togglingId === transaction.id}
-                      aria-label={
-                        transaction.status === "reconciled"
-                          ? intl.formatMessage({ id: "register.status.reconciled", defaultMessage: "Reconciled" })
-                          : intl.formatMessage(
-                              { id: "register.status.toggle", defaultMessage: "{status}: change status" },
-                              {
-                                status:
-                                  transaction.status === "pending"
-                                    ? intl.formatMessage({ id: "register.status.pending", defaultMessage: "Pending" })
-                                    : intl.formatMessage({ id: "register.status.cleared", defaultMessage: "Cleared" }),
-                              },
-                            )
-                      }
+                      aria-label={statusAriaLabel(transaction.status)}
                       onClick={() => void toggleStatus(transaction)}
                     >
-                      {transaction.status === "reconciled" ? "🔒" : transaction.status === "cleared" ? "●" : "○"}
+                      <StatusIcon status={transaction.status} />
                     </button>
                   </td>
                   <td>
                     <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {transaction.budgetDate}
+                      {shortDate(transaction.budgetDate, intl.locale)}
                     </button>
                   </td>
                   <td>
@@ -232,9 +335,9 @@ export default function AccountRegisterScreen() {
                       {rowLabel(transaction, categories, unassignedLabel, splitLabel, transferLabel)}
                     </button>
                   </td>
-                  <td className="n">{amount < 0 ? money(-amount) : ""}</td>
-                  <td className="n">{amount > 0 ? money(amount) : ""}</td>
-                  <td className="n">{money(balance)}</td>
+                  <td className="n">{amount < 0 ? plain(-amount) : ""}</td>
+                  <td className="n">{amount > 0 ? plain(amount) : ""}</td>
+                  <td className="n">{plain(balance)}</td>
                 </tr>
               );
             })}
@@ -248,7 +351,7 @@ export default function AccountRegisterScreen() {
           accountId={accountId!}
           accounts={accounts}
           categories={categories}
-          currency={currency ?? "EUR"}
+          currency={resolvedCurrency}
           onClose={() => setOpen(null)}
           onSaved={() => {
             setOpen(null);
@@ -278,7 +381,7 @@ export default function AccountRegisterScreen() {
           accountId={accountId!}
           accounts={accounts}
           categories={categories}
-          currency={currency ?? "EUR"}
+          currency={resolvedCurrency}
           transaction={open.transaction}
           onClose={() => setOpen(null)}
           onSaved={() => {

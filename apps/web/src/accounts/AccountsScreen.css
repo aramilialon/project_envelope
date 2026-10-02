@@ -20,8 +20,9 @@
 
 .accounts-screen .account-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 14px;
+  gap: 8px 14px;
   padding: 10px 0;
   border-bottom: 1px solid var(--rule);
 }
@@ -31,12 +32,14 @@
 }
 
 .accounts-screen .name {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   font-weight: 600;
 }
 
 .accounts-screen .open-row {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
