@@ -1,5 +1,5 @@
 import { Api } from "./lib/api.ts";
-import { createWorkspaceWithOwner, deleteWorkspace, findUserIdBySubject } from "./lib/db.ts";
+import { backdateStartingBalance, createWorkspaceWithOwner, deleteWorkspace, findUserIdBySubject } from "./lib/db.ts";
 import { monthOffset, todayAt } from "./lib/dates.ts";
 import { assertSafeToRun, requireEnv } from "./lib/env.ts";
 import { ensureDemoUser, signInAsDemoUser, subjectOf } from "./lib/keycloak.ts";
@@ -89,6 +89,12 @@ async function main(): Promise<void> {
   if (!visa.paymentCategoryId || !mastercard.paymentCategoryId) {
     throw new Error("expected both cards to get their own payment category");
   }
+  // `POST .../accounts` always dates a card's own "Starting balance" transaction `now()` — moved
+  // here to the previous month's own first day, before every other transaction seeded below, so
+  // it reads as the card's own balance *before* that month's story starts, not as something that
+  // happened today in the middle of it (#326).
+  await backdateStartingBalance(databaseUrl, visa.id, `${previousMonth}-01`, TIME_ZONE);
+  await backdateStartingBalance(databaseUrl, mastercard.id, `${previousMonth}-01`, TIME_ZONE);
 
   console.log("== Creating category groups and categories");
   const group = async (name: string) => (await api.post<{ id: string }>(`${base}/category-groups`, { name })).id;
@@ -194,11 +200,16 @@ async function main(): Promise<void> {
       splits,
     });
 
-  // Income: enough across the last two months to actually afford everything assigned above,
-  // with a healthy unassigned buffer left over — a cash account with only expenses on it would
-  // look (and reconcile) strangely for a screenshot.
+  // Income: enough across the last two months to actually afford everything assigned above
+  // (#326: "everything assigned" counts future months' own pre-funding too, regardless of which
+  // month is being viewed — `packages/core/src/budget/budget-month.ts`'s own documented rule — so
+  // the previous month's own income has to cover not just its own spending but the current and
+  // next months' assignments as well, or it reads as a wildly negative "Unassigned" the moment
+  // anyone looks back at it), with a healthy buffer left over in both — a cash account with only
+  // expenses on it would look (and reconcile) strangely for a screenshot.
   await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], `${previousMonth}-15`);
   await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], onOrBeforeToday(3));
+  await transaction(checking.id, "Freelance payment", [{ categoryId: null, amountCents: 400_000 }], `${previousMonth}-20`);
 
   // The previous month's own full spread of ordinary spending (#326: a real timeline, not just a
   // cluster of "today" marks) — every day is already in the past, so no clamping is needed, unlike

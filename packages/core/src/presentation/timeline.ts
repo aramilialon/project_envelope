@@ -6,8 +6,10 @@ import type { Cents } from "../money.ts";
  * Plain coordinates, lengths and label positions out, never rendered SVG or literal text (no
  * user-facing text in `packages/core`) — `apps/web`'s `Timeline.tsx` draws the actual `<svg>`
  * from this, formatting each label's own amount with `Intl.NumberFormat` at render time. A mark's
- * `label.payee` is the transaction's (or scheduled transaction's) own stored payee — raw user
- * data, not UI copy — carried through so the renderer can compose "payee, amount" itself.
+ * `label.payees` are the transactions' (or scheduled transactions') own stored payees — raw user
+ * data, not UI copy — carried through so the renderer can compose "payees, amount" itself; capped
+ * to `MAX_LABEL_PAYEES`, with `extraPayeeCount` for the rest, so a day with many events never
+ * grows a label past what `TimelineInput.formatAmount`'s own width estimate actually accounts for.
  *
  * Reused as-is by `#337` (the account register's own timeline): the layout math does not care
  * whether the events are workspace-wide or one account's own, only `compact` (the account
@@ -29,11 +31,18 @@ export interface TimelineEvent {
   readonly payee: string;
 }
 
+/** At most this many payees are ever spelled out in a label; the rest become `extraPayeeCount` ("+N", composed by the renderer). */
+export const MAX_LABEL_PAYEES = 2;
+
 export interface TimelineLabel {
   readonly x: number;
   readonly y: number;
-  /** The one or more payees sharing this mark (several events landed on the same day, direction and status). */
+  /** The first `MAX_LABEL_PAYEES` payees sharing this mark (several events landed on the same day, direction and status) — never more, however many actually share it. */
   readonly payees: readonly string[];
+  /** How many more payees shared this mark beyond `payees` — 0 when `payees` already lists every one. */
+  readonly extraPayeeCount: number;
+  /** Its own estimated rendered width (`x` to `x + width` never crosses the canvas's own edge or the "today" line) — `TimelineInput.formatAmount`'s own contribution to it. */
+  readonly width: number;
 }
 
 export interface TimelineMark {
@@ -73,6 +82,14 @@ export interface TimelineInput {
   readonly events: readonly TimelineEvent[];
   /** The account register's own, smaller rendering (`#337`) — default `false`, the budget month's own. */
   readonly compact?: boolean;
+  /**
+   * Formats a positive amount exactly as the renderer will show it (currency symbol, decimals,
+   * locale) — used only to estimate a label's own width for collision avoidance, never exposed in
+   * the output (no user-facing text in `packages/core`). Without it, a plain `"1234.56"`-shaped
+   * estimate stands in — close enough for tests, but a real caller should always pass its own,
+   * since a locale's own symbol and separators can meaningfully change how much room a label needs.
+   */
+  readonly formatAmount?: (amountCents: Cents) => string;
 }
 
 interface Size {
@@ -111,18 +128,50 @@ function dayTicks(daysInMonth: number, compact: boolean): readonly number[] {
   return [first, middle, final];
 }
 
+function defaultFormatAmount(amountCents: Cents): string {
+  return (amountCents / 100).toFixed(2);
+}
+
 /**
- * A label's own estimated rendered width, in the absence of a real one: `packages/core` never
- * formats currency (no user-facing text), so this stands in for "payee list + a formatted
- * amount" using only the payee text's own length and the amount's digit count — close enough for
- * collision avoidance, the same crude estimate `docs/ux/mockups/budget-month.html`'s own
- * `timelineSvg` already relies on (`text.length * charWidth`), never exact font metrics.
+ * A label's own estimated rendered width: `text.length * charWidth`, the same crude estimate
+ * `docs/ux/mockups/budget-month.html`'s own `timelineSvg` already relies on, never exact font
+ * metrics — but the text itself is exactly what gets rendered (payees already capped to
+ * `MAX_LABEL_PAYEES` plus "+N", the sign, `formatAmount`'s own real formatted string), not a
+ * stand-in shape, so the estimate stays accurate enough that the amount is never the part that
+ * runs off the canvas.
  */
-function estimateLabelWidth(payees: readonly string[], amountCents: Cents, size: Size): number {
-  const payeeText = payees.join(", ");
-  const digits = Math.max(1, String(Math.round(Math.abs(amountCents) / 100)).length);
-  // +1 for the sign ("+" or "−"), +1 for the space between the payee text and the amount.
-  return (payeeText.length + digits + 2) * size.charWidth;
+function estimateLabelWidth(
+  payees: readonly string[],
+  extraPayeeCount: number,
+  amountCents: Cents,
+  direction: TimelineDirection,
+  size: Size,
+  formatAmount: (amountCents: Cents) => string,
+): number {
+  const payeeText = payees.join(", ") + (extraPayeeCount > 0 ? ` +${extraPayeeCount}` : "");
+  const sign = direction === "in" ? "+" : "−";
+  const amountText = formatAmount(amountCents);
+  // +1 for the space between the payee text and the signed amount.
+  return (payeeText.length + 1 + sign.length + amountText.length) * size.charWidth;
+}
+
+/**
+ * Where a label of `width` can go without crossing `leftBound`/`rightBound` (the "today" line on
+ * whichever side applies, or the canvas's own edge when there is none) — the stem's own right
+ * side first (natural reading order), its left side otherwise, or no room at all (design.md: a
+ * label never crosses the "today" line; omitted rather than overlapping it, the mark's own stem
+ * and colour already carry the same information without it).
+ */
+function placeHorizontally(stemX: number, width: number, gap: number, leftBound: number, rightBound: number): number | undefined {
+  const right = stemX + gap;
+  if (right + width <= rightBound) {
+    return right;
+  }
+  const left = stemX - gap - width;
+  if (left >= leftBound) {
+    return left;
+  }
+  return undefined;
 }
 
 interface Lane {
@@ -153,6 +202,7 @@ function placeLabel(lane: Lane[], x: number, y: number, width: number, step: num
  */
 export function computeTimeline(input: TimelineInput): TimelineLayout {
   const size = input.compact ? COMPACT : FULL;
+  const formatAmount = input.formatAmount ?? defaultFormatAmount;
   const x0 = size.inset;
   const x1 = size.width - size.inset;
   const span = Math.max(1, input.daysInMonth - 1);
@@ -192,24 +242,30 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     const labelled = input.compact ? up : e.direction !== "out" || e.status !== "recorded" || biggestOutKeys.has(key);
     let label: TimelineLabel | undefined;
     if (labelled) {
-      const width = estimateLabelWidth(e.payees, e.amountCents, size);
-      let lx = ex + size.labelGap;
-      let ly = up ? stemY : stemY + 4;
+      const displayedPayees = e.payees.slice(0, MAX_LABEL_PAYEES);
+      const extraPayeeCount = Math.max(0, e.payees.length - MAX_LABEL_PAYEES);
+      const width = estimateLabelWidth(displayedPayees, extraPayeeCount, e.amountCents, e.direction, size, formatAmount);
+
+      // The "today" line splits the canvas in two for this purpose: a past event's label must
+      // stay left of it, a future one's right of it — never crossing it either way (design.md).
+      // Without a "today" line at all (not the current month), the only bounds are the canvas's
+      // own edges.
+      let leftBound = x0;
+      let rightBound = size.width - 2;
       if (todayX !== undefined) {
-        const past = e.day < input.today!;
-        // Shifted left to clear the "today" line, but never past the chart's own left edge — an
-        // early-month event (close to `x0` already) would otherwise run its label off-canvas.
-        if (past && lx + width > todayX - 4) lx = Math.max(x0, ex - size.labelGap - width);
-        if (!past && lx + width > size.width - 2) {
-          lx = Math.max(todayX + 4, size.width - 2 - width);
-          ly = up ? stemY - 6 : stemY + 14;
+        if (e.day < input.today!) {
+          rightBound = todayX - 4;
+        } else {
+          leftBound = todayX + 4;
         }
-      } else if (lx + width > size.width - 2) {
-        lx = size.width - 2 - width;
       }
-      const lane = up ? lanes.up : lanes.down;
-      ly = placeLabel(lane, lx, ly, width, size.laneStep, up);
-      label = { x: lx, y: ly, payees: e.payees };
+      const lx = placeHorizontally(ex, width, size.labelGap, leftBound, rightBound);
+
+      if (lx !== undefined) {
+        const lane = up ? lanes.up : lanes.down;
+        const ly = placeLabel(lane, lx, up ? stemY : stemY + 4, width, size.laneStep, up);
+        label = { x: lx, y: ly, payees: displayedPayees, extraPayeeCount, width };
+      }
     }
 
     marks.push({ day: e.day, direction: e.direction, status: e.status, amountCents: e.amountCents, x: ex, stemY, label });

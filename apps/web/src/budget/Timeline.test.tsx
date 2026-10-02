@@ -32,7 +32,7 @@ describe("Timeline (#326)", () => {
     expect(document.querySelector(".t-stem.t-out.plan")).not.toBeNull();
   });
 
-  it("gives an overdue item its own amber, dashed stem and a 'to record' label", () => {
+  it("gives an overdue item its own amber, dashed stem and label", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
       today: 15,
@@ -41,7 +41,19 @@ describe("Timeline (#326)", () => {
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
     expect(document.querySelector(".t-stem.t-late")).not.toBeNull();
-    expect(screen.getByText(/Vet clinic.*to record/)).toBeInTheDocument();
+    expect(document.querySelector(".t-l.t-late")).toHaveTextContent("Vet clinic");
+  });
+
+  it("shows at most two payees plus a count, never more, for a day with many events", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      formatAmount: money,
+      events: [1, 2, 3, 4, 5].map((n) => ({ day: 10, amountCents: 100 * n, direction: "in" as const, status: "recorded" as const, payee: `Payee ${n}` })),
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
+
+    expect(screen.getByText(/Payee 1, Payee 2 \+3/)).toBeInTheDocument();
   });
 
   it("draws the 'today' line only when the month shown is the current one", () => {

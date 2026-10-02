@@ -235,6 +235,7 @@ export default function BudgetScreen() {
               daysInMonth: daysInMonth(month),
               today: today?.day,
               events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
+              formatAmount: money,
             })}
             monthLabel={monthLabel(month, intl.locale)}
             money={money}

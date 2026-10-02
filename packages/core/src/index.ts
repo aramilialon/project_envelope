@@ -56,6 +56,6 @@ export type {
   TimelineLayout,
   TimelineMark,
 } from "./presentation/timeline.ts";
-export { computeTimeline } from "./presentation/timeline.ts";
+export { computeTimeline, MAX_LABEL_PAYEES } from "./presentation/timeline.ts";
 export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
 export { computeTodos } from "./presentation/todos.ts";

@@ -100,15 +100,29 @@ describe("computeTimeline", () => {
     assert.ok(mark.label!.x + 40 < layout.todayX!); // well short of the line, not just barely
   });
 
-  it("a day-1 event shifted left to clear the 'today' line never runs its label off the chart's own left edge", () => {
-    // "today" on day 2 — a label needing to clear it has almost no room to its left at all.
+  it("omits a label rather than crossing the 'today' line or running off the chart's own left edge", () => {
+    // "today" on day 2 — a label needing to clear it has almost no room to its left at all, not
+    // nearly enough for "Internet provider 45.00" either side of day 1's own stem.
     const layout = computeTimeline({
       daysInMonth: 31,
       today: 2,
       events: [{ day: 1, amountCents: 4_500, direction: "out", status: "scheduled", payee: "Internet provider" }],
     });
     const mark = layout.marks[0]!;
+    assert.equal(mark.label, undefined);
+  });
+
+  it("still labels a day-1 event when its own text is short enough to fit before 'today'", () => {
+    // A short month (more pixels per day) leaves enough room for a short label even this close to "today".
+    const layout = computeTimeline({
+      daysInMonth: 5,
+      today: 2,
+      events: [{ day: 1, amountCents: 100, direction: "out", status: "scheduled", payee: "X" }],
+    });
+    const mark = layout.marks[0]!;
+    assert.notEqual(mark.label, undefined);
     assert.ok(mark.label!.x >= layout.axisX0);
+    assert.ok(mark.label!.x + 10 < layout.todayX!); // some real width, well short of the line
   });
 
   it("two labels close enough to collide step apart instead of overlapping", () => {
@@ -145,5 +159,29 @@ describe("computeTimeline", () => {
     const inflow = layout.marks.find((m) => m.direction === "in")!;
     assert.equal(out.label, undefined);
     assert.notEqual(inflow.label, undefined);
+  });
+
+  it("caps a day with many events to two payees plus a count, and its label never leaves the canvas", () => {
+    // A realistic, longer formatted amount — a plain digit count badly underestimates this.
+    const formatAmount = (cents: number) => `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2 })} €`;
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      formatAmount,
+      events: [
+        { day: 2, amountCents: 87_40, direction: "in", status: "recorded", payee: "Supermarket" },
+        { day: 2, amountCents: 640_00, direction: "in", status: "recorded", payee: "Restaurant" },
+        { day: 2, amountCents: 350_00, direction: "in", status: "recorded", payee: "Shopping run" },
+        { day: 2, amountCents: 425_00, direction: "in", status: "recorded", payee: "Shopping run" },
+        { day: 2, amountCents: 9_99, direction: "in", status: "recorded", payee: "Streaming service" },
+        { day: 2, amountCents: 500_00, direction: "in", status: "recorded", payee: "Investment platform" },
+        { day: 2, amountCents: 1_20, direction: "in", status: "recorded", payee: "Starting balance" },
+      ],
+    });
+    const mark = layout.marks[0]!;
+    assert.equal(mark.label!.payees.length, 2);
+    assert.deepEqual(mark.label!.payees, ["Supermarket", "Restaurant"]);
+    assert.equal(mark.label!.extraPayeeCount, 5);
+    assert.ok(mark.label!.x + mark.label!.width <= layout.width - 2);
   });
 });
