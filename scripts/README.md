@@ -48,10 +48,11 @@ $ cp .env.example .env   # fill in DATABASE_URL, KEYCLOAK_ADMIN_PASSWORD, DEMO_U
 $ pnpm seed:demo
 ```
 
-Refuses to run if `NODE_ENV=production`, or if `API_URL` does not resolve to
-`127.0.0.1`/`localhost` — this creates and deletes a whole workspace, never something to risk
-against a real deployment. A "Demo" workspace already existing makes it exit immediately with a
-message; pass `--reset` to delete the previous one first and seed fresh:
+Refuses to run if `NODE_ENV=production`, or if `API_URL`, `DATABASE_URL` or `KEYCLOAK_URL` does
+not resolve to `127.0.0.1`/`localhost` (the error names which one) — this creates and deletes a
+whole workspace, reads and writes the database directly, and talks to Keycloak's own admin API,
+never something to risk against a real deployment. A "Demo" workspace already existing makes it
+exit immediately with a message; pass `--reset` to delete the previous one first and seed fresh:
 
 ```bash
 $ pnpm seed:demo -- --reset
@@ -87,7 +88,7 @@ deliberate step once bars/timeline/phone layout actually exist (`#324`, `#326`, 
 | --- | --- |
 | `seed-demo.ts` | The demo data seed (above) |
 | `screenshot-demo.ts` | Regenerates the reference screenshots from the seeded "Demo" workspace (above) |
-| `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or a non-local `API_URL` |
+| `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or any given URL that is not local, naming which one (`lib/env.test.ts`) |
 | `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake; `subjectOf`: an access token's own `sub` claim |
 | `lib/api.ts` | `Api`: a thin authenticated `fetch` wrapper against `apps/api` — no generated client exists yet |
 | `lib/db.ts` | The one step done with direct SQL: creating/deleting the "Demo" workspace and its first membership (see above) |

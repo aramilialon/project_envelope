@@ -8,6 +8,7 @@
   "scripts": {
     "seed:demo": "node --env-file-if-exists=.env seed-demo.ts",
     "screenshots:demo": "node --env-file-if-exists=.env screenshot-demo.ts",
+    "test": "node --test \"lib/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

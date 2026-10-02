@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   const demoPassword = requireEnv("DEMO_USER_PASSWORD");
   const databaseUrl = requireEnv("DATABASE_URL");
 
-  assertSafeToRun(apiUrl);
+  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl });
 
   console.log("== Signing in as the demo user");
   await ensureDemoUser(keycloakUrl, keycloakAdminPassword, DEMO_USERNAME, demoPassword);

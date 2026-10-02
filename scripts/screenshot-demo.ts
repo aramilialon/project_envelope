@@ -20,9 +20,14 @@ const DEMO_USERNAME = "demo";
 
 async function main(): Promise<void> {
   const apiUrl = process.env.API_URL ?? "http://127.0.0.1:3000";
+  const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://127.0.0.1:8080";
+  const databaseUrl = requireEnv("DATABASE_URL");
   const demoPassword = requireEnv("DEMO_USER_PASSWORD");
   const outDir = `${requireEnv("HOME")}/screenshots`;
-  assertSafeToRun(apiUrl);
+  // This script itself only ever talks to apps/web's own origin (hard-coded, already local) —
+  // every one of these is still checked for the same reason seed-demo.ts checks all three it
+  // actually uses: one shared, consistent safety contract on the one .env both scripts read.
+  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl });
 
   const browser = await chromium.launch();
   try {
