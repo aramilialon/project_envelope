@@ -26,7 +26,7 @@ const CHECKING: Account = {
 function renderScreen(accounts: Account[]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
   return renderWithIntl(

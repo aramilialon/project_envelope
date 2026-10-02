@@ -41,3 +41,31 @@ export async function getBudgetMonth(
   }
   return (await response.json()) as BudgetMonthResponse;
 }
+
+/** `GET .../budget-months/:month/events` (#325, #346): what the timeline and the "To do" list are both built from. */
+export interface MonthEvent {
+  readonly date: string;
+  readonly amountCents: number;
+  readonly payee: string | null;
+  readonly categoryId: string | null;
+  readonly kind: "recorded" | "pending" | "scheduled";
+  readonly scheduledTransactionId?: string;
+}
+
+export async function getBudgetMonthEvents(
+  accessToken: string,
+  workspaceId: string,
+  month: string,
+  accountId?: string,
+): Promise<readonly MonthEvent[]> {
+  const url = new URL(`${API_URL}/workspaces/${workspaceId}/budget-months/${month}/events`);
+  if (accountId !== undefined) {
+    url.searchParams.set("accountId", accountId);
+  }
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!response.ok) {
+    throw new Error(`GET /workspaces/${workspaceId}/budget-months/${month}/events failed: ${response.status}`);
+  }
+  const body = (await response.json()) as { events: MonthEvent[] };
+  return body.events;
+}

@@ -11,9 +11,10 @@ the one part with real dependencies — currently the demo data seed.
 same way `apps/web` itself does — not direct SQL. Workspace budgeting's correctness lives in a
 few places only the real API exercises: the assignment ledger is append-only (ADR 0008), every
 request goes through a workspace's Row-Level Security policy, and `@envelope/core`'s own
-invariant only holds if the data was built the way the real app builds it. The one exception:
-there is no HTTP endpoint yet to create or delete a workspace and its first membership, so that
-one step (`lib/db.ts`) uses direct SQL, clearly isolated — everything else (accounts, categories,
+invariant only holds if the data was built the way the real app builds it. Two narrow exceptions,
+both isolated in `lib/db.ts`: there is no HTTP endpoint yet to create or delete a workspace and its
+first membership, and no way to ask `POST .../accounts` to date a credit card's own "Starting
+balance" transaction as anything but `now()` (`#326`) — everything else (accounts, categories,
 transactions, splits, transfers, assignments, scheduled transactions, goals) is a real API call.
 
 Getting a real access token without a browser is the other wrinkle: the `envelope-api` Keycloak
@@ -30,6 +31,21 @@ category cannot cover (a warning, not overspending), one card's payment category
 and the other's still short, a target still missing money, an overdue scheduled transaction not
 yet recorded, and a pending transaction. Every date is relative to the day the script runs (this
 calendar month, with scheduled transactions both before and after today), never hard-coded.
+The previous month also gets a full, spread-out month of ordinary transactions of its own (salary,
+mortgage, utilities, groceries, a card purchase — `#326`): unlike the current month's, whose
+recorded transactions are clamped to on-or-before today (`onOrBeforeToday`, so they never land on
+a day that has not happened yet), every day of the previous month is already in the past, so
+nothing needs clamping — a real spread across the whole month for the budget month's own timeline
+to actually draw, rather than a cluster of marks on today's own day alone. A second income
+transaction that same month (on top of its own salary) keeps "Unassigned" plausible looking back
+at it too: `computeBudgetMonth`'s own rule counts *every* assignment ever made, current and future
+months included, against only the income recorded by the month being viewed, so the previous
+month's own income has to cover the current and next months' pre-funding as well, not just its own
+spending. Each credit card's own "Starting balance" transaction (`POST .../accounts`, dated
+`now()` with no way to ask for another date) is moved to the previous month's own first day with
+one small, isolated direct-SQL update (`lib/db.ts`'s own `backdateStartingBalance`) right after
+creating it — otherwise a card seeded as part of a month that is supposed to be already over would
+read as if its debt arrived today, in the middle of the current month's own story instead.
 After seeding, it verifies `@envelope/core`'s own invariant (unassigned money + every category's
 available + reserved + assigned to future months + credit overspending = the on-budget cash
 accounts' own balance, cards excluded) the same way `apps/web` itself could: from the budget
@@ -65,19 +81,21 @@ created on first run and left alone afterward; sign in as it with the password i
 ### Reference screenshots
 
 `screenshot-demo.ts` regenerates the reference screenshots from the already-seeded "Demo"
-workspace: light and dark, at 1440px, 390px and 360px, for the accounts list and the account
-register, named after `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing
-convention (with a size suffix, since those were only ever one size). Needs `apps/web` running too
-(not just `apps/api`), since unlike the seed script's own plain-`fetch` handshake, this drives the
-real sign-in form through a real (headless) browser to actually render pixels.
+workspace: light and dark, at 1440px, 390px and 360px, for the budget month (this month and the
+previous one, `#326` — the previous month's own full spread of transactions, above, is what makes
+its timeline worth looking at), the accounts list and the account register, named after
+`docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a size
+suffix, since those were only ever one size). Needs `apps/web` running too (not just `apps/api`),
+since unlike the seed script's own plain-`fetch` handshake, this drives the real sign-in form
+through a real (headless) browser to actually render pixels.
 
 At 390px and 360px it also asserts there is no horizontal overflow
-(`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion) on both
-screens, failing the script (non-zero exit) if either does — the same check a reviewer would
-otherwise have to do by hand with the browser's own dev tools. A screen whose phone layout is a
-genuinely different DOM tree (not just a CSS reflow), like the account register's day list, swaps
-it in from a `resize` event listener one tick behind `setViewportSize` itself, so the check waits
-briefly after resizing the page before measuring it.
+(`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion, extended
+to the budget month by `#326`) on every screen, failing the script (non-zero exit) if any does —
+the same check a reviewer would otherwise have to do by hand with the browser's own dev tools. A
+screen whose phone layout is a genuinely different DOM tree (not just a CSS reflow), like the
+account register's day list, swaps it in from a `resize` event listener one tick behind
+`setViewportSize` itself, so the check waits briefly after resizing the page before measuring it.
 
 ```bash
 $ cd scripts
@@ -99,5 +117,5 @@ deliberate step once bars/timeline/phone layout actually exist (`#324`, `#326`, 
 | `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or any given URL that is not local, naming which one (`lib/env.test.ts`) |
 | `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake; `subjectOf`: an access token's own `sub` claim |
 | `lib/api.ts` | `Api`: a thin authenticated `fetch` wrapper against `apps/api` — no generated client exists yet |
-| `lib/db.ts` | The one step done with direct SQL: creating/deleting the "Demo" workspace and its first membership (see above) |
+| `lib/db.ts` | The two steps done with direct SQL: creating/deleting the "Demo" workspace and its first membership, and backdating a credit card's own "Starting balance" transaction (see above) |
 | `lib/dates.ts` | `todayAt(now, timeZone)`: every date the seed uses, relative to an injected "today" (never read from the clock directly, so it is testable — `lib/dates.test.ts`). The rule it encodes: a *recorded* transaction's date is never after today (`onOrBeforeToday` clamps a fixed day down to today); a scheduled transaction can genuinely be due before or after today (`beforeTodaySameMonth`/`afterTodaySameMonth`, each falling back to the adjacent month at the rare edge — today being the 1st or the month's last day) |

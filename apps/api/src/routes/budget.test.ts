@@ -389,5 +389,47 @@ describe("budget routes", () => {
       assert.ok(events.some((e) => e.amountCents === -7_000), "the cash (source) leg must still show");
       assert.ok(!events.some((e) => e.amountCents === 7_000), "the card's own leg must not show");
     });
+
+    it("a credit card's own 'Starting balance' transaction produces no event, with or without accountId", async () => {
+      const created = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: auth(),
+        payload: { name: "Amex", type: "credit_card", currency: "EUR", onBudget: true, startingBalanceCents: -84_500 },
+      });
+      const cardId = created.json().id as string;
+
+      const workspaceWide = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const perAccount = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events?accountId=${cardId}`,
+        headers: auth(),
+      });
+      for (const response of [workspaceWide, perAccount]) {
+        const events = response.json().events as Array<{ amountCents: number }>;
+        assert.ok(!events.some((e) => e.amountCents === -84_500 || e.amountCents === 84_500), "the starting balance must never become an event");
+      }
+    });
+
+    it("a cash account's own income still produces an event, even though it is also a single, categoryless split", async () => {
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+        headers: auth(),
+        payload: { occurredAt: "2026-10-12", splits: [{ categoryId: null, amountCents: 50_000 }] },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number; categoryId: string | null }>;
+      assert.ok(events.some((e) => e.amountCents === 50_000 && e.categoryId === null), "a cash account's own income is a real event, unlike a card's starting balance");
+    });
   });
 });

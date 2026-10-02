@@ -1,16 +1,17 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
 import { BandSecondRowSlotContext } from "../layout/bandSecondRowSlot.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as targetsApi from "../targets/api.ts";
+import type { GoalProgress } from "../targets/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as budgetApi from "./api.ts";
-import type { BudgetMonthCategory, BudgetMonthResponse } from "./api.ts";
+import type { BudgetMonthCategory, BudgetMonthResponse, MonthEvent } from "./api.ts";
 import BudgetScreen from "./BudgetScreen.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -18,6 +19,12 @@ vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const HOME: CategoryGroup = { id: "g1", workspaceId: "ws-1", name: "Home", sortOrder: 1, archived: false };
 const FUN: CategoryGroup = { id: "g2", workspaceId: "ws-1", name: "Fun", sortOrder: 2, archived: false };
+
+const ORIGINAL_WIDTH = window.innerWidth;
+
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+}
 
 function category(overrides: Partial<BudgetMonthCategory>): BudgetMonthCategory {
   return {
@@ -63,13 +70,21 @@ function Harness({ children }: { children: ReactNode }) {
   );
 }
 
-function renderScreen(month: BudgetMonthResponse, groups: CategoryGroup[]) {
+function renderScreen(
+  month: BudgetMonthResponse,
+  groups: CategoryGroup[],
+  events: readonly MonthEvent[] = [],
+  goalsByCategory: ReadonlyMap<string, GoalProgress> = new Map(),
+  eventsImpl?: () => Promise<readonly MonthEvent[]>,
+) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "UTC" },
   ]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
+  vi.spyOn(budgetApi, "getBudgetMonthEvents").mockImplementation(eventsImpl ?? (() => Promise.resolve(events)));
+  vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
       <Routes>
@@ -88,11 +103,18 @@ function renderScreen(month: BudgetMonthResponse, groups: CategoryGroup[]) {
 }
 
 describe("BudgetScreen (#53, #324)", () => {
+  afterEach(() => {
+    setWidth(ORIGINAL_WIDTH);
+    vi.useRealTimers();
+  });
+
   it("shows a loading state", () => {
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise(() => {}));
     vi.spyOn(categoriesApi, "listCategoryGroups").mockReturnValue(new Promise(() => {}));
     vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(targetsApi, "getGoal").mockReturnValue(new Promise(() => {}));
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -108,6 +130,8 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([]);
     vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([]);
     vi.spyOn(budgetApi, "getBudgetMonth").mockRejectedValue(new Error("network"));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
+    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -164,7 +188,7 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(screen.getByText("€1.00")).toBeInTheDocument(); // -200 + 300 = 100
-    expect(screen.getByText("1")).toBeInTheDocument(); // one overspent category
+    expect(document.querySelector(".count.over")).toHaveTextContent("1"); // one overspent category, scoped: the timeline's own day-1 tick is also "1"
   });
 
   it("marks a cash-overspent category distinctly, with a screen-reader-only 'Overspent:' prefix", async () => {
@@ -248,8 +272,34 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth);
   });
 
-  it("opens the Targets panel", async () => {
+  it("picks the current month and 'today' in the workspace's own time zone, not the browser's", async () => {
+    // Only `Date` is faked — `setTimeout`/`setInterval` stay real, since Testing Library's own
+    // `findByText` polling relies on them.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 23:30 UTC on 30 September is already 01:30 on 1 October in Rome (CEST, UTC+2) — a new month there, not here.
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"));
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    ]);
+    vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([HOME]);
+    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(budgetMonth({ categories: [category({})] }));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
     vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1"]}>
+        <Routes>
+          <Route path="/:workspaceId" element={<BudgetScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Groceries");
+    expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10");
+  });
+
+  it("opens the Targets panel", async () => {
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
     await screen.findByText("Groceries");
 
@@ -263,5 +313,86 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Quick assign" }));
     expect(await screen.findByRole("heading", { name: "Quick assign" })).toBeInTheDocument();
+  });
+
+  it("shows the month's own timeline and 'To do' list, built from its events (#326)", async () => {
+    const events: MonthEvent[] = [
+      { date: "2026-01-05", amountCents: -8740, payee: "Supermarket", categoryId: "c1", kind: "recorded" },
+      { date: "2026-01-12", amountCents: 245000, payee: "Salary", categoryId: null, kind: "recorded" },
+    ];
+    renderScreen(budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }), [HOME], events);
+    await screen.findByText("Groceries");
+
+    expect(screen.getByText(/day by day/)).toBeInTheDocument();
+    expect(document.querySelector(".time svg .t-stem.t-out")).not.toBeNull();
+    expect(document.querySelector(".time svg .t-stem.t-in")).not.toBeNull();
+    expect(screen.getByText("Cover Groceries")).toBeInTheDocument();
+    expect(screen.getByText("€50.00")).toBeInTheDocument(); // the cash-overspending item's own amount
+  });
+
+  it("shows the 'To do' list as soon as the budget month itself is ready, without waiting for events", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      () => new Promise(() => {}), // the events fetch never resolves
+    );
+
+    expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
+    expect(document.querySelector(".time")).not.toBeNull(); // still mounted, same size, just no marks yet
+    expect(document.querySelector(".time svg .t-stem")).toBeNull();
+  });
+
+  it("shows the 'To do' list even when the events fetch fails outright, just without overdue entries", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      () => Promise.reject(new Error("network")),
+    );
+
+    expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
+  });
+
+  it("hides the timeline on a phone (a compact one of its own is #331's job), but keeps the 'To do' list", async () => {
+    setWidth(390);
+    renderScreen(budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }), [HOME]);
+    await screen.findByText("Cover Groceries");
+
+    expect(document.querySelector(".time")).toBeNull();
+    expect(document.querySelector(".todo")).not.toBeNull();
+  });
+
+  it("says there is nothing to fix when the 'To do' list is empty", async () => {
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    expect(await screen.findByText("Nothing to fix this month.")).toBeInTheDocument();
+  });
+
+  it("shows a credit card's own uncovered debt and a target still missing money", async () => {
+    const goalsByCategory = new Map<string, GoalProgress>([
+      [
+        "c1",
+        {
+          goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" },
+          asks: 6_000,
+          missing: 1_000,
+          progress: 0.83,
+        },
+      ],
+    ]);
+    renderScreen(
+      budgetMonth({ categories: [category({})], paymentCategories: [category({ categoryId: "visa", name: "Visa", uncovered: 12_000 })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+    await screen.findByText("Groceries");
+
+    expect(await screen.findByText("Debt to cover: Visa")).toBeInTheDocument();
+    expect(screen.getByText("Fund the Groceries target")).toBeInTheDocument();
   });
 });

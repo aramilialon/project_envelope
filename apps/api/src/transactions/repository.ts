@@ -366,6 +366,30 @@ interface TransactionEventRow {
   readonly payee: string | null;
   readonly category_id: string | null;
   readonly status: TransactionStatus;
+  readonly transfer_id: string | null;
+  readonly payment_category_id: string | null;
+  readonly split_count: string;
+}
+
+/**
+ * A credit card's own "Starting balance" transaction (`accounts/repository.ts`'s
+ * `createStartingBalanceTransaction`) is the one and only split of a non-transfer transaction,
+ * categorized to that same card's own payment category — the one combination no ordinary
+ * transaction produces (spending uses a regular category; a card payment is a transfer with no
+ * category at all; a cash account's own income has no payment category to match in the first
+ * place, `paymentCategoryId` is `null` for it). Shared by `budget/repository.ts` (excluded from
+ * `aggregateTransactions` — `packages/core`'s own docs: it feeds only `owedAsOf`, never
+ * `Activity`) and this module's own `listTransactionEventsForMonth` (excluded from the budget
+ * month's timeline and "To do" list, #326: it is not something that "happened" in the budget
+ * sense, just the card's own balance as of account creation) — one rule, not two copies of it.
+ */
+export function isStartingBalanceSplit(input: {
+  readonly transferId: string | null;
+  readonly splitCount: number;
+  readonly categoryId: string | null;
+  readonly paymentCategoryId: string | null;
+}): boolean {
+  return input.transferId === null && input.splitCount === 1 && input.paymentCategoryId !== null && input.categoryId === input.paymentCategoryId;
 }
 
 /**
@@ -389,6 +413,11 @@ interface TransactionEventRow {
  * that transfer still shows (the off-budget leg is dropped by the plain `on_budget = true` filter
  * already; the card's own leg is dropped by the same transfer check, symmetrically, since from
  * the card's own side its partner is the on-budget cash account).
+ *
+ * A credit card's own "Starting balance" split (`isStartingBalanceSplit`) never becomes an event
+ * either way (`#326`): it is not something that happened in the budget sense, just the card's own
+ * balance as of account creation, so neither the timeline nor the "To do" list should ever draw it
+ * as a transaction.
  */
 export async function listTransactionEventsForMonth(
   db: DbPool | DbClient,
@@ -403,7 +432,8 @@ export async function listTransactionEventsForMonth(
   const { rows } = await db.query<TransactionEventRow>(
     `SELECT
        to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS date,
-       s.amount_cents, t.payee, s.category_id, t.status
+       s.amount_cents, t.payee, s.category_id, t.status, t.transfer_id, a.payment_category_id,
+       (SELECT COUNT(*) FROM splits s2 WHERE s2.transaction_id = t.id) AS split_count
      FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
      JOIN accounts a ON a.id = t.account_id
@@ -421,13 +451,23 @@ export async function listTransactionEventsForMonth(
      ORDER BY t.occurred_at, t.created_at`,
     params,
   );
-  return rows.map((row) => ({
-    date: row.date,
-    amountCents: Number(row.amount_cents),
-    payee: row.payee,
-    categoryId: row.category_id,
-    kind: row.status === "pending" ? "pending" : "recorded",
-  }));
+  return rows
+    .filter(
+      (row) =>
+        !isStartingBalanceSplit({
+          transferId: row.transfer_id,
+          splitCount: Number(row.split_count),
+          categoryId: row.category_id,
+          paymentCategoryId: row.payment_category_id,
+        }),
+    )
+    .map((row) => ({
+      date: row.date,
+      amountCents: Number(row.amount_cents),
+      payee: row.payee,
+      categoryId: row.category_id,
+      kind: row.status === "pending" ? "pending" : "recorded",
+    }));
 }
 
 /**

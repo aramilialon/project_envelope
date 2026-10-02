@@ -2,6 +2,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+.budget-screen .over {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .budget-screen .over {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .budget-screen .acts {
   display: flex;
   gap: 8px;

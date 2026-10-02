@@ -1,13 +1,17 @@
 import pg from "pg";
 
 /**
- * The one step this seed script does with direct SQL, deliberately isolated here: creating (and,
- * on `--reset`, deleting) a workspace and its first membership. `apps/api` has no HTTP endpoint
- * for either yet — only direct SQL does this today, the same way `apps/web/e2e/db.ts`'s own
- * `createWorkspaceWithMembership` does it for the end-to-end tests. Everything else this seed
- * produces (accounts, categories, transactions, assignments, scheduled transactions, goals) goes
- * through the real API instead (`lib/api.ts`), so RLS and the assignment ledger actually get
- * exercised.
+ * The two steps this seed script does with direct SQL, deliberately isolated here: creating (and,
+ * on `--reset`, deleting) a workspace and its first membership — `apps/api` has no HTTP endpoint
+ * for either yet, only direct SQL does this today, the same way `apps/web/e2e/db.ts`'s own
+ * `createWorkspaceWithMembership` does it for the end-to-end tests — and backdating a credit
+ * card's own "Starting balance" transaction (`backdateStartingBalance`, #326): `POST .../accounts`
+ * always dates it `now()` (`apps/api/src/accounts/repository.ts`), with no way to ask for another
+ * date through the API, so a card seeded as part of the previous month's own story would otherwise
+ * show its debt arriving today instead, however long ago the rest of that month happened.
+ * Everything else this seed produces (accounts, categories, transactions, assignments, scheduled
+ * transactions, goals) goes through the real API instead (`lib/api.ts`), so RLS and the assignment
+ * ledger actually get exercised.
  */
 
 function pool(databaseUrl: string): pg.Pool {
@@ -28,6 +32,19 @@ export async function findUserIdBySubject(databaseUrl: string, keycloakSubject: 
   try {
     const { rows } = await db.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [keycloakSubject]);
     return rows[0]?.id;
+  } finally {
+    await db.end();
+  }
+}
+
+/** Moves a credit card's own "Starting balance" transaction to midnight, in the workspace's own time zone, on `date` ("YYYY-MM-DD") — see the module comment above for why this needs direct SQL. */
+export async function backdateStartingBalance(databaseUrl: string, accountId: string, date: string, timeZone: string): Promise<void> {
+  const db = pool(databaseUrl);
+  try {
+    await db.query(
+      `UPDATE transactions SET occurred_at = ($1::date AT TIME ZONE $2) WHERE account_id = $3 AND payee = 'Starting balance'`,
+      [date, timeZone, accountId],
+    );
   } finally {
     await db.end();
   }

@@ -12,8 +12,8 @@ vi.mock("react-oidc-context", () => ({ useAuth }));
 function renderSwitcher() {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
-    { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
   ]);
   return renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
