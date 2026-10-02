@@ -351,6 +351,85 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
   return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
 }
 
+/** One event per split — a split transaction (or a transfer's own leg, `categoryId` null either way) is as many events as it has splits. */
+export interface TransactionEvent {
+  readonly date: string;
+  readonly amountCents: number;
+  readonly payee: string | null;
+  readonly categoryId: string | null;
+  readonly kind: "recorded" | "pending";
+}
+
+interface TransactionEventRow {
+  readonly date: string;
+  readonly amount_cents: string;
+  readonly payee: string | null;
+  readonly category_id: string | null;
+  readonly status: TransactionStatus;
+}
+
+/**
+ * Every split of every transaction dated in `month` (the budget month's own timeline, #325), on
+ * an on-budget account, unless `accountId` narrows it to one specific account (the account
+ * register's own timeline, `#337`) — any account, on-budget or not, since that screen is about
+ * one account's own activity, not the budget's. `budget_date`'s own month, not `occurred_at`'s (a
+ * transaction anchored near midnight can fall in a different calendar month once converted to the
+ * workspace's own time zone).
+ *
+ * A transfer's two legs (`transfer_id`) are two ordinary rows, each with its own single
+ * null-category split already signed from that leg's own account (negative leaving the source,
+ * positive arriving at the destination) — so filtered to one `accountId`, a transfer already
+ * shows up correctly with no special-casing at all.
+ *
+ * Un-filtered (every account), a transfer between two on-budget cash accounts is invisible on
+ * purpose: money only moved from one pot to another, nothing a category or the month's own cash
+ * total needs to know about (`@envelope/core`'s own invariant does not move either). A transfer
+ * touching an off-budget account or a credit card is not neutral that way — paying a card down,
+ * or moving money out of the tracked budget entirely, is a real event — so the on-budget leg of
+ * that transfer still shows (the off-budget leg is dropped by the plain `on_budget = true` filter
+ * already; the card's own leg is dropped by the same transfer check, symmetrically, since from
+ * the card's own side its partner is the on-budget cash account).
+ */
+export async function listTransactionEventsForMonth(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  month: string,
+  accountId?: string,
+): Promise<TransactionEvent[]> {
+  const params: unknown[] = [workspaceId, month];
+  if (accountId !== undefined) {
+    params.push(accountId);
+  }
+  const { rows } = await db.query<TransactionEventRow>(
+    `SELECT
+       to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS date,
+       s.amount_cents, t.payee, s.category_id, t.status
+     FROM transactions t
+     JOIN workspaces w ON w.id = t.workspace_id
+     JOIN accounts a ON a.id = t.account_id
+     JOIN splits s ON s.transaction_id = t.id
+     LEFT JOIN transactions partner ON partner.id = t.transfer_id
+     LEFT JOIN accounts partner_account ON partner_account.id = partner.account_id
+     WHERE t.workspace_id = $1
+       AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM') = $2
+       ${
+         accountId === undefined
+           ? `AND a.on_budget = true
+              AND NOT (t.transfer_id IS NOT NULL AND partner_account.on_budget = true AND partner_account.type <> 'credit_card')`
+           : "AND t.account_id = $3"
+       }
+     ORDER BY t.occurred_at, t.created_at`,
+    params,
+  );
+  return rows.map((row) => ({
+    date: row.date,
+    amountCents: Number(row.amount_cents),
+    payee: row.payee,
+    categoryId: row.category_id,
+    kind: row.status === "pending" ? "pending" : "recorded",
+  }));
+}
+
 /**
  * Updates payee/memo/status and, if given, replaces every split. Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be

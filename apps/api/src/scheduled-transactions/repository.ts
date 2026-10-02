@@ -272,6 +272,57 @@ export async function listReservationsForMonth(db: DbPool | DbClient, workspaceI
   return rows.map((row) => ({ categoryId: row.category_id, amount: Number(row.amount_cents) }));
 }
 
+/** One event per split, mirroring `transactions/repository.ts`'s own `listTransactionEventsForMonth` (#325). A scheduled split's own `amountCents` is always positive (a reservation, never signed); the event negates it, the same sign convention a real expense split already uses. */
+export interface ScheduledEvent {
+  readonly date: string;
+  readonly amountCents: number;
+  readonly payee: string | null;
+  readonly categoryId: string;
+  readonly kind: "scheduled";
+  readonly scheduledTransactionId: string;
+}
+
+interface ScheduledEventRow {
+  readonly date: string;
+  readonly amount_cents: string;
+  readonly payee: string | null;
+  readonly category_id: string;
+  readonly scheduled_transaction_id: string;
+}
+
+/** Every split of every scheduled transaction due in `month`, not yet recorded (every row in the table qualifies, same as `listReservationsForMonth` — materialization is still manual, #330). `accountId` narrows it to one account, the same as `listTransactionEventsForMonth`. */
+export async function listScheduledEventsForMonth(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  month: string,
+  accountId?: string,
+): Promise<ScheduledEvent[]> {
+  const params: unknown[] = [workspaceId, month];
+  if (accountId !== undefined) {
+    params.push(accountId);
+  }
+  const { rows } = await db.query<ScheduledEventRow>(
+    `SELECT
+       to_char(t.next_due_date, 'YYYY-MM-DD') AS date,
+       s.amount_cents, t.payee, s.category_id, t.id AS scheduled_transaction_id
+     FROM scheduled_transaction_splits s
+     JOIN scheduled_transactions t ON t.id = s.scheduled_transaction_id
+     WHERE t.workspace_id = $1
+       AND to_char(t.next_due_date, 'YYYY-MM') = $2
+       ${accountId === undefined ? "" : "AND t.account_id = $3"}
+     ORDER BY t.next_due_date`,
+    params,
+  );
+  return rows.map((row) => ({
+    date: row.date,
+    amountCents: -Number(row.amount_cents),
+    payee: row.payee,
+    categoryId: row.category_id,
+    kind: "scheduled",
+    scheduledTransactionId: row.scheduled_transaction_id,
+  }));
+}
+
 async function insertScheduledSplits(
   db: DbPool | DbClient,
   workspaceId: string,
