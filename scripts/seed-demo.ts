@@ -1,5 +1,6 @@
 import { Api } from "./lib/api.ts";
 import { createWorkspaceWithOwner, deleteWorkspace, findUserIdBySubject } from "./lib/db.ts";
+import { monthOffset, todayAt } from "./lib/dates.ts";
 import { assertSafeToRun, requireEnv } from "./lib/env.ts";
 import { ensureDemoUser, signInAsDemoUser, subjectOf } from "./lib/keycloak.ts";
 
@@ -17,55 +18,6 @@ const WORKSPACE_NAME = "Demo";
 const TIME_ZONE = "Europe/Rome";
 const BASE_CURRENCY = "EUR";
 const DEMO_USERNAME = "demo";
-
-function monthOffset(month: string, delta: number): string {
-  const [year, m] = month.split("-").map(Number) as [number, number];
-  const date = new Date(Date.UTC(year, m - 1 + delta, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function daysIn(year: number, month1to12: number): number {
-  return new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
-}
-
-function today(): {
-  month: string;
-  isoDate(offsetDays: number): string;
-  /**
-   * A day before today, clamped to stay inside the current month — "near the start of the
-   * month" otherwise has no such day at all, so this falls back to the last day of the previous
-   * month instead (still genuinely before today, just not this month's own reservation).
-   */
-  beforeTodaySameMonth(daysBack: number): string;
-  /** The mirror of `beforeTodaySameMonth`, falling forward into next month at the other edge. */
-  afterTodaySameMonth(daysForward: number): string;
-} {
-  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
-  const [year, month, day] = todayStr.split("-").map(Number) as [number, number, number];
-  return {
-    month: `${year}-${String(month).padStart(2, "0")}`,
-    isoDate(offsetDays: number) {
-      const date = new Date(Date.UTC(year, month - 1, day + offsetDays));
-      return date.toISOString().slice(0, 10);
-    },
-    beforeTodaySameMonth(daysBack: number) {
-      const clampedDay = Math.max(1, day - daysBack);
-      if (clampedDay >= day) {
-        const date = new Date(Date.UTC(year, month - 1, 0)); // day 0 = previous month's last day
-        return date.toISOString().slice(0, 10);
-      }
-      return `${year}-${String(month).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
-    },
-    afterTodaySameMonth(daysForward: number) {
-      const clampedDay = Math.min(daysIn(year, month), day + daysForward);
-      if (clampedDay <= day) {
-        const date = new Date(Date.UTC(year, month, 1)); // next month's first day
-        return date.toISOString().slice(0, 10);
-      }
-      return `${year}-${String(month).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
-    },
-  };
-}
 
 interface CreatedAccount {
   readonly id: string;
@@ -114,7 +66,7 @@ async function main(): Promise<void> {
   const workspaceId = await createWorkspaceWithOwner(databaseUrl, WORKSPACE_NAME, TIME_ZONE, BASE_CURRENCY, userId);
   const base = `/workspaces/${workspaceId}`;
 
-  const { month: currentMonth, isoDate, beforeTodaySameMonth, afterTodaySameMonth } = today();
+  const { month: currentMonth, isoDate, onOrBeforeToday, beforeTodaySameMonth, afterTodaySameMonth } = todayAt(new Date(), TIME_ZONE);
   const previousMonth = monthOffset(currentMonth, -1);
   const nextMonth = monthOffset(currentMonth, 1);
 
@@ -234,18 +186,20 @@ async function main(): Promise<void> {
   // with a healthy unassigned buffer left over — a cash account with only expenses on it would
   // look (and reconcile) strangely for a screenshot.
   await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], `${previousMonth}-15`);
-  await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], `${currentMonth}-03`);
+  await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], onOrBeforeToday(3));
 
-  // Every transaction below is anchored to a fixed day of the current (or previous) month,
-  // never an offset from today: with today early in the month, "a few days ago" can otherwise
-  // land in the previous month entirely (and its spending in the wrong month's budget).
+  // Every recorded transaction below is anchored to a fixed day of the current month, clamped to
+  // today when that day has not happened yet (`onOrBeforeToday`) — a *recorded* transaction dated
+  // in the future would describe something that has not actually happened. Never an offset from
+  // today either: with today early in the month, "a few days ago" can otherwise land in the
+  // previous month entirely (and its spending in the wrong month's budget).
 
   // Cash overspending: assigned 60 000, spent 64 215 from a cash account.
-  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -64_215 }], `${currentMonth}-07`);
+  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -64_215 }], onOrBeforeToday(7));
 
   // Credit overspending: assigned 12 000, spent 16 850 on the Mastercard (also pushes its real
   // debt well past what is assigned to its payment category — the "uncovered" case below).
-  await transaction(mastercard.id, "Restaurant", [{ categoryId: restaurants, amountCents: -16_850 }], `${currentMonth}-09`);
+  await transaction(mastercard.id, "Restaurant", [{ categoryId: restaurants, amountCents: -16_850 }], onOrBeforeToday(9));
 
   // A split across two categories in one transaction.
   await transaction(
@@ -255,19 +209,18 @@ async function main(): Promise<void> {
       { categoryId: fuelAndTransport, amountCents: -8_830 },
       { categoryId: hobbies, amountCents: -3_500 },
     ],
-    `${currentMonth}-11`,
+    onOrBeforeToday(11),
   );
 
-  // A pending transaction, not yet cleared — today itself, genuinely relative (never crosses a
-  // month boundary, unlike the fixed-offset dates above).
+  // A pending transaction, not yet cleared — recent (today or yesterday), per the same rule.
   await transaction(checking.id, "Streaming service", [{ categoryId: subscriptions, amountCents: -999 }], isoDate(0), "pending");
 
-  await transaction(checking.id, "Investment platform", [{ categoryId: investmentPlanContribution, amountCents: -50_000 }], `${currentMonth}-05`);
+  await transaction(checking.id, "Investment platform", [{ categoryId: investmentPlanContribution, amountCents: -50_000 }], onOrBeforeToday(5));
 
   await api.post(`${base}/transfers`, {
     sourceAccountId: checking.id,
     destinationAccountId: savings.id,
-    occurredAt: `${currentMonth}-06`,
+    occurredAt: onOrBeforeToday(6),
     amountCents: 20_000,
     payee: "Savings top-up",
     status: "cleared",
