@@ -369,10 +369,26 @@ interface TransactionEventRow {
 }
 
 /**
- * Every split of every transaction dated in `month` (the budget month's own timeline, #325) —
- * every account, unless `accountId` narrows it to one (the account register's own timeline,
- * `#337`). `budget_date`'s own month, not `occurred_at`'s (a transaction anchored near midnight
- * can fall in a different calendar month once converted to the workspace's own time zone).
+ * Every split of every transaction dated in `month` (the budget month's own timeline, #325), on
+ * an on-budget account, unless `accountId` narrows it to one specific account (the account
+ * register's own timeline, `#337`) — any account, on-budget or not, since that screen is about
+ * one account's own activity, not the budget's. `budget_date`'s own month, not `occurred_at`'s (a
+ * transaction anchored near midnight can fall in a different calendar month once converted to the
+ * workspace's own time zone).
+ *
+ * A transfer's two legs (`transfer_id`) are two ordinary rows, each with its own single
+ * null-category split already signed from that leg's own account (negative leaving the source,
+ * positive arriving at the destination) — so filtered to one `accountId`, a transfer already
+ * shows up correctly with no special-casing at all.
+ *
+ * Un-filtered (every account), a transfer between two on-budget cash accounts is invisible on
+ * purpose: money only moved from one pot to another, nothing a category or the month's own cash
+ * total needs to know about (`@envelope/core`'s own invariant does not move either). A transfer
+ * touching an off-budget account or a credit card is not neutral that way — paying a card down,
+ * or moving money out of the tracked budget entirely, is a real event — so the on-budget leg of
+ * that transfer still shows (the off-budget leg is dropped by the plain `on_budget = true` filter
+ * already; the card's own leg is dropped by the same transfer check, symmetrically, since from
+ * the card's own side its partner is the on-budget cash account).
  */
 export async function listTransactionEventsForMonth(
   db: DbPool | DbClient,
@@ -390,10 +406,18 @@ export async function listTransactionEventsForMonth(
        s.amount_cents, t.payee, s.category_id, t.status
      FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     JOIN accounts a ON a.id = t.account_id
      JOIN splits s ON s.transaction_id = t.id
+     LEFT JOIN transactions partner ON partner.id = t.transfer_id
+     LEFT JOIN accounts partner_account ON partner_account.id = partner.account_id
      WHERE t.workspace_id = $1
        AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM') = $2
-       ${accountId === undefined ? "" : "AND t.account_id = $3"}
+       ${
+         accountId === undefined
+           ? `AND a.on_budget = true
+              AND NOT (t.transfer_id IS NOT NULL AND partner_account.on_budget = true AND partner_account.type <> 'credit_card')`
+           : "AND t.account_id = $3"
+       }
      ORDER BY t.occurred_at, t.created_at`,
     params,
   );

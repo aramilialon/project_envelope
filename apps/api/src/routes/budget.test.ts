@@ -307,5 +307,87 @@ describe("budget routes", () => {
       assert.ok(events.some((e) => e.amountCents === -400));
       assert.ok(!events.some((e) => e.amountCents === -1_200)); // the first test's own event, on accountId instead
     });
+
+    it("a transfer between two on-budget cash accounts is invisible workspace-wide, but shows (signed) filtered to either account", async () => {
+      const savings = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Savings', 'savings', 'EUR') RETURNING id",
+        [workspaceId],
+      );
+      const savingsId = savings.rows[0]!.id;
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth(),
+        payload: { sourceAccountId: accountId, destinationAccountId: savingsId, occurredAt: "2026-10-09", amountCents: 5_000 },
+      });
+
+      const workspaceWide = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const wideEvents = workspaceWide.json().events as Array<{ amountCents: number }>;
+      assert.ok(!wideEvents.some((e) => Math.abs(e.amountCents) === 5_000), "a cash-to-cash transfer must not appear workspace-wide");
+
+      const fromSource = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events?accountId=${accountId}`,
+        headers: auth(),
+      });
+      assert.ok((fromSource.json().events as Array<{ amountCents: number }>).some((e) => e.amountCents === -5_000));
+
+      const fromDestination = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events?accountId=${savingsId}`,
+        headers: auth(),
+      });
+      assert.ok((fromDestination.json().events as Array<{ amountCents: number }>).some((e) => e.amountCents === 5_000));
+    });
+
+    it("a transfer to an off-budget account only shows the on-budget leg workspace-wide", async () => {
+      const offBudget = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+        [workspaceId],
+      );
+      const offBudgetId = offBudget.rows[0]!.id;
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth(),
+        payload: { sourceAccountId: accountId, destinationAccountId: offBudgetId, occurredAt: "2026-10-10", amountCents: 6_000 },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number }>;
+      assert.ok(events.some((e) => e.amountCents === -6_000), "the on-budget (source) leg must still show");
+      assert.ok(!events.some((e) => e.amountCents === 6_000), "the off-budget (destination) leg must not show");
+    });
+
+    it("a transfer to a credit card only shows the cash leg workspace-wide", async () => {
+      const card = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Visa', 'credit_card', 'EUR') RETURNING id",
+        [workspaceId],
+      );
+      const cardId = card.rows[0]!.id;
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth(),
+        payload: { sourceAccountId: accountId, destinationAccountId: cardId, occurredAt: "2026-10-11", amountCents: 7_000 },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number }>;
+      assert.ok(events.some((e) => e.amountCents === -7_000), "the cash (source) leg must still show");
+      assert.ok(!events.some((e) => e.amountCents === 7_000), "the card's own leg must not show");
+    });
   });
 });
