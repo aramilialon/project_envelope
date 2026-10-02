@@ -67,15 +67,21 @@ async function main(): Promise<void> {
     await page.waitForURL(/^http:\/\/localhost:5173\/[0-9a-f-]+$/);
 
     await page.getByText("Unassigned").waitFor();
-    // The "To do" list's own target-funding entry (and the timeline's own events) are each a
+    // The "To do" list's own target-funding entry and the timeline's own events are each a
     // separate, parallel fetch on top of the budget month itself (#326) — without this, a
-    // screenshot can catch it mid-flight, one or two "To do" items short of its own final count.
+    // screenshot can catch it mid-flight, one or two "To do" items short of its own final count,
+    // or the timeline with no marks at all. `networkidle` alone is not quite enough: it settles
+    // the instant the last response arrives, which can still be a tick before React has committed
+    // the re-render those fetches triggered — the same kind of gap `waitForTimeout(50)` already
+    // closes elsewhere in this file, for a resize instead of a fetch.
     await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(300);
     await shootSixWays(page, outDir, "budget-month", overflowChecks);
 
     await page.getByRole("button", { name: "Previous month" }).click();
     await page.getByText("Unassigned").waitFor();
     await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(300);
     await shootSixWays(page, outDir, "budget-month-previous", overflowChecks);
 
     await page.setViewportSize({ width: 1440, height: 900 });
