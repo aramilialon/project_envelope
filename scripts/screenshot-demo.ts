@@ -67,10 +67,15 @@ async function main(): Promise<void> {
     await page.waitForURL(/^http:\/\/localhost:5173\/[0-9a-f-]+$/);
 
     await page.getByText("Unassigned").waitFor();
+    // The "To do" list's own target-funding entry (and the timeline's own events) are each a
+    // separate, parallel fetch on top of the budget month itself (#326) — without this, a
+    // screenshot can catch it mid-flight, one or two "To do" items short of its own final count.
+    await page.waitForLoadState("networkidle");
     await shootSixWays(page, outDir, "budget-month", overflowChecks);
 
     await page.getByRole("button", { name: "Previous month" }).click();
     await page.getByText("Unassigned").waitFor();
+    await page.waitForLoadState("networkidle");
     await shootSixWays(page, outDir, "budget-month-previous", overflowChecks);
 
     await page.setViewportSize({ width: 1440, height: 900 });
