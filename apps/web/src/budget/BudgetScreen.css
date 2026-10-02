@@ -87,12 +87,25 @@
 .budget-screen .brow {
   display: grid;
   grid-template-columns: 270px minmax(0, 1fr) 150px;
+  grid-template-areas: "name bar amount";
   align-items: center;
   gap: 18px;
   width: 100%;
   min-height: 52px;
   padding: 8px 12px;
   border-radius: 12px;
+}
+
+.budget-screen .brow > .cn {
+  grid-area: name;
+}
+
+.budget-screen .brow > .bar {
+  grid-area: bar;
+}
+
+.budget-screen .brow > .av {
+  grid-area: amount;
 }
 
 .budget-screen .cn {
@@ -183,7 +196,17 @@
 
 @media (max-width: 600px) {
   .budget-screen .brow {
-    grid-template-columns: 1fr;
-    gap: 6px;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name amount"
+      "bar bar";
+    row-gap: 7px;
+    column-gap: 10px;
+    min-height: 0;
+    padding: 9px 0;
+  }
+
+  .budget-screen .brow .bar {
+    height: 10px;
   }
 }

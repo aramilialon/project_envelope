@@ -13,6 +13,17 @@
   color: var(--band-ink);
 }
 
+/* No second row to reserve space for (the register, the accounts screen, …): the mockup's own
+   compact band (`.band2` in account-register.html) is 14px top and bottom, no gap. */
+.app-layout .band:has(.bm:empty) {
+  gap: 0;
+  padding: 14px 30px;
+}
+
+.app-layout .bm:empty {
+  display: none;
+}
+
 .app-layout .bt {
   display: flex;
   flex-wrap: wrap;
@@ -165,6 +176,10 @@
 @media (max-width: 600px) {
   .app-layout .band {
     padding: 14px 16px 18px;
+  }
+
+  .app-layout .band:has(.bm:empty) {
+    padding: 14px 16px;
   }
 
   .app-layout .main {
