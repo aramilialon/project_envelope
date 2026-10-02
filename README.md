@@ -86,7 +86,7 @@ pnpm test
 | `apps/` | Next: `mobile` (Expo) |
 | `infra/` | `docker-compose` for local development (PostgreSQL, Keycloak) and the Ansible playbook for the development machine |
 | `docs/` | Design document, getting started, how-to guides, decision records, glossary, interface mockups |
-| `scripts/` | GitHub setup (labels, milestones, protected main) and Git hooks |
+| `scripts/` | GitHub setup (labels, milestones, protected main), Git hooks, the Keycloak realm bootstrap, and a demo data seed (`scripts/README.md`) |
 
 ## Documentation
 

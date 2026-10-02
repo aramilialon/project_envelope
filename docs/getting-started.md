@@ -251,6 +251,12 @@ $ gh pr create --fill                       # then review and merge on GitHub
 
 The repository's **Actions** tab on GitHub shows the CI run for every push and pull request: install, type check, tests. It must be green before merging.
 
+## 13. Demo data (optional)
+
+With `apps/api` running (section 9), `scripts/README.md` has a seed script that fills a
+"Demo" workspace with realistic data through the real API — useful to have something to look at
+without building it up by hand through the web app.
+
 ## Common problems
 
 | Symptom | Likely cause | Fix |
