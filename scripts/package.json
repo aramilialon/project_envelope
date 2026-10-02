@@ -1,0 +1,20 @@
+{
+  "name": "@envelope/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Development scripts: Keycloak realm bootstrap, GitHub setup, demo data seed",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "seed:demo": "node --env-file-if-exists=.env seed-demo.ts",
+    "screenshots:demo": "node --env-file-if-exists=.env screenshot-demo.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/pg": "^8.23.1"
+  }
+}
