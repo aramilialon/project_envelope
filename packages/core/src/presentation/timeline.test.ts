@@ -184,4 +184,18 @@ describe("computeTimeline", () => {
     assert.equal(mark.label!.extraPayeeCount, 5);
     assert.ok(mark.label!.x + mark.label!.width <= layout.width - 2);
   });
+
+  it("uses the caller's own formatPayees for the width estimate, not a plain '+N' guess", () => {
+    const money = (cents: number) => `€${(cents / 100).toFixed(2)}`;
+    // A translated "and N more" is longer than "+N" — the estimate must reflect that, not underrun it.
+    const formatPayees = (payees: readonly string[], extra: number) => (extra > 0 ? `${payees.join(", ")} and ${extra} more` : payees.join(", "));
+    const events = [
+      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "A" },
+      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "B" },
+      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "C" },
+    ];
+    const withDefault = computeTimeline({ daysInMonth: 30, today: undefined, formatAmount: money, events });
+    const withCustom = computeTimeline({ daysInMonth: 30, today: undefined, formatAmount: money, formatPayees, events });
+    assert.ok(withCustom.marks[0]!.label!.width > withDefault.marks[0]!.label!.width);
+  });
 });

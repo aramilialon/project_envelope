@@ -53,7 +53,9 @@ describe("Timeline (#326)", () => {
     });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
-    expect(screen.getByText(/Payee 1, Payee 2 \+3/)).toBeInTheDocument();
+    // Intl.ListFormat's own conjunction style ("A and B"), never a raw "+3" that could be
+    // mistaken for the timeline's own "+" sign (an inflow) — design.md, #326's own review round.
+    expect(screen.getByText(/Payee 1 and Payee 2 and 3 more/)).toBeInTheDocument();
   });
 
   it("draws the 'today' line only when the month shown is the current one", () => {

@@ -23,6 +23,7 @@ import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent } from "./api.ts";
 import Timeline from "./Timeline.tsx";
+import { formatPayees } from "./timelineLabels.ts";
 import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
@@ -236,6 +237,7 @@ export default function BudgetScreen() {
               today: today?.day,
               events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
               formatAmount: money,
+              formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
             })}
             monthLabel={monthLabel(month, intl.locale)}
             money={money}

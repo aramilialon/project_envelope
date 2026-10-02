@@ -1,5 +1,6 @@
 import type { TimelineLayout } from "@envelope/core";
 import { useIntl } from "react-intl";
+import { formatPayees } from "./timelineLabels.ts";
 import "./Timeline.css";
 
 interface Props {
@@ -47,8 +48,7 @@ export default function Timeline({ layout, monthLabel, money }: Props) {
               <line x1={mark.x} y1={layout.axisY} x2={mark.x} y2={mark.stemY} className={`t-stem ${stemModifier}`} />
               {mark.label && (
                 <text x={mark.label.x} y={mark.label.y} className={labelModifier ? `t-l ${labelModifier}` : "t-l"}>
-                  {mark.label.payees.join(", ")}
-                  {mark.label.extraPayeeCount > 0 ? ` +${mark.label.extraPayeeCount}` : ""} {mark.direction === "in" ? "+" : "−"}
+                  {formatPayees(mark.label.payees, mark.label.extraPayeeCount, intl)} {mark.direction === "in" ? "+" : "−"}
                   {money(mark.amountCents)}
                 </text>
               )}

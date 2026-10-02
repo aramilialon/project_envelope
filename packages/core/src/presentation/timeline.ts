@@ -90,6 +90,14 @@ export interface TimelineInput {
    * since a locale's own symbol and separators can meaningfully change how much room a label needs.
    */
   readonly formatAmount?: (amountCents: Cents) => string;
+  /**
+   * Formats the payees sharing a mark's own label exactly as the renderer will show them (its own
+   * list style, and its own translated "and N more") — used only to estimate a label's own width,
+   * same reason and same rule as `formatAmount`. Without it, a plain `"a, b +N"`-shaped estimate
+   * stands in; a real caller should always pass its own, since a translated "and N more" is not
+   * the same length as "+N" (and some languages need more room still).
+   */
+  readonly formatPayees?: (payees: readonly string[], extraPayeeCount: number) => string;
 }
 
 interface Size {
@@ -132,13 +140,17 @@ function defaultFormatAmount(amountCents: Cents): string {
   return (amountCents / 100).toFixed(2);
 }
 
+function defaultFormatPayees(payees: readonly string[], extraPayeeCount: number): string {
+  return payees.join(", ") + (extraPayeeCount > 0 ? ` +${extraPayeeCount}` : "");
+}
+
 /**
  * A label's own estimated rendered width: `text.length * charWidth`, the same crude estimate
  * `docs/ux/mockups/budget-month.html`'s own `timelineSvg` already relies on, never exact font
- * metrics — but the text itself is exactly what gets rendered (payees already capped to
- * `MAX_LABEL_PAYEES` plus "+N", the sign, `formatAmount`'s own real formatted string), not a
- * stand-in shape, so the estimate stays accurate enough that the amount is never the part that
- * runs off the canvas.
+ * metrics — but the text itself is exactly what gets rendered (`formatPayees`'s own real payee
+ * list and "and N more", the sign, `formatAmount`'s own real formatted string), not a stand-in
+ * shape, so the estimate stays accurate enough that the amount is never the part that runs off
+ * the canvas.
  */
 function estimateLabelWidth(
   payees: readonly string[],
@@ -147,8 +159,9 @@ function estimateLabelWidth(
   direction: TimelineDirection,
   size: Size,
   formatAmount: (amountCents: Cents) => string,
+  formatPayees: (payees: readonly string[], extraPayeeCount: number) => string,
 ): number {
-  const payeeText = payees.join(", ") + (extraPayeeCount > 0 ? ` +${extraPayeeCount}` : "");
+  const payeeText = formatPayees(payees, extraPayeeCount);
   const sign = direction === "in" ? "+" : "−";
   const amountText = formatAmount(amountCents);
   // +1 for the space between the payee text and the signed amount.
@@ -203,6 +216,7 @@ function placeLabel(lane: Lane[], x: number, y: number, width: number, step: num
 export function computeTimeline(input: TimelineInput): TimelineLayout {
   const size = input.compact ? COMPACT : FULL;
   const formatAmount = input.formatAmount ?? defaultFormatAmount;
+  const formatPayees = input.formatPayees ?? defaultFormatPayees;
   const x0 = size.inset;
   const x1 = size.width - size.inset;
   const span = Math.max(1, input.daysInMonth - 1);
@@ -244,7 +258,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     if (labelled) {
       const displayedPayees = e.payees.slice(0, MAX_LABEL_PAYEES);
       const extraPayeeCount = Math.max(0, e.payees.length - MAX_LABEL_PAYEES);
-      const width = estimateLabelWidth(displayedPayees, extraPayeeCount, e.amountCents, e.direction, size, formatAmount);
+      const width = estimateLabelWidth(displayedPayees, extraPayeeCount, e.amountCents, e.direction, size, formatAmount, formatPayees);
 
       // The "today" line splits the canvas in two for this purpose: a past event's label must
       // stay left of it, a future one's right of it — never crossing it either way (design.md).
