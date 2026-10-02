@@ -44,3 +44,5 @@ export { parseQif } from "./import/qif.ts";
 export { parseCamt053 } from "./import/camt053.ts";
 export type { Hlc } from "./sync/hlc.ts";
 export { compareHlc, nextHlc } from "./sync/hlc.ts";
+export type { Bar, BarSegment, CategoryBar, PaymentCategoryBar, TailKind } from "./presentation/bars.ts";
+export { computeCategoryBar, computePaymentCategoryBar, TAIL_PERCENT, TRACK_PERCENT } from "./presentation/bars.ts";

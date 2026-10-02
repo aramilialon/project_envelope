@@ -1,9 +1,11 @@
 import { fireEvent, screen } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
+import { BandSecondRowSlotContext } from "../layout/bandSecondRowSlot.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as targetsApi from "../targets/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
@@ -50,6 +52,17 @@ function budgetMonth(overrides: Partial<BudgetMonthResponse>): BudgetMonthRespon
   };
 }
 
+/** Stands in for `AppLayout`'s own band second-row slot, the same way the real layout provides it. */
+function Harness({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  return (
+    <>
+      <div ref={setSlot} />
+      <BandSecondRowSlotContext.Provider value={slot}>{children}</BandSecondRowSlotContext.Provider>
+    </>
+  );
+}
+
 function renderScreen(month: BudgetMonthResponse, groups: CategoryGroup[]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
@@ -60,14 +73,21 @@ function renderScreen(month: BudgetMonthResponse, groups: CategoryGroup[]) {
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
       <Routes>
-        <Route path="/:workspaceId" element={<BudgetScreen />} />
+        <Route
+          path="/:workspaceId"
+          element={
+            <Harness>
+              <BudgetScreen />
+            </Harness>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   );
   return { ...rendered, getBudgetMonth };
 }
 
-describe("BudgetScreen (#53)", () => {
+describe("BudgetScreen (#53, #324)", () => {
   it("shows a loading state", () => {
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise(() => {}));
@@ -98,51 +118,119 @@ describe("BudgetScreen (#53)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not load your budget.");
   });
 
-  it("shows the ready-to-assign amount and every category grouped and ordered", async () => {
-    renderScreen(
-      budgetMonth({
-        unassigned: 10000,
-        categories: [
-          category({ categoryId: "c2", groupId: "g2", groupName: "Fun", name: "Hobby", assigned: 2000, activity: -500, available: 1500 }),
-          category({ categoryId: "c1", groupId: "g1", name: "Groceries", assigned: 6000, activity: -4000, available: 2000 }),
-        ],
-      }),
-      [HOME, FUN],
-    );
-
-    expect(await screen.findByText("€100.00")).toBeInTheDocument();
-    const rowNames = (await screen.findAllByRole("row")).map((row) => row.textContent);
-    const homeIndex = rowNames.findIndex((t) => t?.includes("Home"));
-    const groceriesIndex = rowNames.findIndex((t) => t?.includes("Groceries"));
-    const funIndex = rowNames.findIndex((t) => t?.includes("Fun"));
-    const hobbyIndex = rowNames.findIndex((t) => t?.includes("Hobby"));
-    expect(homeIndex).toBeLessThan(groceriesIndex);
-    expect(groceriesIndex).toBeLessThan(funIndex);
-    expect(funIndex).toBeLessThan(hobbyIndex);
-  });
-
-  it("shows a negative ready-to-assign amount and a negative available amount distinctly", async () => {
-    renderScreen(
-      budgetMonth({
-        unassigned: -500,
-        categories: [category({ available: -200 })],
-      }),
-      [HOME],
-    );
-
-    expect(await screen.findByText("-€5.00")).toBeInTheDocument();
-    const cell = document.querySelector("td.neg");
-    expect(cell).toHaveTextContent("-€2.00");
-  });
-
   it("shows an empty message when there are no categories yet", async () => {
     renderScreen(budgetMonth({}), []);
     expect(await screen.findByText("No categories yet: add some from Workspace settings.")).toBeInTheDocument();
   });
 
+  it("portals the unassigned amount into the band's second row, turning red when negative", async () => {
+    renderScreen(budgetMonth({ unassigned: -500, categories: [category({})] }), [HOME]);
+    expect(await screen.findByText("-€5.00")).toBeInTheDocument();
+    expect(screen.getByText("-€5.00")).toHaveClass("low");
+  });
+
+  it("groups categories under their own group, in group and category order", async () => {
+    const { container } = renderScreen(
+      budgetMonth({
+        categories: [
+          category({ categoryId: "c2", groupId: "g2", groupName: "Fun", name: "Hobby", sortOrder: 1 }),
+          category({ categoryId: "c1", groupId: "g1", name: "Groceries", sortOrder: 1 }),
+        ],
+      }),
+      [HOME, FUN],
+    );
+    await screen.findByText("Groceries");
+
+    const text = container.textContent ?? "";
+    const homeIndex = text.indexOf("Home");
+    const groceriesIndex = text.indexOf("Groceries");
+    const funIndex = text.indexOf("Fun");
+    const hobbyIndex = text.indexOf("Hobby");
+    expect(homeIndex).toBeLessThan(groceriesIndex);
+    expect(groceriesIndex).toBeLessThan(funIndex);
+    expect(funIndex).toBeLessThan(hobbyIndex);
+  });
+
+  it("shows a group's own available sum and its overspent-category count", async () => {
+    renderScreen(
+      budgetMonth({
+        categories: [
+          category({ categoryId: "c1", name: "Groceries", activity: -200, available: -200, cashOverspending: 200 }),
+          category({ categoryId: "c2", name: "Fuel", available: 300 }),
+        ],
+      }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+
+    expect(screen.getByText("€1.00")).toBeInTheDocument(); // -200 + 300 = 100
+    expect(screen.getByText("1")).toBeInTheDocument(); // one overspent category
+  });
+
+  it("marks a cash-overspent category distinctly, with a screen-reader-only 'Overspent:' prefix", async () => {
+    const { container } = renderScreen(
+      budgetMonth({ categories: [category({ activity: -200, available: -200, cashOverspending: 200 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+
+    const cell = container.querySelector(".amt-cell.cash");
+    expect(cell).not.toBeNull();
+    expect(cell).toHaveTextContent("Overspent:");
+    expect(cell).toHaveTextContent("-€2.00");
+  });
+
+  it("marks a card-overspent category with a 'Card' tag", async () => {
+    const { container } = renderScreen(
+      budgetMonth({ categories: [category({ activity: -485, available: -485, creditOverspending: 485 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+    expect(container.querySelector(".amt-cell.credit")).toHaveTextContent("Card");
+  });
+
+  it("marks a reservation beyond what is available with a 'Reserved' tag, never as overspending", async () => {
+    const { container } = renderScreen(
+      budgetMonth({ categories: [category({ carriedOver: 30_000, assigned: 5_000, available: -15_000, reserved: 50_000 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+    expect(container.querySelector(".amt-cell.short")).toHaveTextContent("Reserved");
+  });
+
+  it("shows the spent line for an ordinary category", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ assigned: 60_000, activity: -64_215, available: -4_215, cashOverspending: 4_215 })] }),
+      [HOME],
+    );
+    expect(await screen.findByText("€642.15 spent of €600.00")).toBeInTheDocument();
+  });
+
+  it("shows a payment category's debt line instead of a spent line", async () => {
+    renderScreen(
+      budgetMonth({
+        categories: [],
+        paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 70_000 })],
+      }),
+      [HOME],
+    );
+    expect(await screen.findByText("€700.00 to cover of €1,200.00 of debt")).toBeInTheDocument();
+  });
+
+  it("collapses and expands a group", async () => {
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Home" }));
+    expect(screen.queryByText("Groceries")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+  });
+
   it("navigates to the next and previous month, refetching the budget", async () => {
     const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
-    await screen.findByText("Home");
+    await screen.findByText("Groceries");
     const initialCall = getBudgetMonth.mock.calls[0];
     const currentMonth = initialCall?.[2] as string;
     const [year, monthNumber] = currentMonth.split("-").map(Number) as [number, number];
@@ -151,19 +239,19 @@ describe("BudgetScreen (#53)", () => {
     const previousMonth = monthNumber === 1 ? `${year - 1}-12` : `${year}-${pad(monthNumber - 1)}`;
 
     fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    expect(await screen.findByText("Home")).toBeInTheDocument();
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", nextMonth);
 
     fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
     fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
-    expect(await screen.findByText("Home")).toBeInTheDocument();
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth);
   });
 
   it("opens the Targets panel", async () => {
     vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
-    await screen.findByText("Home");
+    await screen.findByText("Groceries");
 
     fireEvent.click(screen.getByRole("button", { name: "Targets" }));
     expect(await screen.findByRole("heading", { name: "Targets" })).toBeInTheDocument();
@@ -171,7 +259,7 @@ describe("BudgetScreen (#53)", () => {
 
   it("opens the Quick assign panel", async () => {
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
-    await screen.findByText("Home");
+    await screen.findByText("Groceries");
 
     fireEvent.click(screen.getByRole("button", { name: "Quick assign" }));
     expect(await screen.findByRole("heading", { name: "Quick assign" })).toBeInTheDocument();

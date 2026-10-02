@@ -1,15 +1,16 @@
+import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { NavLink, Outlet, useParams } from "react-router-dom";
 
 import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.tsx";
+import { BandSecondRowSlotContext } from "./bandSecondRowSlot.ts";
 import "./AppLayout.css";
 
 /**
- * The mariner band (#323, docs/design.md's "User interface"): the wordmark, primary navigation,
- * the workspace switcher and the user menu, shared by every screen under `/:workspaceId`. This
- * is the band's first line only — a screen's own second line (the budget month's own month
- * navigation and unassigned-money box) is that screen's own concern, not this layout's.
+ * The mariner band (#323/#324, docs/design.md's "User interface"): the wordmark, primary
+ * navigation, the workspace switcher and the user menu, shared by every screen under
+ * `/:workspaceId` — plus, below it, the second-line slot screens can portal into (above).
  *
  * Replaces the old sidebar entirely: the account ledger that used to live here moved to the
  * Accounts screen (`#51`'s own screen, restyled by `#333`), since an account's balance is no
@@ -21,6 +22,7 @@ export default function AppLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const intl = useIntl();
   const auth = useAuth();
+  const [secondRowSlot, setSecondRowSlot] = useState<HTMLDivElement | null>(null);
 
   return (
     <div className="app-layout">
@@ -43,9 +45,12 @@ export default function AppLayout() {
             {intl.formatMessage({ id: "common.action.signOut", defaultMessage: "Sign out" })}
           </button>
         </div>
+        <div className="bm" ref={setSecondRowSlot} />
       </header>
       <div className="main">
-        <Outlet />
+        <BandSecondRowSlotContext.Provider value={secondRowSlot}>
+          <Outlet />
+        </BandSecondRowSlotContext.Provider>
       </div>
     </div>
   );

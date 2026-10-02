@@ -1,142 +1,212 @@
-.budget-screen .head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: 16px;
+.budget-screen .n {
+  font-variant-numeric: tabular-nums;
 }
 
 .budget-screen .acts {
   display: flex;
   gap: 8px;
+  margin-top: 22px;
   margin-bottom: 16px;
-}
-
-.budget-screen .btn {
-  min-height: 36px;
-  padding: 0 14px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--paper);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.budget-screen .month {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.budget-screen .month h1 {
-  margin: 0;
-  min-width: 14ch;
-  text-align: center;
-  font-size: 26px;
-  font-weight: 700;
-}
-
-.budget-screen .arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--paper);
-  font-size: 16px;
-  cursor: pointer;
-}
-
-.budget-screen .facts {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.budget-screen .facts b {
-  color: var(--ink);
-}
-
-.budget-screen .rta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.budget-screen .rta .label {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.budget-screen .rta .amt {
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.budget-screen .rta .amt.low {
-  color: var(--red);
 }
 
 .budget-screen .empty {
   color: var(--muted);
 }
 
-.budget-screen .budget-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+.budget-screen .bars {
+  display: flex;
+  flex-direction: column;
 }
 
-.budget-screen .budget-table th,
-.budget-screen .budget-table td {
-  padding: 8px 10px;
-  text-align: left;
-  border-bottom: 1px solid var(--rule);
+.budget-screen .bgr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 6px 12px 6px 6px;
+  border-radius: 10px;
+  background: var(--paper-2);
 }
 
-.budget-screen .budget-table thead th {
-  font-size: 11px;
+.budget-screen .gh {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.budget-screen .chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.budget-screen .chev svg {
+  transition: transform 0.15s;
+}
+
+.budget-screen .chev[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+
+.budget-screen .gname {
+  min-height: 32px;
+  padding: 0 6px;
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.budget-screen .count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.budget-screen .count.over {
+  background: var(--red);
+  color: var(--red-ink);
+}
+
+.budget-screen .gsum {
   font-weight: 600;
+  color: var(--ink-2);
+}
+
+.budget-screen .brow {
+  display: grid;
+  grid-template-columns: 270px minmax(0, 1fr) 150px;
+  grid-template-areas: "name bar amount";
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-radius: 12px;
+}
+
+.budget-screen .brow > .cn {
+  grid-area: name;
+}
+
+.budget-screen .brow > .bar {
+  grid-area: bar;
+}
+
+.budget-screen .brow > .av {
+  grid-area: amount;
+}
+
+.budget-screen .cn {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.budget-screen .cn b {
+  font-weight: 600;
+}
+
+.budget-screen .spent {
+  color: var(--muted);
+}
+
+.budget-screen .av {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.budget-screen .amt-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 96px;
+  padding: 3px 10px;
+  border-radius: 7px;
+  font-weight: 600;
+}
+
+.budget-screen .amt-cell.zero {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.budget-screen .amt-cell.cash {
+  background: var(--red);
+  color: var(--red-ink);
+}
+
+.budget-screen .amt-cell.credit {
+  background: repeating-linear-gradient(135deg, var(--hatch-bg) 0 5px, color-mix(in srgb, var(--hatch) 32%, var(--hatch-bg)) 5px 7px);
+  color: var(--hatch-ink);
+  box-shadow: inset 0 0 0 1px var(--hatch);
+}
+
+.budget-screen .amt-cell.short {
+  border: 1px dashed var(--warn);
+  color: var(--warn);
+}
+
+.budget-screen .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.budget-screen .tag {
+  font-size: 10.5px;
+  font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: var(--muted);
-  border-bottom: 1px solid var(--ink);
 }
 
-.budget-screen .budget-table .n {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.budget-screen .budget-table thead .total {
-  display: block;
+.budget-screen .legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 14px;
   font-size: 13px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--ink);
+  color: var(--muted);
 }
 
-.budget-screen .budget-table .group-row th,
-.budget-screen .budget-table .group-row td {
-  padding-top: 16px;
-  font-weight: 700;
-  background: var(--desk);
+.budget-screen .legend i {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  border-radius: 5px;
+  margin-right: 6px;
+  vertical-align: -1px;
 }
 
-.budget-screen .budget-table .neg {
-  color: var(--red);
-  font-weight: 600;
+@media (max-width: 600px) {
+  .budget-screen .brow {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "name amount"
+      "bar bar";
+    row-gap: 7px;
+    column-gap: 10px;
+    min-height: 0;
+    padding: 9px 0;
+  }
+
+  .budget-screen .brow .bar {
+    height: 10px;
+  }
 }

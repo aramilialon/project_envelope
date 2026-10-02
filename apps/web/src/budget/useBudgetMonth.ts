@@ -4,10 +4,15 @@ import { useAuth } from "react-oidc-context";
 import { listCategoryGroups } from "../categories/api.ts";
 import { getBudgetMonth, type BudgetMonthCategory, type BudgetMonthResponse } from "./api.ts";
 
+export interface BudgetGroupCategory extends BudgetMonthCategory {
+  /** Whether this came from `budgetMonth.paymentCategories` rather than `.categories` — the API response itself has no field marking this once merged, so it is recorded here while the two are still separate. */
+  readonly isPaymentCategory: boolean;
+}
+
 export interface BudgetGroup {
   readonly id: string;
   readonly name: string;
-  readonly categories: readonly BudgetMonthCategory[];
+  readonly categories: readonly BudgetGroupCategory[];
 }
 
 export type BudgetMonthState =
@@ -42,8 +47,11 @@ export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthS
         if (cancelled) {
           return;
         }
-        const allCategories = [...budgetMonth.categories, ...budgetMonth.paymentCategories];
-        const byGroup = new Map<string, BudgetMonthCategory[]>();
+        const allCategories: BudgetGroupCategory[] = [
+          ...budgetMonth.categories.map((c) => ({ ...c, isPaymentCategory: false })),
+          ...budgetMonth.paymentCategories.map((c) => ({ ...c, isPaymentCategory: true })),
+        ];
+        const byGroup = new Map<string, BudgetGroupCategory[]>();
         for (const category of allCategories) {
           const list = byGroup.get(category.groupId);
           if (list) {
