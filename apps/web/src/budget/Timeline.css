@@ -1,0 +1,100 @@
+.time {
+  border-radius: 14px;
+  background: var(--desk);
+  padding: 16px 18px 12px;
+  min-width: 0;
+}
+
+.time h5 {
+  margin: 0 0 6px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.time svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.t-note {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.t-axis {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+}
+
+.t-day {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.t-future {
+  fill: var(--paper);
+  opacity: 0.55;
+}
+
+.t-today {
+  stroke: var(--pen);
+  stroke-width: 2;
+}
+
+.t-today-l {
+  fill: var(--pen);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.t-stem {
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.t-stem.t-out {
+  stroke: var(--ink);
+}
+
+.t-stem.t-out.plan {
+  stroke: var(--ink-2);
+  stroke-dasharray: 2 3;
+  stroke-linecap: butt;
+}
+
+.t-stem.t-in {
+  stroke: var(--pen);
+}
+
+.t-stem.t-in.plan {
+  stroke-dasharray: 2 3;
+  stroke-linecap: butt;
+}
+
+.t-stem.t-late {
+  stroke: var(--hatch);
+  stroke-dasharray: 3 3;
+  stroke-linecap: butt;
+}
+
+.t-l {
+  font-size: 12px;
+  fill: var(--ink-2);
+  paint-order: stroke;
+  stroke: var(--desk);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.t-l.t-in {
+  fill: var(--pen);
+  font-weight: 700;
+}
+
+.t-l.t-late {
+  fill: var(--warn);
+  font-weight: 700;
+}

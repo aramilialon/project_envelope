@@ -1,4 +1,14 @@
-import { computeCategoryBar, computePaymentCategoryBar, formatMoney, type Bar as BarGeometry } from "@envelope/core";
+import {
+  computeCategoryBar,
+  computePaymentCategoryBar,
+  computeTimeline,
+  computeTodos,
+  formatMoney,
+  type Bar as BarGeometry,
+  type OverdueScheduledItem,
+  type TimelineEvent,
+  type TimelineEventStatus,
+} from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
@@ -6,9 +16,14 @@ import { useParams } from "react-router-dom";
 import { useBandSecondRow } from "../layout/useBandSecondRow.tsx";
 import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
+import { useTargets } from "../targets/useTargets.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import Bar from "./Bar.tsx";
+import type { MonthEvent } from "./api.ts";
+import Timeline from "./Timeline.tsx";
+import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
+import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
 import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | null;
@@ -56,6 +71,47 @@ function groupOverspentCount(group: BudgetGroup): number {
   return group.categories.filter((c) => c.cashOverspending > 0 || c.creditOverspending > 0).length;
 }
 
+function daysInMonth(month: string): number {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7));
+  return new Date(year, monthNumber, 0).getDate();
+}
+
+function todayIso(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+/** Only set when `month` is the one actually showing on today's own calendar — otherwise there is no "today" line or overdue distinction to draw. */
+function todayOf(month: string): { iso: string; day: number } | undefined {
+  if (month !== currentMonth()) {
+    return undefined;
+  }
+  const iso = todayIso();
+  return { iso, day: Number(iso.slice(8, 10)) };
+}
+
+function toTimelineEvents(events: readonly MonthEvent[], today: { iso: string } | undefined): TimelineEvent[] {
+  return events.map((e): TimelineEvent => {
+    const direction = e.amountCents >= 0 ? "in" : "out";
+    const status: TimelineEventStatus = e.kind !== "scheduled" ? "recorded" : today !== undefined && e.date < today.iso ? "overdue" : "scheduled";
+    return { day: Number(e.date.slice(8, 10)), amountCents: Math.abs(e.amountCents), direction, status, payee: e.payee ?? "" };
+  });
+}
+
+function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: string } | undefined): OverdueScheduledItem[] {
+  if (today === undefined) {
+    return [];
+  }
+  const items: OverdueScheduledItem[] = [];
+  for (const e of events) {
+    if (e.kind === "scheduled" && e.date < today.iso && e.scheduledTransactionId !== undefined && e.categoryId !== null) {
+      items.push({ scheduledTransactionId: e.scheduledTransactionId, categoryId: e.categoryId, payee: e.payee ?? "", date: e.date, amountCents: Math.abs(e.amountCents) });
+    }
+  }
+  return items;
+}
+
 /**
  * The budget month screen (#53, #55, #324): the band's second row (month navigation, the
  * "unassigned" box, the facts row) portals into `AppLayout`'s own band (`useBandSecondRow`) since
@@ -82,6 +138,8 @@ export default function BudgetScreen() {
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const state = useBudgetMonth(workspaceId!, month);
+  const eventsState = useBudgetMonthEvents(workspaceId!, month);
+  const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
 
   const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
@@ -150,10 +208,41 @@ export default function BudgetScreen() {
   }
 
   const { groups } = state;
+  const today = todayOf(month);
+  const categoryNameById = new Map(
+    [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
+  );
 
   return (
     <div className="budget-screen">
       {secondRow}
+
+      {eventsState.status === "ok" && (
+        <div className="over">
+          <Timeline
+            layout={computeTimeline({ daysInMonth: daysInMonth(month), today: today?.day, events: toTimelineEvents(eventsState.events, today) })}
+            monthLabel={monthLabel(month, intl.locale)}
+            money={money}
+          />
+          <Todo
+            items={computeTodos({
+              unassignedCents: state.budgetMonth.unassigned,
+              categories: state.budgetMonth.categories,
+              paymentCategories: state.budgetMonth.paymentCategories,
+              overdueScheduledItems: toOverdueScheduledItems(eventsState.events, today),
+              targetsNeeded:
+                targetsState.status === "ok"
+                  ? [...targetsState.progressByCategory.entries()]
+                      .filter(([, progress]) => progress.missing > 0)
+                      .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
+                  : [],
+            })}
+            categoryNameById={categoryNameById}
+            money={money}
+            locale={intl.locale}
+          />
+        </div>
+      )}
 
       <div className="acts">
         <button type="button" className="btn" onClick={() => setPanel("targets")}>

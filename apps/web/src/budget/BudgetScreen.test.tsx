@@ -8,9 +8,10 @@ import type { CategoryGroup } from "../categories/api.ts";
 import { BandSecondRowSlotContext } from "../layout/bandSecondRowSlot.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as targetsApi from "../targets/api.ts";
+import type { GoalProgress } from "../targets/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as budgetApi from "./api.ts";
-import type { BudgetMonthCategory, BudgetMonthResponse } from "./api.ts";
+import type { BudgetMonthCategory, BudgetMonthResponse, MonthEvent } from "./api.ts";
 import BudgetScreen from "./BudgetScreen.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
@@ -63,13 +64,20 @@ function Harness({ children }: { children: ReactNode }) {
   );
 }
 
-function renderScreen(month: BudgetMonthResponse, groups: CategoryGroup[]) {
+function renderScreen(
+  month: BudgetMonthResponse,
+  groups: CategoryGroup[],
+  events: readonly MonthEvent[] = [],
+  goalsByCategory: ReadonlyMap<string, GoalProgress> = new Map(),
+) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
     { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
   ]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
+  vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue(events);
+  vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
       <Routes>
@@ -93,6 +101,8 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise(() => {}));
     vi.spyOn(categoriesApi, "listCategoryGroups").mockReturnValue(new Promise(() => {}));
     vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(targetsApi, "getGoal").mockReturnValue(new Promise(() => {}));
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -108,6 +118,8 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([]);
     vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([]);
     vi.spyOn(budgetApi, "getBudgetMonth").mockRejectedValue(new Error("network"));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
+    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -164,7 +176,7 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(screen.getByText("€1.00")).toBeInTheDocument(); // -200 + 300 = 100
-    expect(screen.getByText("1")).toBeInTheDocument(); // one overspent category
+    expect(document.querySelector(".count.over")).toHaveTextContent("1"); // one overspent category, scoped: the timeline's own day-1 tick is also "1"
   });
 
   it("marks a cash-overspent category distinctly, with a screen-reader-only 'Overspent:' prefix", async () => {
@@ -249,7 +261,6 @@ describe("BudgetScreen (#53, #324)", () => {
   });
 
   it("opens the Targets panel", async () => {
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
     await screen.findByText("Groceries");
 
@@ -263,5 +274,51 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Quick assign" }));
     expect(await screen.findByRole("heading", { name: "Quick assign" })).toBeInTheDocument();
+  });
+
+  it("shows the month's own timeline and 'To do' list, built from its events (#326)", async () => {
+    const events: MonthEvent[] = [
+      { date: "2026-01-05", amountCents: -8740, payee: "Supermarket", categoryId: "c1", kind: "recorded" },
+      { date: "2026-01-12", amountCents: 245000, payee: "Salary", categoryId: null, kind: "recorded" },
+    ];
+    renderScreen(budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }), [HOME], events);
+    await screen.findByText("Groceries");
+
+    expect(screen.getByText(/day by day/)).toBeInTheDocument();
+    expect(document.querySelector(".time svg .t-stem.t-out")).not.toBeNull();
+    expect(document.querySelector(".time svg .t-stem.t-in")).not.toBeNull();
+    expect(screen.getByText("Cover Groceries")).toBeInTheDocument();
+    expect(screen.getByText("€50.00")).toBeInTheDocument(); // the cash-overspending item's own amount
+  });
+
+  it("says there is nothing to fix when the 'To do' list is empty", async () => {
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    expect(await screen.findByText("Nothing to fix this month.")).toBeInTheDocument();
+  });
+
+  it("shows a credit card's own uncovered debt and a target still missing money", async () => {
+    const goalsByCategory = new Map<string, GoalProgress>([
+      [
+        "c1",
+        {
+          goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" },
+          asks: 6_000,
+          missing: 1_000,
+          progress: 0.83,
+        },
+      ],
+    ]);
+    renderScreen(
+      budgetMonth({ categories: [category({})], paymentCategories: [category({ categoryId: "visa", name: "Visa", uncovered: 12_000 })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+    await screen.findByText("Groceries");
+
+    expect(await screen.findByText("Debt to cover: Visa")).toBeInTheDocument();
+    expect(screen.getByText("Fund the Groceries target")).toBeInTheDocument();
   });
 });

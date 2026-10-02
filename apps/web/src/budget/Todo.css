@@ -1,0 +1,76 @@
+.todo {
+  border-radius: 14px;
+  background: var(--desk);
+  padding: 16px 18px 12px;
+  min-width: 0;
+}
+
+.todo h5 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 6px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.todo h5 span {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.todo .explain {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.todo-i {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.todo-i:last-of-type {
+  border-bottom: 0;
+}
+
+.todo-i b {
+  font-weight: 600;
+}
+
+.todo-i small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.todo-i > .n {
+  text-align: right;
+  font-weight: 600;
+}
+
+.dot {
+  width: 13px;
+  height: 13px;
+  margin-top: 4px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+}
+
+.dot.r {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.dot.w {
+  border-color: var(--hatch);
+  background: var(--hatch-bg);
+}
