@@ -17,7 +17,7 @@ import { listAccounts, type AccountRecord } from "../accounts/repository.ts";
 import { listCategories, listCategoryGroups, type CategoryGroupRecord, type CategoryRecord } from "../categories/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { listReservationsForMonth } from "../scheduled-transactions/repository.ts";
-import { listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
+import { isStartingBalanceSplit, listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
 
 export interface BudgetMonthCategory {
   readonly categoryId: string;
@@ -92,14 +92,17 @@ function toBudgetTransaction(transaction: TransactionRecord, accountByTransactio
  * regular category; a card payment is a transfer with no category at all).
  * `packages/core`'s own docs are explicit that this is not an `Activity`: it
  * feeds only `owedAsOf`, never `aggregateTransactions`, which would otherwise
- * reject it (a payment category is never a valid `Activity.categoryId`).
+ * reject it (a payment category is never a valid `Activity.categoryId`). The
+ * rule itself (`isStartingBalanceSplit`) lives in `transactions/repository.ts`,
+ * shared with `listTransactionEventsForMonth`'s own exclusion of the same thing (#326).
  */
 function isStartingBalance(transaction: TransactionRecord, paymentCategoryIdByAccountId: ReadonlyMap<string, string | null>): boolean {
-  if (transaction.transferId !== null || transaction.splits.length !== 1) {
-    return false;
-  }
-  const ownPaymentCategoryId = paymentCategoryIdByAccountId.get(transaction.accountId);
-  return ownPaymentCategoryId !== null && ownPaymentCategoryId !== undefined && transaction.splits[0]?.categoryId === ownPaymentCategoryId;
+  return isStartingBalanceSplit({
+    transferId: transaction.transferId,
+    splitCount: transaction.splits.length,
+    categoryId: transaction.splits.length === 1 ? (transaction.splits[0]?.categoryId ?? null) : null,
+    paymentCategoryId: paymentCategoryIdByAccountId.get(transaction.accountId) ?? null,
+  });
 }
 
 /**
