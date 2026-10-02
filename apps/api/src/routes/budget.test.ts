@@ -177,4 +177,135 @@ describe("budget routes", () => {
     assert.equal(problem?.kind, "overspent_category");
     assert.equal(problem?.amountCents, 20_000); // 40000 assigned - 10000 - 50000 spent = -20000 available
   });
+
+  describe("GET /budget-months/:month/events", () => {
+    const auth = () => ({ authorization: `Bearer ${token}` });
+
+    it("returns a recorded transaction's own event, with its category and signed amount", async () => {
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+        headers: auth(),
+        payload: { occurredAt: "2026-10-05", status: "cleared", splits: [{ categoryId, amountCents: -1_200 }] },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      assert.equal(response.statusCode, 200);
+      const events = response.json().events as Array<{ date: string; amountCents: number; categoryId: string | null; kind: string }>;
+      const event = events.find((e) => e.categoryId === categoryId && e.amountCents === -1_200);
+      assert.ok(event, "expected the recorded transaction's own event");
+      assert.equal(event?.date, "2026-10-05");
+      assert.equal(event?.kind, "recorded");
+    });
+
+    it("marks a pending transaction's event as pending, not recorded", async () => {
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+        headers: auth(),
+        payload: { occurredAt: "2026-10-06", status: "pending", splits: [{ categoryId, amountCents: -300 }] },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number; kind: string }>;
+      const event = events.find((e) => e.amountCents === -300);
+      assert.equal(event?.kind, "pending");
+    });
+
+    it("produces one event per split for a split transaction", async () => {
+      const otherCategory = await superuserPool.query<{ id: string }>(
+        "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, (SELECT group_id FROM categories WHERE id = $2), 'Fuel', 2) RETURNING id",
+        [workspaceId, categoryId],
+      );
+      const otherCategoryId = otherCategory.rows[0]!.id;
+
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+        headers: auth(),
+        payload: {
+          occurredAt: "2026-10-07",
+          splits: [
+            { categoryId, amountCents: -111 },
+            { categoryId: otherCategoryId, amountCents: -222 },
+          ],
+        },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number; categoryId: string | null }>;
+      assert.ok(events.some((e) => e.categoryId === categoryId && e.amountCents === -111));
+      assert.ok(events.some((e) => e.categoryId === otherCategoryId && e.amountCents === -222));
+    });
+
+    it("returns a scheduled transaction's own event, with its scheduledTransactionId and a negative amount", async () => {
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/scheduled-transactions`,
+        headers: auth(),
+        payload: {
+          accountId,
+          payee: "Boiler service",
+          nextDueDate: "2026-10-20",
+          recurEvery: 1,
+          recurUnit: "month",
+          splits: [{ categoryId, amountCents: 9_000 }],
+        },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{
+        date: string;
+        amountCents: number;
+        payee: string | null;
+        kind: string;
+        scheduledTransactionId?: string;
+      }>;
+      const event = events.find((e) => e.payee === "Boiler service");
+      assert.ok(event, "expected the scheduled transaction's own event");
+      assert.equal(event?.date, "2026-10-20");
+      assert.equal(event?.amountCents, -9_000);
+      assert.equal(event?.kind, "scheduled");
+      assert.ok(event?.scheduledTransactionId);
+    });
+
+    it("the accountId filter restricts events to that one account", async () => {
+      const otherAccount = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Cash', 'cash', 'EUR') RETURNING id",
+        [workspaceId],
+      );
+      const otherAccountId = otherAccount.rows[0]!.id;
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${otherAccountId}/transactions`,
+        headers: auth(),
+        payload: { occurredAt: "2026-10-08", splits: [{ categoryId, amountCents: -400 }] },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events?accountId=${otherAccountId}`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ amountCents: number }>;
+      assert.ok(events.some((e) => e.amountCents === -400));
+      assert.ok(!events.some((e) => e.amountCents === -1_200)); // the first test's own event, on accountId instead
+    });
+  });
 });

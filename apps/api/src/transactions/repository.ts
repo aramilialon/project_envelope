@@ -351,6 +351,61 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
   return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
 }
 
+/** One event per split — a split transaction (or a transfer's own leg, `categoryId` null either way) is as many events as it has splits. */
+export interface TransactionEvent {
+  readonly date: string;
+  readonly amountCents: number;
+  readonly payee: string | null;
+  readonly categoryId: string | null;
+  readonly kind: "recorded" | "pending";
+}
+
+interface TransactionEventRow {
+  readonly date: string;
+  readonly amount_cents: string;
+  readonly payee: string | null;
+  readonly category_id: string | null;
+  readonly status: TransactionStatus;
+}
+
+/**
+ * Every split of every transaction dated in `month` (the budget month's own timeline, #325) —
+ * every account, unless `accountId` narrows it to one (the account register's own timeline,
+ * `#337`). `budget_date`'s own month, not `occurred_at`'s (a transaction anchored near midnight
+ * can fall in a different calendar month once converted to the workspace's own time zone).
+ */
+export async function listTransactionEventsForMonth(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  month: string,
+  accountId?: string,
+): Promise<TransactionEvent[]> {
+  const params: unknown[] = [workspaceId, month];
+  if (accountId !== undefined) {
+    params.push(accountId);
+  }
+  const { rows } = await db.query<TransactionEventRow>(
+    `SELECT
+       to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS date,
+       s.amount_cents, t.payee, s.category_id, t.status
+     FROM transactions t
+     JOIN workspaces w ON w.id = t.workspace_id
+     JOIN splits s ON s.transaction_id = t.id
+     WHERE t.workspace_id = $1
+       AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM') = $2
+       ${accountId === undefined ? "" : "AND t.account_id = $3"}
+     ORDER BY t.occurred_at, t.created_at`,
+    params,
+  );
+  return rows.map((row) => ({
+    date: row.date,
+    amountCents: Number(row.amount_cents),
+    payee: row.payee,
+    categoryId: row.category_id,
+    kind: row.status === "pending" ? "pending" : "recorded",
+  }));
+}
+
 /**
  * Updates payee/memo/status and, if given, replaces every split. Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be
