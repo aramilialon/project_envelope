@@ -100,6 +100,17 @@ describe("computeTimeline", () => {
     assert.ok(mark.label!.x + 40 < layout.todayX!); // well short of the line, not just barely
   });
 
+  it("a day-1 event shifted left to clear the 'today' line never runs its label off the chart's own left edge", () => {
+    // "today" on day 2 — a label needing to clear it has almost no room to its left at all.
+    const layout = computeTimeline({
+      daysInMonth: 31,
+      today: 2,
+      events: [{ day: 1, amountCents: 4_500, direction: "out", status: "scheduled", payee: "Internet provider" }],
+    });
+    const mark = layout.marks[0]!;
+    assert.ok(mark.label!.x >= layout.axisX0);
+  });
+
   it("two labels close enough to collide step apart instead of overlapping", () => {
     const layout = computeTimeline({
       daysInMonth: 30,

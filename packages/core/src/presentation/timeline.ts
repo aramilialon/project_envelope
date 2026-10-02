@@ -197,7 +197,9 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
       let ly = up ? stemY : stemY + 4;
       if (todayX !== undefined) {
         const past = e.day < input.today!;
-        if (past && lx + width > todayX - 4) lx = ex - size.labelGap - width;
+        // Shifted left to clear the "today" line, but never past the chart's own left edge — an
+        // early-month event (close to `x0` already) would otherwise run its label off-canvas.
+        if (past && lx + width > todayX - 4) lx = Math.max(x0, ex - size.labelGap - width);
         if (!past && lx + width > size.width - 2) {
           lx = Math.max(todayX + 4, size.width - 2 - width);
           ly = up ? stemY - 6 : stemY + 14;
