@@ -1,15 +1,18 @@
-import { formatMoney } from "@envelope/core";
+import { computeCategoryBar, computePaymentCategoryBar, formatMoney, type Bar as BarGeometry } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
 
+import { useBandSecondRow } from "../layout/useBandSecondRow.tsx";
 import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
-import { useBudgetMonth, type BudgetGroup } from "./useBudgetMonth.ts";
+import Bar from "./Bar.tsx";
+import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | null;
+type Status = "credit" | "cash" | "short" | "pos" | "zero";
 
 function currentMonth(): string {
   const now = new Date();
@@ -33,18 +36,43 @@ function monthLabel(month: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(date);
 }
 
-function sum(group: BudgetGroup, field: "assigned" | "activity" | "available"): number {
-  return group.categories.reduce((total, category) => total + category[field], 0);
+function barFor(category: BudgetGroupCategory): BarGeometry {
+  return category.isPaymentCategory ? computePaymentCategoryBar(category) : computeCategoryBar(category);
+}
+
+/** The same precedence `Bar.tsx`'s own tail colour uses, reused here for the available-amount cell. */
+function statusOf(category: BudgetGroupCategory, bar: BarGeometry): Status {
+  if (bar.kind === "category" && bar.tail) {
+    return bar.tail.kind;
+  }
+  return category.available > 0 ? "pos" : "zero";
+}
+
+function groupAvailable(group: BudgetGroup): number {
+  return group.categories.reduce((total, c) => total + c.available, 0);
+}
+
+function groupOverspentCount(group: BudgetGroup): number {
+  return group.categories.filter((c) => c.cashOverspending > 0 || c.creditOverspending > 0).length;
 }
 
 /**
- * The budget month screen (#53, #55): ready to assign, every category's assigned/activity/
- * available and rollover across months — `docs/ux/mockups/budget-month.html`'s own table — plus
- * "Quick assign" and "Targets", the two toolbar actions `#55` adds. Still missing: editing an
- * assigned amount and the Assign/Move money form (`#56`), the card-debt detail (`#57`),
- * scheduled reservations (`#217`), days of buffer (`#58`). The mockup's "Assign" button and the
- * rest of its toolbar (Summary, Scheduled, Move money, Undo) are left out for the same reason
- * `AppLayout`/`WorkspaceSwitcher` already leave out buttons with nowhere to go yet.
+ * The budget month screen (#53, #55, #324): the band's second row (month navigation, the
+ * "unassigned" box, the facts row) portals into `AppLayout`'s own band (`useBandSecondRow`) since
+ * this is the only screen with one so far; below it, every category as a bar instead of the old
+ * assigned/activity/available table, grouped, each with its own spent line and available amount
+ * (`docs/design.md`, "Bars").
+ *
+ * Deferred, deliberately not this issue's job: a category's own target meter and reservation
+ * clock status lines (need each category's target and scheduled transactions, not fetched here —
+ * #327's row detail is the natural place to add them); a card's payment category "debt covered"
+ * line when its debt is fully covered (`uncovered` is 0 in that case exactly the same as "no debt
+ * at all" — the API has no separate field for the card's real balance — so nothing is shown
+ * rather than guessing a figure; only "still to cover" is shown, since that debt is recoverable
+ * from `available + uncovered`); the toolbar's filter tabs, Summary/Scheduled/Move money/Undo
+ * (need data or forms no earlier issue built yet); opening a row's own detail (#327) and the
+ * group name's summary side sheet (also #327) — a row is a plain, non-interactive group of
+ * elements until then, not a button with nowhere to go.
  */
 export default function BudgetScreen() {
   const intl = useIntl();
@@ -52,63 +80,80 @@ export default function BudgetScreen() {
   const workspaces = useWorkspaces();
   const [month, setMonth] = useState(currentMonth);
   const [panel, setPanel] = useState<Panel>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const state = useBudgetMonth(workspaceId!, month);
-
-  if (state.status === "loading") {
-    return <p role="status">{intl.formatMessage({ id: "budget.loading", defaultMessage: "Loading your budget…" })}</p>;
-  }
-
-  if (state.status === "error") {
-    return (
-      <p role="alert">{intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." })}</p>
-    );
-  }
 
   const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
 
-  const { budgetMonth, groups } = state;
-  const totalAssigned = groups.reduce((total, g) => total + sum(g, "assigned"), 0);
-  const totalActivity = groups.reduce((total, g) => total + sum(g, "activity"), 0);
-  const totalAvailable = groups.reduce((total, g) => total + sum(g, "available"), 0);
-
-  return (
-    <div className="budget-screen">
-      <div className="head">
-        <div className="month">
-          <button
-            type="button"
-            className="arrow"
-            aria-label={intl.formatMessage({ id: "budget.month.previous", defaultMessage: "Previous month" })}
-            onClick={() => setMonth((m) => shiftMonth(m, -1))}
-          >
-            ←
-          </button>
-          <h1>{monthLabel(month, intl.locale)}</h1>
-          <button
-            type="button"
-            className="arrow"
-            aria-label={intl.formatMessage({ id: "budget.month.next", defaultMessage: "Next month" })}
-            onClick={() => setMonth((m) => shiftMonth(m, 1))}
-          >
-            →
-          </button>
+  const secondRow = useBandSecondRow(
+    state.status === "ok" ? (
+      <div className="bm">
+        <div>
+          <div className="mnav">
+            <button
+              type="button"
+              className="arrow"
+              aria-label={intl.formatMessage({ id: "budget.month.previous", defaultMessage: "Previous month" })}
+              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+            >
+              ←
+            </button>
+            <span>{intl.formatMessage({ id: "budget.monthNav.label", defaultMessage: "Month" })}</span>
+            <button
+              type="button"
+              className="arrow"
+              aria-label={intl.formatMessage({ id: "budget.month.next", defaultMessage: "Next month" })}
+              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+            >
+              →
+            </button>
+          </div>
+          <h1 className="month">{monthLabel(month, intl.locale)}</h1>
+        </div>
+        <div className="rta">
+          <div>
+            <small>{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Unassigned" })}</small>
+            <span className={`amt n${state.budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(state.budgetMonth.unassigned)}</span>
+          </div>
         </div>
         <div className="facts">
           <span>
-            {intl.formatMessage({ id: "budget.assignedInFuture", defaultMessage: "Already assigned to future months" })}{" "}
-            <b>{money(budgetMonth.assignedInFuture)}</b>
+            {intl.formatMessage({ id: "budget.reserved", defaultMessage: "Reserved for scheduled transactions" })}{" "}
+            <b>{money(state.budgetMonth.reserved)}</b>
           </span>
           <span>
-            {intl.formatMessage({ id: "budget.reserved", defaultMessage: "Reserved for scheduled transactions" })}{" "}
-            <b>{money(budgetMonth.reserved)}</b>
+            {intl.formatMessage({ id: "budget.assignedInFuture", defaultMessage: "Already assigned to future months" })}{" "}
+            <b>{money(state.budgetMonth.assignedInFuture)}</b>
           </span>
         </div>
-        <div className="rta">
-          <span className="label">{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Unassigned" })}</span>
-          <span className={`amt${budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(budgetMonth.unassigned)}</span>
-        </div>
       </div>
+    ) : null,
+  );
+
+  if (state.status === "loading") {
+    return (
+      <>
+        {secondRow}
+        <p role="status">{intl.formatMessage({ id: "budget.loading", defaultMessage: "Loading your budget…" })}</p>
+      </>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <>
+        {secondRow}
+        <p role="alert">{intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." })}</p>
+      </>
+    );
+  }
+
+  const { groups } = state;
+
+  return (
+    <div className="budget-screen">
+      {secondRow}
 
       <div className="acts">
         <button type="button" className="btn" onClick={() => setPanel("targets")}>
@@ -127,50 +172,111 @@ export default function BudgetScreen() {
           })}
         </p>
       ) : (
-        <table className="budget-table">
-          <thead>
-            <tr>
-              <th>{intl.formatMessage({ id: "budget.column.category", defaultMessage: "Category" })}</th>
-              <th className="n">
-                {intl.formatMessage({ id: "budget.column.assigned", defaultMessage: "Assigned" })}
-                <span className="total">{money(totalAssigned)}</span>
-              </th>
-              <th className="n">
-                {intl.formatMessage({ id: "budget.column.activity", defaultMessage: "Activity" })}
-                <span className="total">{money(totalActivity)}</span>
-              </th>
-              <th className="n">
-                {intl.formatMessage({ id: "budget.column.available", defaultMessage: "Available" })}
-                <span className="total">{money(totalAvailable)}</span>
-              </th>
-            </tr>
-          </thead>
-          {groups.map((group) => (
-            <tbody key={group.id}>
-              <tr className="group-row">
-                <th scope="rowgroup">{group.name}</th>
-                <td className="n">{money(sum(group, "assigned"))}</td>
-                <td className="n">{money(sum(group, "activity"))}</td>
-                <td className="n">{money(sum(group, "available"))}</td>
-              </tr>
-              {group.categories.map((category) => (
-                <tr key={category.categoryId}>
-                  <td>{category.name}</td>
-                  <td className="n">{money(category.assigned)}</td>
-                  <td className="n">{money(category.activity)}</td>
-                  <td className={`n${category.available < 0 ? " neg" : ""}`}>{money(category.available)}</td>
-                </tr>
-              ))}
-            </tbody>
-          ))}
-        </table>
+        <div className="bars">
+          {groups.map((group) => {
+            const isCollapsed = collapsed[group.id] ?? false;
+            const overspentCount = groupOverspentCount(group);
+            return (
+              <div key={group.id}>
+                <div className="bgr">
+                  <span className="gh">
+                    <button
+                      type="button"
+                      className="chev"
+                      aria-expanded={!isCollapsed}
+                      aria-label={intl.formatMessage(
+                        { id: isCollapsed ? "budget.group.expand" : "budget.group.collapse", defaultMessage: isCollapsed ? "Open {name}" : "Close {name}" },
+                        { name: group.name },
+                      )}
+                      onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !isCollapsed }))}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m6 9 6 6 6-6" />
+                      </svg>
+                    </button>
+                    <span className="gname">{group.name}</span>
+                    {overspentCount > 0 && <span className="count over n">{overspentCount}</span>}
+                  </span>
+                  <span className="n gsum">{money(groupAvailable(group))}</span>
+                </div>
+                {!isCollapsed &&
+                  group.categories.map((category) => {
+                    const bar = barFor(category);
+                    const status = statusOf(category, bar);
+                    return (
+                      <div key={category.categoryId} className="brow">
+                        <span className="cn">
+                          <b>{category.name}</b>
+                          <StatusLine category={category} money={money} intl={intl} />
+                        </span>
+                        <Bar bar={bar} />
+                        <span className="av">
+                          <span className={`amt-cell n ${status}`}>
+                            {status === "cash" && (
+                              <span className="sr">
+                                {intl.formatMessage({ id: "budget.bar.overspentSr", defaultMessage: "Overspent:" })}
+                              </span>
+                            )}
+                            {status === "credit" && (
+                              <span className="tag">{intl.formatMessage({ id: "budget.bar.cardTag", defaultMessage: "Card" })}</span>
+                            )}
+                            {status === "short" && (
+                              <span className="tag">{intl.formatMessage({ id: "budget.bar.reservedTag", defaultMessage: "Reserved" })}</span>
+                            )}
+                            {money(category.available)}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {groups.length > 0 && (
+        <div className="legend" aria-hidden="true">
+          <span>
+            <i style={{ background: "var(--spent)" }} />
+            {intl.formatMessage({ id: "budget.legend.spent", defaultMessage: "spent" })}
+          </span>
+          <span>
+            <i style={{ background: "var(--bar)" }} />
+            {intl.formatMessage({ id: "budget.legend.available", defaultMessage: "still available" })}
+          </span>
+          <span>
+            <i
+              style={{
+                background: "repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)",
+              }}
+            />
+            {intl.formatMessage({ id: "budget.legend.reserved", defaultMessage: "reserved" })}
+          </span>
+          <span>
+            <i style={{ background: "var(--red)" }} />
+            {intl.formatMessage({ id: "budget.legend.cash", defaultMessage: "overspent in cash" })}
+          </span>
+          <span>
+            <i
+              style={{
+                background: "repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)",
+              }}
+            />
+            {intl.formatMessage({ id: "budget.legend.credit", defaultMessage: "overspent with a card, debt to cover" })}
+          </span>
+          <span>
+            <i style={{ border: "1.5px dashed var(--warn)" }} />
+            {intl.formatMessage({ id: "budget.legend.short", defaultMessage: "reserved beyond what is available" })}
+          </span>
+        </div>
       )}
 
       {panel === "targets" && (
         <TargetsPanel
           workspaceId={workspaceId!}
           month={month}
-          categories={budgetMonth.categories}
+          categories={state.budgetMonth.categories}
           currency={currency ?? "EUR"}
           onClose={() => setPanel(null)}
           onChanged={() => state.refetch()}
@@ -190,4 +296,61 @@ export default function BudgetScreen() {
       )}
     </div>
   );
+}
+
+interface StatusLineProps {
+  readonly category: BudgetGroupCategory;
+  readonly money: (cents: number) => string;
+  readonly intl: ReturnType<typeof useIntl>;
+}
+
+/** The muted line under a category's name: what was spent of what it was given, or a card's own debt still to cover. */
+function StatusLine({ category, money, intl }: StatusLineProps) {
+  if (category.isPaymentCategory) {
+    if (category.uncovered <= 0) {
+      return null;
+    }
+    const debt = category.available + category.uncovered;
+    return (
+      <small className="spent n">
+        {intl.formatMessage(
+          { id: "budget.bar.debtToCover", defaultMessage: "{uncovered} to cover of {debt} of debt" },
+          { uncovered: money(category.uncovered), debt: money(debt) },
+        )}
+      </small>
+    );
+  }
+
+  const budget = Math.max(0, category.carriedOver + category.assigned);
+  const spent = Math.max(0, -category.activity);
+
+  if (spent > 0) {
+    if (category.creditOverspending > 0) {
+      return (
+        <small className="spent n">
+          {budget > 0
+            ? intl.formatMessage(
+                { id: "budget.bar.spentWithCardOf", defaultMessage: "{spent} spent with a card of {budget}" },
+                { spent: money(spent), budget: money(budget) },
+              )
+            : intl.formatMessage({ id: "budget.bar.spentWithCard", defaultMessage: "{spent} spent with a card" }, { spent: money(spent) })}
+        </small>
+      );
+    }
+    return (
+      <small className="spent n">
+        {budget > 0
+          ? intl.formatMessage({ id: "budget.bar.spentOf", defaultMessage: "{spent} spent of {budget}" }, { spent: money(spent), budget: money(budget) })
+          : intl.formatMessage({ id: "budget.bar.spent", defaultMessage: "{spent} spent" }, { spent: money(spent) })}
+      </small>
+    );
+  }
+  if (budget > 0) {
+    return (
+      <small className="spent n">
+        {intl.formatMessage({ id: "budget.bar.toSpend", defaultMessage: "{budget} to spend" }, { budget: money(budget) })}
+      </small>
+    );
+  }
+  return <small className="spent n">{intl.formatMessage({ id: "budget.bar.noActivity", defaultMessage: "No activity" })}</small>;
 }

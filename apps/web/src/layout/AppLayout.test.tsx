@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as workspacesApi from "../workspaces/api.ts";
 import AppLayout from "./AppLayout.tsx";
+import { useBandSecondRow } from "./useBandSecondRow.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
@@ -56,6 +57,25 @@ describe("AppLayout (#323)", () => {
 
     await screen.findByRole("link", { name: "Budget" });
     expect(screen.queryByRole("button", { name: "+ Add account" })).not.toBeInTheDocument();
+  });
+
+  it("portals a screen's own second band row into the band, via useBandSecondRow (#324)", async () => {
+    function ScreenWithSecondRow() {
+      return <>{useBandSecondRow(<p>October 2026</p>)}</>;
+    }
+    useAuth.mockReturnValue({ user: { access_token: "t", profile: { name: "Giorgio" } } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([WORKSPACE]);
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1"]}>
+        <Routes>
+          <Route path="/:workspaceId" element={<AppLayout />}>
+            <Route index element={<ScreenWithSecondRow />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("October 2026")).toBeInTheDocument();
   });
 
   it("signs out through react-oidc-context when the sign-out button is clicked", async () => {
