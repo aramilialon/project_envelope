@@ -11,49 +11,53 @@
 
 .register-screen .acc-head h1 {
   margin: 0;
-  font-size: 28px;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 40px;
+  line-height: 1;
   font-weight: 700;
+  letter-spacing: -0.6px;
 }
 
 .register-screen .acc-head .sub {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
 }
 
-.register-screen .bal {
-  display: flex;
-  border: 1px solid var(--ink);
-  border-radius: 3px;
-  background: var(--paper);
-}
-
-.register-screen .bal div {
+.register-screen .acc-bal {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 8px 16px;
-  border-right: 1px solid var(--rule);
+  align-items: flex-end;
+  gap: 4px;
+  text-align: right;
 }
 
-.register-screen .bal div:last-child {
-  border-right: 0;
-}
-
-.register-screen .bal small {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+.register-screen .acc-bal > small {
+  font-size: 13px;
   color: var(--muted);
 }
 
-.register-screen .bal .n {
-  font-size: 18px;
+.register-screen .acc-bal .big {
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 34px;
+  line-height: 1;
   font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
-.register-screen .bal .main .n {
-  font-size: 22px;
+.register-screen .acc-facts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.register-screen .acc-facts b {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .register-screen .reg-tools {
@@ -67,6 +71,7 @@
 
 .register-screen .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -110,14 +115,18 @@
 
 .register-screen .right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .register-screen .search {
   display: flex;
   align-items: center;
   min-height: 34px;
+  min-width: 0;
+  flex: 1 1 160px;
   padding: 0 10px;
   border: 1px solid var(--rule);
   border-radius: 3px;
@@ -125,9 +134,10 @@
 }
 
 .register-screen .search input {
+  width: 100%;
+  min-width: 0;
   border: 0;
   background: transparent;
-  min-width: 200px;
   outline: none;
   font: inherit;
 }
@@ -160,10 +170,8 @@
 }
 
 .register-screen .register-table thead th {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
   color: var(--muted);
   border-bottom: 1px solid var(--ink);
 }
@@ -209,4 +217,100 @@
 
 .register-screen .status:disabled {
   cursor: default;
+}
+
+/* Two list renderings (`usePhoneWidth`, #333 picks one, never both): a table at desktop width,
+   a day-grouped list below 600px — a table has no narrow-width shape of its own, unlike the
+   budget month's bars. */
+.register-screen .ph-day {
+  padding: 14px 0 4px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.register-screen .ph-tx {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.register-screen .ph-tx .open {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 54px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.register-screen .ph-tx .who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.register-screen .ph-tx .who b {
+  font-weight: 500;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-screen .ph-tx .who small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-screen .ph-tx .amt {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.register-screen .ph-tx .amt.in {
+  color: var(--pen);
+}
+
+.register-screen .ph-tx .st {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.register-screen .ph-tx .st.status-cleared {
+  color: var(--pen);
+}
+
+.register-screen .ph-tx .st:disabled {
+  cursor: default;
+}
+
+@media (max-width: 600px) {
+  .register-screen .acc-bal .big {
+    font-size: 30px;
+  }
 }

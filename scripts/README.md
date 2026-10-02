@@ -65,11 +65,19 @@ created on first run and left alone afterward; sign in as it with the password i
 ### Reference screenshots
 
 `screenshot-demo.ts` regenerates the reference screenshots from the already-seeded "Demo"
-workspace: light and dark, 1440px and 390px, for the budget month and the account register,
-named after `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention
-(with a size suffix, since those were only ever one size). Needs `apps/web` running too (not just
-`apps/api`), since unlike the seed script's own plain-`fetch` handshake, this drives the real
-sign-in form through a real (headless) browser to actually render pixels.
+workspace: light and dark, at 1440px, 390px and 360px, for the accounts list and the account
+register, named after `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing
+convention (with a size suffix, since those were only ever one size). Needs `apps/web` running too
+(not just `apps/api`), since unlike the seed script's own plain-`fetch` handshake, this drives the
+real sign-in form through a real (headless) browser to actually render pixels.
+
+At 390px and 360px it also asserts there is no horizontal overflow
+(`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion) on both
+screens, failing the script (non-zero exit) if either does — the same check a reviewer would
+otherwise have to do by hand with the browser's own dev tools. A screen whose phone layout is a
+genuinely different DOM tree (not just a CSS reflow), like the account register's day list, swaps
+it in from a `resize` event listener one tick behind `setViewportSize` itself, so the check waits
+briefly after resizing the page before measuring it.
 
 ```bash
 $ cd scripts

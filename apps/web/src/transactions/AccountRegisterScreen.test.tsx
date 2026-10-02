@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as accountsApi from "../accounts/api.ts";
 import type { Account } from "../accounts/api.ts";
@@ -27,6 +27,12 @@ const CHECKING: Account = {
   createdAt: "2026-01-01",
 };
 const GROCERIES: Category = { id: "cat-groceries", workspaceId: "ws-1", groupId: "g1", name: "Groceries", sortOrder: 1, archived: false };
+
+const ORIGINAL_WIDTH = window.innerWidth;
+
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+}
 
 function transaction(overrides: Partial<Transaction>): Transaction {
   return {
@@ -63,7 +69,11 @@ function renderScreen(transactions: Transaction[]) {
   );
 }
 
-describe("AccountRegisterScreen (#54)", () => {
+describe("AccountRegisterScreen (#54, #333)", () => {
+  afterEach(() => {
+    setWidth(ORIGINAL_WIDTH);
+  });
+
   it("shows a loading state", () => {
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise(() => {}));
@@ -80,7 +90,7 @@ describe("AccountRegisterScreen (#54)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading this account…");
   });
 
-  it("shows the account header and balances", async () => {
+  it("shows the account header and balances, the big balance in the display face", async () => {
     renderScreen([
       transaction({ id: "t1", status: "cleared", splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }] }),
       transaction({ id: "t2", status: "pending", occurredAt: "2026-09-16T00:00:00.000Z", budgetDate: "2026-09-16", splits: [{ id: "s2", categoryId: "cat-groceries", amountCents: -300, memo: null }] }),
@@ -88,9 +98,26 @@ describe("AccountRegisterScreen (#54)", () => {
 
     expect(await screen.findByRole("heading", { name: "Checking" })).toBeInTheDocument();
     expect(screen.getByText("On-budget account", { exact: false })).toBeInTheDocument();
-    const bal = document.querySelector(".bal")!;
-    expect(bal.querySelector(".main .n")).toHaveTextContent("-€15.00"); // total balance
-    expect(bal.textContent).toContain("-€3.00"); // pending
+    const accBal = document.querySelector(".acc-bal")!;
+    expect(accBal.querySelector(".big")).toHaveTextContent("-€15.00"); // total balance
+    expect(accBal.textContent).toContain("-€3.00"); // pending
+  });
+
+  it("shows a short date, never the raw ISO one, in the desktop table", async () => {
+    renderScreen([transaction({ budgetDate: "2026-09-15" })]);
+    await screen.findByText("Supermarket");
+
+    expect(screen.getByText("Sep 15")).toBeInTheDocument();
+    expect(screen.queryByText("2026-09-15")).not.toBeInTheDocument();
+  });
+
+  it("shows amounts in the desktop table's own cells without a repeated currency symbol", async () => {
+    renderScreen([transaction({ splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }] })]);
+    const row = (await screen.findByText("Supermarket")).closest("tr")!;
+
+    expect(within(row).getByText("12.00")).toBeInTheDocument(); // outflow cell
+    expect(within(row).queryByText("€12.00")).not.toBeInTheDocument();
+    expect(within(row).queryByText("-€12.00")).not.toBeInTheDocument();
   });
 
   it("lists transactions newest first with a running balance", async () => {
@@ -102,9 +129,9 @@ describe("AccountRegisterScreen (#54)", () => {
     const rows = await screen.findAllByRole("row");
     // rows[0] is the header row; rows[1] should be the newest transaction ("Second").
     expect(rows[1]).toHaveTextContent("Second");
-    expect(rows[1]).toHaveTextContent("-€15.00"); // running balance after both
+    expect(rows[1]).toHaveTextContent("15.00"); // running balance after both
     expect(rows[2]).toHaveTextContent("First");
-    expect(rows[2]).toHaveTextContent("-€10.00");
+    expect(rows[2]).toHaveTextContent("10.00");
   });
 
   it("filters by status with counts", async () => {
@@ -151,7 +178,7 @@ describe("AccountRegisterScreen (#54)", () => {
     renderScreen([transaction({ id: "t1", status: "reconciled", payee: "Supermarket" })]);
     await screen.findByText("Supermarket");
 
-    fireEvent.click(screen.getAllByText("Supermarket")[0]!);
+    fireEvent.click(screen.getByText("Supermarket"));
     expect(await screen.findByText(/reconciled and locked/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
   });
@@ -160,7 +187,7 @@ describe("AccountRegisterScreen (#54)", () => {
     renderScreen([transaction({ id: "t1", status: "cleared", payee: "Supermarket" })]);
     await screen.findByText("Supermarket");
 
-    fireEvent.click(screen.getAllByText("Supermarket")[0]!);
+    fireEvent.click(screen.getByText("Supermarket"));
     expect(await screen.findByRole("heading", { name: "Edit transaction" })).toBeInTheDocument();
   });
 
@@ -170,5 +197,44 @@ describe("AccountRegisterScreen (#54)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New transaction" }));
     expect(await screen.findByRole("heading", { name: "New transaction" })).toBeInTheDocument();
+  });
+
+  describe("the phone list (usePhoneWidth true, a different tree, not just a CSS reflow)", () => {
+    it("groups transactions by day, with a day header", async () => {
+      setWidth(390);
+      renderScreen([
+        transaction({ id: "t1", budgetDate: "2026-09-10", payee: "First" }),
+        transaction({ id: "t2", budgetDate: "2026-09-20", payee: "Second" }),
+      ]);
+      await screen.findByText("Second");
+
+      expect(screen.getByText("Thursday, September 10")).toBeInTheDocument();
+      expect(screen.getByText("Sunday, September 20")).toBeInTheDocument();
+    });
+
+    it("shows the payee above, 'category · memo' below, and the amount with its currency symbol", async () => {
+      setWidth(390);
+      renderScreen([transaction({ payee: "Supermarket", memo: "Weekly shop", splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }] })]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByText("Groceries · Weekly shop")).toBeInTheDocument();
+      expect(document.querySelector(".ph-tx .amt")).toHaveTextContent("-€12.00");
+    });
+
+    it("has its own clickable, accessibly labelled status control", async () => {
+      setWidth(390);
+      renderScreen([transaction({ status: "pending" })]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByRole("button", { name: /change status/ })).toBeInTheDocument();
+    });
+
+    it("shows no raw table, even though the data is identical", async () => {
+      setWidth(390);
+      renderScreen([transaction({})]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    });
   });
 });
