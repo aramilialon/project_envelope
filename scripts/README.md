@@ -30,6 +30,12 @@ category cannot cover (a warning, not overspending), one card's payment category
 and the other's still short, a target still missing money, an overdue scheduled transaction not
 yet recorded, and a pending transaction. Every date is relative to the day the script runs (this
 calendar month, with scheduled transactions both before and after today), never hard-coded.
+The previous month also gets a full, spread-out month of ordinary transactions of its own (salary,
+mortgage, utilities, groceries, a card purchase — `#326`): unlike the current month's, whose
+recorded transactions are clamped to on-or-before today (`onOrBeforeToday`, so they never land on
+a day that has not happened yet), every day of the previous month is already in the past, so
+nothing needs clamping — a real spread across the whole month for the budget month's own timeline
+to actually draw, rather than a cluster of marks on today's own day alone.
 After seeding, it verifies `@envelope/core`'s own invariant (unassigned money + every category's
 available + reserved + assigned to future months + credit overspending = the on-budget cash
 accounts' own balance, cards excluded) the same way `apps/web` itself could: from the budget
@@ -65,19 +71,21 @@ created on first run and left alone afterward; sign in as it with the password i
 ### Reference screenshots
 
 `screenshot-demo.ts` regenerates the reference screenshots from the already-seeded "Demo"
-workspace: light and dark, at 1440px, 390px and 360px, for the accounts list and the account
-register, named after `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing
-convention (with a size suffix, since those were only ever one size). Needs `apps/web` running too
-(not just `apps/api`), since unlike the seed script's own plain-`fetch` handshake, this drives the
-real sign-in form through a real (headless) browser to actually render pixels.
+workspace: light and dark, at 1440px, 390px and 360px, for the budget month (this month and the
+previous one, `#326` — the previous month's own full spread of transactions, above, is what makes
+its timeline worth looking at), the accounts list and the account register, named after
+`docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a size
+suffix, since those were only ever one size). Needs `apps/web` running too (not just `apps/api`),
+since unlike the seed script's own plain-`fetch` handshake, this drives the real sign-in form
+through a real (headless) browser to actually render pixels.
 
 At 390px and 360px it also asserts there is no horizontal overflow
-(`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion) on both
-screens, failing the script (non-zero exit) if either does — the same check a reviewer would
-otherwise have to do by hand with the browser's own dev tools. A screen whose phone layout is a
-genuinely different DOM tree (not just a CSS reflow), like the account register's day list, swaps
-it in from a `resize` event listener one tick behind `setViewportSize` itself, so the check waits
-briefly after resizing the page before measuring it.
+(`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion, extended
+to the budget month by `#326`) on every screen, failing the script (non-zero exit) if any does —
+the same check a reviewer would otherwise have to do by hand with the browser's own dev tools. A
+screen whose phone layout is a genuinely different DOM tree (not just a CSS reflow), like the
+account register's day list, swaps it in from a `resize` event listener one tick behind
+`setViewportSize` itself, so the check waits briefly after resizing the page before measuring it.
 
 ```bash
 $ cd scripts

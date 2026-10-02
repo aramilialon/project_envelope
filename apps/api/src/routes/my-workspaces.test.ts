@@ -83,7 +83,7 @@ describe("GET /me/workspaces (#50)", () => {
     });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json().workspaces, [
-      { id: workspaceId, name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+      { id: workspaceId, name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
     ]);
   });
 });

@@ -8,6 +8,8 @@ export interface Workspace {
   readonly name: string;
   readonly role: WorkspaceRole;
   readonly baseCurrency: string;
+  /** IANA time zone name (e.g. "Europe/Rome"): "today" and "this month" are the workspace's own, not the browser's (#326). */
+  readonly timeZone: string;
 }
 
 export async function listMyWorkspaces(accessToken: string): Promise<Workspace[]> {

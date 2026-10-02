@@ -55,7 +55,7 @@ function transaction(overrides: Partial<Transaction>): Transaction {
 function renderScreen(transactions: Transaction[]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
@@ -72,6 +72,7 @@ function renderScreen(transactions: Transaction[]) {
 describe("AccountRegisterScreen (#54, #333)", () => {
   afterEach(() => {
     setWidth(ORIGINAL_WIDTH);
+    vi.useRealTimers();
   });
 
   it("shows a loading state", () => {
@@ -210,6 +211,19 @@ describe("AccountRegisterScreen (#54, #333)", () => {
 
       expect(screen.getByText("Thursday, September 10")).toBeInTheDocument();
       expect(screen.getByText("Sunday, September 20")).toBeInTheDocument();
+    });
+
+    it("picks 'Today' in the workspace's own time zone, not the browser's or plain UTC (#326)", async () => {
+      // 23:30 UTC on the 9th is already the 10th in Rome (CEST, UTC+2) — this workspace's own "today".
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-09T23:30:00.000Z"));
+      setWidth(390);
+      renderScreen([transaction({ id: "t1", budgetDate: "2026-09-10", payee: "Supermarket" })]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByText("Today")).toBeInTheDocument();
+      expect(screen.queryByText("Thursday, September 10")).not.toBeInTheDocument();
+      vi.useRealTimers();
     });
 
     it("shows the payee above, 'category · memo' below, and the amount with its currency symbol", async () => {

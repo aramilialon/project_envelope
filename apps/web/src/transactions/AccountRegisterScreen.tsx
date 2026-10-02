@@ -7,6 +7,7 @@ import { useParams } from "react-router-dom";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { categoryLabel } from "./categoryLabel.ts";
 import { totalOf } from "./transactionAmount.ts";
@@ -36,12 +37,6 @@ function shortDate(iso: string, locale: string): string {
 function longDay(iso: string, locale: string): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   return new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
-
-/** The browser's own local "today", for the phone list's "Today" day header — a display nicety, not business logic. */
-function todayIso(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 /** A plain formatted number, no currency symbol — the desktop table's own Outflow/Inflow/Balance cells, whose column header already says what they are. */
@@ -110,7 +105,8 @@ export default function AccountRegisterScreen() {
   }
 
   const { account, accounts, categories, transactions } = state;
-  const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
+  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const currency = currentWorkspace?.baseCurrency;
   const resolvedCurrency = currency ?? "EUR";
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: resolvedCurrency });
   const plain = (cents: number) => plainAmount(cents, intl.locale, resolvedCurrency);
@@ -191,7 +187,9 @@ export default function AccountRegisterScreen() {
         );
   }
 
-  const today = todayIso();
+  // A reasonable guess in the browser's own zone while the workspace's own has not loaded yet
+  // (this just picks which day header reads "Today" — a display nicety, not business logic).
+  const today = todayIsoIn(currentWorkspace?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const groups: { day: string; rows: typeof visible }[] = [];
   for (const row of visible) {
     const day = row.transaction.budgetDate;

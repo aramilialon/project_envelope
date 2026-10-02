@@ -128,7 +128,10 @@ async function main(): Promise<void> {
       entries: entries.map((e) => ({ month, sourceCategoryId: null, destinationCategoryId: e.destinationCategoryId, amountCents: e.amountCents })),
     });
 
-  // Carries into this month as `carriedOver` for the categories that need it (never spent then).
+  // Carries into this month as `carriedOver` for the categories that need it (never spent then),
+  // plus a previous month's worth of ordinary spending money (#326: a real timeline needs a real
+  // month of movements, not just "today" — every day below is already in the past, so none of
+  // `onOrBeforeToday`'s clamping applies, unlike the current month's own transactions further down).
   await assign(previousMonth, [
     { destinationCategoryId: homeMaintenance, amountCents: 30_000 },
     { destinationCategoryId: carInsurance, amountCents: 5_000 },
@@ -137,6 +140,15 @@ async function main(): Promise<void> {
     { destinationCategoryId: vet, amountCents: 2_500 },
     { destinationCategoryId: emergencyFund, amountCents: 30_000 },
     { destinationCategoryId: summerVacation, amountCents: 20_000 },
+    { destinationCategoryId: mortgagePayment, amountCents: 85_000 },
+    { destinationCategoryId: electricityAndGas, amountCents: 12_000 },
+    { destinationCategoryId: internetAndPhone, amountCents: 4_500 },
+    { destinationCategoryId: groceries, amountCents: 80_000 },
+    { destinationCategoryId: fuelAndTransport, amountCents: 15_000 },
+    { destinationCategoryId: restaurants, amountCents: 5_000 },
+    { destinationCategoryId: subscriptions, amountCents: 3_000 },
+    { destinationCategoryId: hobbies, amountCents: 6_000 },
+    { destinationCategoryId: mastercard.paymentCategoryId, amountCents: 4_000 },
   ]);
 
   await assign(currentMonth, [
@@ -187,6 +199,25 @@ async function main(): Promise<void> {
   // look (and reconcile) strangely for a screenshot.
   await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], `${previousMonth}-15`);
   await transaction(checking.id, "Salary", [{ categoryId: null, amountCents: 500_000 }], onOrBeforeToday(3));
+
+  // The previous month's own full spread of ordinary spending (#326: a real timeline, not just a
+  // cluster of "today" marks) — every day is already in the past, so no clamping is needed, unlike
+  // the current month's own transactions below. Reuses the same categories as the current month's
+  // own assignments above, each matched or covered by `previousMonth`'s own assignment just above,
+  // so none of it shows up as overspending in a month the screenshots are not meant to dwell on.
+  const prevDay = (day: number) => `${previousMonth}-${String(day).padStart(2, "0")}`;
+  await transaction(checking.id, "Bank, mortgage payment", [{ categoryId: mortgagePayment, amountCents: -85_000 }], prevDay(1));
+  await transaction(checking.id, "Energy provider", [{ categoryId: electricityAndGas, amountCents: -9_640 }], prevDay(3));
+  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -18_500 }], prevDay(5));
+  await transaction(checking.id, "Phone and internet provider", [{ categoryId: internetAndPhone, amountCents: -4_500 }], prevDay(8));
+  await transaction(checking.id, "Gas station", [{ categoryId: fuelAndTransport, amountCents: -7_200 }], prevDay(10));
+  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -21_300 }], prevDay(12));
+  await transaction(checking.id, "Trattoria", [{ categoryId: restaurants, amountCents: -4_500 }], prevDay(16));
+  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -19_600 }], prevDay(19));
+  await transaction(checking.id, "Music streaming", [{ categoryId: subscriptions, amountCents: -999 }], prevDay(21));
+  await transaction(checking.id, "Music shop", [{ categoryId: hobbies, amountCents: -4_200 }], prevDay(24));
+  await transaction(mastercard.id, "Pizzeria", [{ categoryId: restaurants, amountCents: -3_500 }], prevDay(27));
+  await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -15_800 }], prevDay(28));
 
   // Every recorded transaction below is anchored to a fixed day of the current month, clamped to
   // today when that day has not happened yet (`onOrBeforeToday`) — a *recorded* transaction dated

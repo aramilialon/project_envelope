@@ -1,7 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
@@ -19,6 +19,12 @@ vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const HOME: CategoryGroup = { id: "g1", workspaceId: "ws-1", name: "Home", sortOrder: 1, archived: false };
 const FUN: CategoryGroup = { id: "g2", workspaceId: "ws-1", name: "Fun", sortOrder: 2, archived: false };
+
+const ORIGINAL_WIDTH = window.innerWidth;
+
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+}
 
 function category(overrides: Partial<BudgetMonthCategory>): BudgetMonthCategory {
   return {
@@ -69,14 +75,15 @@ function renderScreen(
   groups: CategoryGroup[],
   events: readonly MonthEvent[] = [],
   goalsByCategory: ReadonlyMap<string, GoalProgress> = new Map(),
+  eventsImpl?: () => Promise<readonly MonthEvent[]>,
 ) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "UTC" },
   ]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
-  vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue(events);
+  vi.spyOn(budgetApi, "getBudgetMonthEvents").mockImplementation(eventsImpl ?? (() => Promise.resolve(events)));
   vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
@@ -96,6 +103,11 @@ function renderScreen(
 }
 
 describe("BudgetScreen (#53, #324)", () => {
+  afterEach(() => {
+    setWidth(ORIGINAL_WIDTH);
+    vi.useRealTimers();
+  });
+
   it("shows a loading state", () => {
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise(() => {}));
@@ -260,6 +272,33 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth);
   });
 
+  it("picks the current month and 'today' in the workspace's own time zone, not the browser's", async () => {
+    // Only `Date` is faked — `setTimeout`/`setInterval` stay real, since Testing Library's own
+    // `findByText` polling relies on them.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 23:30 UTC on 30 September is already 01:30 on 1 October in Rome (CEST, UTC+2) — a new month there, not here.
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"));
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    ]);
+    vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([HOME]);
+    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(budgetMonth({ categories: [category({})] }));
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
+    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1"]}>
+        <Routes>
+          <Route path="/:workspaceId" element={<BudgetScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("Groceries");
+    expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10");
+  });
+
   it("opens the Targets panel", async () => {
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
     await screen.findByText("Groceries");
@@ -289,6 +328,41 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(document.querySelector(".time svg .t-stem.t-in")).not.toBeNull();
     expect(screen.getByText("Cover Groceries")).toBeInTheDocument();
     expect(screen.getByText("€50.00")).toBeInTheDocument(); // the cash-overspending item's own amount
+  });
+
+  it("shows the 'To do' list as soon as the budget month itself is ready, without waiting for events", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      () => new Promise(() => {}), // the events fetch never resolves
+    );
+
+    expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
+    expect(document.querySelector(".time")).not.toBeNull(); // still mounted, same size, just no marks yet
+    expect(document.querySelector(".time svg .t-stem")).toBeNull();
+  });
+
+  it("shows the 'To do' list even when the events fetch fails outright, just without overdue entries", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      () => Promise.reject(new Error("network")),
+    );
+
+    expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
+  });
+
+  it("hides the timeline on a phone (a compact one of its own is #331's job), but keeps the 'To do' list", async () => {
+    setWidth(390);
+    renderScreen(budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }), [HOME]);
+    await screen.findByText("Cover Groceries");
+
+    expect(document.querySelector(".time")).toBeNull();
+    expect(document.querySelector(".todo")).not.toBeNull();
   });
 
   it("says there is nothing to fix when the 'To do' list is empty", async () => {

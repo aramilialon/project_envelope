@@ -26,13 +26,17 @@ export interface UserWorkspace {
   readonly name: string;
   readonly role: WorkspaceRole;
   readonly baseCurrency: string;
+  /** IANA time zone name (e.g. "Europe/Rome"): "today" and "this month" are the workspace's own, not the browser's (#326). */
+  readonly timeZone: string;
 }
 
 /**
  * The workspaces a user belongs to, with their own role in each (#50, the workspace switcher).
  * Also carries each workspace's `baseCurrency` (#51's account-creation form defaults new
  * accounts to it, since a workspace's currency is fixed at creation — design.md's onboarding —
- * and there is no other endpoint yet that exposes it to the web app).
+ * and there is no other endpoint yet that exposes it to the web app) and `timeZone` (#326: the
+ * budget month's own "today" line and current-month default must agree with the same time zone
+ * every budget-date conversion on the server already uses, not the browser's own).
  * Unlike every other query in this codebase, there is no single workspace to scope this to —
  * that is the whole point, picking one is what this list is for — so this opens its own short
  * transaction with only `app.user_id` set (never `app.workspace_id`), relying on migration
@@ -44,8 +48,8 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
-    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole; base_currency: string }>(
-      `SELECT w.id, w.name, m.role, w.base_currency
+    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole; base_currency: string; time_zone: string }>(
+      `SELECT w.id, w.name, m.role, w.base_currency, w.time_zone
        FROM memberships m
        JOIN workspaces w ON w.id = m.workspace_id
        WHERE m.user_id = $1
@@ -53,7 +57,7 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
       [userId],
     );
     await client.query("COMMIT");
-    return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency }));
+    return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency, timeZone: row.time_zone }));
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

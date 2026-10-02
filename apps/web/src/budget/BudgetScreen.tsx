@@ -14,10 +14,12 @@ import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
 
 import { useBandSecondRow } from "../layout/useBandSecondRow.tsx";
+import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useTargets } from "../targets/useTargets.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
+import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent } from "./api.ts";
 import Timeline from "./Timeline.tsx";
@@ -28,11 +30,6 @@ import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | null;
 type Status = "credit" | "cash" | "short" | "pos" | "zero";
-
-function currentMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
 
 function shiftMonth(month: string, delta: 1 | -1): string {
   const year = Number(month.slice(0, 4));
@@ -77,17 +74,12 @@ function daysInMonth(month: string): number {
   return new Date(year, monthNumber, 0).getDate();
 }
 
-function todayIso(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
-
-/** Only set when `month` is the one actually showing on today's own calendar — otherwise there is no "today" line or overdue distinction to draw. */
-function todayOf(month: string): { iso: string; day: number } | undefined {
-  if (month !== currentMonth()) {
+/** Only set when the workspace's own time zone is known and `month` is the one actually showing on today's own calendar in it — otherwise there is no "today" line or overdue distinction to draw. */
+function todayOf(month: string, timeZone: string | undefined): { iso: string; day: number } | undefined {
+  if (timeZone === undefined || month !== currentMonthIn(timeZone)) {
     return undefined;
   }
-  const iso = todayIso();
+  const iso = todayIsoIn(timeZone);
   return { iso, day: Number(iso.slice(8, 10)) };
 }
 
@@ -134,14 +126,29 @@ export default function BudgetScreen() {
   const intl = useIntl();
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const workspaces = useWorkspaces();
-  const [month, setMonth] = useState(currentMonth);
+  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const timeZone = currentWorkspace?.timeZone;
+  const isPhone = usePhoneWidth();
+
+  // The initial month is a best guess in the *browser's* own time zone (the workspace's is not
+  // known yet, before `workspaces` itself resolves) — corrected once, below, the moment it is, so
+  // a workspace in a markedly different time zone never gets stuck showing the wrong month.
+  // Done during render (React's own "adjusting state when a prop changes" pattern), not an
+  // effect, so the correction takes effect before the wrong month's own data ever paints.
+  const [month, setMonth] = useState(() => currentMonthIn(Intl.DateTimeFormat().resolvedOptions().timeZone));
+  const [appliedWorkspaceMonth, setAppliedWorkspaceMonth] = useState(false);
+  if (timeZone !== undefined && !appliedWorkspaceMonth) {
+    setAppliedWorkspaceMonth(true);
+    setMonth(currentMonthIn(timeZone));
+  }
+
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const state = useBudgetMonth(workspaceId!, month);
   const eventsState = useBudgetMonthEvents(workspaceId!, month);
   const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
 
-  const currency = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.baseCurrency : undefined;
+  const currency = currentWorkspace?.baseCurrency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
 
   const secondRow = useBandSecondRow(
@@ -208,7 +215,7 @@ export default function BudgetScreen() {
   }
 
   const { groups } = state;
-  const today = todayOf(month);
+  const today = todayOf(month, timeZone);
   const categoryNameById = new Map(
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
@@ -217,32 +224,44 @@ export default function BudgetScreen() {
     <div className="budget-screen">
       {secondRow}
 
-      {eventsState.status === "ok" && (
-        <div className="over">
+      <div className="over">
+        {!isPhone && (
           <Timeline
-            layout={computeTimeline({ daysInMonth: daysInMonth(month), today: today?.day, events: toTimelineEvents(eventsState.events, today) })}
+            // Only the timeline waits for the events fetch — an empty list draws just the axis
+            // until it resolves (never nothing at all: `.time`'s own box never changes size, so
+            // nothing around it jumps once the real marks arrive). Hidden below 600px entirely:
+            // a compact rendering of its own is #331's job, not a shrunk copy of this one.
+            layout={computeTimeline({
+              daysInMonth: daysInMonth(month),
+              today: today?.day,
+              events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
+            })}
             monthLabel={monthLabel(month, intl.locale)}
             money={money}
           />
-          <Todo
-            items={computeTodos({
-              unassignedCents: state.budgetMonth.unassigned,
-              categories: state.budgetMonth.categories,
-              paymentCategories: state.budgetMonth.paymentCategories,
-              overdueScheduledItems: toOverdueScheduledItems(eventsState.events, today),
-              targetsNeeded:
-                targetsState.status === "ok"
-                  ? [...targetsState.progressByCategory.entries()]
-                      .filter(([, progress]) => progress.missing > 0)
-                      .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
-                  : [],
-            })}
-            categoryNameById={categoryNameById}
-            money={money}
-            locale={intl.locale}
-          />
-        </div>
-      )}
+        )}
+        <Todo
+          items={computeTodos({
+            unassignedCents: state.budgetMonth.unassigned,
+            categories: state.budgetMonth.categories,
+            paymentCategories: state.budgetMonth.paymentCategories,
+            // Unlike the timeline, the "To do" list has plenty to show without the events fetch
+            // (overspending, uncovered debt, targets) — only the overdue-scheduled entries need
+            // it, so those are simply left out (not the whole list) until it resolves, or if it
+            // fails outright.
+            overdueScheduledItems: eventsState.status === "ok" ? toOverdueScheduledItems(eventsState.events, today) : [],
+            targetsNeeded:
+              targetsState.status === "ok"
+                ? [...targetsState.progressByCategory.entries()]
+                    .filter(([, progress]) => progress.missing > 0)
+                    .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
+                : [],
+          })}
+          categoryNameById={categoryNameById}
+          money={money}
+          locale={intl.locale}
+        />
+      </div>
 
       <div className="acts">
         <button type="button" className="btn" onClick={() => setPanel("targets")}>
