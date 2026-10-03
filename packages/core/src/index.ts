@@ -3,8 +3,8 @@ export type { ValidationErrorCode } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
-export type { LocalDate, Month } from "./month.ts";
-export { assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
+export type { LocalDate, Month, RecurUnit } from "./month.ts";
+export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
 export type {
   Activity,
   Assignment,

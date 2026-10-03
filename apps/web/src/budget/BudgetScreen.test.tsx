@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import * as accountsApi from "../accounts/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
 import { BandSecondRowSlotContext } from "../layout/bandSecondRowSlot.ts";
@@ -387,6 +388,16 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Quick assign" }));
     expect(await screen.findByRole("heading", { name: "Quick assign" })).toBeInTheDocument();
+  });
+
+  it("opens the Scheduled panel (#330)", async () => {
+    vi.spyOn(budgetApi, "listScheduledTransactions").mockResolvedValue([]);
+    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([]);
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Scheduled" }));
+    expect(await screen.findByRole("heading", { name: "Scheduled" })).toBeInTheDocument();
   });
 
   it("shows the month's own timeline and 'To do' list, built from its events (#326)", async () => {

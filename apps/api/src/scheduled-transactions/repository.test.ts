@@ -11,6 +11,8 @@ import {
   deleteScheduledTransaction,
   listReservationsForMonth,
   listScheduledTransactions,
+  recordScheduledTransaction,
+  skipScheduledTransaction,
   updateScheduledTransaction,
 } from "./repository.ts";
 
@@ -274,5 +276,48 @@ describe("scheduled transactions repository", () => {
     );
 
     await pool.query("DELETE FROM workspaces WHERE id = $1", [workspace]);
+  });
+
+  it("records a scheduled transaction: a real transaction dated on its own due date, split amounts negated, and nextDueDate advances", async () => {
+    const created = await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId,
+      payee: "Landlord",
+      memo: "Rent",
+      nextDueDate: "2026-09-01",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId, amountCents: 90_000 }],
+    });
+
+    const result = await recordScheduledTransaction(pool, workspaceId, created.id);
+    assert.equal(result?.transaction.accountId, accountId);
+    assert.equal(result?.transaction.occurredAt.slice(0, 10), "2026-09-01");
+    assert.equal(result?.transaction.payee, "Landlord");
+    assert.equal(result?.transaction.memo, "Rent");
+    assert.deepEqual(result?.transaction.splits.map((s) => [s.categoryId, s.amountCents]), [[categoryId, -90_000]]);
+    assert.equal(result?.scheduledTransaction.nextDueDate, "2026-10-01");
+  });
+
+  it("recording an unknown scheduled transaction reports undefined", async () => {
+    assert.equal(await recordScheduledTransaction(pool, workspaceId, randomUUID()), undefined);
+  });
+
+  it("skips a scheduled transaction: nextDueDate advances, no transaction is created", async () => {
+    const created = await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId,
+      nextDueDate: "2026-09-10",
+      recurEvery: 2,
+      recurUnit: "month",
+      splits: [{ categoryId, amountCents: 3_000 }],
+    });
+
+    const skipped = await skipScheduledTransaction(pool, workspaceId, created.id);
+    assert.equal(skipped?.nextDueDate, "2026-11-10");
+  });
+
+  it("skipping an unknown scheduled transaction reports undefined", async () => {
+    assert.equal(await skipScheduledTransaction(pool, workspaceId, randomUUID()), undefined);
   });
 });

@@ -191,4 +191,78 @@ describe("scheduled transactions routes", () => {
     });
     assert.equal(response.statusCode, 400);
   });
+
+  it("records a scheduled transaction: a real transaction, and nextDueDate advances", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: {
+        accountId,
+        payee: "Landlord",
+        nextDueDate: "2026-09-01",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId, amountCents: 90_000 }],
+      },
+    });
+    const scheduledTransactionId = created.json().id as string;
+
+    const recorded = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/record`,
+      headers: auth,
+    });
+    assert.equal(recorded.statusCode, 201);
+    const body = recorded.json();
+    assert.equal(body.transaction.payee, "Landlord");
+    assert.deepEqual(body.transaction.splits.map((s: { categoryId: string; amountCents: number }) => [s.categoryId, s.amountCents]), [
+      [categoryId, -90_000],
+    ]);
+    assert.equal(body.scheduledTransaction.nextDueDate, "2026-10-01");
+  });
+
+  it("recording an unknown scheduled transaction reports 404", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${randomUUID()}/record`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 404);
+  });
+
+  it("skips a scheduled transaction: nextDueDate advances, no transaction created", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: {
+        accountId,
+        nextDueDate: "2026-09-10",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId, amountCents: 3_000 }],
+      },
+    });
+    const scheduledTransactionId = created.json().id as string;
+
+    const skipped = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/skip`,
+      headers: auth,
+    });
+    assert.equal(skipped.statusCode, 200);
+    assert.equal(skipped.json().nextDueDate, "2026-10-10");
+  });
+
+  it("skipping an unknown scheduled transaction reports 404", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${randomUUID()}/skip`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 404);
+  });
 });

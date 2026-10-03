@@ -92,3 +92,41 @@ export function monthRange(from: Month, to: Month): Month[] {
   }
   return months;
 }
+
+/** A scheduled transaction's own recurrence unit (design.md, "Scheduled transactions"). */
+export type RecurUnit = "day" | "month" | "year";
+
+function daysInCalendarMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function toLocalDate(year: number, month: number, day: number): LocalDate {
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Advances a scheduled transaction's own `nextDueDate` forward by one recurrence step ("Record"
+ * or "Skip", design.md's "Scheduled transactions") — never backward, `every` is always positive.
+ * Calendar-aware for months and years: adding a month to "2026-01-31" lands on the last day of
+ * February (28th or 29th), never rolling over into March the way naive date arithmetic would.
+ */
+export function advanceDate(date: LocalDate, every: number, unit: RecurUnit): LocalDate {
+  assertDate(date);
+  if (!Number.isInteger(every) || every <= 0) {
+    throw new ValidationError("invalid_recurrence", "every must be a positive integer", { every: String(every) });
+  }
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+
+  if (unit === "day") {
+    const utc = Date.UTC(year, month - 1, day + every);
+    const advanced = new Date(utc);
+    return toLocalDate(advanced.getUTCFullYear(), advanced.getUTCMonth() + 1, advanced.getUTCDate());
+  }
+
+  const totalMonths = unit === "year" ? (year + every) * 12 + (month - 1) : year * 12 + (month - 1) + every;
+  const newYear = Math.floor(totalMonths / 12);
+  const newMonth = (totalMonths % 12) + 1;
+  return toLocalDate(newYear, newMonth, Math.min(day, daysInCalendarMonth(newYear, newMonth)));
+}
