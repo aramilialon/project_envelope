@@ -39,6 +39,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `POST /workspaces/:workspaceId/scheduled-transactions/:id/record`\|`/skip` — "Record" turns the reservation into a real transaction, dated on its own due date, and advances `nextDueDate`; "Skip" only advances it. Both inside the request's own existing database transaction, so the two actions commit together without a new domain concept (`#330`).
 - `@envelope/core`: `advanceDate` — moves a date forward by a recurrence step (day/month/year), calendar-aware: adding a month to "2026-01-31" lands on the last day of February, never rolling over into March (`#330`).
 - `apps/web`: a category's own row shows its reservation's clock line when it has one — "€90.00 reserved · Boiler service, 29 Sep" (or "N scheduled expenses" with more than one), "To record" when overdue, "€8.96 missing" in amber only when the category is not already overspent; "+ New scheduled transaction" can also set the new item as its category's own target, for a month-based recurrence with none yet (`#217`).
+- `apps/web`: the band's own facts row now also shows "Days of buffer", next to money reserved for scheduled transactions and already assigned to future months (`#344`).
 
 ### Changed
 

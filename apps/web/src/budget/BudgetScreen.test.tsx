@@ -156,6 +156,14 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(screen.getByText("-€5.00")).toHaveClass("low");
   });
 
+  it("shows the workspace's own days of buffer in the band's facts row, rounded (#344)", async () => {
+    vi.spyOn(budgetApi, "getDaysOfBuffer").mockResolvedValue({ asOf: "2026-09-15", daysOfBuffer: 37.6 });
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+    expect(await screen.findByText("Days of buffer")).toBeInTheDocument();
+    expect(screen.getByText("38")).toBeInTheDocument();
+  });
+
   it("groups categories under their own group, in group and category order", async () => {
     const { container } = renderScreen(
       budgetMonth({
