@@ -278,11 +278,31 @@ describe("BudgetScreen (#53, #324)", () => {
     await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledTimes(2));
   });
 
-  it("a credit card's own payment category row stays non-interactive — it has no row detail of its own yet (#329)", async () => {
-    renderScreen(budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment" })] }), [HOME]);
+  it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
+    renderScreen(
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0 })] }),
+      [HOME],
+    );
     await screen.findByText("Visa payment");
 
-    expect(screen.queryByRole("button", { name: /Visa payment/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Visa payment/ }));
+    expect(await screen.findByText("Set aside to pay the card")).toBeInTheDocument();
+    expect(screen.getByText(/fully covered/)).toBeInTheDocument();
+    expect(screen.queryByText("To cover")).not.toBeInTheDocument();
+  });
+
+  it("opens a card's own payment category row with its own debt still to cover, and 'Move money here' opens the move-money form (#329)", async () => {
+    renderScreen(
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000 })] }),
+      [HOME],
+    );
+    await screen.findByText("Visa payment");
+
+    fireEvent.click(screen.getByRole("button", { name: /Visa payment/ }));
+    expect(await screen.findByText("To cover")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move money here" }));
+    expect(await screen.findByLabelText("To")).toHaveValue("pc1");
   });
 
   it("navigates to the next and previous month, refetching the budget", async () => {

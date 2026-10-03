@@ -79,3 +79,30 @@
   align-self: flex-start;
   margin-top: 6px;
 }
+
+.inl .qa.static {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.inl .state-l {
+  font-weight: 600;
+}
+
+.inl .big {
+  font-family: var(--display);
+  font-stretch: 92%;
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.inl .explain {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.55;
+}
+
+.inl .warnl {
+  color: var(--warn);
+}

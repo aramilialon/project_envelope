@@ -23,6 +23,7 @@ import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
+import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import Timeline from "./Timeline.tsx";
 import { formatPayees } from "./timelineLabels.ts";
@@ -320,10 +321,7 @@ export default function BudgetScreen() {
                   group.categories.map((category) => {
                     const bar = barFor(category);
                     const status = statusOf(category, bar);
-                    // Only an ordinary category opens its own row detail (#327) — a card's own
-                    // payment category has a different detail of its own, #329's job.
-                    const canOpen = !category.isPaymentCategory;
-                    const isOpen = canOpen && openCategoryId === category.categoryId;
+                    const isOpen = openCategoryId === category.categoryId;
                     const rowContent = (
                       <>
                         <span className="cn">
@@ -351,31 +349,38 @@ export default function BudgetScreen() {
                     );
                     return (
                       <div key={category.categoryId}>
-                        {canOpen ? (
-                          <button
-                            type="button"
-                            className="brow"
-                            aria-expanded={isOpen}
-                            onClick={() => setOpenCategoryId(isOpen ? null : category.categoryId)}
-                          >
-                            {rowContent}
-                          </button>
-                        ) : (
-                          <div className="brow">{rowContent}</div>
-                        )}
-                        {isOpen && (
-                          <RowDetail
-                            workspaceId={workspaceId!}
-                            month={month}
-                            categoryId={category.categoryId}
-                            categoryName={category.name}
-                            assigned={category.assigned}
-                            currency={currency ?? "EUR"}
-                            onClose={() => setOpenCategoryId(null)}
-                            onChanged={() => state.refetch()}
-                            onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
-                          />
-                        )}
+                        <button
+                          type="button"
+                          className="brow"
+                          aria-expanded={isOpen}
+                          onClick={() => setOpenCategoryId(isOpen ? null : category.categoryId)}
+                        >
+                          {rowContent}
+                        </button>
+                        {isOpen &&
+                          (category.isPaymentCategory ? (
+                            <PaymentCategoryDetail
+                              categoryName={category.name}
+                              available={category.available}
+                              uncovered={category.uncovered}
+                              currency={currency ?? "EUR"}
+                              onClose={() => setOpenCategoryId(null)}
+                              onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
+                              onMoveMoneyHere={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+                            />
+                          ) : (
+                            <RowDetail
+                              workspaceId={workspaceId!}
+                              month={month}
+                              categoryId={category.categoryId}
+                              categoryName={category.name}
+                              assigned={category.assigned}
+                              currency={currency ?? "EUR"}
+                              onClose={() => setOpenCategoryId(null)}
+                              onChanged={() => state.refetch()}
+                              onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+                            />
+                          ))}
                       </div>
                     );
                   })}
