@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import SideSheet from "../layout/SideSheet.tsx";
 import { deleteGoal, upsertGoal, type GoalKind, type GoalRecord, type RepeatInterval } from "./api.ts";
 import "./TargetEditor.css";
 
@@ -117,15 +118,8 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
   }
 
   return (
-    <div className="side-sheet target-editor" role="dialog" aria-modal="true" aria-label={categoryName}>
-      <div className="panel-head">
-        <h2>{categoryName}</h2>
-        <button type="button" className="plain" onClick={onClose}>
-          {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-        </button>
-      </div>
-
-      <form onSubmit={(event) => void handleSubmit(event)}>
+    <SideSheet title={categoryName} onClose={onClose}>
+      <form className="target-editor" onSubmit={(event) => void handleSubmit(event)}>
         <fieldset className="types">
           <legend className="sr-only">{intl.formatMessage({ id: "targets.editor.kind", defaultMessage: "Kind" })}</legend>
           {KINDS.map((k) => (
@@ -197,6 +191,6 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
           )}
         </div>
       </form>
-    </div>
+    </SideSheet>
   );
 }

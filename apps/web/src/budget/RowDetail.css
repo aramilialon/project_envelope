@@ -1,0 +1,76 @@
+.inl {
+  position: relative;
+  margin: 2px 0 10px 12px;
+  padding: 18px 20px 4px;
+  border-radius: 14px;
+  background: var(--desk);
+}
+
+.inl .closer {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  font-size: 13px;
+}
+
+.inl-c {
+  columns: 3 250px;
+  column-gap: 30px;
+}
+
+.inl-c > * {
+  break-inside: avoid;
+  margin-bottom: 18px;
+}
+
+.inl .sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inl .qa {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  text-align: left;
+  color: var(--pen);
+}
+
+.inl .qa .dots {
+  flex: 1;
+  border-bottom: 1px dotted var(--rule);
+  transform: translateY(-3px);
+}
+
+.inl .asg-l label {
+  flex: 0 0 auto;
+}
+
+.inl .asg-l .asg-in {
+  margin-left: auto;
+}
+
+.inl .asg-in {
+  width: 104px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--pen);
+  border-radius: 3px;
+  background: var(--paper);
+  text-align: right;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.inl .asg-h {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}

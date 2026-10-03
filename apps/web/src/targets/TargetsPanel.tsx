@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import type { BudgetMonthCategory } from "../budget/api.ts";
+import SideSheet from "../layout/SideSheet.tsx";
 import { runQuickAssign } from "./api.ts";
 import TargetEditor from "./TargetEditor.tsx";
 import { useTargets } from "./useTargets.ts";
@@ -83,19 +84,21 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
     }
   }
 
+  const title = intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" });
+
   if (targets.status === "loading") {
     return (
-      <div className="side-sheet targets-panel" role="dialog" aria-modal="true">
+      <SideSheet title={title} onClose={onClose}>
         <p role="status">{intl.formatMessage({ id: "targets.loading", defaultMessage: "Loading your targets…" })}</p>
-      </div>
+      </SideSheet>
     );
   }
 
   if (targets.status === "error") {
     return (
-      <div className="side-sheet targets-panel" role="dialog" aria-modal="true">
+      <SideSheet title={title} onClose={onClose}>
         <p role="alert">{intl.formatMessage({ id: "targets.error", defaultMessage: "We could not load your targets." })}</p>
-      </div>
+      </SideSheet>
     );
   }
 
@@ -113,61 +116,56 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
   }
 
   return (
-    <div className="side-sheet targets-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" })}>
-      <div className="panel-head">
-        <h2>{intl.formatMessage({ id: "targets.title", defaultMessage: "Targets" })}</h2>
-        <button type="button" className="plain" onClick={onClose}>
-          {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-        </button>
-      </div>
+    <SideSheet title={title} onClose={onClose}>
+      <div className="targets-panel">
+        {withTarget.length > 0 && (
+          <button type="button" className="btn primary" disabled={fundingAll} onClick={() => void handleFundAll()}>
+            {intl.formatMessage({ id: "targets.fundAll", defaultMessage: "Fund all targets" })}
+          </button>
+        )}
 
-      {withTarget.length > 0 && (
-        <button type="button" className="btn primary" disabled={fundingAll} onClick={() => void handleFundAll()}>
-          {intl.formatMessage({ id: "targets.fundAll", defaultMessage: "Fund all targets" })}
-        </button>
-      )}
+        {[...byKind.entries()].map(([kind, kindCategories]) => (
+          <div className="sec" key={kind}>
+            <h5>{KIND_LABEL[kind] ?? kind}</h5>
+            <ul className="target-list">
+              {kindCategories.map((category) => {
+                const progress = targets.progressByCategory.get(category.categoryId)!;
+                return (
+                  <li key={category.categoryId}>
+                    <button type="button" className="goal-row" onClick={() => setEditingId(category.categoryId)}>
+                      <span>
+                        <b>{category.name}</b>
+                        <small>
+                          {intl.formatMessage(
+                            { id: "targets.row.status", defaultMessage: "Asks {asks}, {missing} missing" },
+                            { asks: money(progress.asks), missing: money(progress.missing) },
+                          )}
+                        </small>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
 
-      {[...byKind.entries()].map(([kind, kindCategories]) => (
-        <div className="sec" key={kind}>
-          <h5>{KIND_LABEL[kind] ?? kind}</h5>
-          <ul className="target-list">
-            {kindCategories.map((category) => {
-              const progress = targets.progressByCategory.get(category.categoryId)!;
-              return (
+        {withoutTarget.length > 0 && (
+          <div className="sec">
+            <h5>{intl.formatMessage({ id: "targets.withoutTarget", defaultMessage: "No target yet" })}</h5>
+            <ul className="target-list">
+              {withoutTarget.map((category) => (
                 <li key={category.categoryId}>
-                  <button type="button" className="goal-row" onClick={() => setEditingId(category.categoryId)}>
-                    <span>
-                      <b>{category.name}</b>
-                      <small>
-                        {intl.formatMessage(
-                          { id: "targets.row.status", defaultMessage: "Asks {asks}, {missing} missing" },
-                          { asks: money(progress.asks), missing: money(progress.missing) },
-                        )}
-                      </small>
-                    </span>
+                  <span className="name">{category.name}</span>
+                  <button type="button" className="plain" onClick={() => setEditingId(category.categoryId)}>
+                    {intl.formatMessage({ id: "targets.add", defaultMessage: "+ Add" })}
                   </button>
                 </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-
-      {withoutTarget.length > 0 && (
-        <div className="sec">
-          <h5>{intl.formatMessage({ id: "targets.withoutTarget", defaultMessage: "No target yet" })}</h5>
-          <ul className="target-list">
-            {withoutTarget.map((category) => (
-              <li key={category.categoryId}>
-                <span className="name">{category.name}</span>
-                <button type="button" className="plain" onClick={() => setEditingId(category.categoryId)}>
-                  {intl.formatMessage({ id: "targets.add", defaultMessage: "+ Add" })}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </SideSheet>
   );
 }
