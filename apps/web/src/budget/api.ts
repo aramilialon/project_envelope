@@ -181,3 +181,19 @@ export async function skipScheduledTransaction(accessToken: string, workspaceId:
   }
   return (await response.json()) as ScheduledTransaction;
 }
+
+/** `GET /workspaces/:workspaceId/days-of-buffer` (#344): `asOf` defaults, server-side, to "today" in the workspace's own time zone — never passed here, for the same reason `workspaceDate.ts`'s own "today" is never the browser's. */
+export interface DaysOfBuffer {
+  readonly asOf: string;
+  readonly daysOfBuffer: number;
+}
+
+export async function getDaysOfBuffer(accessToken: string, workspaceId: string): Promise<DaysOfBuffer> {
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/days-of-buffer`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`GET /workspaces/${workspaceId}/days-of-buffer failed: ${response.status}`);
+  }
+  return (await response.json()) as DaysOfBuffer;
+}

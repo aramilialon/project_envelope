@@ -33,6 +33,7 @@ import { formatPayees } from "./timelineLabels.ts";
 import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
+import { useDaysOfBuffer } from "./useDaysOfBuffer.ts";
 import { useScheduledTransactions } from "./useScheduledTransactions.ts";
 import "./BudgetScreen.css";
 
@@ -157,6 +158,7 @@ export default function BudgetScreen() {
   const eventsState = useBudgetMonthEvents(workspaceId!, month);
   const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
   const scheduledState = useScheduledTransactions(workspaceId!);
+  const daysOfBufferState = useDaysOfBuffer(workspaceId!);
 
   const currency = currentWorkspace?.baseCurrency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
@@ -204,6 +206,12 @@ export default function BudgetScreen() {
             {intl.formatMessage({ id: "budget.assignedInFuture", defaultMessage: "Already assigned to future months" })}{" "}
             <b>{money(state.budgetMonth.assignedInFuture)}</b>
           </span>
+          {daysOfBufferState.status === "ok" && (
+            <span>
+              {intl.formatMessage({ id: "budget.daysOfBuffer", defaultMessage: "Days of buffer" })}{" "}
+              <b>{Math.round(daysOfBufferState.daysOfBuffer)}</b>
+            </span>
+          )}
         </div>
       </div>
     ) : null,
