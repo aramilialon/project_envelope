@@ -69,3 +69,22 @@ export async function getBudgetMonthEvents(
   const body = (await response.json()) as { events: MonthEvent[] };
   return body.events;
 }
+
+/** One entry of `POST .../assignments`' own batch — the assignment ledger's append-only unit (ADR 0008). `null` means unassigned money. */
+export interface AssignmentEntryInput {
+  readonly month: string;
+  readonly sourceCategoryId: string | null;
+  readonly destinationCategoryId: string | null;
+  readonly amountCents: number;
+}
+
+export async function createAssignments(accessToken: string, workspaceId: string, entries: readonly AssignmentEntryInput[]): Promise<void> {
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/assignments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ entries }),
+  });
+  if (!response.ok) {
+    throw new Error(`POST /workspaces/${workspaceId}/assignments failed: ${response.status}`);
+  }
+}

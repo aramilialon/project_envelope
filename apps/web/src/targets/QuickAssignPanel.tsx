@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import SideSheet from "../layout/SideSheet.tsx";
 import { runQuickAssign, type QuickAssignMode } from "./api.ts";
 import "./QuickAssignPanel.css";
 
@@ -62,15 +63,8 @@ export default function QuickAssignPanel({ workspaceId, month, groups, onClose, 
   }
 
   return (
-    <div className="side-sheet quick-assign-panel" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })}>
-      <div className="panel-head">
-        <h2>{intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })}</h2>
-        <button type="button" className="plain" onClick={onClose}>
-          {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-        </button>
-      </div>
-
-      <form onSubmit={(event) => void handleSubmit(event)}>
+    <SideSheet title={intl.formatMessage({ id: "quickAssign.title", defaultMessage: "Quick assign" })} onClose={onClose}>
+      <form className="quick-assign-panel" onSubmit={(event) => void handleSubmit(event)}>
         <div className="field">
           <label htmlFor="qa-scope">{intl.formatMessage({ id: "quickAssign.scope", defaultMessage: "Scope" })}</label>
           <select id="qa-scope" value={scopeGroupId} onChange={(event) => setScopeGroupId(event.target.value)}>
@@ -108,6 +102,6 @@ export default function QuickAssignPanel({ workspaceId, month, groups, onClose, 
           </button>
         </div>
       </form>
-    </div>
+    </SideSheet>
   );
 }

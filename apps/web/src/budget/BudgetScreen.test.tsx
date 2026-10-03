@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -250,6 +250,39 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Home" }));
     expect(await screen.findByText("Groceries")).toBeInTheDocument();
+  });
+
+  it("opens a category's own row detail on click, and closes it again on a second click (#327)", async () => {
+    renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    const row = screen.getByRole("button", { name: /Groceries/ });
+    fireEvent.click(row);
+    expect(await screen.findByLabelText("Assigned this month")).toHaveValue("600.00");
+
+    fireEvent.click(row);
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+  });
+
+  it("refetches the budget month once the row detail changes the assigned amount (#327)", async () => {
+    vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+    const input = await screen.findByLabelText("Assigned this month");
+    input.focus();
+    fireEvent.change(input, { target: { value: "700.00" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledTimes(2));
+  });
+
+  it("a credit card's own payment category row stays non-interactive — it has no row detail of its own yet (#329)", async () => {
+    renderScreen(budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment" })] }), [HOME]);
+    await screen.findByText("Visa payment");
+
+    expect(screen.queryByRole("button", { name: /Visa payment/ })).not.toBeInTheDocument();
   });
 
   it("navigates to the next and previous month, refetching the budget", async () => {

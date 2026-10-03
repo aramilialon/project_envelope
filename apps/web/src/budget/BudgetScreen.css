@@ -106,7 +106,18 @@
   width: 100%;
   min-height: 52px;
   padding: 8px 12px;
+  border: 0;
   border-radius: 12px;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+/* An ordinary category's own row is a <button> (#327, opens its row detail); a card's payment
+   category (no detail of its own yet, #329) stays a plain, non-interactive <div>. */
+.budget-screen button.brow {
+  cursor: pointer;
 }
 
 .budget-screen .brow > .cn {
