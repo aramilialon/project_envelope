@@ -80,6 +80,13 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
   const nextMonthTargets = useTargets(workspaceId, theNextMonth, [...nextMonthByCategory.keys()]);
   const nextMonthTotal = [...nextMonthByCategory.values()].reduce((sum, v) => sum + v.amountCents, 0);
 
+  const currentTargets = useTargets(
+    workspaceId,
+    month,
+    categories.map((c) => c.categoryId),
+  );
+  const hasTargetByCategory = new Set(currentTargets.status === "ok" ? currentTargets.progressByCategory.keys() : []);
+
   async function withBusy(id: string, action: () => Promise<void>) {
     setBusyId(id);
     try {
@@ -236,6 +243,7 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
             workspaceId={workspaceId}
             categories={categories}
             currency={currency}
+            hasTargetByCategory={hasTargetByCategory}
             onCancel={() => setShowNew(false)}
             onSaved={() => {
               setShowNew(false);
@@ -263,11 +271,16 @@ interface NewFormProps {
   readonly workspaceId: string;
   readonly categories: readonly CategoryOption[];
   readonly currency: string;
+  readonly hasTargetByCategory: ReadonlySet<string>;
   onCancel(): void;
   onSaved(): void;
 }
 
-function NewScheduledTransactionForm({ workspaceId, categories, currency, onCancel, onSaved }: NewFormProps) {
+function canBecomeTarget(every: number, unit: RecurUnit): boolean {
+  return unit === "month" && (every === 1 || (MONTHLY_REPEAT_INTERVALS as readonly number[]).includes(every));
+}
+
+function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTargetByCategory, onCancel, onSaved }: NewFormProps) {
   const intl = useIntl();
   const auth = useAuth();
   const accounts = useAccounts(workspaceId);
@@ -284,8 +297,12 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, onCanc
   const [nextDueDate, setNextDueDate] = useState("");
   const [recurEvery, setRecurEvery] = useState("1");
   const [recurUnit, setRecurUnit] = useState<RecurUnit>("month");
+  const [useAsTarget, setUseAsTarget] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const every = Number(recurEvery);
+  const offerUseAsTarget = canBecomeTarget(every, recurUnit) && !hasTargetByCategory.has(categoryId);
 
   let amount: number | null = null;
   try {
@@ -317,7 +334,6 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, onCanc
       setError(intl.formatMessage({ id: "scheduled.needDate", defaultMessage: "Choose the next date." }));
       return;
     }
-    const every = Number(recurEvery);
     if (!Number.isInteger(every) || every <= 0) {
       setError(intl.formatMessage({ id: "scheduled.needRecurrence", defaultMessage: "The repeat interval must be a positive whole number." }));
       return;
@@ -333,6 +349,13 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, onCanc
         categoryId,
         amountCents: amount,
       });
+      if (useAsTarget && offerUseAsTarget) {
+        const goalInput =
+          every === 1
+            ? { kind: "monthly" as const, amountCents: amount }
+            : { kind: "repeating" as const, amountCents: amount, dueMonth: monthOf(nextDueDate), every: every as RepeatInterval };
+        await upsertGoal(accessToken, workspaceId, categoryId, goalInput);
+      }
       onSaved();
     } catch {
       setError(intl.formatMessage({ id: "scheduled.error", defaultMessage: "We could not save this scheduled transaction." }));
@@ -393,6 +416,13 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, onCanc
           </select>
         </div>
       </div>
+
+      {offerUseAsTarget && (
+        <label className="chk">
+          <input type="checkbox" checked={useAsTarget} onChange={(event) => setUseAsTarget(event.target.checked)} />
+          {intl.formatMessage({ id: "scheduled.useItAsTarget", defaultMessage: "Use it as this category's target" })}
+        </label>
+      )}
 
       {error && (
         <p className="hint bad" role="alert">

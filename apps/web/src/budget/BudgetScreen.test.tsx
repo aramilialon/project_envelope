@@ -77,6 +77,7 @@ function renderScreen(
   events: readonly MonthEvent[] = [],
   goalsByCategory: ReadonlyMap<string, GoalProgress> = new Map(),
   eventsImpl?: () => Promise<readonly MonthEvent[]>,
+  scheduledTransactions: readonly budgetApi.ScheduledTransaction[] = [],
 ) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
@@ -86,6 +87,7 @@ function renderScreen(
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
   vi.spyOn(budgetApi, "getBudgetMonthEvents").mockImplementation(eventsImpl ?? (() => Promise.resolve(events)));
   vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
+  vi.spyOn(budgetApi, "listScheduledTransactions").mockResolvedValue(scheduledTransactions);
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
       <Routes>
@@ -229,6 +231,125 @@ describe("BudgetScreen (#53, #324)", () => {
       [HOME],
     );
     expect(await screen.findByText("€642.15 spent of €600.00")).toBeInTheDocument();
+  });
+
+  it("shows a category's own reservation clock line, naming its scheduled item's payee and date (#217)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-10T10:00:00.000Z"));
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", carriedOver: 10_000, available: 1_000, reserved: 9_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      undefined,
+      [
+        {
+          id: "sched-1",
+          workspaceId: "ws-1",
+          accountId: "acc-1",
+          payee: "Boiler service",
+          memo: null,
+          nextDueDate: "2026-09-29",
+          recurEvery: 1,
+          recurUnit: "year",
+          createdAt: "",
+          updatedAt: "",
+          splits: [{ categoryId: "c1", amountCents: 9_000, memo: null }],
+        },
+      ],
+    );
+    expect(await screen.findByText(/Boiler service, Sep 29/)).toBeInTheDocument();
+    expect(screen.getByText(/€90\.00 reserved/)).toBeInTheDocument();
+  });
+
+  it("marks the reservation line 'To record' when its scheduled item is already overdue (#217)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-10T10:00:00.000Z"));
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", carriedOver: 10_000, available: 1_000, reserved: 9_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      undefined,
+      [
+        {
+          id: "sched-1",
+          workspaceId: "ws-1",
+          accountId: "acc-1",
+          payee: "Boiler service",
+          memo: null,
+          nextDueDate: "2026-09-05", // already past "today" (the 10th)
+          recurEvery: 1,
+          recurUnit: "year",
+          createdAt: "",
+          updatedAt: "",
+          splits: [{ categoryId: "c1", amountCents: 9_000, memo: null }],
+        },
+      ],
+    );
+    expect(await screen.findByText("To record")).toBeInTheDocument();
+  });
+
+  it("shows what is missing, as a warning, when the category cannot cover its own reservation (#217)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-10T10:00:00.000Z"));
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", carriedOver: 2_000, available: -7_000, reserved: 9_000 })] }),
+      [HOME],
+      [],
+      new Map(),
+      undefined,
+      [
+        {
+          id: "sched-1",
+          workspaceId: "ws-1",
+          accountId: "acc-1",
+          payee: "Boiler service",
+          memo: null,
+          nextDueDate: "2026-09-29",
+          recurEvery: 1,
+          recurUnit: "year",
+          createdAt: "",
+          updatedAt: "",
+          splits: [{ categoryId: "c1", amountCents: 9_000, memo: null }],
+        },
+      ],
+    );
+    const line = await screen.findByText(/€90\.00 reserved/);
+    expect(line.closest(".res")).toHaveClass("need");
+    expect(line.closest(".res")).toHaveTextContent("€70.00 missing");
+  });
+
+  it("never shows 'missing' for a reservation shortfall on an already cash-overspent category (#217)", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-10T10:00:00.000Z"));
+    renderScreen(
+      budgetMonth({
+        categories: [category({ categoryId: "c1", carriedOver: 2_000, available: -7_000, reserved: 9_000, cashOverspending: 2_000 })],
+      }),
+      [HOME],
+      [],
+      new Map(),
+      undefined,
+      [
+        {
+          id: "sched-1",
+          workspaceId: "ws-1",
+          accountId: "acc-1",
+          payee: "Boiler service",
+          memo: null,
+          nextDueDate: "2026-09-29",
+          recurEvery: 1,
+          recurUnit: "year",
+          createdAt: "",
+          updatedAt: "",
+          splits: [{ categoryId: "c1", amountCents: 9_000, memo: null }],
+        },
+      ],
+    );
+    const line = await screen.findByText(/€90\.00 reserved/);
+    expect(line.closest(".res")).not.toHaveClass("need");
+    expect(line.closest(".res")).not.toHaveTextContent("missing");
   });
 
   it("shows a payment category's debt line instead of a spent line", async () => {

@@ -38,6 +38,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the "Scheduled" side sheet — money reserved this month, "To record" (overdue) and "By the end of the month" groups with Record and Skip, a preview of next month's own reservations against each category's own target with "Use as target", and "+ New scheduled transaction". A scheduled transaction is always a single-category expense for now — scheduled income has no backend support yet (`#347`) (`#330`).
 - `apps/api`: `POST /workspaces/:workspaceId/scheduled-transactions/:id/record`\|`/skip` — "Record" turns the reservation into a real transaction, dated on its own due date, and advances `nextDueDate`; "Skip" only advances it. Both inside the request's own existing database transaction, so the two actions commit together without a new domain concept (`#330`).
 - `@envelope/core`: `advanceDate` — moves a date forward by a recurrence step (day/month/year), calendar-aware: adding a month to "2026-01-31" lands on the last day of February, never rolling over into March (`#330`).
+- `apps/web`: a category's own row shows its reservation's clock line when it has one — "€90.00 reserved · Boiler service, 29 Sep" (or "N scheduled expenses" with more than one), "To record" when overdue, "€8.96 missing" in amber only when the category is not already overspent; "+ New scheduled transaction" can also set the new item as its category's own target, for a month-based recurrence with none yet (`#217`).
 
 ### Changed
 

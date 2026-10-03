@@ -64,7 +64,7 @@ export interface TodosInput {
  * `CategoryMonth.available` is already net of `reserved` (rule 7, `budget-month.ts`), so the
  * balance before that subtraction is recovered as `available + reserved`.
  */
-function reservationShortfall(category: CategoryMonth): Cents {
+export function reservationShortfall(category: CategoryMonth): Cents {
   if (category.reserved <= 0) return 0;
   const beforeReservation = category.available + category.reserved;
   return Math.max(0, Math.min(category.reserved, category.reserved - Math.max(0, beforeReservation)));

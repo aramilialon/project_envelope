@@ -197,6 +197,37 @@ describe("ScheduledPanel (#330)", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("'+ New scheduled transaction' offers 'Use it as this category's target' when the category has none yet, and setting one (#217)", async () => {
+    const upsertGoal = vi.spyOn(targetsApi, "upsertGoal").mockResolvedValue({} as never);
+    vi.spyOn(budgetApi, "createScheduledTransaction").mockResolvedValue(scheduledTransaction({}));
+    renderPanel([]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ New scheduled transaction" }));
+    await screen.findByText("Checking");
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Landlord" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "900.00" } });
+    fireEvent.change(screen.getByLabelText("Next date"), { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByLabelText("Use it as this category's target"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(upsertGoal).toHaveBeenCalledWith("t", "ws-1", "rent", { kind: "monthly", amountCents: 90_000 }));
+  });
+
+  it("'+ New scheduled transaction' does not offer 'Use it as this category's target' when the category already has one", async () => {
+    renderPanel([], new Map([["rent", goalProgress()]]));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New scheduled transaction" }));
+    await screen.findByText("Checking");
+    expect(screen.queryByLabelText("Use it as this category's target")).not.toBeInTheDocument();
+  });
+
+  it("'+ New scheduled transaction' does not offer 'Use it as this category's target' for a non-monthly recurrence", async () => {
+    renderPanel([]);
+    fireEvent.click(await screen.findByRole("button", { name: "+ New scheduled transaction" }));
+    await screen.findByText("Checking");
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "day" } });
+    expect(screen.queryByLabelText("Use it as this category's target")).not.toBeInTheDocument();
+  });
+
   it("the '× Close' button calls onClose", async () => {
     const { onClose } = renderPanel([]);
     fireEvent.click(await screen.findByRole("button", { name: "× Close" }));

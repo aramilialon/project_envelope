@@ -4,6 +4,8 @@ import {
   computeTimeline,
   computeTodos,
   formatMoney,
+  monthOf,
+  reservationShortfall,
   type Bar as BarGeometry,
   type OverdueScheduledItem,
   type TimelineEvent,
@@ -21,7 +23,7 @@ import { useTargets } from "../targets/useTargets.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
-import type { MonthEvent } from "./api.ts";
+import type { MonthEvent, ScheduledTransaction } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
@@ -31,6 +33,7 @@ import { formatPayees } from "./timelineLabels.ts";
 import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
+import { useScheduledTransactions } from "./useScheduledTransactions.ts";
 import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | "scheduled" | null;
@@ -153,6 +156,7 @@ export default function BudgetScreen() {
   const state = useBudgetMonth(workspaceId!, month);
   const eventsState = useBudgetMonthEvents(workspaceId!, month);
   const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
+  const scheduledState = useScheduledTransactions(workspaceId!);
 
   const currency = currentWorkspace?.baseCurrency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
@@ -225,6 +229,22 @@ export default function BudgetScreen() {
 
   const { groups } = state;
   const today = todayOf(month, timeZone);
+  const scheduledByCategoryThisMonth = new Map<string, ScheduledTransaction[]>();
+  if (scheduledState.status === "ok") {
+    for (const s of scheduledState.scheduledTransactions) {
+      if (monthOf(s.nextDueDate) !== month) {
+        continue;
+      }
+      for (const split of s.splits) {
+        const list = scheduledByCategoryThisMonth.get(split.categoryId);
+        if (list) {
+          list.push(s);
+        } else {
+          scheduledByCategoryThisMonth.set(split.categoryId, [s]);
+        }
+      }
+    }
+  }
   const categoryNameById = new Map(
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
@@ -331,6 +351,13 @@ export default function BudgetScreen() {
                         <span className="cn">
                           <b>{category.name}</b>
                           <StatusLine category={category} money={money} intl={intl} />
+                          <ReservationLine
+                            category={category}
+                            items={scheduledByCategoryThisMonth.get(category.categoryId) ?? []}
+                            today={today?.iso}
+                            money={money}
+                            intl={intl}
+                          />
                         </span>
                         <Bar bar={bar} />
                         <span className="av">
@@ -539,4 +566,59 @@ function StatusLine({ category, money, intl }: StatusLineProps) {
     );
   }
   return <small className="spent n">{intl.formatMessage({ id: "budget.bar.noActivity", defaultMessage: "No activity" })}</small>;
+}
+
+interface ReservationLineProps {
+  readonly category: BudgetGroupCategory;
+  readonly items: readonly ScheduledTransaction[];
+  /** The workspace's own "today" (`YYYY-MM-DD`), when known. */
+  readonly today: string | undefined;
+  readonly money: (cents: number) => string;
+  readonly intl: ReturnType<typeof useIntl>;
+}
+
+/**
+ * The clock line of a reservation (design.md's "A category's detail": "€90.00 reserved · Boiler
+ * service, 29 Sep", "to record" when overdue, "€8.96 missing" in amber when the category cannot
+ * cover it — a warning, never styled as overspending) — #217's own remaining piece once #330 gave
+ * the budget month a scheduled-transactions fetch of its own to read this from.
+ */
+function ReservationLine({ category, items, today, money, intl }: ReservationLineProps) {
+  if (category.isPaymentCategory || category.reserved <= 0 || items.length === 0) {
+    return null;
+  }
+  const overdue = today !== undefined && items.some((s) => s.nextDueDate < today);
+  const shortfall = reservationShortfall(category);
+  const showShortfall = shortfall > 0 && category.cashOverspending === 0 && category.creditOverspending === 0;
+  const first = items[0]!;
+  const what =
+    items.length === 1
+      ? intl.formatMessage(
+          { id: "budget.row.reservedItem", defaultMessage: "{payee}, {date}" },
+          {
+            payee: first.payee ?? intl.formatMessage({ id: "budget.row.reservedItemNoPayee", defaultMessage: "Scheduled expense" }),
+            date: new Intl.DateTimeFormat(intl.locale, { day: "numeric", month: "short" }).format(new Date(`${first.nextDueDate}T00:00:00`)),
+          },
+        )
+      : intl.formatMessage({ id: "budget.row.reservedCount", defaultMessage: "{count} scheduled expenses" }, { count: items.length });
+
+  return (
+    <small className={`res${showShortfall ? " need" : ""}`}>
+      {overdue && (
+        <>
+          <b>{intl.formatMessage({ id: "budget.row.toRecord", defaultMessage: "To record" })}</b>
+          {" · "}
+        </>
+      )}
+      {intl.formatMessage({ id: "budget.row.reserved", defaultMessage: "{amount} reserved" }, { amount: money(category.reserved) })}
+      {" · "}
+      {what}
+      {showShortfall && (
+        <>
+          {" · "}
+          {intl.formatMessage({ id: "budget.row.reservedMissing", defaultMessage: "{missing} missing" }, { missing: money(shortfall) })}
+        </>
+      )}
+    </small>
+  );
 }
