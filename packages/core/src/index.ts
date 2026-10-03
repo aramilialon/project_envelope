@@ -58,4 +58,4 @@ export type {
 } from "./presentation/timeline.ts";
 export { computeTimeline, MAX_LABEL_PAYEES } from "./presentation/timeline.ts";
 export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
-export { amountNeededToCover, computeTodos } from "./presentation/todos.ts";
+export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";

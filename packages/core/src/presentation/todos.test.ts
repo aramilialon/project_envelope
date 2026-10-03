@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { CategoryMonth } from "../budget/budget-month.ts";
-import { amountNeededToCover, computeTodos, type TodosInput } from "./todos.ts";
+import { amountNeededToCover, computeTodos, reservationShortfall, type TodosInput } from "./todos.ts";
 
 function category(overrides: Partial<CategoryMonth> = {}): CategoryMonth {
   return {
@@ -131,5 +131,23 @@ describe("amountNeededToCover", () => {
 
   it("a payment category's uncovered card debt, when nothing else applies", () => {
     assert.equal(amountNeededToCover(category({ uncovered: 4_000 })), 4_000);
+  });
+});
+
+describe("reservationShortfall", () => {
+  it("nothing reserved: zero", () => {
+    assert.equal(reservationShortfall(category()), 0);
+  });
+
+  it("the reservation is fully covered by the current balance: zero", () => {
+    assert.equal(reservationShortfall(category({ available: 1_000, reserved: 3_000 })), 0);
+  });
+
+  it("the balance cannot cover all of it: the shortfall, capped at the reservation itself", () => {
+    assert.equal(reservationShortfall(category({ available: -1_000, reserved: 3_000 })), 1_000);
+  });
+
+  it("a wholly negative balance before the reservation: the whole reservation is short", () => {
+    assert.equal(reservationShortfall(category({ available: -5_000, reserved: 3_000 })), 3_000);
   });
 });

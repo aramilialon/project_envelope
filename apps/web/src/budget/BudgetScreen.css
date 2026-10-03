@@ -147,6 +147,24 @@
   color: var(--muted);
 }
 
+.budget-screen .res {
+  color: var(--muted);
+}
+
+.budget-screen .res.need {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.budget-screen .res b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.budget-screen .res.need b {
+  color: var(--warn);
+}
+
 .budget-screen .av {
   display: flex;
   justify-content: flex-end;
