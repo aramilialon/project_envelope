@@ -36,6 +36,7 @@ const GROUPS: readonly BudgetGroup[] = [
     categories: [
       categoryIn({ categoryId: "groceries", name: "Groceries", available: 10_000 }),
       categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -2_000, cashOverspending: 2_000 }),
+      categoryIn({ categoryId: "visa", name: "Visa payment", available: 3_000, uncovered: 7_000, isPaymentCategory: true }),
     ],
   },
   {
@@ -139,6 +140,14 @@ describe("MoveMoneyForm (#328)", () => {
     renderForm({ kind: "moveTo", categoryId: "restaurants" });
     expect(screen.getByLabelText("To")).toHaveValue("restaurants");
     expect(screen.getByLabelText("Amount")).toHaveValue("20.00"); // restaurants is €20.00 cash-overspent
+  });
+
+  it("'Assign from unassigned money' on a payment category row (#329) always keeps unassigned as the source, even when it cannot cover the gap", () => {
+    renderForm({ kind: "assignTo", categoryId: "visa" }); // needs €70.00, only €10.00 unassigned by default
+    expect(screen.getByLabelText("From")).toHaveValue("unassigned");
+    expect(screen.getByLabelText("To")).toHaveValue("visa");
+    expect(screen.getByLabelText("Amount")).toHaveValue("70.00");
+    expect(screen.getByText(/Unassigned will go below zero/)).toBeInTheDocument();
   });
 
   it("preselects a category able to cover the gap as the source, when unassigned money cannot", () => {

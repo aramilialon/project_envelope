@@ -34,6 +34,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: a category's own row opens, under its bar, to edit "Assigned this month" in place — typing a value, or `+20`/`-15` for a change, commits it as one assignment entry on Enter or leaving the field; Esc reverts it. A credit card's payment category row stays non-interactive for now — its own detail is a later issue (`#327`).
 - `apps/web`: "Assign" and "Move money" — one form, opened from the unassigned-money box ("Assign") or a category's own row ("Move money", preselecting it and the amount it is missing), with From/To (unassigned money or a category), the month (only when assigning from unassigned money), amount, and a live preview of both sides before/after; assigning more than is unassigned is allowed, with a warning. One assignment-ledger entry (`#328`).
 - `@envelope/core`: `amountNeededToCover` — how much a category still needs to stop being a problem (the whole of a cash/card overspend, else a reservation shortfall, else a payment category's own uncovered card debt), the figure "Move money" preselects when opened from a category's own row (`#328`).
+- `apps/web`: a card's own payment category row now opens too, into its own detail — money set aside, a sentence about the card's debt, and (once any of it is uncovered) the debt meter itself with "Assign €X from unassigned money" and "Move money here", both reusing the "Assign / Move money" form (`#329`).
 
 ### Changed
 

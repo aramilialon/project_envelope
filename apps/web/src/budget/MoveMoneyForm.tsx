@@ -15,7 +15,13 @@ export type MoveMoneyInitial =
   /** "Assign" in the band's unassigned-money box: from unassigned, destination not chosen yet. */
   | { readonly kind: "assign" }
   /** "Move money" from a category's own row: preselects it as the destination and the amount it is missing. */
-  | { readonly kind: "moveTo"; readonly categoryId: string };
+  | { readonly kind: "moveTo"; readonly categoryId: string }
+  /**
+   * "Assign €X from unassigned money" on a card's payment category row (#329): like `moveTo`,
+   * but the source is always unassigned money, never another category — the user asked for that
+   * source by name, so it is never silently swapped for one that can cover the gap.
+   */
+  | { readonly kind: "assignTo"; readonly categoryId: string };
 
 interface Props {
   readonly workspaceId: string;
@@ -88,13 +94,12 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
     }
     const category = byId.get(initial.categoryId);
     const gap = category ? amountNeededToCover(category) : 0;
+    const amount = gap > 0 ? plainAmount(gap, intl.locale, currency) : "";
+    if (initial.kind === "assignTo") {
+      return { from: UNASSIGNED, to: initial.categoryId, targetMonth: month, amount };
+    }
     const source = gap > 0 && gap > unassignedCents ? autoSource(byId, initial.categoryId, gap) : undefined;
-    return {
-      from: source ?? UNASSIGNED,
-      to: initial.categoryId,
-      targetMonth: month,
-      amount: gap > 0 ? plainAmount(gap, intl.locale, currency) : "",
-    };
+    return { from: source ?? UNASSIGNED, to: initial.categoryId, targetMonth: month, amount };
   })();
 
   const [from, setFrom] = useState(initialState.from);
