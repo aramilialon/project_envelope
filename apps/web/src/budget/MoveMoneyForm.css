@@ -1,0 +1,44 @@
+.move-money-form .field select {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.move-money-form .explain {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.move-money-form .preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  line-height: 1.6;
+}
+
+.move-money-form .preview .err {
+  color: var(--red-text);
+}
+
+.move-money-form .ba {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.move-money-form .ba.note {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.move-money-form .ba.note.warn {
+  color: var(--red-text);
+}

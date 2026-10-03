@@ -32,6 +32,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `GET /me/workspaces` now also reports each workspace's `timeZone` — `apps/web`'s own "today" and "this month" (the budget month's timeline, the account register's "Today" day heading) are computed in it, never the browser's own, which can disagree (`#326`).
 - `apps/api`: `GET .../budget-months/:month/events` now also excludes a credit card's own "Starting balance" split (`isStartingBalanceSplit`, shared with `budget/repository.ts`'s identical exclusion from the budget computation itself) — it is not something that happened in the budget sense, just the card's own balance as of account creation, so the timeline and "To do" list never draw it as a transaction either (`#326`).
 - `apps/web`: a category's own row opens, under its bar, to edit "Assigned this month" in place — typing a value, or `+20`/`-15` for a change, commits it as one assignment entry on Enter or leaving the field; Esc reverts it. A credit card's payment category row stays non-interactive for now — its own detail is a later issue (`#327`).
+- `apps/web`: "Assign" and "Move money" — one form, opened from the unassigned-money box ("Assign") or a category's own row ("Move money", preselecting it and the amount it is missing), with From/To (unassigned money or a category), the month (only when assigning from unassigned money), amount, and a live preview of both sides before/after; assigning more than is unassigned is allowed, with a warning. One assignment-ledger entry (`#328`).
+- `@envelope/core`: `amountNeededToCover` — how much a category still needs to stop being a problem (the whole of a cash/card overspend, else a reservation shortfall, else a payment category's own uncovered card debt), the figure "Move money" preselects when opened from a category's own row (`#328`).
 
 ### Changed
 
@@ -47,6 +49,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - `scripts/keycloak/bootstrap.sh`: the `envelope-api` client's `webOrigins` (`"+"`) did not actually cover the wildcard-port redirect URIs it was meant to derive from, so the browser blocked the token exchange's CORS request in every real sign-in attempt — sign-in (`#49`) redirected correctly but could never complete. Set to the known dev origins explicitly instead; found by `apps/web`'s new end-to-end test (`#308`).
 - `apps/api`: `@fastify/cors`'s own default `methods` is `GET,HEAD,POST`, not every verb the API uses, so every PATCH/PUT/DELETE endpoint — closing an account among them — silently failed from a real browser while staying invisible to every mocked unit test and `.inject()`-based integration test. The CORS registration now lists every method the API actually uses; found by `apps/web`'s new end-to-end test (`#315`).
+- `apps/web`: `e2e/budget.spec.ts` still asserted the pre-`#324` "Ready to assign" label, left stale by the visual redesign and never caught since end-to-end tests are not wired into CI yet — updated to "Unassigned".
 
 ## [0.1.6] - 2026-09-30
 

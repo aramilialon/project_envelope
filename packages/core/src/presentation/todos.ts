@@ -71,6 +71,24 @@ function reservationShortfall(category: CategoryMonth): Cents {
 }
 
 /**
+ * How much money a category still needs to stop being a problem — the same figure "Move money"
+ * preselects when opened from a category's own row (design.md, "Assign / Move money": it
+ * "preselects the category and the amount it is missing", `docs/ux/mockups/budget-month.html`'s
+ * own `openMove`'s `gap`): the whole of a cash/card overspend first, else a reservation shortfall,
+ * else (payment categories only) card debt still uncovered. Zero when none of these apply.
+ */
+export function amountNeededToCover(category: CategoryMonth): Cents {
+  if (category.cashOverspending > 0 || category.creditOverspending > 0) {
+    return category.cashOverspending + category.creditOverspending;
+  }
+  const short = reservationShortfall(category);
+  if (short > 0) {
+    return short;
+  }
+  return category.uncovered > 0 ? category.uncovered : 0;
+}
+
+/**
  * Builds the list in the mockup's own priority order: being assigned more than there is money
  * for comes first (if at all), then overspending (cash before card, since cash needs new money
  * immediately), overdue scheduled transactions, a reservation a category cannot cover (only when
