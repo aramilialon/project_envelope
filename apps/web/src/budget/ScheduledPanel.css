@@ -1,0 +1,91 @@
+.scheduled-panel .gstats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--rule);
+}
+
+.scheduled-panel .gstats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px;
+  background: var(--paper);
+}
+
+.scheduled-panel .gstats small {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.scheduled-panel .gstats b {
+  font-size: 16px;
+  font-stretch: 85%;
+  white-space: nowrap;
+}
+
+.scheduled-panel .sch {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.scheduled-panel .sch > small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scheduled-panel .sch.late > small {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.scheduled-panel .sch span small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.scheduled-panel .sch-b {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: 16px;
+}
+
+.scheduled-panel .sch-b .plain.quiet {
+  color: var(--ink-2);
+}
+
+.scheduled-panel .qa.static {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.scheduled-panel .qa.static .n {
+  color: var(--ink);
+}
+
+.scheduled-panel .qa.static .n.need {
+  color: var(--warn);
+}
+
+.scheduled-panel .field select {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.scheduled-panel .two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}

@@ -1,8 +1,10 @@
-import { assertCents, assertDate, ValidationError, type ScheduledItem } from "@envelope/core";
+import { advanceDate, assertCents, assertDate, ValidationError, type RecurUnit, type ScheduledItem } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import type { QueueDriver } from "../queue/index.ts";
+import { createTransaction, type TransactionRecord } from "../transactions/repository.ts";
 
-export type RecurUnit = "day" | "month" | "year";
+export type { RecurUnit };
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
 
 /** A scheduled transaction is never income: unlike `SplitInput` on a real transaction, `categoryId` is always required. */
@@ -252,6 +254,74 @@ export async function updateScheduledTransaction(
 export async function deleteScheduledTransaction(db: DbPool | DbClient, workspaceId: string, id: string): Promise<boolean> {
   const { rowCount } = await db.query("DELETE FROM scheduled_transactions WHERE id = $1 AND workspace_id = $2", [id, workspaceId]);
   return (rowCount ?? 0) > 0;
+}
+
+/** Moves `nextDueDate` one recurrence step forward — "Record" and "Skip" both do this, the only difference being whether a real transaction is created alongside it. */
+async function advanceScheduledTransaction(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  existing: ScheduledTransactionRecord,
+): Promise<ScheduledTransactionRecord> {
+  const nextDueDate = advanceDate(existing.nextDueDate, existing.recurEvery, existing.recurUnit);
+  const updated = await updateScheduledTransaction(db, workspaceId, existing.id, { nextDueDate });
+  if (!updated) {
+    throw new Error("advanceScheduledTransaction: the row just updated was not found");
+  }
+  return updated;
+}
+
+export interface RecordScheduledTransactionResult {
+  readonly transaction: TransactionRecord;
+  readonly scheduledTransaction: ScheduledTransactionRecord;
+}
+
+/**
+ * "Record" (design.md, "Scheduled transactions"): the reservation becomes a real transaction,
+ * dated on the scheduled transaction's own `nextDueDate` (never today's date — recording one
+ * already overdue keeps its own original date, the same as the reference mockup's own `record`),
+ * and `nextDueDate` advances by one recurrence step. Both happen in the same request transaction
+ * (every write request already runs inside one, `auth/workspace-membership.ts`), so this composes
+ * two existing actions atomically without a new domain concept of its own.
+ */
+export async function recordScheduledTransaction(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  id: string,
+  queue?: QueueDriver,
+): Promise<RecordScheduledTransactionResult | undefined> {
+  const existing = await getScheduledTransaction(db, workspaceId, id);
+  if (!existing) {
+    return undefined;
+  }
+  const transaction = await createTransaction(
+    db,
+    {
+      workspaceId,
+      accountId: existing.accountId,
+      occurredAt: existing.nextDueDate,
+      ...(existing.payee ? { payee: existing.payee } : {}),
+      ...(existing.memo ? { memo: existing.memo } : {}),
+      // A scheduled split's own amount is always positive (a reservation); a real outflow split
+      // is negative, the same sign flip `listScheduledEventsForMonth` (#325) already does.
+      splits: existing.splits.map((s) => ({ categoryId: s.categoryId, amountCents: -s.amountCents, ...(s.memo ? { memo: s.memo } : {}) })),
+    },
+    queue,
+  );
+  const scheduledTransaction = await advanceScheduledTransaction(db, workspaceId, existing);
+  return { transaction, scheduledTransaction };
+}
+
+/** "Skip" (design.md): `nextDueDate` advances by one recurrence step, no transaction created — this time's reservation is simply given up. */
+export async function skipScheduledTransaction(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  id: string,
+): Promise<ScheduledTransactionRecord | undefined> {
+  const existing = await getScheduledTransaction(db, workspaceId, id);
+  if (!existing) {
+    return undefined;
+  }
+  return advanceScheduledTransaction(db, workspaceId, existing);
 }
 
 /**

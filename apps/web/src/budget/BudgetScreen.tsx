@@ -25,6 +25,7 @@ import type { MonthEvent } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
+import ScheduledPanel from "./ScheduledPanel.tsx";
 import Timeline from "./Timeline.tsx";
 import { formatPayees } from "./timelineLabels.ts";
 import Todo from "./Todo.tsx";
@@ -32,7 +33,7 @@ import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./us
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
 import "./BudgetScreen.css";
 
-type Panel = "quickAssign" | "targets" | null;
+type Panel = "quickAssign" | "targets" | "scheduled" | null;
 type Status = "credit" | "cash" | "short" | "pos" | "zero";
 
 function shiftMonth(month: string, delta: 1 | -1): string {
@@ -121,8 +122,8 @@ function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: st
  * line when its debt is fully covered (`uncovered` is 0 in that case exactly the same as "no debt
  * at all" — the API has no separate field for the card's real balance — so nothing is shown
  * rather than guessing a figure; only "still to cover" is shown, since that debt is recoverable
- * from `available + uncovered`); the toolbar's filter tabs, Summary/Scheduled/Undo (need data or
- * forms no earlier issue built yet); the group name's summary side sheet — a group row is plain,
+ * from `available + uncovered`); the toolbar's filter tabs, Summary/Undo (need data or forms no
+ * earlier issue built yet); the group name's summary side sheet — a group row is plain,
  * non-interactive text until then, not a button with nowhere to go.
  */
 export default function BudgetScreen() {
@@ -279,6 +280,9 @@ export default function BudgetScreen() {
         </button>
         <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
           {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
+        </button>
+        <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
+          {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
         </button>
       </div>
 
@@ -447,6 +451,17 @@ export default function BudgetScreen() {
             setPanel(null);
             state.refetch();
           }}
+        />
+      )}
+      {panel === "scheduled" && (
+        <ScheduledPanel
+          workspaceId={workspaceId!}
+          month={month}
+          groups={groups}
+          currency={currency ?? "EUR"}
+          timeZone={timeZone}
+          onClose={() => setPanel(null)}
+          onChanged={() => state.refetch()}
         />
       )}
       {moveMoney && (

@@ -77,7 +77,7 @@ export function buildApp(config: Config, queue?: QueueDriver): App {
   registerMyWorkspacesRoute(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
-  registerScheduledTransactionsRoutes(fastify, pool);
+  registerScheduledTransactionsRoutes(fastify, pool, queue);
   registerSyncRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool, queue);
   // Not a committed product feature yet, only a real route for #10's global

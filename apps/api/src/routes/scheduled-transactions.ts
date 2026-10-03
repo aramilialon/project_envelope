@@ -4,10 +4,13 @@ import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
+import type { QueueDriver } from "../queue/index.ts";
 import {
   createScheduledTransaction,
   deleteScheduledTransaction,
   listScheduledTransactions,
+  recordScheduledTransaction,
+  skipScheduledTransaction,
   updateScheduledTransaction,
   type RecurUnit,
   type ScheduledSplitInput,
@@ -39,7 +42,7 @@ function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonl
   return splits.map((s) => s.categoryId).find((id) => !categoryIds.has(id));
 }
 
-export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: DbPool): void {
+export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: DbPool, queue?: QueueDriver): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = [preHandler, requireWriteAccess];
   const base = "/workspaces/:workspaceId/scheduled-transactions";
@@ -155,5 +158,32 @@ export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: 
       return;
     }
     await reply.code(204).send();
+  });
+
+  app.post(`${base}/:scheduledTransactionId/record`, { preHandler: writePreHandler }, async (request, reply) => {
+    const { scheduledTransactionId } = request.params as { scheduledTransactionId: string };
+    try {
+      const result = await recordScheduledTransaction(request.db!, request.workspace!.id, scheduledTransactionId, queue);
+      if (!result) {
+        await reply.code(404).send({ error: "scheduled transaction not found" });
+        return;
+      }
+      await reply.code(201).send(result);
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.post(`${base}/:scheduledTransactionId/skip`, { preHandler: writePreHandler }, async (request, reply) => {
+    const { scheduledTransactionId } = request.params as { scheduledTransactionId: string };
+    const result = await skipScheduledTransaction(request.db!, request.workspace!.id, scheduledTransactionId);
+    if (!result) {
+      await reply.code(404).send({ error: "scheduled transaction not found" });
+      return;
+    }
+    return result;
   });
 }

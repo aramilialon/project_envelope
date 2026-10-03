@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
+import { advanceDate, assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
 
 describe("months", () => {
   it("compute the next month, across the end of the year", () => {
@@ -50,5 +50,46 @@ describe("months", () => {
         `"${text}" should have been rejected`,
       );
     }
+  });
+});
+
+describe("advanceDate", () => {
+  it("advances by whole days, including across a month boundary", () => {
+    assert.equal(advanceDate("2026-09-28", 5, "day"), "2026-10-03");
+  });
+
+  it("advances by months, keeping the same day of month", () => {
+    assert.equal(advanceDate("2026-09-15", 2, "month"), "2026-11-15");
+  });
+
+  it("advances by months across a year boundary", () => {
+    assert.equal(advanceDate("2026-11-15", 3, "month"), "2027-02-15");
+  });
+
+  it("clamps the day to the target month's own last day, never rolling over", () => {
+    assert.equal(advanceDate("2026-01-31", 1, "month"), "2026-02-28");
+    assert.equal(advanceDate("2028-01-31", 1, "month"), "2028-02-29"); // leap year
+  });
+
+  it("advances by years, keeping month and day", () => {
+    assert.equal(advanceDate("2026-09-15", 1, "year"), "2027-09-15");
+  });
+
+  it("advances by years from a leap day, clamped to the target year's own last day of February", () => {
+    assert.equal(advanceDate("2028-02-29", 1, "year"), "2029-02-28");
+  });
+
+  it("rejects a non-positive or non-integer recurrence", () => {
+    for (const every of [0, -1, 1.5]) {
+      assert.throws(
+        () => advanceDate("2026-09-15", every, "month"),
+        (error) => isValidationError(error, "invalid_recurrence"),
+        `${every} should have been rejected`,
+      );
+    }
+  });
+
+  it("rejects an invalid date, the same as assertDate", () => {
+    assert.throws(() => advanceDate("2026-02-30", 1, "month"), (error) => isValidationError(error, "invalid_date"));
   });
 });
