@@ -332,6 +332,27 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10");
   });
 
+  it("opens the 'Assign' form from the band's unassigned-money box (#328)", async () => {
+    renderScreen(budgetMonth({ unassigned: 5_000, categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+  });
+
+  it("opens 'Move money' from a category's own row, preselecting it as the destination (#328)", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000, available: 60_000 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Move money" }));
+
+    expect(await screen.findByLabelText("To")).toHaveValue("c1");
+  });
+
   it("opens the Targets panel", async () => {
     renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
     await screen.findByText("Groceries");

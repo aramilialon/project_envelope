@@ -13,6 +13,7 @@ function renderRowDetail(assigned = 60_000) {
   const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
   const onClose = vi.fn();
   const onChanged = vi.fn();
+  const onMoveMoney = vi.fn();
   renderWithIntl(
     <RowDetail
       workspaceId="ws-1"
@@ -23,9 +24,10 @@ function renderRowDetail(assigned = 60_000) {
       currency="EUR"
       onClose={onClose}
       onChanged={onChanged}
+      onMoveMoney={onMoveMoney}
     />,
   );
-  return { createAssignments, onClose, onChanged };
+  return { createAssignments, onClose, onChanged, onMoveMoney };
 }
 
 /** `.blur()` is a no-op in jsdom unless the element is actually focused first — `fireEvent.keyDown`/`.change` alone never focus it. */
@@ -133,5 +135,11 @@ describe("RowDetail (#327)", () => {
     const { onClose } = renderRowDetail(60_000);
     fireEvent.click(screen.getByRole("button", { name: "× Close" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("the 'Move money' button calls onMoveMoney", () => {
+    const { onMoveMoney } = renderRowDetail(60_000);
+    fireEvent.click(screen.getByRole("button", { name: "Move money" }));
+    expect(onMoveMoney).toHaveBeenCalled();
   });
 });

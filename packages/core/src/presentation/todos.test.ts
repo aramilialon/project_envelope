@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import type { CategoryMonth } from "../budget/budget-month.ts";
-import { computeTodos, type TodosInput } from "./todos.ts";
+import { amountNeededToCover, computeTodos, type TodosInput } from "./todos.ts";
 
 function category(overrides: Partial<CategoryMonth> = {}): CategoryMonth {
   return {
@@ -101,5 +101,35 @@ describe("computeTodos", () => {
       items.map((i) => i.kind),
       ["overassigned", "cashOverspending", "cardOverspending", "scheduledOverdue", "reservationShortfall", "cardDebtUncovered", "targetsNeeded"],
     );
+  });
+});
+
+describe("amountNeededToCover", () => {
+  it("nothing wrong: zero", () => {
+    assert.equal(amountNeededToCover(category()), 0);
+  });
+
+  it("cash overspending alone", () => {
+    assert.equal(amountNeededToCover(category({ cashOverspending: 5_000 })), 5_000);
+  });
+
+  it("cash and card overspending together: the whole of both", () => {
+    assert.equal(amountNeededToCover(category({ cashOverspending: 1_000, creditOverspending: 2_000 })), 3_000);
+  });
+
+  it("card overspending alone", () => {
+    assert.equal(amountNeededToCover(category({ creditOverspending: 3_000 })), 3_000);
+  });
+
+  it("a reservation shortfall, when there is no overspending", () => {
+    assert.equal(amountNeededToCover(category({ available: -1_000, reserved: 3_000 })), 1_000);
+  });
+
+  it("overspending wins over a reservation shortfall on the same category", () => {
+    assert.equal(amountNeededToCover(category({ cashOverspending: 500, available: -1_000, reserved: 3_000 })), 500);
+  });
+
+  it("a payment category's uncovered card debt, when nothing else applies", () => {
+    assert.equal(amountNeededToCover(category({ uncovered: 4_000 })), 4_000);
   });
 });

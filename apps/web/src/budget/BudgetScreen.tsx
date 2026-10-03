@@ -22,6 +22,7 @@ import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent } from "./api.ts";
+import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import RowDetail from "./RowDetail.tsx";
 import Timeline from "./Timeline.tsx";
 import { formatPayees } from "./timelineLabels.ts";
@@ -119,10 +120,9 @@ function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: st
  * line when its debt is fully covered (`uncovered` is 0 in that case exactly the same as "no debt
  * at all" — the API has no separate field for the card's real balance — so nothing is shown
  * rather than guessing a figure; only "still to cover" is shown, since that debt is recoverable
- * from `available + uncovered`); the toolbar's filter tabs, Summary/Scheduled/Move money/Undo
- * (need data or forms no earlier issue built yet); opening a row's own detail (#327) and the
- * group name's summary side sheet (also #327) — a row is a plain, non-interactive group of
- * elements until then, not a button with nowhere to go.
+ * from `available + uncovered`); the toolbar's filter tabs, Summary/Scheduled/Undo (need data or
+ * forms no earlier issue built yet); the group name's summary side sheet — a group row is plain,
+ * non-interactive text until then, not a button with nowhere to go.
  */
 export default function BudgetScreen() {
   const intl = useIntl();
@@ -147,6 +147,7 @@ export default function BudgetScreen() {
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
   const state = useBudgetMonth(workspaceId!, month);
   const eventsState = useBudgetMonthEvents(workspaceId!, month);
   const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
@@ -184,6 +185,9 @@ export default function BudgetScreen() {
             <small>{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Unassigned" })}</small>
             <span className={`amt n${state.budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(state.budgetMonth.unassigned)}</span>
           </div>
+          <button type="button" className="btn primary" onClick={() => setMoveMoney({ kind: "assign" })}>
+            {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
+          </button>
         </div>
         <div className="facts">
           <span>
@@ -369,6 +373,7 @@ export default function BudgetScreen() {
                             currency={currency ?? "EUR"}
                             onClose={() => setOpenCategoryId(null)}
                             onChanged={() => state.refetch()}
+                            onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
                           />
                         )}
                       </div>
@@ -435,6 +440,22 @@ export default function BudgetScreen() {
           onClose={() => setPanel(null)}
           onDone={() => {
             setPanel(null);
+            state.refetch();
+          }}
+        />
+      )}
+      {moveMoney && (
+        <MoveMoneyForm
+          workspaceId={workspaceId!}
+          month={month}
+          unassignedCents={state.budgetMonth.unassigned}
+          assignedInFutureCents={state.budgetMonth.assignedInFuture}
+          groups={groups}
+          currency={currency ?? "EUR"}
+          initial={moveMoney}
+          onClose={() => setMoveMoney(null)}
+          onChanged={() => {
+            setMoveMoney(null);
             state.refetch();
           }}
         />
