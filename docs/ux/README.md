@@ -7,7 +7,7 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 | Screen | Mockup | Covers (0.1.7 issue) |
 | --- | --- | --- |
 | Sign-in | [`sign-in.html`](mockups/sign-in.html) | #49 |
-| Workspace switcher | part of the band in [`budget-month.html`](mockups/budget-month.html) and every other mockup | #50 |
+| Workspace switcher | part of the band in [`budget-month.html`](mockups/budget-month.html) and every other mockup | #50, #343 (which workspace "/" picks after sign-in) |
 | Accounts | the account list and "+ Add account" as the first column of [`account-register.html`](mockups/account-register.html), with the full register beside it; listing and closing one composed from the workspace-settings account list in [`settings-first-run.html`](mockups/settings-first-run.html) | #51 |
 | Categories and groups | shown as the budget month's bars, [`budget-month.html`](mockups/budget-month.html); listed, created, archived and reordered in the workspace-settings "Categories" tab, [`settings-first-run.html`](mockups/settings-first-run.html) | #52 |
 | Budget month | [`budget-month.html`](mockups/budget-month.html) | #53 covers the band, timeline, "To do" and bars (no editing yet); the row detail and side sheet states are `#55`–`#57`, `#217` |
@@ -30,6 +30,7 @@ Sign-in is the one screen this issue adds: every other screen above already had 
 - **Desktop.** A mariner band across the top of every screen: the wordmark, primary navigation (Budget, Accounts, Portfolio), the workspace switcher and the user menu with settings. There is no sidebar; the account list belongs to the Accounts screen. The budget month adds its own second line to the band (month arrows, unassigned money with Assign, reserved, assigned to future months, days of buffer) and, under the band, the timeline, "To do", filter tabs (All, Underfunded, Overspent, With money) and the action toolbar (Summary, Targets, Scheduled, Quick assign, Move money, Undo). A category's detail opens in its own row; month-wide tools (group, summary, targets, scheduled, quick assign, move money, the target editor) open in a side sheet. Neither navigates to a URL of its own.
 - **Phone.** A tab bar: Budget, Accounts, a central quick-entry button, Portfolio, More. A screen's own detail (a category, a transaction) opens full screen with a back link, never a side sheet. There is no group summary screen on the phone (design.md).
 - **Sign-in.** Its own unauthenticated route, outside the band/tab-bar chrome entirely: before a session exists there is no workspace to navigate.
+- **Choosing a workspace.** "/" picks one in order: the URL already names one, otherwise the last workspace this browser remembers for the signed-in person (#343, a browser-side preference, forgotten if that workspace is no longer reachable), otherwise the only workspace when there is exactly one, otherwise the picker — shown only then, not on every sign-in.
 - **Settings.** Reached from the user menu (your account) or the workspace switcher (workspace settings), not from primary navigation — they are destinations, not sections a user browses through day to day.
 
 ## Visual style

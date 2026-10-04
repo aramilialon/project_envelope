@@ -20,6 +20,8 @@ The web app: a Vite + React PWA that talks to `apps/api` over a real HTTP connec
 
 `#344`, days of buffer in the band: the facts row's own third fact, next to money reserved for scheduled transactions and already assigned to future months — `useDaysOfBuffer.ts` fetches the existing `GET /workspaces/:workspaceId/days-of-buffer` endpoint, rounded for display; no new `packages/core` function needed, since there is no geometry to compute, just a number.
 
+`#343`, the last-used workspace: "/" now also tries the last workspace this browser remembers for the signed-in person (`lastUsedWorkspace.ts`, keyed by the access token's own `sub` claim) before falling back to the existing rules — the only workspace, or `WorkspacePicker`. Picking one from `WorkspacePicker`, or switching from the band's own `WorkspaceSwitcher`, both update the stored preference; a workspace it names but the user can no longer reach is forgotten rather than erroring. No schema or API change — entirely a browser-side preference, never synced across devices.
+
 ## Contents
 
 | Path | Contents |
@@ -68,9 +70,10 @@ The web app: a Vite + React PWA that talks to `apps/api` over a real HTTP connec
 | `src/auth/SignIn.tsx` | The sign-in screen (`#49`, `docs/ux/mockups/sign-in.html`): idle (offer to sign in), pending (mid-redirect) and error, driven by `useAuth()` |
 | `src/workspaces/api.ts` | `listMyWorkspaces(accessToken)`: `GET /me/workspaces` — the first *authenticated* API call this app makes (`#50`); each `Workspace`'s own `timeZone` (`#326`) feeds `workspaceDate.ts` |
 | `src/workspaces/useWorkspaces.ts` | `useWorkspaces()`: fetches the signed-in user's own workspaces, re-fetching when the access token changes (a silent renew), without flashing back to a loading state while it does |
-| `src/workspaces/WorkspaceGate.tsx` | The "/" route (`#50`): none (empty message), one (skips straight through, no pointless extra screen), or several (`WorkspacePicker`) |
-| `src/workspaces/WorkspacePicker.tsx` | A full-page list to choose from, shown only when there is more than one workspace |
-| `src/workspaces/WorkspaceSwitcher.tsx` | The band's own switcher (`#50`, `docs/ux/mockups/settings-first-run.html`): current workspace's name, a popover listing every one (✓ on the current), and "Workspace settings" (`#52`: goes straight to `/settings/categories`, the only settings section that exists so far). "+ New workspace", also drawn in that mockup, stays left out — it still has no screen |
+| `src/workspaces/lastUsedWorkspace.ts` | `getLastUsedWorkspaceId`/`setLastUsedWorkspaceId`/`clearLastUsedWorkspaceId` (`#343`): a `localStorage` preference keyed by the signed-in person's own `sub` claim, so a different person signing into the same browser never inherits someone else's; every read/write wrapped in `try`/`catch`, falling through silently (storage disabled, a private window, quota) |
+| `src/workspaces/WorkspaceGate.tsx` | The "/" route (`#50`, `#343`): the last-used workspace first, if the signed-in person still belongs to it (forgotten otherwise); none (empty message), one (skips straight through, no pointless extra screen), or several (`WorkspacePicker`). A URL already naming a workspace never reaches this component — `App.tsx`'s own route table sends it straight to `AppLayout` instead |
+| `src/workspaces/WorkspacePicker.tsx` | A full-page list to choose from, shown only when there is more than one workspace and none was remembered; picking one remembers it the same way the switcher does (`#343`) |
+| `src/workspaces/WorkspaceSwitcher.tsx` | The band's own switcher (`#50`, `docs/ux/mockups/settings-first-run.html`): current workspace's name, a popover listing every one (✓ on the current), and "Workspace settings" (`#52`: goes straight to `/settings/categories`, the only settings section that exists so far). "+ New workspace", also drawn in that mockup, stays left out — it still has no screen. Switching also remembers the choice as the last-used workspace (`#343`) |
 | `src/workspaceDate.ts` | `todayIsoIn(timeZone)`/`currentMonthIn(timeZone)`: "today"/"this month" in a given IANA time zone (`#326`) — the one shared place `BudgetScreen.tsx` and `AccountRegisterScreen.tsx` both get theirs from, fed by the current workspace's own `timeZone` |
 | `src/main.tsx` | Entry point: wraps `<App />` in `IntlProvider` (`locale="en"` until `#62` adds the Italian catalog), `AuthProvider` and `BrowserRouter`, then mounts it |
 | `src/vite-env.d.ts` | Types `import.meta.env`: `VITE_API_URL`, `VITE_KEYCLOAK_ISSUER`, `VITE_KEYCLOAK_CLIENT_ID` |

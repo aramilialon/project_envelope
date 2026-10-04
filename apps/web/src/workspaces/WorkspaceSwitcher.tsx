@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useIntl } from "react-intl";
+import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
 import { useWorkspaces } from "./useWorkspaces.ts";
 import "./WorkspaceSwitcher.css";
 
@@ -20,6 +22,7 @@ export default function WorkspaceSwitcher() {
   const [open, setOpen] = useState(false);
   const intl = useIntl();
   const navigate = useNavigate();
+  const auth = useAuth();
 
   // Loading or failed: the switcher simply does not render yet; the rest of the screen still
   // works, since the workspace is already known from the URL.
@@ -47,6 +50,10 @@ export default function WorkspaceSwitcher() {
               role="menuitem"
               onClick={() => {
                 setOpen(false);
+                const subject = auth.user?.profile?.sub;
+                if (subject) {
+                  setLastUsedWorkspaceId(subject, workspace.id);
+                }
                 navigate(`/${workspace.id}`);
               }}
             >
