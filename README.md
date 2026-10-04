@@ -34,9 +34,9 @@
 
 ## A closer look
 
-| Sign in ([mockup](docs/ux/mockups/sign-in.html)) | Choose a workspace |
+| Sign in ([mockup](docs/ux/mockups/sign-in.html)) | Choosing a workspace, first visit with several |
 | --- | --- |
-| [![The sign-in screen: a wordmark, a tagline and a single "Sign in" button — the app owns no credentials of its own, so this is a redirect, not a login form](docs/ux/screenshots/sign-in.png)](docs/ux/screenshots/sign-in.png) | [![Choosing which workspace to work in, with two to pick from; skipped automatically when there is only one](docs/ux/screenshots/workspace-picker.png)](docs/ux/screenshots/workspace-picker.png) |
+| [![The sign-in screen: a wordmark, a tagline and a single "Sign in" button — the app owns no credentials of its own, so this is a redirect, not a login form](docs/ux/screenshots/sign-in.png)](docs/ux/screenshots/sign-in.png) | [![Choosing which workspace to work in, shown only on the first visit with more than one — skipped automatically with just one, or once this browser remembers a choice](docs/ux/screenshots/workspace-picker.png)](docs/ux/screenshots/workspace-picker.png) |
 | **Account register** ([mockup](docs/ux/mockups/account-register.html)) | **Reconciliation** ([mockup](docs/ux/mockups/import-reconciliation.html)) |
 | [![An account register: the balance, the account's month as a timeline of days next to a to-do list, and the transactions with their cleared, pending and reconciled marks](docs/ux/screenshots/account-register.png)](docs/ux/screenshots/account-register.png) | [![Reconciliation: the statement balance, the difference and a clue that points to the pending transaction that explains it](docs/ux/screenshots/reconciliation.png)](docs/ux/screenshots/reconciliation.png) |
 | **Portfolio** ([mockup](docs/ux/mockups/portfolio.html)) | **On the phone** |

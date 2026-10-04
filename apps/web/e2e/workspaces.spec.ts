@@ -7,9 +7,12 @@ import { createTestUser } from "./keycloak-test-user.ts";
  * Drives a real headless Chromium through the workspace switcher (#50) against the real
  * "envelope" Keycloak realm and `apps/api`, including the two Row-Level Security policies
  * (migrations 0008 and 0022) that let a user list every workspace they belong to before any one
- * of them is "current". Needs `apps/api` and Keycloak already running; see `e2e/README.md`.
+ * of them is "current", and the last-used workspace this browser remembers across a real page
+ * load (#343 — the one thing a real browser can prove that `localStorage`-in-`jsdom` cannot: an
+ * actual new navigation to "/", not just a re-render). Needs `apps/api` and Keycloak already
+ * running; see `e2e/README.md`.
  */
-test.describe("workspace switcher (#50)", () => {
+test.describe("workspace switcher (#50, #343)", () => {
   async function signIn(page: import("@playwright/test").Page, user: Awaited<ReturnType<typeof createTestUser>>) {
     await page.goto("/");
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -62,6 +65,11 @@ test.describe("workspace switcher (#50)", () => {
       await expect(page.getByRole("menuitem", { name: "Personale ✓" })).toBeVisible();
       await page.getByRole("menuitem", { name: "Famiglia" }).click();
       await page.waitForURL(`/${first.id}`);
+
+      // #343: "/" now goes straight to the last-used workspace, skipping the picker entirely.
+      await page.goto("/");
+      await page.waitForURL(`/${first.id}`);
+      await expect(page.getByRole("button", { name: "Famiglia" })).toBeVisible();
     } finally {
       await first?.teardown();
       await second?.teardown();
