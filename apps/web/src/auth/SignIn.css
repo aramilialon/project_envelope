@@ -1,28 +1,5 @@
-.sign-in-card {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px;
-}
-
-.sign-in-card .mark {
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.2px;
-  margin: 0 0 6px;
-}
-
-.sign-in-card .tag {
-  color: var(--muted);
-  font-size: 13px;
-  margin: 0 0 32px;
-}
-
-.sign-in-card .primary {
-  width: min(280px, 100%);
+.centered-card .primary {
+  width: 100%;
   background: var(--pen);
   color: var(--pen-ink);
   border: none;
@@ -33,12 +10,12 @@
   cursor: pointer;
 }
 
-.sign-in-card .primary:disabled {
+.centered-card .primary:disabled {
   opacity: 0.6;
   cursor: default;
 }
 
-.sign-in-card .spin {
+.centered-card .spin {
   display: inline-block;
   width: 14px;
   height: 14px;
@@ -54,40 +31,4 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.sign-in-card .err {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  background: color-mix(in srgb, var(--red) 10%, var(--paper));
-  border: 1px solid var(--red);
-  border-radius: 3px;
-  padding: 12px;
-  text-align: start;
-  margin-bottom: 20px;
-  width: min(360px, 100%);
-}
-
-.sign-in-card .err p {
-  margin: 0;
-}
-
-.sign-in-card .err .code {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.sign-in-card .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }

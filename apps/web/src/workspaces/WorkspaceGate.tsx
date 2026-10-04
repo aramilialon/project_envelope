@@ -2,10 +2,10 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Navigate } from "react-router-dom";
 
+import CenteredCard from "../layout/CenteredCard.tsx";
 import { clearLastUsedWorkspaceId, getLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
 import WorkspacePicker from "./WorkspacePicker.tsx";
 import { useWorkspaces } from "./useWorkspaces.ts";
-import "./WorkspacePicker.css";
 
 /**
  * The "/" route (#50): fetches the signed-in user's own workspaces and decides what to show —
@@ -23,33 +23,36 @@ export default function WorkspaceGate() {
 
   if (state.status === "loading") {
     return (
-      <main className="workspace-card" aria-live="polite">
+      <CenteredCard>
         <p className="mark" aria-hidden="true">
           envelope
         </p>
         <p role="status">
           {intl.formatMessage({ id: "workspacePicker.loading", defaultMessage: "Loading your workspaces…" })}
         </p>
-      </main>
+      </CenteredCard>
     );
   }
 
   if (state.status === "error") {
     return (
-      <main className="workspace-card" aria-live="polite">
+      <CenteredCard>
         <p className="mark" aria-hidden="true">
           envelope
         </p>
         <div className="err" role="alert">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M12 2 1 21h22L12 2Zm0 6 7 12H5l7-12Zm-1 4h2v5h-2v-5Zm0 6h2v2h-2v-2Z" />
+          </svg>
           <p>{intl.formatMessage({ id: "workspacePicker.error", defaultMessage: "We could not load your workspaces." })}</p>
         </div>
-      </main>
+      </CenteredCard>
     );
   }
 
   if (state.workspaces.length === 0) {
     return (
-      <main className="workspace-card" aria-live="polite">
+      <CenteredCard>
         <p className="mark" aria-hidden="true">
           envelope
         </p>
@@ -59,7 +62,7 @@ export default function WorkspaceGate() {
             defaultMessage: "You do not belong to any workspace yet.",
           })}
         </p>
-      </main>
+      </CenteredCard>
     );
   }
 
