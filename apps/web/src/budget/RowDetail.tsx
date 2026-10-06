@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { createAssignments } from "./api.ts";
+import DetailFrame from "./DetailFrame.tsx";
 import "./RowDetail.css";
 
 interface Props {
@@ -18,6 +19,8 @@ interface Props {
   onChanged(): void;
   /** Opens the "Move money" form (#328) preselecting this category as the destination. */
   onMoveMoney(): void;
+  /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
+  readonly fullScreen?: boolean;
 }
 
 /** A plain, locale-formatted number, no currency symbol — the field's own displayed value, same convention `AccountRegisterScreen.tsx`'s own `plainAmount` uses for an editable/tabular amount. */
@@ -35,7 +38,7 @@ function plainAmount(cents: number, locale: string, currency: string): string {
  * target meter, the scheduled list, the ledger, quick assign, the assignment and transaction
  * history) is later issues' own job, layered onto this same row.
  */
-export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney }: Props) {
+export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const [value, setValue] = useState(() => plainAmount(assigned, intl.locale, currency));
@@ -85,49 +88,48 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
   }
 
   return (
-    <div className="inl" role="region" aria-label={intl.formatMessage({ id: "budget.row.detailLabel", defaultMessage: "Detail for {category}" }, { category: categoryName })}>
-      <button type="button" className="plain closer" onClick={onClose}>
-        {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-      </button>
-      <div className="inl-c">
-        <div className="sec">
-          <div className="qa asg-l">
-            <label htmlFor={`asg-${categoryId}`}>{intl.formatMessage({ id: "budget.row.assigned", defaultMessage: "Assigned this month" })}</label>
-            <span className="dots" />
-            <input
-              id={`asg-${categoryId}`}
-              type="text"
-              inputMode="decimal"
-              className="asg-in n"
-              value={value}
-              aria-describedby={`asg-h-${categoryId}`}
-              onChange={(event) => setValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.currentTarget.blur();
-                } else if (event.key === "Escape") {
-                  cancelingRef.current = true;
-                  event.currentTarget.blur();
-                }
-              }}
-              onBlur={(event) => {
-                if (cancelingRef.current) {
-                  cancelingRef.current = false;
-                  revert();
-                  return;
-                }
-                void commit(event.target.value);
-              }}
-            />
-          </div>
-          <small className="asg-h" id={`asg-h-${categoryId}`}>
-            {intl.formatMessage({ id: "budget.row.assignedHint", defaultMessage: "Type an amount, or +20 / -15, then Enter." })}
-          </small>
-          <button type="button" className="plain" onClick={onMoveMoney}>
-            {intl.formatMessage({ id: "budget.row.moveMoney", defaultMessage: "Move money" })}
-          </button>
+    <DetailFrame
+      label={intl.formatMessage({ id: "budget.row.detailLabel", defaultMessage: "Detail for {category}" }, { category: categoryName })}
+      fullScreen={fullScreen ?? false}
+      onClose={onClose}
+    >
+      <div className="sec">
+        <div className="qa asg-l">
+          <label htmlFor={`asg-${categoryId}`}>{intl.formatMessage({ id: "budget.row.assigned", defaultMessage: "Assigned this month" })}</label>
+          <span className="dots" />
+          <input
+            id={`asg-${categoryId}`}
+            type="text"
+            inputMode="decimal"
+            className="asg-in n"
+            value={value}
+            aria-describedby={`asg-h-${categoryId}`}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              } else if (event.key === "Escape") {
+                cancelingRef.current = true;
+                event.currentTarget.blur();
+              }
+            }}
+            onBlur={(event) => {
+              if (cancelingRef.current) {
+                cancelingRef.current = false;
+                revert();
+                return;
+              }
+              void commit(event.target.value);
+            }}
+          />
         </div>
+        <small className="asg-h" id={`asg-h-${categoryId}`}>
+          {intl.formatMessage({ id: "budget.row.assignedHint", defaultMessage: "Type an amount, or +20 / -15, then Enter." })}
+        </small>
+        <button type="button" className="plain" onClick={onMoveMoney}>
+          {intl.formatMessage({ id: "budget.row.moveMoney", defaultMessage: "Move money" })}
+        </button>
       </div>
-    </div>
+    </DetailFrame>
   );
 }

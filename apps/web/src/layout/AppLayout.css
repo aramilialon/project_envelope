@@ -185,4 +185,47 @@
   .app-layout .main {
     padding: 18px 16px 24px;
   }
+
+  /* The tab bar's own height plus the safe-area inset, so the last bit of scrollable content
+     never sits underneath it (`#331`). */
+  .app-layout .main:has(~ .tabbar) {
+    padding-bottom: calc(24px + 76px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.app-layout .tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  height: 76px;
+  padding: 0 6px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.app-layout .tabbar a,
+.app-layout .tabbar button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-height: 48px;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.app-layout .tabbar a[aria-current="page"] {
+  color: var(--ink);
+  font-weight: 700;
 }

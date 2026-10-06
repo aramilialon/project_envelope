@@ -570,12 +570,12 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
   });
 
-  it("hides the timeline on a phone (a compact one of its own is #331's job), but keeps the 'To do' list", async () => {
+  it("shows a compact timeline on a phone instead of hiding it, and keeps the 'To do' list (#331)", async () => {
     setWidth(390);
     renderScreen(budgetMonth({ categories: [category({ cashOverspending: 5_000 })] }), [HOME]);
     await screen.findByText("Cover Groceries");
 
-    expect(document.querySelector(".time")).toBeNull();
+    expect(document.querySelector(".time.compact")).not.toBeNull();
     expect(document.querySelector(".todo")).not.toBeNull();
   });
 
@@ -608,5 +608,79 @@ describe("BudgetScreen (#53, #324)", () => {
 
     expect(await screen.findByText("Debt to cover: Visa")).toBeInTheDocument();
     expect(screen.getByText("Fund the Groceries target")).toBeInTheDocument();
+  });
+
+  it("opens a category's own detail full screen on a phone, with a back link, replacing the whole list (#331)", async () => {
+    setWidth(390);
+    renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+    expect(await screen.findByLabelText("Assigned this month")).toHaveValue("600.00");
+    expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
+    // The list itself is gone, not just covered — the whole screen is the detail now.
+    expect(screen.queryByText("To do")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Budget/ }));
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+  });
+
+  it("opens a card's own payment category detail full screen on a phone too", async () => {
+    setWidth(390);
+    renderScreen(
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000 })] }),
+      [HOME],
+    );
+    await screen.findByText("Visa payment");
+
+    // The row's own button, not the "Debt to cover: Visa payment" to-do item (also clickable on a
+    // phone, and also matching this name) — anchored so it only matches the row's own content,
+    // which starts with the category's bare name.
+    fireEvent.click(screen.getByRole("button", { name: /^Visa payment/ }));
+    expect(await screen.findByText("To cover")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
+  });
+
+  it("opens a to-do item's own category detail on a phone (not yet interactive on the desktop)", async () => {
+    setWidth(390);
+    renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", cashOverspending: 5_000 })] }), [HOME]);
+    await screen.findByText("Cover Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: /Cover Groceries/ }));
+    expect(await screen.findByLabelText("Assigned this month")).toBeInTheDocument();
+  });
+
+  it("opens the Targets panel from a to-do item needing several targets funded, on a phone", async () => {
+    setWidth(390);
+    const goalsByCategory = new Map<string, GoalProgress>([
+      ["c1", { goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" }, asks: 6_000, missing: 1_000, progress: 0.83 }],
+      ["c2", { goal: { id: "g2", workspaceId: "ws-1", categoryId: "c2", kind: "monthly", amountCents: 3_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" }, asks: 3_000, missing: 500, progress: 0.83 }],
+    ]);
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries" }), category({ categoryId: "c2", name: "Fuel", groupId: "g1" })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+    await screen.findByText("Fund 2 targets");
+
+    fireEvent.click(screen.getByRole("button", { name: /Fund 2 targets/ }));
+    expect(await screen.findByRole("heading", { name: "Targets" })).toBeInTheDocument();
+  });
+
+  it("stays plain, informational text for a to-do item on the desktop (#326's own docblock)", async () => {
+    renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", cashOverspending: 5_000 })] }), [HOME]);
+    await screen.findByText("Cover Groceries");
+
+    expect(screen.queryByRole("button", { name: /Cover Groceries/ })).not.toBeInTheDocument();
+  });
+
+  it("collapses a group by tapping its own name, not just the chevron (#331, design.md)", async () => {
+    renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+    const name = await screen.findByText("Home");
+
+    fireEvent.click(name);
+    expect(screen.queryByText("Groceries")).not.toBeInTheDocument();
   });
 });

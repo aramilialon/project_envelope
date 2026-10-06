@@ -35,11 +35,23 @@
   align-items: start;
   width: 100%;
   padding: 9px 0;
+  border: 0;
   border-bottom: 1px solid var(--rule);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
-.todo-i:last-of-type {
+/* A clickable item (the phone layout, `#331`) is a <button>, an informational one (the desktop)
+   a plain <div> — `:last-child` rather than `:last-of-type`, so the list's own last item loses
+   its border regardless of which element the two kinds mix into. */
+.todo-i:last-child {
   border-bottom: 0;
+}
+
+button.todo-i {
+  cursor: pointer;
 }
 
 .todo-i b {
@@ -73,4 +85,10 @@
 .dot.w {
   border-color: var(--hatch);
   background: var(--hatch-bg);
+}
+
+.todo-more {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
 }

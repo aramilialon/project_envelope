@@ -75,4 +75,14 @@ describe("Timeline (#326)", () => {
     );
     expect(document.querySelector(".t-today")).toBeNull();
   });
+
+  it("drops the heading and note in compact mode, for the phone's own small timeline (#331)", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [], compact: true });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} compact />);
+
+    expect(screen.queryByText("September 2026, day by day")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Income above the line/)).not.toBeInTheDocument();
+    expect(document.querySelector(".time.compact")).not.toBeNull();
+    expect(document.querySelector(".t-axis")).not.toBeNull();
+  });
 });

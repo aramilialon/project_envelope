@@ -1,6 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithIntl } from "../test-utils.tsx";
 import * as workspacesApi from "../workspaces/api.ts";
@@ -11,6 +11,16 @@ const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const WORKSPACE = { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" };
+
+const ORIGINAL_WIDTH = window.innerWidth;
+
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+}
+
+afterEach(() => {
+  setWidth(ORIGINAL_WIDTH);
+});
 
 function renderLayout() {
   useAuth.mockReturnValue({
@@ -94,5 +104,43 @@ describe("AppLayout (#323)", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
     expect(signoutRedirect).toHaveBeenCalledOnce();
+  });
+
+  it("shows a bottom tab bar below 600px, with Budget/Accounts/More, never Portfolio or quick entry (#331)", async () => {
+    setWidth(390);
+    renderLayout();
+
+    expect(await screen.findByRole("navigation", { name: "Main, phone" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Budget" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Accounts" }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
+    expect(screen.queryByText(/portfolio/i)).not.toBeInTheDocument();
+  });
+
+  it("has no tab bar at desktop width", async () => {
+    setWidth(1024);
+    renderLayout();
+
+    await screen.findByRole("link", { name: "Budget" });
+    expect(document.querySelector(".tabbar")).not.toBeInTheDocument();
+  });
+
+  it("navigates to workspace settings from the tab bar's own 'More'", async () => {
+    setWidth(390);
+    useAuth.mockReturnValue({ user: { access_token: "t", profile: { name: "Giorgio" } } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([WORKSPACE]);
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1"]}>
+        <Routes>
+          <Route path="/:workspaceId" element={<AppLayout />}>
+            <Route index element={<p>Budget screen</p>} />
+            <Route path="settings/categories" element={<p>Categories screen</p>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    expect(await screen.findByText("Categories screen")).toBeInTheDocument();
   });
 });

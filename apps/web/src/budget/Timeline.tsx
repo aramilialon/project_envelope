@@ -8,6 +8,13 @@ interface Props {
   /** The month's own display name ("September 2026"), for the heading and the `aria-label`. */
   readonly monthLabel: string;
   readonly money: (cents: number) => string;
+  /**
+   * The phone's own small timeline (`#331`, design.md: "keeps only the marks, 'today' and the
+   * income still to come"): no heading or note — the band above it already names the month, and
+   * there is no room to spare. `layout` itself must come from `computeTimeline({ compact: true })`
+   * for the marks/labels to actually match (this prop only trims the surrounding chrome).
+   */
+  readonly compact?: boolean;
 }
 
 /**
@@ -16,12 +23,12 @@ interface Props {
  * `aria-hidden` the same way `Bar.tsx`'s is — the heading and note around it, and the category
  * rows and "To do" list beside it, already carry the same information in accessible text.
  */
-export default function Timeline({ layout, monthLabel, money }: Props) {
+export default function Timeline({ layout, monthLabel, money, compact }: Props) {
   const intl = useIntl();
 
   return (
-    <div className="time">
-      <h5>{intl.formatMessage({ id: "budget.timeline.heading", defaultMessage: "{month}, day by day" }, { month: monthLabel })}</h5>
+    <div className={`time${compact ? " compact" : ""}`}>
+      {!compact && <h5>{intl.formatMessage({ id: "budget.timeline.heading", defaultMessage: "{month}, day by day" }, { month: monthLabel })}</h5>}
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
         {layout.todayX !== undefined && (
           <rect x={layout.todayX} y={4} width={layout.axisX1 - layout.todayX + 6} height={layout.height - 18} className="t-future" />
@@ -56,12 +63,14 @@ export default function Timeline({ layout, monthLabel, money }: Props) {
           );
         })}
       </svg>
-      <p className="t-note">
-        {intl.formatMessage({
-          id: "budget.timeline.note",
-          defaultMessage: "Income above the line, outflows below it; dashed is what has not happened yet, and length grows with the amount.",
-        })}
-      </p>
+      {!compact && (
+        <p className="t-note">
+          {intl.formatMessage({
+            id: "budget.timeline.note",
+            defaultMessage: "Income above the line, outflows below it; dashed is what has not happened yet, and length grows with the amount.",
+          })}
+        </p>
+      )}
     </div>
   );
 }

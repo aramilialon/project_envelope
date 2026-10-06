@@ -7,6 +7,17 @@ interface Props {
   readonly categoryNameById: ReadonlyMap<string, string>;
   readonly money: (cents: number) => string;
   readonly locale: string;
+  /** Shows only the first `limit` items plus "+N more" (the phone layout, `#331`: "the first three things to do, with how many more"). Every item still shows on the desktop, without this prop. */
+  readonly limit?: number;
+  /**
+   * Makes each item (but `overassigned`, which names no single destination) a button instead of
+   * plain text, opening the item's own category — or, for `targetsNeeded`, the "Targets" panel,
+   * since several categories can share one such item (the phone layout, `#331`). The desktop
+   * leaves this out: a row's own detail already opens by tapping the row itself, and `#330`'s
+   * own "Scheduled" panel is already a toolbar action, so a to-do item staying informational-only
+   * there is deliberate, not a gap (`#326`'s own docblock already said so).
+   */
+  readonly onItemClick?: (item: TodoItem) => void;
 }
 
 /** A dot's own colour: red for cash (needs new money now), amber for a card, a reservation shortfall or uncovered debt; none for the rest. */
@@ -93,8 +104,10 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
  * funding targets for an arbitrary subset of categories have no destination to open into yet, so
  * each row is informational only, the same way an ordinary category row is until #327 lands.
  */
-export default function Todo({ items, categoryNameById, money, locale }: Props) {
+export default function Todo({ items, categoryNameById, money, locale, limit, onItemClick }: Props) {
   const intl = useIntl();
+  const shown = limit === undefined ? items : items.slice(0, limit);
+  const hiddenCount = items.length - shown.length;
 
   return (
     <div className="todo">
@@ -107,20 +120,35 @@ export default function Todo({ items, categoryNameById, money, locale }: Props) 
       {items.length === 0 ? (
         <p className="explain">{intl.formatMessage({ id: "budget.todo.empty", defaultMessage: "Nothing to fix this month." })}</p>
       ) : (
-        items.map((item) => {
-          const { title, sub } = sentenceFor(item, categoryNameById, locale, intl);
-          const key = item.kind === "scheduledOverdue" ? `scheduledOverdue:${item.scheduledTransactionId}` : item.kind === "overassigned" ? "overassigned" : item.kind === "targetsNeeded" ? `targetsNeeded:${item.categoryIds.join(",")}` : `${item.kind}:${item.categoryId}`;
-          return (
-            <div key={key} className="todo-i">
-              <span className={dotClass(item.kind)} />
-              <span>
-                <b>{title}</b>
-                <small>{sub}</small>
-              </span>
-              <span className="n">{money(item.amountCents)}</span>
-            </div>
-          );
-        })
+        <>
+          {shown.map((item) => {
+            const { title, sub } = sentenceFor(item, categoryNameById, locale, intl);
+            const key = item.kind === "scheduledOverdue" ? `scheduledOverdue:${item.scheduledTransactionId}` : item.kind === "overassigned" ? "overassigned" : item.kind === "targetsNeeded" ? `targetsNeeded:${item.categoryIds.join(",")}` : `${item.kind}:${item.categoryId}`;
+            const clickable = onItemClick && item.kind !== "overassigned";
+            const content = (
+              <>
+                <span className={dotClass(item.kind)} />
+                <span>
+                  <b>{title}</b>
+                  <small>{sub}</small>
+                </span>
+                <span className="n">{money(item.amountCents)}</span>
+              </>
+            );
+            return clickable ? (
+              <button key={key} type="button" className="todo-i" onClick={() => onItemClick(item)}>
+                {content}
+              </button>
+            ) : (
+              <div key={key} className="todo-i">
+                {content}
+              </div>
+            );
+          })}
+          {hiddenCount > 0 && (
+            <p className="todo-more">{intl.formatMessage({ id: "budget.todo.more", defaultMessage: "+{count} more" }, { count: hiddenCount })}</p>
+          )}
+        </>
       )}
     </div>
   );

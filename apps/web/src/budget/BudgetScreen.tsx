@@ -10,6 +10,7 @@ import {
   type OverdueScheduledItem,
   type TimelineEvent,
   type TimelineEventStatus,
+  type TodoItem,
 } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
@@ -256,180 +257,223 @@ export default function BudgetScreen() {
   const categoryNameById = new Map(
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
+  const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
+
+  /** Same content either way (design.md, "Budget month on the phone") — `fullScreen` only swaps the chrome around it (`DetailFrame.tsx`). */
+  function renderDetail(category: BudgetGroupCategory, fullScreen: boolean) {
+    return category.isPaymentCategory ? (
+      <PaymentCategoryDetail
+        categoryName={category.name}
+        available={category.available}
+        uncovered={category.uncovered}
+        currency={currency ?? "EUR"}
+        fullScreen={fullScreen}
+        onClose={() => setOpenCategoryId(null)}
+        onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
+        onMoveMoneyHere={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+      />
+    ) : (
+      <RowDetail
+        workspaceId={workspaceId!}
+        month={month}
+        categoryId={category.categoryId}
+        categoryName={category.name}
+        assigned={category.assigned}
+        currency={currency ?? "EUR"}
+        fullScreen={fullScreen}
+        onClose={() => setOpenCategoryId(null)}
+        onChanged={() => state.refetch()}
+        onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+      />
+    );
+  }
+
+  function handleTodoItemClick(item: TodoItem) {
+    if (item.kind === "targetsNeeded") {
+      setPanel("targets");
+      return;
+    }
+    if (item.kind === "overassigned") {
+      return;
+    }
+    setOpenCategoryId(item.categoryId);
+  }
+
+  const phoneOpenCategory = isPhone && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
 
   return (
     <div className="budget-screen">
       {secondRow}
 
-      <div className="over">
-        {!isPhone && (
-          <Timeline
-            // Only the timeline waits for the events fetch — an empty list draws just the axis
-            // until it resolves (never nothing at all: `.time`'s own box never changes size, so
-            // nothing around it jumps once the real marks arrive). Hidden below 600px entirely:
-            // a compact rendering of its own is #331's job, not a shrunk copy of this one.
-            layout={computeTimeline({
-              daysInMonth: daysInMonth(month),
-              today: today?.day,
-              events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
-              formatAmount: money,
-              formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
-            })}
-            monthLabel={monthLabel(month, intl.locale)}
-            money={money}
-          />
-        )}
-        <Todo
-          items={computeTodos({
-            unassignedCents: state.budgetMonth.unassigned,
-            categories: state.budgetMonth.categories,
-            paymentCategories: state.budgetMonth.paymentCategories,
-            // Unlike the timeline, the "To do" list has plenty to show without the events fetch
-            // (overspending, uncovered debt, targets) — only the overdue-scheduled entries need
-            // it, so those are simply left out (not the whole list) until it resolves, or if it
-            // fails outright.
-            overdueScheduledItems: eventsState.status === "ok" ? toOverdueScheduledItems(eventsState.events, today) : [],
-            targetsNeeded:
-              targetsState.status === "ok"
-                ? [...targetsState.progressByCategory.entries()]
-                    .filter(([, progress]) => progress.missing > 0)
-                    .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
-                : [],
-          })}
-          categoryNameById={categoryNameById}
-          money={money}
-          locale={intl.locale}
-        />
-      </div>
-
-      <div className="acts">
-        <button type="button" className="btn" onClick={() => setPanel("targets")}>
-          {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
-        </button>
-        <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
-          {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
-        </button>
-        <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
-          {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
-        </button>
-      </div>
-
-      {groups.length === 0 ? (
-        <p className="empty">
-          {intl.formatMessage({
-            id: "budget.empty",
-            defaultMessage: "No categories yet: add some from Workspace settings.",
-          })}
-        </p>
+      {phoneOpenCategory ? (
+        renderDetail(phoneOpenCategory, true)
       ) : (
-        <div className="bars">
-          {groups.map((group) => {
-            const isCollapsed = collapsed[group.id] ?? false;
-            const overspentCount = groupOverspentCount(group);
-            return (
-              <div key={group.id}>
-                <div className="bgr">
-                  <span className="gh">
-                    <button
-                      type="button"
-                      className="chev"
-                      aria-expanded={!isCollapsed}
-                      aria-label={intl.formatMessage(
-                        { id: isCollapsed ? "budget.group.expand" : "budget.group.collapse", defaultMessage: isCollapsed ? "Open {name}" : "Close {name}" },
-                        { name: group.name },
-                      )}
-                      onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !isCollapsed }))}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="m6 9 6 6 6-6" />
-                      </svg>
-                    </button>
-                    <span className="gname">{group.name}</span>
-                    {overspentCount > 0 && <span className="count over n">{overspentCount}</span>}
-                  </span>
-                  <span className="n gsum">{money(groupAvailable(group))}</span>
-                </div>
-                {!isCollapsed &&
-                  group.categories.map((category) => {
-                    const bar = barFor(category);
-                    const status = statusOf(category, bar);
-                    const isOpen = openCategoryId === category.categoryId;
-                    const rowContent = (
-                      <>
-                        <span className="cn">
-                          <b>{category.name}</b>
-                          <StatusLine category={category} money={money} intl={intl} />
-                          <ReservationLine
-                            category={category}
-                            items={scheduledByCategoryThisMonth.get(category.categoryId) ?? []}
-                            today={today?.iso}
-                            money={money}
-                            intl={intl}
-                          />
+        <>
+          <div className="over">
+            {isPhone ? (
+              <Timeline
+                compact
+                layout={computeTimeline({
+                  daysInMonth: daysInMonth(month),
+                  today: today?.day,
+                  events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
+                  compact: true,
+                  formatAmount: money,
+                  formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
+                })}
+                monthLabel={monthLabel(month, intl.locale)}
+                money={money}
+              />
+            ) : (
+              <Timeline
+                // Only the timeline waits for the events fetch — an empty list draws just the axis
+                // until it resolves (never nothing at all: `.time`'s own box never changes size, so
+                // nothing around it jumps once the real marks arrive).
+                layout={computeTimeline({
+                  daysInMonth: daysInMonth(month),
+                  today: today?.day,
+                  events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
+                  formatAmount: money,
+                  formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
+                })}
+                monthLabel={monthLabel(month, intl.locale)}
+                money={money}
+              />
+            )}
+            <Todo
+              items={computeTodos({
+                unassignedCents: state.budgetMonth.unassigned,
+                categories: state.budgetMonth.categories,
+                paymentCategories: state.budgetMonth.paymentCategories,
+                // Unlike the timeline, the "To do" list has plenty to show without the events fetch
+                // (overspending, uncovered debt, targets) — only the overdue-scheduled entries need
+                // it, so those are simply left out (not the whole list) until it resolves, or if it
+                // fails outright.
+                overdueScheduledItems: eventsState.status === "ok" ? toOverdueScheduledItems(eventsState.events, today) : [],
+                targetsNeeded:
+                  targetsState.status === "ok"
+                    ? [...targetsState.progressByCategory.entries()]
+                        .filter(([, progress]) => progress.missing > 0)
+                        .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
+                    : [],
+              })}
+              categoryNameById={categoryNameById}
+              money={money}
+              locale={intl.locale}
+              {...(isPhone ? { limit: 3, onItemClick: handleTodoItemClick } : {})}
+            />
+          </div>
+
+          <div className="acts">
+            <button type="button" className="btn" onClick={() => setPanel("targets")}>
+              {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
+            </button>
+            <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
+              {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
+            </button>
+            <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
+              {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
+            </button>
+          </div>
+
+          {groups.length === 0 ? (
+            <p className="empty">
+              {intl.formatMessage({
+                id: "budget.empty",
+                defaultMessage: "No categories yet: add some from Workspace settings.",
+              })}
+            </p>
+          ) : (
+            <div className="bars">
+              {groups.map((group) => {
+                const isCollapsed = collapsed[group.id] ?? false;
+                const overspentCount = groupOverspentCount(group);
+                return (
+                  <div key={group.id}>
+                    <div className="bgr">
+                      <button
+                        type="button"
+                        className="gh"
+                        aria-expanded={!isCollapsed}
+                        aria-label={intl.formatMessage(
+                          { id: isCollapsed ? "budget.group.expand" : "budget.group.collapse", defaultMessage: isCollapsed ? "Open {name}" : "Close {name}" },
+                          { name: group.name },
+                        )}
+                        onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !isCollapsed }))}
+                      >
+                        <span className="chev" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
                         </span>
-                        <Bar bar={bar} />
-                        <span className="av">
-                          <span className={`amt-cell n ${status}`}>
-                            {status === "cash" && (
-                              <span className="sr">
-                                {intl.formatMessage({ id: "budget.bar.overspentSr", defaultMessage: "Overspent:" })}
+                        <span className="gname">{group.name}</span>
+                        {overspentCount > 0 && <span className="count over n">{overspentCount}</span>}
+                      </button>
+                      <span className="n gsum">{money(groupAvailable(group))}</span>
+                    </div>
+                    {!isCollapsed &&
+                      group.categories.map((category) => {
+                        const bar = barFor(category);
+                        const status = statusOf(category, bar);
+                        const isOpen = !isPhone && openCategoryId === category.categoryId;
+                        const rowContent = (
+                          <>
+                            <span className="cn">
+                              <b>{category.name}</b>
+                              <StatusLine category={category} money={money} intl={intl} />
+                              <ReservationLine
+                                category={category}
+                                items={scheduledByCategoryThisMonth.get(category.categoryId) ?? []}
+                                today={today?.iso}
+                                money={money}
+                                intl={intl}
+                              />
+                            </span>
+                            <Bar bar={bar} />
+                            <span className="av">
+                              <span className={`amt-cell n ${status}`}>
+                                {status === "cash" && (
+                                  <span className="sr">
+                                    {intl.formatMessage({ id: "budget.bar.overspentSr", defaultMessage: "Overspent:" })}
+                                  </span>
+                                )}
+                                {status === "credit" && (
+                                  <span className="tag">{intl.formatMessage({ id: "budget.bar.cardTag", defaultMessage: "Card" })}</span>
+                                )}
+                                {status === "short" && (
+                                  <span className="tag">{intl.formatMessage({ id: "budget.bar.reservedTag", defaultMessage: "Reserved" })}</span>
+                                )}
+                                {money(category.available)}
                               </span>
-                            )}
-                            {status === "credit" && (
-                              <span className="tag">{intl.formatMessage({ id: "budget.bar.cardTag", defaultMessage: "Card" })}</span>
-                            )}
-                            {status === "short" && (
-                              <span className="tag">{intl.formatMessage({ id: "budget.bar.reservedTag", defaultMessage: "Reserved" })}</span>
-                            )}
-                            {money(category.available)}
-                          </span>
-                        </span>
-                      </>
-                    );
-                    return (
-                      <div key={category.categoryId}>
-                        <button
-                          type="button"
-                          className="brow"
-                          aria-expanded={isOpen}
-                          onClick={() => setOpenCategoryId(isOpen ? null : category.categoryId)}
-                        >
-                          {rowContent}
-                        </button>
-                        {isOpen &&
-                          (category.isPaymentCategory ? (
-                            <PaymentCategoryDetail
-                              categoryName={category.name}
-                              available={category.available}
-                              uncovered={category.uncovered}
-                              currency={currency ?? "EUR"}
-                              onClose={() => setOpenCategoryId(null)}
-                              onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
-                              onMoveMoneyHere={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
-                            />
-                          ) : (
-                            <RowDetail
-                              workspaceId={workspaceId!}
-                              month={month}
-                              categoryId={category.categoryId}
-                              categoryName={category.name}
-                              assigned={category.assigned}
-                              currency={currency ?? "EUR"}
-                              onClose={() => setOpenCategoryId(null)}
-                              onChanged={() => state.refetch()}
-                              onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
-                            />
-                          ))}
-                      </div>
-                    );
-                  })}
-              </div>
-            );
-          })}
-        </div>
+                            </span>
+                          </>
+                        );
+                        return (
+                          <div key={category.categoryId}>
+                            <button
+                              type="button"
+                              className="brow"
+                              aria-expanded={isOpen}
+                              // Desktop toggles its own inline detail closed again on a second tap
+                              // (`isOpen` is always false on phone, since its detail replaces this
+                              // whole list instead — there is nothing here left to toggle back to).
+                              onClick={() => setOpenCategoryId(isPhone || !isOpen ? category.categoryId : null)}
+                            >
+                              {rowContent}
+                            </button>
+                            {isOpen && renderDetail(category, false)}
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
-      {groups.length > 0 && (
+      {!phoneOpenCategory && groups.length > 0 && (
         <div className="legend" aria-hidden="true">
           <span>
             <i style={{ background: "var(--spent)" }} />

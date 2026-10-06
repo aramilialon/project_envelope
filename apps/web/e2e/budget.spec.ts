@@ -97,4 +97,59 @@ test.describe("budget month (#53)", () => {
       await user.teardown();
     }
   });
+
+  test("the phone layout: a bottom tab bar, a category's own full-screen detail with a back link (#331)", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Group name").fill("Everyday");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await page.getByRole("button", { name: "+ Add a category" }).click();
+      await page.getByLabel("Category name").fill("Groceries");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Groceries")).toBeVisible();
+
+      // The tab bar is reachable from every screen, not just the budget month.
+      const tabbar = page.getByRole("navigation", { name: "Main, phone" });
+      await expect(tabbar).toBeVisible();
+      await expect(tabbar.getByText("Portfolio")).not.toBeAttached();
+
+      await tabbar.getByRole("link", { name: "Budget" }).click();
+      await page.waitForURL(`/${workspace.id}`);
+      await page.getByText("Groceries").waitFor();
+
+      // Tapping a category opens its own detail full screen — the list itself is gone, replaced
+      // by the detail, not covered by an overlay — with a back link to return to it.
+      await page.getByRole("button", { name: /Groceries/ }).click();
+      await expect(page.getByLabel("Assigned this month")).toBeVisible();
+      const back = page.getByRole("button", { name: /Budget/ });
+      await expect(back).toBeVisible();
+      await back.click();
+      await expect(page.getByLabel("Assigned this month")).not.toBeVisible();
+      await expect(page.getByText("Groceries")).toBeVisible();
+
+      await tabbar.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
 });
