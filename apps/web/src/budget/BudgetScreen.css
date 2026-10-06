@@ -41,10 +41,21 @@
   background: var(--paper-2);
 }
 
+/* The whole header — chevron, name and the overspent badge — is one button now (`#331`:
+   "Groups collapse by tapping their name" on the phone; harmless, and a wider target, on the
+   desktop too), not just the small chevron icon on its own. */
 .budget-screen .gh {
   display: flex;
   align-items: center;
   gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
 }
 
 .budget-screen .chev {
@@ -53,17 +64,13 @@
   justify-content: center;
   width: 30px;
   min-height: 32px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
 }
 
 .budget-screen .chev svg {
   transition: transform 0.15s;
 }
 
-.budget-screen .chev[aria-expanded="false"] svg {
+.budget-screen .gh[aria-expanded="false"] .chev svg {
   transform: rotate(-90deg);
 }
 

@@ -5,6 +5,17 @@
   min-width: 0;
 }
 
+/* The phone's own small timeline (`#331`): tighter padding, no heading/note to make room for
+   (suppressed in `Timeline.tsx` itself), a slightly thinner stem matching the mockup's own
+   `.ph-time .t-stem` — `computeTimeline`'s own `compact: true` already halves the canvas. */
+.time.compact {
+  padding: 8px 8px 4px;
+}
+
+.time.compact .t-stem {
+  stroke-width: 4;
+}
+
 .time h5 {
   margin: 0 0 6px;
   font-family: var(--display);

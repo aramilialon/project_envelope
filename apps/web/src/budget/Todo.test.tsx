@@ -1,7 +1,7 @@
 import type { TodoItem } from "@envelope/core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { renderWithIntl } from "../test-utils.tsx";
 import Todo from "./Todo.tsx";
@@ -80,5 +80,42 @@ describe("Todo (#326)", () => {
     const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_234 }];
     renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
     expect(screen.getByText("€12.34")).toBeInTheDocument();
+  });
+
+  it("caps the list to 'limit' items, with a '+N more' line for the rest (#331)", () => {
+    const items: TodoItem[] = [
+      { kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 },
+      { kind: "cardOverspending", categoryId: "groceries", amountCents: 500 },
+      { kind: "reservationShortfall", categoryId: "groceries", amountCents: 500 },
+      { kind: "cardDebtUncovered", categoryId: "groceries", amountCents: 500 },
+    ];
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" limit={3} />);
+    expect(document.querySelectorAll(".todo-i")).toHaveLength(3);
+    expect(screen.getByText("+1 more")).toBeInTheDocument();
+  });
+
+  it("shows every item, with no '+N more' line, when there are no more than 'limit'", () => {
+    const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 }];
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" limit={3} />);
+    expect(screen.queryByText(/more/)).not.toBeInTheDocument();
+  });
+
+  it("makes an item clickable and opens its own category, when onItemClick is given — but not 'overassigned', which names no single one", () => {
+    const items: TodoItem[] = [
+      { kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 },
+      { kind: "overassigned", amountCents: 500 },
+    ];
+    const onItemClick = vi.fn();
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" onItemClick={onItemClick} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Cover Groceries/ }));
+    expect(onItemClick).toHaveBeenCalledWith(items[0]);
+    expect(screen.queryByRole("button", { name: /assigned more/ })).not.toBeInTheDocument();
+  });
+
+  it("stays plain, informational text with no onItemClick, exactly as the desktop uses it", () => {
+    const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 }];
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
+    expect(screen.queryByRole("button", { name: /Cover Groceries/ })).not.toBeInTheDocument();
   });
 });

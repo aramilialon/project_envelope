@@ -23,13 +23,13 @@
   margin-bottom: 18px;
 }
 
-.inl .sec {
+.inl-c .sec {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.inl .qa {
+.inl-c .qa {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -41,21 +41,21 @@
   color: var(--pen);
 }
 
-.inl .qa .dots {
+.inl-c .qa .dots {
   flex: 1;
   border-bottom: 1px dotted var(--rule);
   transform: translateY(-3px);
 }
 
-.inl .asg-l label {
+.inl-c .asg-l label {
   flex: 0 0 auto;
 }
 
-.inl .asg-l .asg-in {
+.inl-c .asg-l .asg-in {
   margin-left: auto;
 }
 
-.inl .asg-in {
+.inl-c .asg-in {
   width: 104px;
   min-height: 32px;
   padding: 0 8px;
@@ -68,28 +68,28 @@
   color: var(--ink);
 }
 
-.inl .asg-h {
+.inl-c .asg-h {
   display: block;
   margin-top: 4px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.inl .sec .plain {
+.inl-c .sec .plain {
   align-self: flex-start;
   margin-top: 6px;
 }
 
-.inl .qa.static {
+.inl-c .qa.static {
   color: var(--ink-2);
   cursor: default;
 }
 
-.inl .state-l {
+.inl-c .state-l {
   font-weight: 600;
 }
 
-.inl .big {
+.inl-c .big {
   font-family: var(--display);
   font-stretch: 92%;
   font-size: 34px;
@@ -97,12 +97,36 @@
   line-height: 1;
 }
 
-.inl .explain {
+.inl-c .explain {
   margin: 0;
   color: var(--ink-2);
   line-height: 1.55;
 }
 
-.inl .warnl {
+.inl-c .warnl {
   color: var(--warn);
+}
+
+/* The phone's own full-screen detail (`DetailFrame.tsx`, `#331`), replacing the budget list rather
+   than sitting under a row the way `.inl` does — same `.inl-c`/`.sec`/... content inside either
+   one, `.inl-c`'s own `columns: 3 250px` already collapsing to a single column this narrow. */
+.ph-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ph-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
