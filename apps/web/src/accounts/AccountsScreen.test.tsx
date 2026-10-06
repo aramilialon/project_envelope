@@ -1,8 +1,9 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithIntl } from "../test-utils.tsx";
+import * as transactionsApi from "../transactions/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as accountsApi from "./api.ts";
 import type { Account } from "./api.ts";
@@ -23,12 +24,23 @@ const CHECKING: Account = {
   createdAt: "2026-01-01",
 };
 
+const ORIGINAL_WIDTH = window.innerWidth;
+
+function setWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
+}
+
+afterEach(() => {
+  setWidth(ORIGINAL_WIDTH);
+});
+
 function renderScreen(accounts: Account[]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
     { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
+  vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([]);
   return renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1/accounts"]}>
       <Routes>
@@ -115,5 +127,62 @@ describe("AccountsScreen (#51, #323)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ Add account" }));
     expect(await screen.findByRole("heading", { name: "Add account" })).toBeInTheDocument();
+  });
+
+  it("shows each account's own balance, summed from its own transactions", async () => {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    ]);
+    vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
+    vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([
+      {
+        id: "t1",
+        workspaceId: "ws-1",
+        accountId: "a1",
+        occurredAt: "2026-09-01T00:00:00.000Z",
+        budgetDate: "2026-09-01",
+        payee: "Employer",
+        memo: null,
+        status: "cleared",
+        transferId: null,
+        externalId: null,
+        createdAt: "2026-09-01T00:00:00.000Z",
+        splits: [{ id: "s1", categoryId: null, amountCents: 150000, memo: null }],
+      },
+      {
+        id: "t2",
+        workspaceId: "ws-1",
+        accountId: "a1",
+        occurredAt: "2026-09-05T00:00:00.000Z",
+        budgetDate: "2026-09-05",
+        payee: "Supermarket",
+        memo: null,
+        status: "cleared",
+        transferId: null,
+        externalId: null,
+        createdAt: "2026-09-05T00:00:00.000Z",
+        splits: [{ id: "s2", categoryId: "cat-groceries", amountCents: -4000, memo: null }],
+      },
+    ]);
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1/accounts"]}>
+        <Routes>
+          <Route path="/:workspaceId/accounts" element={<AccountsScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("€1,460.00")).toBeInTheDocument();
+  });
+
+  it("shows a one-column phone layout below 600px, with each account's own balance", async () => {
+    setWidth(390);
+    renderScreen([{ ...CHECKING, name: "Everyday" }, { ...CHECKING, id: "a2", name: "Old account", closedAt: "2026-02-01" }]);
+
+    const open = await screen.findByRole("button", { name: /Everyday/ });
+    expect(open).toHaveTextContent("On budget");
+    expect(screen.queryByRole("button", { name: "Old account" })).not.toBeInTheDocument();
+    expect(screen.getByText("Old account").closest(".ph-acc")).toHaveClass("static");
   });
 });

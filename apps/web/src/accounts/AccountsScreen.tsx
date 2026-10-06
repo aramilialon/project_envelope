@@ -1,12 +1,15 @@
+import { formatMoney } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
 import AddAccountForm from "./AddAccountForm.tsx";
 import { closeAccount, type Account } from "./api.ts";
+import { useAccountBalances } from "./useAccountBalances.ts";
 import { useAccounts } from "./useAccounts.ts";
 import "./AccountsScreen.css";
 
@@ -15,7 +18,9 @@ import "./AccountsScreen.css";
  * removed the band's old account ledger and its shared fetch along with it — nothing else
  * needs this data now, so there is no reason to lift it back into `AppLayout`). An open
  * account's own name opens its register (`#54`); reopening a closed one has no endpoint yet, so
- * closed accounts are listed read-only.
+ * closed accounts are listed read-only. Each row's own balance (`#333`) is not part of the
+ * `Account` shape the API returns — there is no bulk endpoint for it yet — so it is fetched
+ * separately, the same sum the register itself computes, and rendered once it resolves.
  */
 export default function AccountsScreen() {
   const intl = useIntl();
@@ -24,6 +29,8 @@ export default function AccountsScreen() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const workspaces = useWorkspaces();
   const state = useAccounts(workspaceId!);
+  const isPhone = usePhoneWidth();
+  const balances = useAccountBalances(workspaceId!, auth.user?.access_token, state.status === "ok" ? state.accounts : []);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
 
@@ -44,6 +51,7 @@ export default function AccountsScreen() {
   const open = state.accounts.filter((a) => a.closedAt === null);
   const closed = state.accounts.filter((a) => a.closedAt !== null);
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currentWorkspace?.baseCurrency ?? "EUR" });
 
   async function handleClose(account: Account) {
     const accessToken = auth.user?.access_token;
@@ -65,6 +73,31 @@ export default function AccountsScreen() {
 
       {open.length === 0 ? (
         <p>{intl.formatMessage({ id: "accounts.empty", defaultMessage: "No accounts yet: add one below." })}</p>
+      ) : isPhone ? (
+        <div className="ph-accounts">
+          {open.map((account) => (
+            <button
+              key={account.id}
+              type="button"
+              className="ph-acc"
+              onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
+            >
+              <span>
+                {account.name}
+                <small>
+                  {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
+                  {" · "}
+                  {account.onBudget
+                    ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
+                    : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
+                </small>
+              </span>
+              <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                {account.id in balances ? money(balances[account.id]!) : ""}
+              </span>
+            </button>
+          ))}
+        </div>
       ) : (
         <ul className="account-list">
           {open.map((account) => (
@@ -77,6 +110,9 @@ export default function AccountsScreen() {
                 {account.onBudget
                   ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
                   : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
+              </span>
+              <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                {account.id in balances ? money(balances[account.id]!) : ""}
               </span>
               <button
                 type="button"
@@ -94,14 +130,33 @@ export default function AccountsScreen() {
       {closed.length > 0 && (
         <>
           <h2>{intl.formatMessage({ id: "accounts.closedTitle", defaultMessage: "Closed" })}</h2>
-          <ul className="account-list closed">
-            {closed.map((account) => (
-              <li key={account.id}>
-                <span className="name">{account.name}</span>
-                <span className="type">{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</span>
-              </li>
-            ))}
-          </ul>
+          {isPhone ? (
+            <div className="ph-accounts">
+              {closed.map((account) => (
+                <div key={account.id} className="ph-acc static">
+                  <span>
+                    {account.name}
+                    <small>{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</small>
+                  </span>
+                  <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                    {account.id in balances ? money(balances[account.id]!) : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ul className="account-list closed">
+              {closed.map((account) => (
+                <li key={account.id}>
+                  <span className="name">{account.name}</span>
+                  <span className="type">{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</span>
+                  <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                    {account.id in balances ? money(balances[account.id]!) : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
 

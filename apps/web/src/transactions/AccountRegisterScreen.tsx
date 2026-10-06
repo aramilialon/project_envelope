@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 import { useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
+import SideSheet from "../layout/SideSheet.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
@@ -358,20 +359,17 @@ export default function AccountRegisterScreen() {
         />
       )}
       {open !== null && open !== "new" && open.transaction.status === "reconciled" && (
-        <div className="side-sheet" role="dialog" aria-modal="true">
-          <div className="panel-head">
-            <h2>{open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}</h2>
-            <button type="button" className="plain" onClick={() => setOpen(null)}>
-              {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-            </button>
-          </div>
+        <SideSheet
+          title={open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}
+          onClose={() => setOpen(null)}
+        >
           <p className="hint">
             {intl.formatMessage({
               id: "register.locked",
               defaultMessage: "This transaction is reconciled and locked. Unlocking one has no screen yet.",
             })}
           </p>
-        </div>
+        </SideSheet>
       )}
       {open !== null && open !== "new" && open.transaction.status !== "reconciled" && (
         <TransactionForm
