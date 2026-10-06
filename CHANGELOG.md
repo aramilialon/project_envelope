@@ -64,6 +64,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: `e2e/budget.spec.ts` still asserted the pre-`#324` "Ready to assign" label, left stale by the visual redesign and never caught since end-to-end tests are not wired into CI yet — updated to "Unassigned".
 - `apps/web`: the account register's own phone list was reading the band's own muted text colour on its payee (~2:1 contrast against the page in light theme) instead of `--ink` — the band's "Demo User" label and this list's own payee wrapper both used the class name `.who`, so `.app-layout .who`'s own styling leaked into this unrelated, deeply nested component. Renamed; `scripts/screenshot-demo.ts` now asserts >= 4.5:1 there, in both themes (`#349`).
 - `apps/web`: the account register's desktop table showed "Date" (and every other `.open-row` column) 8px further right than its own header — the button inside each cell never reset the browser's own default button padding, stacking it on top of the `<td>`'s own identical padding (`#349`).
+- `@envelope/core`: the timeline's own label placement (`computeTimeline`) only stepped a label away from an already-placed *label*, never from another mark's own stem — a short mark sitting right next to a much taller one could have its own label crossed by the taller one's line, with nothing to catch it. Every mark's own stem is now also an obstacle (`#351`).
+- `scripts/seed-demo.ts`: the demo's own "Checking" account started at zero, so its own running balance read briefly negative near the start of the previous month, before that month's own salary arrived on the 15th — given an ordinary opening-balance transaction on day 1, sized so it never dips below zero across the whole demo (`#351`).
 
 ## [0.1.6] - 2026-09-30
 
