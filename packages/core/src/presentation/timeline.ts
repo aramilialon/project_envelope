@@ -193,13 +193,22 @@ interface Lane {
   y: number;
 }
 
-function placeLabel(lane: Lane[], x: number, y: number, width: number, step: number, up: boolean): number {
+/** A mark's own stem — the vertical line from the axis to `stemY` — as an obstacle a label must also step away from, not just another label (`#351`). */
+interface StemObstacle {
+  readonly x: number;
+  readonly yTop: number;
+  readonly yBottom: number;
+}
+
+function placeLabel(lane: Lane[], stems: readonly StemObstacle[], x: number, y: number, width: number, step: number, up: boolean): number {
   let placedY = y;
-  for (let i = 0; i < lane.length; i++) {
-    const other = lane[i]!;
-    if (x < other.x2 + 4 && x + width > other.x1 - 4 && Math.abs(placedY - other.y) < step) {
+  let collided = true;
+  while (collided) {
+    collided =
+      lane.some((other) => x < other.x2 + 4 && x + width > other.x1 - 4 && Math.abs(placedY - other.y) < step) ||
+      stems.some((stem) => x - 4 <= stem.x && stem.x <= x + width + 4 && placedY >= stem.yTop - 4 && placedY <= stem.yBottom + 4);
+    if (collided) {
       placedY += up ? -step : step;
-      i = -1;
     }
   }
   lane.push({ x1: x, x2: x + width, y: placedY });
@@ -244,14 +253,23 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     .slice(0, 4);
   const biggestOutKeys = new Set(biggestOut.map((e) => `${e.direction}:${e.status}:${e.day}`));
 
-  const lanes = { up: [] as Lane[], down: [] as Lane[] };
-  const marks: TimelineMark[] = [];
-  for (const e of list) {
+  // Every mark's own position and stem, computed once up front — so a label can be checked
+  // against every OTHER mark's own stem too (`#351`), including a day with no label of its own.
+  const positioned = list.map((e) => {
     const up = e.direction === "in";
     const length = markLength(e.amountCents, size);
     const stemY = up ? size.axisY - length : size.axisY + length;
-    const ex = x(e.day);
+    return { e, up, stemY, ex: x(e.day) };
+  });
+  const stems: StemObstacle[] = positioned.map(({ ex, stemY }) => ({
+    x: ex,
+    yTop: Math.min(size.axisY, stemY),
+    yBottom: Math.max(size.axisY, stemY),
+  }));
 
+  const lanes = { up: [] as Lane[], down: [] as Lane[] };
+  const marks: TimelineMark[] = [];
+  for (const { e, up, stemY, ex } of positioned) {
     const key = `${e.direction}:${e.status}:${e.day}`;
     const labelled = input.compact ? up : e.direction !== "out" || e.status !== "recorded" || biggestOutKeys.has(key);
     let label: TimelineLabel | undefined;
@@ -277,7 +295,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
 
       if (lx !== undefined) {
         const lane = up ? lanes.up : lanes.down;
-        const ly = placeLabel(lane, lx, up ? stemY : stemY + 4, width, size.laneStep, up);
+        const ly = placeLabel(lane, stems, lx, up ? stemY : stemY + 4, width, size.laneStep, up);
         label = { x: lx, y: ly, payees: displayedPayees, extraPayeeCount, width };
       }
     }

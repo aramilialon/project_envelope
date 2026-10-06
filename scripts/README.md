@@ -52,6 +52,14 @@ accounts' own balance, cards excluded) the same way `apps/web` itself could: fro
 month endpoint and each cash account's own transaction list, never a direct query. A broken
 invariant fails the script loudly.
 
+Checking has no "starting balance" field of its own the way a credit card does (`POST
+.../accounts`'s own `startingBalanceCents` is ignored for anything but an on-budget credit card)
+— so its own opening balance is an ordinary income-shaped transaction instead, dated and recorded
+before every other movement on day 1 of the previous month. Sized (`€2,000.00`) so the account's
+own running balance never dips below zero across the whole demo: day 12 of the previous month is
+its deepest point, before that month's own salary arrives on the 15th (`#351`; it used to start at
+zero and run briefly negative there).
+
 ### Running locally
 
 Needs, already running: PostgreSQL and Keycloak (`cd infra && docker compose up -d`, with the

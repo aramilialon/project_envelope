@@ -135,6 +135,28 @@ describe("computeTimeline", () => {
     assert.notEqual(labels[0]!.y, labels[1]!.y);
   });
 
+  it("a label steps away from a nearby mark's own stem too, not just another label (#351)", () => {
+    // A small inflow right next to a much larger one, one day over: the small mark's own label
+    // sits close to the axis, right where the large mark's own tall stem passes through on its
+    // way up — without checking stems, nothing would ever push the label out of its way.
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      events: [
+        event({ day: 15, direction: "in", amountCents: 100, payee: "Salary" }),
+        event({ day: 16, direction: "in", amountCents: 5_000_000, payee: "Freelance payment" }),
+      ],
+    });
+    const small = layout.marks.find((m) => m.day === 15)!;
+    const big = layout.marks.find((m) => m.day === 16)!;
+    const label = small.label!;
+    const stemYTop = Math.min(layout.axisY, big.stemY);
+    const stemYBottom = Math.max(layout.axisY, big.stemY);
+    const crossesHorizontally = label.x - 4 <= big.x && big.x <= label.x + label.width + 4;
+    const crossesVertically = label.y >= stemYTop - 4 && label.y <= stemYBottom + 4;
+    assert.ok(!(crossesHorizontally && crossesVertically), "the small mark's own label must step clear of the big mark's own stem");
+  });
+
   it("day ticks span the month and always include its own last day", () => {
     const layout = computeTimeline({ daysInMonth: 31, today: undefined, events: [] });
     assert.equal(layout.dayTicks[0]!.day, 1);

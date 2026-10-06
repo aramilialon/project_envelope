@@ -217,6 +217,13 @@ async function main(): Promise<void> {
   // own assignments above, each matched or covered by `previousMonth`'s own assignment just above,
   // so none of it shows up as overspending in a month the screenshots are not meant to dwell on.
   const prevDay = (day: number) => `${previousMonth}-${String(day).padStart(2, "0")}`;
+  // Checking has no "starting balance" field of its own (unlike a credit card's debt) — an
+  // ordinary income-shaped transaction is how a real account gets an opening balance instead,
+  // dated (and recorded) before every other movement on day 1, so it never reads as something
+  // that happened mid-story. Sized so the account's own running balance never dips below zero
+  // across the whole demo — day 12's own cumulative low point, -146,140, is the deepest it gets
+  // (#351: it used to start at zero and run briefly negative before the 15th's own salary).
+  await transaction(checking.id, "Opening balance", [{ categoryId: null, amountCents: 200_000 }], prevDay(1));
   await transaction(checking.id, "Bank, mortgage payment", [{ categoryId: mortgagePayment, amountCents: -85_000 }], prevDay(1));
   await transaction(checking.id, "Energy provider", [{ categoryId: electricityAndGas, amountCents: -9_640 }], prevDay(3));
   await transaction(checking.id, "Supermarket", [{ categoryId: groceries, amountCents: -18_500 }], prevDay(5));
