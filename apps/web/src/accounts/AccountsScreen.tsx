@@ -76,26 +76,35 @@ export default function AccountsScreen() {
       ) : isPhone ? (
         <div className="ph-accounts">
           {open.map((account) => (
-            <button
-              key={account.id}
-              type="button"
-              className="ph-acc"
-              onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
-            >
-              <span>
-                {account.name}
-                <small>
-                  {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
-                  {" · "}
-                  {account.onBudget
-                    ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
-                    : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
-                </small>
-              </span>
-              <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                {account.id in balances ? money(balances[account.id]!) : ""}
-              </span>
-            </button>
+            <div key={account.id} className="ph-acc">
+              <button
+                type="button"
+                className="open"
+                onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
+              >
+                <span>
+                  {account.name}
+                  <small>
+                    {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
+                    {" · "}
+                    {account.onBudget
+                      ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
+                      : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
+                  </small>
+                </span>
+                <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                  {account.id in balances ? money(balances[account.id]!) : ""}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="close"
+                disabled={closingId === account.id}
+                onClick={() => void handleClose(account)}
+              >
+                {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
+              </button>
+            </div>
           ))}
         </div>
       ) : (

@@ -82,23 +82,56 @@
 
 .accounts-screen .ph-acc {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 4px;
   width: 100%;
   min-height: 52px;
   padding: 6px 0;
-  border: 0;
   border-bottom: 1px solid var(--rule-soft);
-  background: transparent;
-  text-align: left;
-  font: inherit;
   font-size: 15px;
-  color: inherit;
-  cursor: pointer;
 }
 
 .accounts-screen .ph-acc.static {
   color: var(--ink-2);
+}
+
+/* The navigable part of an open account's own row — everything but "Close", which needs its own
+   separate button (nested interactive elements are invalid), fixed-width so it never wraps onto
+   its own line the way the pre-#333 reflowed desktop row did at 360px (`#349`). */
+.accounts-screen .ph-acc .open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.accounts-screen .ph-acc .close {
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red);
+  cursor: pointer;
+}
+
+.accounts-screen .ph-acc .close:disabled {
+  opacity: 0.5;
   cursor: default;
 }
 
