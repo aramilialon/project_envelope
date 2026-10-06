@@ -1,7 +1,11 @@
 .accounts-screen h1 {
   margin: 0 0 18px;
-  font-size: 28px;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 32px;
+  line-height: 1;
   font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .accounts-screen h2 {
@@ -59,6 +63,49 @@
 .accounts-screen .budget {
   color: var(--muted);
   font-size: 13px;
+}
+
+.accounts-screen .n {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.accounts-screen .n.in {
+  color: var(--pen);
+}
+
+/* Phone layout (`usePhoneWidth`, #333): one column, matching the mockup's own `.ph-acc`. */
+.accounts-screen .ph-accounts {
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-screen .ph-acc {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.accounts-screen .ph-acc.static {
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.accounts-screen .ph-acc small {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .accounts-screen .plain {

@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
+import SideSheet from "../layout/SideSheet.tsx";
 import { createTransaction, createTransfer, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
@@ -208,31 +209,15 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     }
   }
 
-  return (
-    <div
-      className="side-sheet transaction-form"
-      role="dialog"
-      aria-modal="true"
-      aria-label={intl.formatMessage(
-        isEditing
-          ? { id: "transactions.form.editTitle", defaultMessage: "Edit transaction" }
-          : { id: "transactions.form.newTitle", defaultMessage: "New transaction" },
-      )}
-    >
-      <div className="panel-head">
-        <h2>
-          {intl.formatMessage(
-            isEditing
-              ? { id: "transactions.form.editTitle", defaultMessage: "Edit transaction" }
-              : { id: "transactions.form.newTitle", defaultMessage: "New transaction" },
-          )}
-        </h2>
-        <button type="button" className="plain" onClick={onClose}>
-          {intl.formatMessage({ id: "common.action.close", defaultMessage: "× Close" })}
-        </button>
-      </div>
+  const title = intl.formatMessage(
+    isEditing
+      ? { id: "transactions.form.editTitle", defaultMessage: "Edit transaction" }
+      : { id: "transactions.form.newTitle", defaultMessage: "New transaction" },
+  );
 
-      <form onSubmit={(event) => void handleSubmit(event)}>
+  return (
+    <SideSheet title={title} onClose={onClose}>
+      <form className="transaction-form" onSubmit={(event) => void handleSubmit(event)}>
         <fieldset className="segs" disabled={isEditing}>
           <legend className="sr-only">{intl.formatMessage({ id: "transactions.form.kind", defaultMessage: "Kind" })}</legend>
           <label>
@@ -397,6 +382,6 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           </button>
         </div>
       </form>
-    </div>
+    </SideSheet>
   );
 }
