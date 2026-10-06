@@ -1,7 +1,11 @@
 .categories-screen h1 {
   margin: 0 0 18px;
-  font-size: 28px;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 32px;
+  line-height: 1;
   font-weight: 700;
+  letter-spacing: -0.4px;
 }
 
 .categories-screen .group {
@@ -19,6 +23,7 @@
 .categories-screen .group-head h2 {
   flex: 1;
   margin: 0;
+  font-family: var(--display);
   font-size: 16px;
   font-weight: 700;
 }
@@ -70,10 +75,8 @@
 }
 
 .categories-screen .category-list .tag {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
   color: var(--muted);
 }
 
