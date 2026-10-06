@@ -81,9 +81,9 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
  * Two list renderings share the same data (`visible`): a table at desktop width, and below
  * 600px a day-grouped list (`docs/ux/mockups/account-register.html`'s own "Phone" view) — a
  * table simply has no narrow-width shape of its own, unlike the budget month's bars. Which one
- * is visible is plain CSS (`AccountRegisterScreen.css`), not a `matchMedia` check, so there is no
- * flash of the wrong one while React decides. The projected balance at month end (`#337`) and
- * this account's own timeline/"To do" (`#337`) are not this issue's job.
+ * is visible is `usePhoneWidth()`, read synchronously from `window.innerWidth` on the very first
+ * render, so there is no flash of the wrong one while React decides. The projected balance at
+ * month end (`#337`) and this account's own timeline/"To do" (`#337`) are not this issue's job.
  */
 export default function AccountRegisterScreen() {
   const intl = useIntl();
@@ -244,7 +244,11 @@ export default function AccountRegisterScreen() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={intl.formatMessage({ id: "register.search.placeholder", defaultMessage: "Search payee, category, memo" })}
+              placeholder={
+                isPhone
+                  ? intl.formatMessage({ id: "register.search", defaultMessage: "Search" })
+                  : intl.formatMessage({ id: "register.search.placeholder", defaultMessage: "Search payee, category, memo" })
+              }
             />
           </label>
           <button type="button" className="btn primary" onClick={() => setOpen("new")}>
@@ -267,7 +271,7 @@ export default function AccountRegisterScreen() {
                 return (
                   <div key={transaction.id} className="ph-tx">
                     <button type="button" className="open" onClick={() => setOpen({ transaction })}>
-                      <span className="who">
+                      <span className="what">
                         <b>{transaction.payee ?? ""}</b>
                         <small>{subtitle}</small>
                       </span>

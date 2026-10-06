@@ -250,5 +250,14 @@ describe("AccountRegisterScreen (#54, #333)", () => {
 
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
     });
+
+    it("shows a short, un-truncated search placeholder instead of the desktop's longer one (#349)", async () => {
+      setWidth(390);
+      renderScreen([transaction({})]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText("Search payee, category, memo")).not.toBeInTheDocument();
+    });
   });
 });

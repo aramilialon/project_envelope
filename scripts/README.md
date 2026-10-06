@@ -96,6 +96,10 @@ the same check a reviewer would otherwise have to do by hand with the browser's 
 screen whose phone layout is a genuinely different DOM tree (not just a CSS reflow), like the
 account register's day list, swaps it in from a `resize` event listener one tick behind
 `setViewportSize` itself, so the check waits briefly after resizing the page before measuring it.
+It also asserts the account register's own phone list keeps its payee text at a WCAG-contrast
+>= 4.5:1 against the page background, in both themes (`#349`: a class name shared by
+unrelated components — the band's own `.who` and this list's own — once left it reading the band's
+muted colour by accident).
 
 ```bash
 $ cd scripts

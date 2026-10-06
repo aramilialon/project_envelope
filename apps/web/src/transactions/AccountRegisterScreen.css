@@ -184,6 +184,7 @@
 .register-screen .open-row {
   display: block;
   width: 100%;
+  padding: 0;
   border: 0;
   background: transparent;
   text-align: left;
@@ -256,14 +257,15 @@
   min-width: 0;
 }
 
-.register-screen .ph-tx .who {
+.register-screen .ph-tx .what {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.register-screen .ph-tx .who b {
+.register-screen .ph-tx .what b {
+  color: var(--ink);
   font-weight: 500;
   font-size: 15px;
   overflow: hidden;
@@ -271,7 +273,7 @@
   white-space: nowrap;
 }
 
-.register-screen .ph-tx .who small {
+.register-screen .ph-tx .what small {
   font-size: 12px;
   color: var(--muted);
   overflow: hidden;
@@ -312,5 +314,18 @@
 @media (max-width: 600px) {
   .register-screen .acc-bal .big {
     font-size: 30px;
+  }
+
+  /* The search field on its own full-width row (`#349`): at the phone width, "New transaction"
+     next to it otherwise compresses it down to where even its own short placeholder clips. */
+  .register-screen .right {
+    flex-wrap: nowrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .register-screen .search {
+    flex: none;
+    width: 100%;
   }
 }

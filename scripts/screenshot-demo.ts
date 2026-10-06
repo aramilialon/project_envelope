@@ -15,7 +15,9 @@ import { assertSafeToRun, requireEnv } from "./lib/env.ts";
  * own acceptance criterion, extended to the budget month by `#326`:
  * `document.documentElement.scrollWidth <= clientWidth`), failing loudly (non-zero exit) if any
  * does — the same check a reviewer would otherwise have to do by hand with the browser's own dev
- * tools.
+ * tools. The account register's own phone list also gets a WCAG contrast check on its payee text
+ * (`#349`: a stray `.who` class collision once left it reading the band's own muted colour instead
+ * of `--ink`) — >= 4.5:1 against the page background, in both themes.
  *
  * Needs a real browser: unlike `seed-demo.ts`'s own plain-`fetch` PKCE handshake, actually
  * rendering pixels needs `apps/web` running too (not just `apps/api`), so this drives the real
@@ -41,6 +43,43 @@ async function checkOverflow(page: import("@playwright/test").Page, label: strin
   return { label, scrollWidth, clientWidth, ok: scrollWidth <= clientWidth };
 }
 
+interface ContrastCheck {
+  readonly label: string;
+  readonly ratio: number;
+  readonly ok: boolean;
+}
+
+/** WCAG 2.2 relative luminance and contrast ratio, from two `getComputedStyle`-style `rgb(r, g, b)` strings. */
+function contrastRatio(foreground: string, background: string): number {
+  function channel(c: number): number {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  }
+  function luminance(rgb: string): number {
+    const [r, g, b] = rgb.match(/\d+/g)!.map(Number) as [number, number, number];
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  }
+  const l1 = luminance(foreground);
+  const l2 = luminance(background);
+  const [lighter, darker] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function checkContrast(page: import("@playwright/test").Page, label: string, selector: string): Promise<ContrastCheck | null> {
+  const colors = await page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) {
+      return null;
+    }
+    return { foreground: getComputedStyle(el).color, background: getComputedStyle(document.body).backgroundColor };
+  }, selector);
+  if (!colors) {
+    return null;
+  }
+  const ratio = contrastRatio(colors.foreground, colors.background);
+  return { label, ratio, ok: ratio >= 4.5 };
+}
+
 async function main(): Promise<void> {
   const apiUrl = process.env.API_URL ?? "http://127.0.0.1:3000";
   const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://127.0.0.1:8080";
@@ -53,6 +92,7 @@ async function main(): Promise<void> {
   assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl });
 
   const overflowChecks: OverflowCheck[] = [];
+  const contrastChecks: ContrastCheck[] = [];
   const browser = await chromium.launch();
   try {
     const context = await browser.newContext({ baseURL: WEB_URL, viewport: { width: 1440, height: 900 } });
@@ -76,23 +116,23 @@ async function main(): Promise<void> {
     // closes elsewhere in this file, for a resize instead of a fetch.
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(300);
-    await shootSixWays(page, outDir, "budget-month", overflowChecks);
+    await shootSixWays(page, outDir, "budget-month", overflowChecks, contrastChecks);
 
     await page.getByRole("button", { name: "Previous month" }).click();
     await page.getByText("Unassigned").waitFor();
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(300);
-    await shootSixWays(page, outDir, "budget-month-previous", overflowChecks);
+    await shootSixWays(page, outDir, "budget-month-previous", overflowChecks, contrastChecks);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.getByRole("link", { name: "Accounts" }).click();
     await page.getByRole("heading", { name: "Accounts" }).waitFor();
-    await shootSixWays(page, outDir, "accounts", overflowChecks);
+    await shootSixWays(page, outDir, "accounts", overflowChecks, contrastChecks);
 
     await page.getByRole("button", { name: "Checking" }).click();
     await page.waitForURL(/\/accounts\/.+/);
     await page.getByRole("heading", { name: "Checking" }).waitFor();
-    await shootSixWays(page, outDir, "account-register", overflowChecks);
+    await shootSixWays(page, outDir, "account-register", overflowChecks, contrastChecks, ".ph-tx .what b");
 
     console.log("Screenshots written to", outDir);
     console.log("\nAnti-overflow check (document.documentElement.scrollWidth <= clientWidth):");
@@ -106,13 +146,37 @@ async function main(): Promise<void> {
     if (anyOverflow) {
       throw new Error("Horizontal overflow detected (see above) — #333's own acceptance criterion");
     }
+
+    console.log("\nContrast check (payee text vs. page background, WCAG 2.2, >= 4.5:1):");
+    let anyLowContrast = false;
+    for (const check of contrastChecks) {
+      console.log(`  ${check.ok ? "OK  " : "FAIL"} ${check.label}: ${check.ratio.toFixed(2)}:1`);
+      if (!check.ok) {
+        anyLowContrast = true;
+      }
+    }
+    if (anyLowContrast) {
+      throw new Error("Contrast below 4.5:1 detected (see above) — #349's own acceptance criterion");
+    }
   } finally {
     await browser.close();
   }
 }
 
-/** Light/dark at 1440px, then light/dark at each of `PHONE_WIDTHS` — checking for horizontal overflow once per width, before either theme's screenshot. */
-async function shootSixWays(page: import("@playwright/test").Page, outDir: string, baseName: string, overflowChecks: OverflowCheck[]): Promise<void> {
+/**
+ * Light/dark at 1440px, then light/dark at each of `PHONE_WIDTHS` — checking for horizontal
+ * overflow once per width, before either theme's screenshot, and contrast once per theme when
+ * `contrastSelector`/`contrastLabel` are given (an element only the phone layout renders, so
+ * there is nothing to check at 1440px).
+ */
+async function shootSixWays(
+  page: import("@playwright/test").Page,
+  outDir: string,
+  baseName: string,
+  overflowChecks: OverflowCheck[],
+  contrastChecks: ContrastCheck[],
+  contrastSelector?: string,
+): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
   await page.screenshot({ path: `${outDir}/${baseName}-light-1440.png` });
@@ -127,10 +191,16 @@ async function shootSixWays(page: import("@playwright/test").Page, outDir: strin
     // the previous (wider) layout even though the screenshot right after it is already correct.
     await page.waitForTimeout(50);
     overflowChecks.push(await checkOverflow(page, `${baseName} @ ${width}px`));
-    await page.emulateMedia({ colorScheme: "light" });
-    await page.screenshot({ path: `${outDir}/${baseName}-light-${width}.png` });
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.screenshot({ path: `${outDir}/${baseName}-dark-${width}.png` });
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.screenshot({ path: `${outDir}/${baseName}-${scheme}-${width}.png` });
+      if (contrastSelector) {
+        const check = await checkContrast(page, `${baseName} payee @ ${width}px (${scheme})`, contrastSelector);
+        if (check) {
+          contrastChecks.push(check);
+        }
+      }
+    }
   }
 
   await page.setViewportSize({ width: 1440, height: 900 });

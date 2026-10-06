@@ -185,4 +185,15 @@ describe("AccountsScreen (#51, #323)", () => {
     expect(screen.queryByRole("button", { name: "Old account" })).not.toBeInTheDocument();
     expect(screen.getByText("Old account").closest(".ph-acc")).toHaveClass("static");
   });
+
+  it("closes an open account from its own separate 'Close' button on the phone layout", async () => {
+    setWidth(390);
+    const closeAccount = vi.spyOn(accountsApi, "closeAccount").mockResolvedValue({ ...CHECKING, closedAt: "2026-03-01" });
+    renderScreen([CHECKING]);
+    await screen.findByRole("button", { name: /Checking/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    await waitFor(() => expect(closeAccount).toHaveBeenCalledWith("t", "ws-1", "a1"));
+  });
 });
