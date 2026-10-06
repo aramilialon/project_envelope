@@ -54,6 +54,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the account register's desktop table now matches the rest of the app's own type, colour and date format (a short "Sep 15", never the raw ISO date) instead of its own uppercase, letter-spaced header row (`#333`).
 - `apps/web`: the Accounts screen to the new tokens — a display-face heading, each open and closed account's own balance, and, below 600px, the mockup's own one-column phone list instead of the desktop row reflowed; the account register's "New transaction"/edit form and its reconciled-transaction read-only view now open in the shared `SideSheet` component instead of their own copy of the side-sheet markup. No other behavior change (`#333`).
 - Documentation: `docs/design.md` and `docs/ux/README.md` corrected to describe the account register and Accounts screen as `#323` actually shipped them (no sidebar account list; the Accounts screen owns it) — both still described the retired sidebar layout. `docs/ux/mockups/account-register.html`'s own desktop view still draws that sidebar; left un-redrawn as a known, out-of-scope divergence (`#333`).
+- `apps/web`: the Categories screen to the new tokens — a display-face heading and group names, and the "Archived" tag in sentence case instead of uppercase, letter-spaced text (`docs/design.md`'s own "Visual language": "there are no uppercase labels" — a rule `docs/ux/mockups/settings-first-run.html`'s own tag still predates). No other behavior change (`#334`).
 
 ### Fixed
 
