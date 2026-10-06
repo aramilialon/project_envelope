@@ -2,6 +2,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate } from "react-router-dom";
 
+import CenteredCard from "../layout/CenteredCard.tsx";
 import type { Workspace } from "./api.ts";
 import { setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
 import "./WorkspacePicker.css";
@@ -26,7 +27,7 @@ export default function WorkspacePicker({ workspaces }: { workspaces: readonly W
   }
 
   return (
-    <main className="workspace-card" aria-live="polite">
+    <CenteredCard>
       <p className="mark" aria-hidden="true">
         envelope
       </p>
@@ -42,6 +43,6 @@ export default function WorkspacePicker({ workspaces }: { workspaces: readonly W
           </li>
         ))}
       </ul>
-    </main>
+    </CenteredCard>
   );
 }

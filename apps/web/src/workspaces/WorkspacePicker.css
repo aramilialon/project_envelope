@@ -1,33 +1,3 @@
-.workspace-card {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px;
-}
-
-.workspace-card .mark {
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.2px;
-  margin: 0 0 6px;
-}
-
-.workspace-card .tag {
-  color: var(--muted);
-  font-size: 13px;
-  margin: 0 0 24px;
-}
-
-.workspace-card .err {
-  background: color-mix(in srgb, var(--red) 10%, var(--paper));
-  border: 1px solid var(--red);
-  border-radius: 3px;
-  padding: 12px;
-}
-
 .workspace-list {
   list-style: none;
   margin: 0;
