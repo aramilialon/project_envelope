@@ -1,16 +1,22 @@
-import { currencyDecimals, formatMoney } from "@envelope/core";
+import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
+import { recordScheduledTransaction } from "../budget/api.ts";
+import { daysInMonth, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
+import Timeline from "../budget/Timeline.tsx";
+import { formatPayees } from "../budget/timelineLabels.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
-import { todayIsoIn } from "../workspaceDate.ts";
+import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { categoryLabel } from "./categoryLabel.ts";
+import RegisterTodo from "./RegisterTodo.tsx";
+import type { RegisterTodoItem } from "./registerTodo.ts";
 import { totalOf } from "./transactionAmount.ts";
 import TransactionForm from "./TransactionForm.tsx";
 import { useAccountRegister } from "./useAccountRegister.ts";
@@ -71,26 +77,49 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
 }
 
 /**
- * The account register (#54, #323, #333): reached from the Accounts screen. Balances, filter
+ * The account register (#54, #323, #333, #337): reached from the Accounts screen. Balances
+ * (cleared, pending and projected at month end), the same timeline the budget month uses but fed
+ * this account's own events only, a "To do" list of its own (Record an overdue scheduled
+ * transaction, Mark a pending one cleared, Reconcile once there is something to fold in — the
+ * reconciliation flow itself is `#60`'s own job, so that one stays informational only), filter
  * tabs with counts, search, the transaction list with a running balance (newest first), and the
  * "+ New transaction"/edit side panel (`TransactionForm`) for outflows, inflows, transfers and
- * splits. "Import" and "Reconcile", also drawn in the mockup, are left out — they have no screen
- * yet (`#59`, `#60`). A reconciled transaction opens a read-only summary instead of the form:
- * `apps/api` has no endpoint to unlock one yet.
+ * splits. "Import", also drawn in the mockup, is left out — it has no screen yet (`#59`). A
+ * reconciled transaction opens a read-only summary instead of the form: `apps/api` has no
+ * endpoint to unlock one yet.
+ *
+ * The timeline and "To do" list fold away entirely while a side sheet is open (`open !== null`),
+ * to leave the register room (design.md, confirmed in the mockup: opening a row removes both from
+ * the layout, not just visually de-emphasized) — never shown at all on the phone, where the first
+ * two "To do" items sit directly under the balance instead (design.md: "register grouped by day
+ * with the first two things to do under the balance (no timeline)").
+ *
+ * "Record" does not open the pre-filled form the mockup itself draws: `POST
+ * .../scheduled-transactions/:id/record` (`#330`) takes no override fields at all, always using
+ * the scheduled transaction's own stored values — a form the user could edit, then silently
+ * discarded on submit in favor of those stored values, would be a worse bug than not having the
+ * review step. A direct one-click action instead, exactly like `ScheduledPanel.tsx`'s own
+ * already-shipped "Record" button.
  *
  * Two list renderings share the same data (`visible`): a table at desktop width, and below
  * 600px a day-grouped list (`docs/ux/mockups/account-register.html`'s own "Phone" view) — a
  * table simply has no narrow-width shape of its own, unlike the budget month's bars. Which one
  * is visible is `usePhoneWidth()`, read synchronously from `window.innerWidth` on the very first
- * render, so there is no flash of the wrong one while React decides. The projected balance at
- * month end (`#337`) and this account's own timeline/"To do" (`#337`) are not this issue's job.
+ * render, so there is no flash of the wrong one while React decides.
  */
 export default function AccountRegisterScreen() {
   const intl = useIntl();
   const auth = useAuth();
   const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   const workspaces = useWorkspaces();
-  const state = useAccountRegister(workspaceId!, accountId!);
+  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const timeZone = currentWorkspace?.timeZone;
+  // The register has no month navigation of its own (design.md) — always the workspace's own
+  // current month, in the browser's own zone until the workspace's loads (same reasonable guess
+  // `BudgetScreen.tsx` starts from), recomputed fresh each render rather than kept in state, since
+  // nothing here ever changes it.
+  const month = currentMonthIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const state = useAccountRegister(workspaceId!, accountId!, month);
   const isPhone = usePhoneWidth();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
@@ -105,8 +134,7 @@ export default function AccountRegisterScreen() {
     return <p role="alert">{intl.formatMessage({ id: "register.error", defaultMessage: "We could not load this account." })}</p>;
   }
 
-  const { account, accounts, categories, transactions } = state;
-  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const { account, accounts, categories, transactions, events } = state;
   const currency = currentWorkspace?.baseCurrency;
   const resolvedCurrency = currency ?? "EUR";
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: resolvedCurrency });
@@ -167,6 +195,26 @@ export default function AccountRegisterScreen() {
     }
   }
 
+  /** "Record" (the "To do" list, #337): a direct one-click action, like `ScheduledPanel.tsx`'s own — see the docblock above for why this does not open a pre-filled form. */
+  async function handleRecordScheduled(scheduledTransactionId: string) {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken) {
+      return;
+    }
+    await recordScheduledTransaction(accessToken, workspaceId!, scheduledTransactionId);
+    state.refetch();
+  }
+
+  /** "Mark" (the "To do" list, #337): the item is already filtered to this account's own pending transactions, so the target status is always "cleared". */
+  async function handleMarkCleared(transactionId: string) {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken) {
+      return;
+    }
+    await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
+    state.refetch();
+  }
+
   const FILTERS: readonly [Filter, string][] = [
     ["all", intl.formatMessage({ id: "register.filter.all", defaultMessage: "All" })],
     ["pending", intl.formatMessage({ id: "register.filter.pending", defaultMessage: "Pending" })],
@@ -202,6 +250,32 @@ export default function AccountRegisterScreen() {
     }
   }
 
+  // The same timeline the budget month uses, fed this account's own events only (#337); the
+  // events fetch also feeds "Record" below and the projected balance, so none of it needs its own
+  // separate request.
+  const todayInfo = todayOf(month, timeZone);
+  const timelineLayout = computeTimeline({
+    daysInMonth: daysInMonth(month),
+    today: todayInfo?.day,
+    events: toTimelineEvents(events, todayInfo),
+    formatAmount: money,
+    formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
+  });
+  const scheduledThisMonth = events.filter((e) => e.kind === "scheduled");
+  const projectedBalance = computeProjectedBalance(total, scheduledThisMonth.map((e) => e.amountCents));
+
+  const recordItems: RegisterTodoItem[] = todayInfo
+    ? scheduledThisMonth
+        .filter((e) => e.date < todayInfo.iso && e.scheduledTransactionId !== undefined)
+        .map((e) => ({ kind: "recordOverdue", scheduledTransactionId: e.scheduledTransactionId!, payee: e.payee ?? "", date: e.date, amountCents: Math.abs(e.amountCents) }))
+    : [];
+  const markItems: RegisterTodoItem[] = transactions
+    .filter((t) => t.status === "pending")
+    .map((t) => ({ kind: "markPending", transactionId: t.id, payee: t.payee ?? "", date: t.budgetDate, amountCents: Math.abs(totalOf(t)) }));
+  const reconcileItems: RegisterTodoItem[] =
+    counts.cleared > 0 ? [{ kind: "reconcile", clearedCount: counts.cleared, clearedCents: total - pendingTotal }] : [];
+  const registerTodoItems: RegisterTodoItem[] = [...recordItems, ...markItems, ...reconcileItems];
+
   return (
     <div className="register-screen">
       <div className="acc-head">
@@ -225,9 +299,25 @@ export default function AccountRegisterScreen() {
             <span>
               {intl.formatMessage({ id: "register.pending", defaultMessage: "Pending" })} <b className="n">{money(pendingTotal)}</b>
             </span>
+            <span>
+              {intl.formatMessage({ id: "register.projected", defaultMessage: "Projected at month end" })} <b className="n">{money(projectedBalance)}</b>
+            </span>
           </div>
         </div>
       </div>
+
+      {/* The timeline and "To do" list fold away while a side sheet is open, to leave the
+          register room (design.md) — and never show at all on the phone, where the first two
+          "To do" items sit directly under the balance instead, no timeline (design.md). */}
+      {open === null &&
+        (isPhone ? (
+          <RegisterTodo items={registerTodoItems} limit={2} money={money} locale={intl.locale} onRecord={(id) => void handleRecordScheduled(id)} onMark={(id) => void handleMarkCleared(id)} />
+        ) : (
+          <div className="over">
+            <Timeline layout={timelineLayout} monthLabel={monthLabel(month, intl.locale)} money={money} />
+            <RegisterTodo items={registerTodoItems} money={money} locale={intl.locale} onRecord={(id) => void handleRecordScheduled(id)} onMark={(id) => void handleMarkCleared(id)} />
+          </div>
+        ))}
 
       <div className="reg-tools">
         <div className="tabs" role="group" aria-label={intl.formatMessage({ id: "register.filter.label", defaultMessage: "Filter transactions" })}>
