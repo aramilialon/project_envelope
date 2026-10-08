@@ -2,7 +2,7 @@ import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -11,6 +11,7 @@ import Timeline from "../budget/Timeline.tsx";
 import { formatPayees } from "../budget/timelineLabels.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
+import { unlockReconciliation } from "../reconciliation/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
@@ -80,13 +81,13 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
  * The account register (#54, #323, #333, #337): reached from the Accounts screen. Balances
  * (cleared, pending and projected at month end), the same timeline the budget month uses but fed
  * this account's own events only, a "To do" list of its own (Record an overdue scheduled
- * transaction, Mark a pending one cleared, Reconcile once there is something to fold in — the
- * reconciliation flow itself is `#60`'s own job, so that one stays informational only), filter
- * tabs with counts, search, the transaction list with a running balance (newest first), and the
- * "+ New transaction"/edit side panel (`TransactionForm`) for outflows, inflows, transfers and
- * splits. "Import", also drawn in the mockup, is left out — it has no screen yet (`#59`). A
- * reconciled transaction opens a read-only summary instead of the form: `apps/api` has no
- * endpoint to unlock one yet.
+ * transaction, Mark a pending one cleared, Reconcile once there is something to fold in — opens
+ * `ReconciliationScreen`, `#60`), filter tabs with counts, search, the transaction list with a
+ * running balance (newest first), and the "+ New transaction"/edit side panel (`TransactionForm`)
+ * for outflows, inflows, transfers and splits. "Import", also drawn in the mockup, is left out —
+ * it has no screen yet (`#59`). A reconciled transaction opens a read-only summary with an
+ * "Unlock" action instead of the form (`#60`): editing a locked transaction directly has no
+ * endpoint, only this explicit, audited unlock.
  *
  * The timeline and "To do" list fold away entirely while a side sheet is open (`open !== null`),
  * to leave the register room (design.md, confirmed in the mockup: opening a row removes both from
@@ -110,6 +111,7 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
 export default function AccountRegisterScreen() {
   const intl = useIntl();
   const auth = useAuth();
+  const navigate = useNavigate();
   const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
@@ -125,6 +127,7 @@ export default function AccountRegisterScreen() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState<"new" | { transaction: Transaction } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   if (state.status === "loading") {
     return <p role="status">{intl.formatMessage({ id: "register.loading", defaultMessage: "Loading this account…" })}</p>;
@@ -213,6 +216,22 @@ export default function AccountRegisterScreen() {
     }
     await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
     state.refetch();
+  }
+
+  /** "Unlock" (#60): a separate, audited action (`POST .../unlock-reconciliation`), not a plain edit — see the docblock above. */
+  async function handleUnlock(transactionId: string) {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken) {
+      return;
+    }
+    setUnlocking(true);
+    try {
+      await unlockReconciliation(accessToken, workspaceId!, transactionId);
+      setOpen(null);
+      state.refetch();
+    } finally {
+      setUnlocking(false);
+    }
   }
 
   const FILTERS: readonly [Filter, string][] = [
@@ -311,11 +330,26 @@ export default function AccountRegisterScreen() {
           "To do" items sit directly under the balance instead, no timeline (design.md). */}
       {open === null &&
         (isPhone ? (
-          <RegisterTodo items={registerTodoItems} limit={2} money={money} locale={intl.locale} onRecord={(id) => void handleRecordScheduled(id)} onMark={(id) => void handleMarkCleared(id)} />
+          <RegisterTodo
+            items={registerTodoItems}
+            limit={2}
+            money={money}
+            locale={intl.locale}
+            onRecord={(id) => void handleRecordScheduled(id)}
+            onMark={(id) => void handleMarkCleared(id)}
+            onReconcile={() => navigate(`/${workspaceId}/accounts/${accountId}/reconcile`)}
+          />
         ) : (
           <div className="over">
             <Timeline layout={timelineLayout} monthLabel={monthLabel(month, intl.locale)} money={money} />
-            <RegisterTodo items={registerTodoItems} money={money} locale={intl.locale} onRecord={(id) => void handleRecordScheduled(id)} onMark={(id) => void handleMarkCleared(id)} />
+            <RegisterTodo
+              items={registerTodoItems}
+              money={money}
+              locale={intl.locale}
+              onRecord={(id) => void handleRecordScheduled(id)}
+              onMark={(id) => void handleMarkCleared(id)}
+              onReconcile={() => navigate(`/${workspaceId}/accounts/${accountId}/reconcile`)}
+            />
           </div>
         ))}
 
@@ -460,9 +494,14 @@ export default function AccountRegisterScreen() {
           <p className="hint">
             {intl.formatMessage({
               id: "register.locked",
-              defaultMessage: "This transaction is reconciled and locked. Unlocking one has no screen yet.",
+              defaultMessage: "This transaction is reconciled and locked.",
             })}
           </p>
+          <div className="row-btns">
+            <button type="button" className="btn" disabled={unlocking} onClick={() => void handleUnlock(open.transaction.id)}>
+              {intl.formatMessage({ id: "register.unlock", defaultMessage: "Unlock" })}
+            </button>
+          </div>
         </SideSheet>
       )}
       {open !== null && open !== "new" && open.transaction.status !== "reconciled" && (

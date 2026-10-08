@@ -11,6 +11,7 @@ interface Props {
   readonly limit?: number;
   onRecord(scheduledTransactionId: string): void;
   onMark(transactionId: string): void;
+  onReconcile(): void;
 }
 
 function shortDate(iso: string, locale: string): string {
@@ -22,10 +23,9 @@ function shortDate(iso: string, locale: string): string {
  * The account register's own "To do" list (#337): reuses the budget month's own `.todo`/`.todo-i`
  * structure and tokens (`Todo.css`), with this screen's own three actions instead — Record,
  * Mark, Reconcile — never `@envelope/core`'s `computeTodos` (a different list, `registerTodo.ts`).
- * "Reconcile" stays informational only, like every `Todo.tsx` item was before it had a
- * destination to open into: the reconciliation flow itself is `#60`'s own job, not this one's.
+ * "Reconcile" opens `ReconciliationScreen` (`#60`).
  */
-export default function RegisterTodo({ items, money, locale, limit, onRecord, onMark }: Props) {
+export default function RegisterTodo({ items, money, locale, limit, onRecord, onMark, onReconcile }: Props) {
   const intl = useIntl();
   const shown = limit === undefined ? items : items.slice(0, limit);
   const hiddenCount = items.length - shown.length;
@@ -76,7 +76,7 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
           );
         }
         return (
-          <div key="reconcile" className="todo-i">
+          <button key="reconcile" type="button" className="todo-i" onClick={() => onReconcile()}>
             <span className="dot" />
             <span>
               <b>{intl.formatMessage({ id: "register.todo.reconcile.title", defaultMessage: "Reconcile the account" })}</b>
@@ -88,7 +88,7 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
               </small>
             </span>
             <span className="n">{money(item.clearedCents)}</span>
-          </div>
+          </button>
         );
       })}
       {hiddenCount > 0 && (

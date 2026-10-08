@@ -7,6 +7,7 @@ import type { Account } from "../accounts/api.ts";
 import * as budgetApi from "../budget/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import type { Category } from "../categories/api.ts";
+import * as reconciliationApi from "../reconciliation/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as transactionsApi from "./api.ts";
@@ -184,6 +185,19 @@ describe("AccountRegisterScreen (#54, #333)", () => {
     fireEvent.click(screen.getByText("Supermarket"));
     expect(await screen.findByText(/reconciled and locked/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+  });
+
+  it("unlocks a reconciled transaction from its read-only panel (#60)", async () => {
+    renderScreen([transaction({ id: "t1", status: "reconciled", payee: "Supermarket" })]);
+    await screen.findByText("Supermarket");
+    const unlock = vi.spyOn(reconciliationApi, "unlockReconciliation").mockResolvedValue(undefined);
+
+    fireEvent.click(screen.getByText("Supermarket"));
+    await screen.findByText(/reconciled and locked/);
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+
+    await waitFor(() => expect(unlock).toHaveBeenCalledWith("t", "ws-1", "t1"));
+    await waitFor(() => expect(screen.queryByText(/reconciled and locked/)).not.toBeInTheDocument());
   });
 
   it("opens the edit form for a non-reconciled transaction", async () => {

@@ -1,0 +1,260 @@
+/* The reconciliation screen (#60): `docs/ux/mockups/import-reconciliation.html`'s own
+   `.rec-grid`, `.rlist`, `.recon` etc., with this app's own 10px input radius (`SideSheet.css`'s
+   own convention) instead of the mockup's generic 3px. */
+
+.reconcile-screen .n {
+  font-variant-numeric: tabular-nums;
+}
+
+.reconcile-screen .crumb-back {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--pen);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* A `<Link>` wearing `.btn`/`.btn.primary` (the "Back to the account" link on a completed
+   reconciliation) is still an anchor — reset the browser's own link underline so it reads as the
+   same button every `<button class="btn">` elsewhere in the app already does. */
+.reconcile-screen a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.reconcile-screen .page-h {
+  margin: 0;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+.reconcile-screen .hint {
+  max-width: 70ch;
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reconcile-screen .hint.bad {
+  color: var(--red-text);
+  font-weight: 600;
+}
+
+.reconcile-screen .ok {
+  color: var(--pen);
+  font-weight: 600;
+}
+
+.reconcile-screen .rec-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 28px;
+  align-items: start;
+  margin-top: 22px;
+}
+
+@media (max-width: 900px) {
+  .reconcile-screen .rec-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.reconcile-screen .rlist {
+  display: flex;
+  flex-direction: column;
+}
+
+.reconcile-screen .sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reconcile-screen .sec h5 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0 0 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.reconcile-screen .sec > .hint {
+  margin: 0 0 6px;
+}
+
+.reconcile-screen .rl {
+  display: grid;
+  grid-template-columns: 28px 70px minmax(0, 1fr) 110px;
+  align-items: center;
+  min-height: 42px;
+  border-bottom: 1px solid var(--rule-soft);
+  cursor: pointer;
+}
+
+.reconcile-screen .rl input {
+  accent-color: var(--pen);
+  width: 16px;
+  height: 16px;
+}
+
+.reconcile-screen .rl.off {
+  color: var(--muted);
+}
+
+.reconcile-screen .rl.off .n {
+  text-decoration: line-through;
+}
+
+.reconcile-screen .rl.hl {
+  background: var(--pen-soft);
+}
+
+.reconcile-screen .recon {
+  position: sticky;
+  top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+}
+
+.reconcile-screen .recon .two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.reconcile-screen .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reconcile-screen .field label {
+  font-weight: 600;
+}
+
+.reconcile-screen .field input,
+.reconcile-screen .field select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.reconcile-screen .money-in {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.reconcile-screen .money-in:focus-within {
+  outline: 2px solid var(--pen);
+  outline-offset: 1px;
+}
+
+.reconcile-screen .money-in input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  outline: none;
+}
+
+.reconcile-screen .qa {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--ink-2);
+}
+
+.reconcile-screen .qa.total {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.reconcile-screen .qa .dots {
+  flex: 1;
+  border-bottom: 1px dotted var(--rule);
+  transform: translateY(-3px);
+}
+
+.reconcile-screen .diff {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-strong);
+}
+
+.reconcile-screen .diff b {
+  font-size: 28px;
+  font-stretch: 85%;
+}
+
+.reconcile-screen .diff b.bad {
+  color: var(--red-text);
+}
+
+.reconcile-screen .diff b.zero {
+  color: var(--ink);
+}
+
+.reconcile-screen .clue {
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.reconcile-screen .adjustment {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reconcile-screen .row-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reconcile-screen .done-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 60ch;
+  padding: 18px;
+  border: 1px solid var(--rule-strong);
+}
+
+.reconcile-screen .done-box h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-stretch: 78%;
+  font-size: 24px;
+  font-weight: 700;
+}
