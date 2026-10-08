@@ -101,13 +101,18 @@ jobs:
         id: web_unit
         if: always()
         run: pnpm --filter @envelope/web test
+      - name: Run pnpm test - packages/i18n - catalog completeness
+        id: i18n_complete
+        if: always()
+        run: pnpm --filter @envelope/i18n test
       - name: Check test results
         if: always()
         run: |
           if [ "${{ steps.core_unit.outcome }}" != "success" ] ||
              [ "${{ steps.api_integration.outcome }}" != "success" ] ||
              [ "${{ steps.api_smoke.outcome }}" != "success" ] ||
-             [ "${{ steps.web_unit.outcome }}" != "success" ]; then
+             [ "${{ steps.web_unit.outcome }}" != "success" ] ||
+             [ "${{ steps.i18n_complete.outcome }}" != "success" ]; then
             echo "::error::At least one test step failed; see above."
             exit 1
           fi

@@ -21,6 +21,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | Path | Contents |
 | --- | --- |
 | `packages/core` | Pure domain logic, no dependencies: money, months and dates, budget month, credit cards, transaction aggregation |
+| `packages/i18n` | Translation catalogs (ADR 0004, ADR 0009): `locales/en.json` (generated from the web app's own `defaultMessage`s), `locales/it.json` (hand-translated, CI-checked for completeness against it) |
 | `apps/` | `api`, `web` (Vite + React PWA shell so far), then `mobile` |
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, bound to 127.0.0.1 |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |

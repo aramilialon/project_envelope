@@ -10,10 +10,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "i18n:extract": "formatjs extract 'src/**/*.{ts,tsx}' --ignore 'src/**/*.test.{ts,tsx}' --format scripts/i18n-extract-format.mjs --out-file ../../packages/i18n/locales/en.json --throws"
   },
   "dependencies": {
     "@envelope/core": "workspace:*",
+    "@envelope/i18n": "workspace:*",
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",
     "@fontsource-variable/figtree": "^5.3.0",
     "oidc-client-ts": "^3.5.0",
@@ -24,6 +26,7 @@
     "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
+    "@formatjs/cli": "^6.16.33",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

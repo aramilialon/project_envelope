@@ -1,0 +1,19 @@
+{
+  "name": "@envelope/i18n",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Translation catalogs — English (the source language) and Italian (ADR 0004, ADR 0009)",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    "./locales/en.json": "./locales/en.json",
+    "./locales/it.json": "./locales/it.json"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@formatjs/icu-messageformat-parser": "^3.5.21"
+  }
+}

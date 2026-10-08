@@ -17,6 +17,17 @@ import "./ScheduledPanel.css";
 const MONTHLY_REPEAT_INTERVALS: readonly RepeatInterval[] = [2, 3, 4, 6, 12, 24];
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
 
+/** A literal `id`/`defaultMessage` per unit, not one templated with `${unit}` — `@formatjs/cli`'s own extraction needs both to be string literals (`#62`). */
+function unitLabel(unit: RecurUnit, intl: ReturnType<typeof useIntl>): string {
+  if (unit === "day") {
+    return intl.formatMessage({ id: "scheduled.unit.day", defaultMessage: "Days" });
+  }
+  if (unit === "month") {
+    return intl.formatMessage({ id: "scheduled.unit.month", defaultMessage: "Months" });
+  }
+  return intl.formatMessage({ id: "scheduled.unit.year", defaultMessage: "Years" });
+}
+
 interface Props {
   readonly workspaceId: string;
   readonly month: string;
@@ -408,9 +419,7 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTar
           <select id="sch-unit" value={recurUnit} onChange={(event) => setRecurUnit(event.target.value as RecurUnit)}>
             {RECUR_UNITS.map((unit) => (
               <option value={unit} key={unit}>
-                {intl.formatMessage(
-                  { id: `scheduled.unit.${unit}`, defaultMessage: unit === "day" ? "Days" : unit === "month" ? "Months" : "Years" },
-                )}
+                {unitLabel(unit, intl)}
               </option>
             ))}
           </select>
