@@ -54,6 +54,9 @@ importers:
       '@envelope/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@envelope/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@fontsource-variable/bricolage-grotesque':
         specifier: ^5.3.0
         version: 5.3.0
@@ -79,6 +82,9 @@ importers:
         specifier: ^7.18.4
         version: 7.18.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
     devDependencies:
+      '@formatjs/cli':
+        specifier: ^6.16.33
+        version: 6.16.33
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
@@ -126,6 +132,12 @@ importers:
         version: 5.0.3(@types/node@24.19.0)(@vitest/ui@5.0.3)(jsdom@30.1.1)(vite@8.3.1(@types/node@24.19.0)(terser@5.51.2))
 
   packages/core: {}
+
+  packages/i18n:
+    devDependencies:
+      '@formatjs/icu-messageformat-parser':
+        specifier: ^3.5.21
+        version: 3.5.21
 
   scripts:
     dependencies:
@@ -736,11 +748,76 @@ packages:
   '@fontsource-variable/figtree@5.3.0':
     resolution: {integrity: sha512-VRVodD7OiG7apQwE8/2fMjaqpY/a0qRJqL5HtYj8CKIVps+9amaFcdfKmDIf7iqYQx6iPLlArVXAfKeIZmVcNQ==}
 
+  '@formatjs/cli-native-darwin-arm64@1.1.27':
+    resolution: {integrity: sha512-mi51UphkvTOvs4gQ1j/EtiqZ87cKNJi8/ZGRwPpIKQ6I5G8EqHmArTKrY0mqZJS7zBJgonysrw6sJCt/Arcu2Q==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@formatjs/cli-native-linux-arm64-musl@1.0.25':
+    resolution: {integrity: sha512-Lys8sAs2oxRIVYQLz/0sIDbodgOUjz2Zz0xaJs1GGt0rF3t9uJmIYHyCKL9SnuEgLB/c9LXjcXm5uogWRrEFmg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@formatjs/cli-native-linux-arm64@1.2.27':
+    resolution: {integrity: sha512-+mOIAjuJU+P6GcjScLJavMIy6+TfmnsihPAewXlqkt+mrsgoQjsK2I3+CSBYK3qnzFQb/ovgyZ5iF9QuwbhPIA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@formatjs/cli-native-linux-x64-musl@1.0.25':
+    resolution: {integrity: sha512-w5AB4WIgKr6q+nSjRkaFt90m1htP5rDItNS0ZvOv29LRS+R1RNHIFCqBzqCHdJPXcrzi9ZjOfl82ogsP0QYLbg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@formatjs/cli-native-linux-x64@1.1.27':
+    resolution: {integrity: sha512-hreNaHpXZkh6avwIA1KGXMBhdfR0IGzxmkT3fYwgEUJbYl2NIMsOYgmEC8KuJpOYu8lNo3U9Rn76D5wooljJAw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@formatjs/cli-native-win32-x64@1.1.28':
+    resolution: {integrity: sha512-0rAWY/VKPDB+I5Drks1wNGSxg3y0nSwg2Y2Q5Gkxwgx31oY5fiPMQ1D/jvN6RVLjv/GGNKB2fhXOKxYStOFxDg==}
+    cpu: [x64]
+    os: [win32]
+
+  '@formatjs/cli@6.16.33':
+    resolution: {integrity: sha512-jpTuUo2FvBU/xSKGp3DtHWD6R0A7ePzAn2Z1nEhU1E36ZdtWeW/ipc8KSBrQLyuAwk2vQsyoWFC4dZiXSzYIvQ==}
+    engines: {node: '>= 20.12.0'}
+    hasBin: true
+    peerDependencies:
+      '@glimmer/env': '*'
+      '@glimmer/reference': '*'
+      '@glimmer/syntax': ^0.84.3 || ^0.95.0
+      '@glimmer/validator': '*'
+      '@vue/compiler-core': '3'
+      content-tag: '4'
+      vue: '3'
+    peerDependenciesMeta:
+      '@glimmer/env':
+        optional: true
+      '@glimmer/reference':
+        optional: true
+      '@glimmer/syntax':
+        optional: true
+      '@glimmer/validator':
+        optional: true
+      '@vue/compiler-core':
+        optional: true
+      content-tag:
+        optional: true
+      vue:
+        optional: true
+
   '@formatjs/fast-memoize@3.1.7':
     resolution: {integrity: sha512-zXfhLpvA6T7+efdt9JLbBwZ00tT7NsBMDVnDu8rpHeNNv8KfRZAMo2gkG0k9lK/Nzc//3kJ9pImsfuJxk3KhUA==}
 
   '@formatjs/icu-messageformat-parser@3.5.20':
     resolution: {integrity: sha512-DUzCb2iskGDKvLU7P+nz/rjpmN59luoTRbWHFFNYNnZTxWCKvwPI94rNll99TGZaI6XoTbDF0QGegk21GFrQZQ==}
+
+  '@formatjs/icu-messageformat-parser@3.5.21':
+    resolution: {integrity: sha512-Vnl7IOSyMRaP4Pjv48etkT2nlcIwzh4QWIa3hewzGlZZPBbft+TbMir4MijpDViOLN/1hvkGC10oYMuilsG+fw==}
 
   '@formatjs/icu-skeleton-parser@2.1.12':
     resolution: {integrity: sha512-ca7tZMLpfHX3sUD7hP6gE/qr6Iq89EDd3ZLeRhbsB7r0UD55DGJq+tmFLzrGrnx5StahUevQmQQVtbDRHsfDHA==}
@@ -3711,9 +3788,40 @@ snapshots:
 
   '@fontsource-variable/figtree@5.3.0': {}
 
+  '@formatjs/cli-native-darwin-arm64@1.1.27':
+    optional: true
+
+  '@formatjs/cli-native-linux-arm64-musl@1.0.25':
+    optional: true
+
+  '@formatjs/cli-native-linux-arm64@1.2.27':
+    optional: true
+
+  '@formatjs/cli-native-linux-x64-musl@1.0.25':
+    optional: true
+
+  '@formatjs/cli-native-linux-x64@1.1.27':
+    optional: true
+
+  '@formatjs/cli-native-win32-x64@1.1.28':
+    optional: true
+
+  '@formatjs/cli@6.16.33':
+    optionalDependencies:
+      '@formatjs/cli-native-darwin-arm64': 1.1.27
+      '@formatjs/cli-native-linux-arm64': 1.2.27
+      '@formatjs/cli-native-linux-arm64-musl': 1.0.25
+      '@formatjs/cli-native-linux-x64': 1.1.27
+      '@formatjs/cli-native-linux-x64-musl': 1.0.25
+      '@formatjs/cli-native-win32-x64': 1.1.28
+
   '@formatjs/fast-memoize@3.1.7': {}
 
   '@formatjs/icu-messageformat-parser@3.5.20':
+    dependencies:
+      '@formatjs/icu-skeleton-parser': 2.1.12
+
+  '@formatjs/icu-messageformat-parser@3.5.21':
     dependencies:
       '@formatjs/icu-skeleton-parser': 2.1.12
 

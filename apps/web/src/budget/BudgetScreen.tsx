@@ -366,10 +366,11 @@ export default function BudgetScreen() {
                         type="button"
                         className="gh"
                         aria-expanded={!isCollapsed}
-                        aria-label={intl.formatMessage(
-                          { id: isCollapsed ? "budget.group.expand" : "budget.group.collapse", defaultMessage: isCollapsed ? "Open {name}" : "Close {name}" },
-                          { name: group.name },
-                        )}
+                        aria-label={
+                          isCollapsed
+                            ? intl.formatMessage({ id: "budget.group.expand", defaultMessage: "Open {name}" }, { name: group.name })
+                            : intl.formatMessage({ id: "budget.group.collapse", defaultMessage: "Close {name}" }, { name: group.name })
+                        }
                         onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !isCollapsed }))}
                       >
                         <span className="chev" aria-hidden="true">
