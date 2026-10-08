@@ -6,9 +6,11 @@ import { isValidationError } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import { listTransactionsForAccount } from "../transactions/repository.ts";
 import {
   createScheduledTransaction,
   deleteScheduledTransaction,
+  fireDueScheduledTransactions,
   listReservationsForMonth,
   listScheduledTransactions,
   recordScheduledTransaction,
@@ -319,5 +321,82 @@ describe("scheduled transactions repository", () => {
 
   it("skipping an unknown scheduled transaction reports undefined", async () => {
     assert.equal(await skipScheduledTransaction(pool, workspaceId, randomUUID()), undefined);
+  });
+
+  describe("fireDueScheduledTransactions (#38)", () => {
+    it("records every scheduled transaction due on or before today, and leaves a future one alone", async () => {
+      const due = await createScheduledTransaction(pool, {
+        workspaceId,
+        accountId,
+        payee: "Due",
+        nextDueDate: "2026-09-01",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId, amountCents: 1_000 }],
+      });
+      const future = await createScheduledTransaction(pool, {
+        workspaceId,
+        accountId,
+        payee: "Future",
+        nextDueDate: "2026-12-25",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId, amountCents: 2_000 }],
+      });
+
+      const results = await fireDueScheduledTransactions(pool, workspaceId, "2026-09-15");
+      assert.ok(results.some((r) => r.scheduledTransaction.id === due.id));
+      assert.ok(!results.some((r) => r.scheduledTransaction.id === future.id));
+
+      const recorded = await listScheduledTransactions(pool, workspaceId);
+      assert.equal(recorded.find((t) => t.id === due.id)?.nextDueDate, "2026-10-01");
+      assert.equal(recorded.find((t) => t.id === future.id)?.nextDueDate, "2026-12-25");
+    });
+
+    it("catches up a scheduled transaction overdue by several recurrences, not just the most recent", async () => {
+      const created = await createScheduledTransaction(pool, {
+        workspaceId,
+        accountId,
+        payee: "Weekly thing",
+        nextDueDate: "2026-09-01",
+        recurEvery: 7,
+        recurUnit: "day",
+        splits: [{ categoryId, amountCents: 500 }],
+      });
+
+      // Three weeks overdue by "2026-09-22": 09-01, 09-08, 09-15 all fire, 09-22 does not yet.
+      const results = await fireDueScheduledTransactions(pool, workspaceId, "2026-09-21");
+      const own = results.filter((r) => r.scheduledTransaction.id === created.id);
+      assert.equal(own.length, 3);
+      assert.deepEqual(
+        own.map((r) => r.transaction.occurredAt.slice(0, 10)),
+        ["2026-09-01", "2026-09-08", "2026-09-15"],
+      );
+
+      const recorded = await listScheduledTransactions(pool, workspaceId);
+      assert.equal(recorded.find((t) => t.id === created.id)?.nextDueDate, "2026-09-22");
+    });
+
+    it("creates a real, cleared-eligible transaction for each one it fires", async () => {
+      const created = await createScheduledTransaction(pool, {
+        workspaceId,
+        accountId,
+        payee: "Streaming",
+        nextDueDate: "2026-08-01",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId, amountCents: 1_500 }],
+      });
+
+      await fireDueScheduledTransactions(pool, workspaceId, "2026-08-01");
+
+      const transactions = await listTransactionsForAccount(pool, workspaceId, accountId);
+      const fired = transactions.find((t) => t.payee === "Streaming" && t.budgetDate === "2026-08-01");
+      assert.ok(fired, "expected a real transaction dated on the scheduled transaction's own due date");
+      assert.equal(fired?.status, "pending");
+      assert.deepEqual(fired?.splits.map((s) => [s.categoryId, s.amountCents]), [[categoryId, -1_500]]);
+
+      await deleteScheduledTransaction(pool, workspaceId, created.id);
+    });
   });
 });
