@@ -325,6 +325,36 @@ export async function skipScheduledTransaction(
 }
 
 /**
+ * Automatic firing (`#38`, design.md: "a scheduled job materializes a real transaction on its
+ * due date"): every scheduled transaction whose own `nextDueDate` is on or before `today` (the
+ * caller's own workspace-local "today", `getCurrentDate`) is recorded exactly like pressing
+ * "Record" would. One still overdue by more than one recurrence step — the app was down a few
+ * days, or `recurEvery` is short — is recorded repeatedly until its own `nextDueDate` is in the
+ * future again, catching up every missed occurrence rather than only the most recent one.
+ */
+export async function fireDueScheduledTransactions(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  today: string,
+  queue?: QueueDriver,
+): Promise<RecordScheduledTransactionResult[]> {
+  const results: RecordScheduledTransactionResult[] = [];
+  const due = (await listScheduledTransactions(db, workspaceId)).filter((t) => t.nextDueDate <= today);
+  for (const scheduledTransaction of due) {
+    let current: ScheduledTransactionRecord | undefined = scheduledTransaction;
+    while (current && current.nextDueDate <= today) {
+      const result = await recordScheduledTransaction(db, workspaceId, current.id, queue);
+      if (!result) {
+        break;
+      }
+      results.push(result);
+      current = result.scheduledTransaction;
+    }
+  }
+  return results;
+}
+
+/**
  * The month's scheduled items not yet recorded (#22's own acceptance criterion, fed into
  * `packages/core`'s `computeBudgetMonth` by `budget/repository.ts`): one `ScheduledItem` per
  * split whose scheduled transaction is due in exactly that month. Nothing here marks a row

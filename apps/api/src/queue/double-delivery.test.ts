@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { createScheduledTransaction, listScheduledTransactions } from "../scheduled-transactions/repository.ts";
+import { createScheduledTransactionsFireHandler } from "../scheduled-transactions/fire-job.ts";
 import { createTransaction } from "../transactions/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
@@ -10,7 +12,7 @@ import type { PushDriver, PushOutcome, PushPayload } from "../notifications/driv
 import type { PushDrivers } from "../notifications/repository.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { assertEveryJobTypeCovered, assertSingleDelivery, defineDoubleDeliveryCase, type DoubleDeliveryCase } from "./double-delivery.ts";
-import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB } from "./job-types.ts";
+import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./job-types.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -85,7 +87,50 @@ describe("double-delivery harness (#37)", () => {
         return Number(rows[0]!.count);
       },
     });
-    cases = [budgetRecomputeCase];
+    const group = await superuserPool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
+      [workspaceId],
+    );
+    const category = await superuserPool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Rent', 1) RETURNING id",
+      [workspaceId, group.rows[0]!.id],
+    );
+    // A very long recurrence, so exactly one firing brings it past "today" — unlike the budget
+    // month's own fixture data above, this must stay deterministic for decades, not just today.
+    await createScheduledTransaction(superuserPool, {
+      workspaceId,
+      accountId: account.rows[0]!.id,
+      payee: "Scheduled double-delivery test",
+      nextDueDate: "2020-01-01",
+      recurEvery: 100,
+      recurUnit: "year",
+      splits: [{ categoryId: category.rows[0]!.id, amountCents: 1_000 }],
+    });
+    const scheduledTransactionsFireCase = defineDoubleDeliveryCase({
+      jobType: SCHEDULED_TRANSACTIONS_FIRE_JOB,
+      data: {},
+      handler: createScheduledTransactionsFireHandler({
+        enqueue: async () => null,
+        schedule: async () => {},
+        work: async () => {},
+        start: async () => {},
+        stop: async () => {},
+      }),
+      // No job_id column on transactions (unlike notification_deliveries above): the handler
+      // enumerates every workspace by itself, so a repeat delivery firing this fixture's own
+      // scheduled transaction a second time is exactly the double effect this guards against —
+      // counting by its own distinctive payee is enough, since nothing else in this suite's
+      // workspace creates one with this name.
+      async countEffects() {
+        const { rows } = await superuserPool.query<{ count: string }>(
+          "SELECT count(*) FROM transactions WHERE workspace_id = $1 AND payee = 'Scheduled double-delivery test'",
+          [workspaceId],
+        );
+        return Number(rows[0]!.count);
+      },
+    });
+
+    cases = [budgetRecomputeCase, scheduledTransactionsFireCase];
   });
 
   after(async () => {
