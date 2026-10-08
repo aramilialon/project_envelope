@@ -3,6 +3,7 @@ import { useAuth } from "react-oidc-context";
 
 import { listAccounts, type Account } from "../accounts/api.ts";
 import { listCategories, type Category } from "../categories/api.ts";
+import { getBudgetMonthEvents, type MonthEvent } from "../budget/api.ts";
 import { listTransactionsForAccount, type Transaction } from "./api.ts";
 
 export type AccountRegisterState =
@@ -14,14 +15,19 @@ export type AccountRegisterState =
       accounts: readonly Account[];
       categories: readonly Category[];
       transactions: readonly Transaction[];
+      /** This account's own events for `month` (recorded, pending and not-yet-recorded scheduled items) — the timeline, the "Record" to-do items and the projected balance are all fed from this one fetch (`#337`). */
+      events: readonly MonthEvent[];
     };
 
 /**
- * Fetches everything an account register (#54) needs: this account's own transactions, every
- * workspace account (the transfer destination picker, and to find this one's own name/type),
- * and every category (the picker, and to resolve a split's own name for display).
+ * Fetches everything an account register (#54, #337) needs: this account's own transactions,
+ * every workspace account (the transfer destination picker, and to find this one's own
+ * name/type), every category (the picker, and to resolve a split's own name for display), and
+ * this account's own events for `month` (`GET .../budget-months/:month/events?accountId=`, the
+ * same endpoint the budget month's own timeline uses, `#325`/`#346`) — the account register has
+ * no month navigation of its own, so the caller always passes the workspace's current one.
  */
-export function useAccountRegister(workspaceId: string, accountId: string): AccountRegisterState & { refetch(): void } {
+export function useAccountRegister(workspaceId: string, accountId: string, month: string): AccountRegisterState & { refetch(): void } {
   const auth = useAuth();
   const accessToken = auth.user?.access_token;
   const [state, setState] = useState<AccountRegisterState>({ status: "loading" });
@@ -36,8 +42,9 @@ export function useAccountRegister(workspaceId: string, accountId: string): Acco
       listAccounts(accessToken, workspaceId),
       listCategories(accessToken, workspaceId),
       listTransactionsForAccount(accessToken, workspaceId, accountId),
+      getBudgetMonthEvents(accessToken, workspaceId, month, accountId),
     ])
-      .then(([accounts, categories, transactions]) => {
+      .then(([accounts, categories, transactions, events]) => {
         if (cancelled) {
           return;
         }
@@ -46,7 +53,7 @@ export function useAccountRegister(workspaceId: string, accountId: string): Acco
           setState({ status: "error" });
           return;
         }
-        setState({ status: "ok", account, accounts, categories, transactions });
+        setState({ status: "ok", account, accounts, categories, transactions, events });
       })
       .catch(() => {
         if (!cancelled) {
@@ -56,7 +63,7 @@ export function useAccountRegister(workspaceId: string, accountId: string): Acco
     return () => {
       cancelled = true;
     };
-  }, [accessToken, workspaceId, accountId, generation]);
+  }, [accessToken, workspaceId, accountId, month, generation]);
 
   const refetch = useCallback(() => setGeneration((g) => g + 1), []);
 

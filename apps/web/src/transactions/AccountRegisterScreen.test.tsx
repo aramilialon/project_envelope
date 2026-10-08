@@ -1,9 +1,10 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as accountsApi from "../accounts/api.ts";
 import type { Account } from "../accounts/api.ts";
+import * as budgetApi from "../budget/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import type { Category } from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
@@ -52,7 +53,7 @@ function transaction(overrides: Partial<Transaction>): Transaction {
   };
 }
 
-function renderScreen(transactions: Transaction[]) {
+function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = []) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
     { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
@@ -60,6 +61,7 @@ function renderScreen(transactions: Transaction[]) {
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
   vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue(transactions);
+  vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue(events);
   return renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1/accounts/acc-checking"]}>
       <Routes>
@@ -258,6 +260,82 @@ describe("AccountRegisterScreen (#54, #333)", () => {
 
       expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
       expect(screen.queryByPlaceholderText("Search payee, category, memo")).not.toBeInTheDocument();
+    });
+
+    it("shows no timeline, and the 'To do' list capped to two items, directly under the balance (#337)", async () => {
+      setWidth(390);
+      renderScreen(
+        [transaction({ status: "pending" })],
+        [
+          { date: "2026-09-01", amountCents: -4_500, payee: "Internet provider", categoryId: null, kind: "scheduled", scheduledTransactionId: "s1" },
+          { date: "2026-09-20", amountCents: -85_000, payee: "Mortgage lender", categoryId: null, kind: "scheduled", scheduledTransactionId: "s2" },
+        ],
+      );
+      await screen.findByText("Supermarket");
+
+      expect(document.querySelector(".time")).toBeNull();
+      expect(document.querySelectorAll(".todo-i")).toHaveLength(2);
+      expect(screen.getByText("+1 more")).toBeInTheDocument();
+    });
+  });
+
+  describe("the timeline and 'To do' list (#337)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-15T10:00:00.000Z"));
+    });
+
+    it("shows the projected balance at month end: today's balance plus the not-yet-recorded scheduled items", async () => {
+      renderScreen(
+        [transaction({ splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }] })], // balance: -12.00
+        [{ date: "2026-09-20", amountCents: -4_500, payee: "Internet provider", categoryId: null, kind: "scheduled", scheduledTransactionId: "s1" }],
+      );
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByText("Projected at month end")).toBeInTheDocument();
+      expect(screen.getByText("-€57.00")).toBeInTheDocument();
+    });
+
+    it("shows the timeline, fed this account's own events", async () => {
+      renderScreen([transaction({})], [{ date: "2026-09-20", amountCents: -4_500, payee: "Internet provider", categoryId: null, kind: "scheduled", scheduledTransactionId: "s1" }]);
+      await screen.findByText("Supermarket");
+
+      expect(document.querySelector(".time")).not.toBeNull();
+    });
+
+    it("shows Record for an overdue scheduled transaction, and calls the record endpoint on click", async () => {
+      const record = vi.spyOn(budgetApi, "recordScheduledTransaction").mockResolvedValue(undefined as never);
+      renderScreen([transaction({})], [{ date: "2026-09-01", amountCents: -4_500, payee: "Internet provider", categoryId: null, kind: "scheduled", scheduledTransactionId: "s1" }]);
+      await screen.findByText("Supermarket");
+
+      fireEvent.click(screen.getByRole("button", { name: /Record Internet provider/ }));
+      await waitFor(() => expect(record).toHaveBeenCalledWith("t", "ws-1", "s1"));
+    });
+
+    it("shows Mark for a pending transaction, and marks it cleared on click", async () => {
+      const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue(undefined as never);
+      renderScreen([transaction({ id: "t1", status: "pending", payee: "Streaming service" })]);
+      await screen.findByText("Streaming service");
+
+      fireEvent.click(screen.getByRole("button", { name: /Mark Streaming service/ }));
+      await waitFor(() => expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t1", { status: "cleared" }));
+    });
+
+    it("shows Reconcile once something is cleared", async () => {
+      renderScreen([transaction({ status: "cleared" })]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByText("Reconcile the account")).toBeInTheDocument();
+    });
+
+    it("folds the timeline and 'To do' list away entirely while a side sheet is open", async () => {
+      renderScreen([transaction({ status: "cleared" })]);
+      await screen.findByText("Supermarket");
+      expect(document.querySelector(".time")).not.toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "New transaction" }));
+      expect(document.querySelector(".time")).toBeNull();
+      expect(document.querySelector(".todo")).toBeNull();
     });
   });
 });

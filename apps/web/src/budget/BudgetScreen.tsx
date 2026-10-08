@@ -8,8 +8,6 @@ import {
   reservationShortfall,
   type Bar as BarGeometry,
   type OverdueScheduledItem,
-  type TimelineEvent,
-  type TimelineEventStatus,
   type TodoItem,
 } from "@envelope/core";
 import { useState } from "react";
@@ -22,10 +20,11 @@ import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useTargets } from "../targets/useTargets.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
-import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
+import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent, ScheduledTransaction } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
+import { daysInMonth, monthLabel, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
@@ -53,11 +52,6 @@ function shiftMonth(month: string, delta: 1 | -1): string {
   return `${year}-${String(monthNumber).padStart(2, "0")}`;
 }
 
-function monthLabel(month: string, locale: string): string {
-  const date = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(date);
-}
-
 function barFor(category: BudgetGroupCategory): BarGeometry {
   return category.isPaymentCategory ? computePaymentCategoryBar(category) : computeCategoryBar(category);
 }
@@ -76,29 +70,6 @@ function groupAvailable(group: BudgetGroup): number {
 
 function groupOverspentCount(group: BudgetGroup): number {
   return group.categories.filter((c) => c.cashOverspending > 0 || c.creditOverspending > 0).length;
-}
-
-function daysInMonth(month: string): number {
-  const year = Number(month.slice(0, 4));
-  const monthNumber = Number(month.slice(5, 7));
-  return new Date(year, monthNumber, 0).getDate();
-}
-
-/** Only set when the workspace's own time zone is known and `month` is the one actually showing on today's own calendar in it — otherwise there is no "today" line or overdue distinction to draw. */
-function todayOf(month: string, timeZone: string | undefined): { iso: string; day: number } | undefined {
-  if (timeZone === undefined || month !== currentMonthIn(timeZone)) {
-    return undefined;
-  }
-  const iso = todayIsoIn(timeZone);
-  return { iso, day: Number(iso.slice(8, 10)) };
-}
-
-function toTimelineEvents(events: readonly MonthEvent[], today: { iso: string } | undefined): TimelineEvent[] {
-  return events.map((e): TimelineEvent => {
-    const direction = e.amountCents >= 0 ? "in" : "out";
-    const status: TimelineEventStatus = e.kind !== "scheduled" ? "recorded" : today !== undefined && e.date < today.iso ? "overdue" : "scheduled";
-    return { day: Number(e.date.slice(8, 10)), amountCents: Math.abs(e.amountCents), direction, status, payee: e.payee ?? "" };
-  });
 }
 
 function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: string } | undefined): OverdueScheduledItem[] {

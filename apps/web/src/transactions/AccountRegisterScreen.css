@@ -1,3 +1,19 @@
+/* The timeline and "To do" list, side by side under the balance (#337) — the same proportions
+   `.budget-screen .over` uses, collapsing to one column under 900px. */
+.register-screen .over {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .register-screen .over {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .register-screen .acc-head {
   display: flex;
   flex-wrap: wrap;
