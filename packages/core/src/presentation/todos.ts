@@ -19,7 +19,8 @@ export type TodoItem =
   | {
       readonly kind: "scheduledOverdue";
       readonly scheduledTransactionId: string;
-      readonly categoryId: string;
+      /** Null for scheduled income (#347) — it reserves no category. */
+      readonly categoryId: string | null;
       /** The scheduled transaction's own stored payee — raw data, never composed UI text. */
       readonly payee: string;
       /** Its own due date (`YYYY-MM-DD`) — raw data; the UI formats it with `Intl.DateTimeFormat`. */
@@ -33,11 +34,12 @@ export type TodoItem =
 /** A scheduled transaction due in the month and not recorded yet, overdue as of today — the caller's own call, since `packages/core` never reads the clock. */
 export interface OverdueScheduledItem {
   readonly scheduledTransactionId: string;
-  readonly categoryId: string;
+  /** Null for scheduled income (#347) — it reserves no category. */
+  readonly categoryId: string | null;
   readonly payee: string;
   /** Its own due date (`YYYY-MM-DD`). */
   readonly date: string;
-  /** Always positive: the expense's own amount, not yet spent. */
+  /** Always positive: the expense's or income's own amount, not yet recorded. */
   readonly amountCents: Cents;
 }
 

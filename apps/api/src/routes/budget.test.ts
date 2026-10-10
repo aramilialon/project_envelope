@@ -285,6 +285,33 @@ describe("budget routes", () => {
       assert.ok(event?.scheduledTransactionId);
     });
 
+    it("returns a scheduled income event with a positive amount and no category (#347)", async () => {
+      await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/scheduled-transactions`,
+        headers: auth(),
+        payload: {
+          accountId,
+          payee: "Salary",
+          nextDueDate: "2026-10-25",
+          recurEvery: 1,
+          recurUnit: "month",
+          splits: [{ categoryId: null, amountCents: 300_000 }],
+        },
+      });
+
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/budget-months/2026-10/events`,
+        headers: auth(),
+      });
+      const events = response.json().events as Array<{ payee: string | null; amountCents: number; categoryId: string | null }>;
+      const event = events.find((e) => e.payee === "Salary");
+      assert.ok(event, "expected the scheduled income's own event");
+      assert.equal(event?.amountCents, 300_000);
+      assert.equal(event?.categoryId, null);
+    });
+
     it("the accountId filter restricts events to that one account", async () => {
       const otherAccount = await superuserPool.query<{ id: string }>(
         "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Cash', 'cash', 'EUR') RETURNING id",

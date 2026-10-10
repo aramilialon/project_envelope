@@ -34,4 +34,6 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 | `0022_workspace_membership_listing.sql` | `workspaces`' own Row-Level Security policy (migration 0008) gains the membership-based read allowance `memberships` already had, so a user can list every workspace they belong to (#50) with only `app.user_id` set — `app.workspace_id` is never known before one is picked. Read-only: `WITH CHECK` (insert/update) is untouched |
 | `0023_system_job_workspace_listing.sql` | `app_is_system_job()` and a third `workspaces` read allowance for it (ADR 0010, #38) — a periodic job with no request of its own (so neither `app.user_id` nor `app.workspace_id` is ever set) can still enumerate every workspace, gated by a session variable only that one job's own handler sets. Read-only, same as 0022 |
 
+| `0024_scheduled_income.sql` | `scheduled_transaction_splits.category_id` becomes nullable (#347) — a scheduled transaction's single split can now be income (no category), mirroring an ordinary transaction's own null-category convention (migration 0006); application code still rejects a null category mixed into a multi-split template |
+
 Not here yet: every portfolio table (`instruments`, `trades`, `allocation_node`...), which belongs to a later step of the roadmap.

@@ -223,6 +223,25 @@ describe("budget month repository", () => {
     assert.equal(december.reserved, 0);
   });
 
+  it("a scheduled income item reserves nothing: unassigned and every category's reserved are unaffected (#347)", async () => {
+    const before = await getBudgetMonth(pool, workspaceId, "2027-02");
+    await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId: checkingAccountId,
+      payee: "Salary",
+      nextDueDate: "2027-02-15",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 300_000 }],
+    });
+
+    const after = await getBudgetMonth(pool, workspaceId, "2027-02");
+    assert.equal(after.unassigned, before.unassigned);
+    assert.equal(after.reserved, before.reserved);
+    const groceries = after.categories.find((c) => c.categoryId === categoryId);
+    assert.equal(groceries?.reserved, 0);
+  });
+
   it("counts a transfer to an off-budget account as activity on its on-budget leg's category, not an uncategorized transaction (#378)", async () => {
     const otherCategory = await pool.query<{ id: string }>(
       "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Investments', 4) RETURNING id",

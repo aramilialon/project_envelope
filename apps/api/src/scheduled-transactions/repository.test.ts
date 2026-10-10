@@ -12,6 +12,7 @@ import {
   deleteScheduledTransaction,
   fireDueScheduledTransactions,
   listReservationsForMonth,
+  listScheduledEventsForMonth,
   listScheduledTransactions,
   recordScheduledTransaction,
   skipScheduledTransaction,
@@ -112,6 +113,39 @@ describe("scheduled transactions repository", () => {
     });
     assert.equal(scheduled.payee, "Landlord");
     assert.equal(scheduled.splits.length, 2);
+  });
+
+  it("creates a scheduled income transaction, with no category (#347)", async () => {
+    const scheduled = await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId,
+      payee: "Salary",
+      nextDueDate: "2026-10-15",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 300_000 }],
+    });
+    assert.equal(scheduled.payee, "Salary");
+    assert.deepEqual(scheduled.splits.map((s) => [s.categoryId, s.amountCents]), [[null, 300_000]]);
+  });
+
+  it("rejects income mixed into a split with a real category (#347)", async () => {
+    await assert.rejects(
+      () =>
+        createScheduledTransaction(pool, {
+          workspaceId,
+          accountId,
+          nextDueDate: "2026-10-01",
+          recurEvery: 1,
+          recurUnit: "month",
+          splits: [
+            { categoryId: null, amountCents: 1_000 },
+            { categoryId, amountCents: 1_000 },
+          ],
+          amountCents: 2_000,
+        }),
+      (error: unknown) => isValidationError(error, "unsupported_transaction"),
+    );
   });
 
   it("lists every scheduled transaction of the workspace, ordered by due date", async () => {
@@ -276,6 +310,82 @@ describe("scheduled transactions repository", () => {
         [rent.rows[0]!.id, 90_000],
       ].sort(),
     );
+
+    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspace]);
+  });
+
+  it("excludes scheduled income from month reservations: it reserves nothing (#347)", async () => {
+    const before = await listReservationsForMonth(pool, workspaceId, "2026-10");
+    await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId,
+      payee: "Salary",
+      nextDueDate: "2026-10-15",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 300_000 }],
+    });
+    const after = await listReservationsForMonth(pool, workspaceId, "2026-10");
+    assert.equal(after.length, before.length);
+  });
+
+  it("records a scheduled income transaction as a real, positive, categoryless one (#347)", async () => {
+    const created = await createScheduledTransaction(pool, {
+      workspaceId,
+      accountId,
+      payee: "Salary",
+      nextDueDate: "2026-09-01",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 300_000 }],
+    });
+
+    const result = await recordScheduledTransaction(pool, workspaceId, created.id);
+    assert.deepEqual(result?.transaction.splits.map((s) => [s.categoryId, s.amountCents]), [[null, 300_000]]);
+    assert.equal(result?.scheduledTransaction.nextDueDate, "2026-10-01");
+  });
+
+  it("lists a scheduled income event with a positive amount and no category, unlike an expense's negated one (#347)", async () => {
+    const workspace = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Events', 'EUR', 'UTC')", [
+      workspace,
+    ]);
+    const account = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Checking', 'checking', 'EUR') RETURNING id",
+      [workspace],
+    );
+    const group = await pool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
+      [workspace],
+    );
+    const rent = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Rent', 1) RETURNING id",
+      [workspace, group.rows[0]!.id],
+    );
+    await createScheduledTransaction(pool, {
+      workspaceId: workspace,
+      accountId: account.rows[0]!.id,
+      payee: "Landlord",
+      nextDueDate: "2026-09-05",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: rent.rows[0]!.id, amountCents: 90_000 }],
+    });
+    await createScheduledTransaction(pool, {
+      workspaceId: workspace,
+      accountId: account.rows[0]!.id,
+      payee: "Salary",
+      nextDueDate: "2026-09-15",
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 300_000 }],
+    });
+
+    const events = await listScheduledEventsForMonth(pool, workspace, "2026-09");
+    const income = events.find((e) => e.payee === "Salary");
+    const expense = events.find((e) => e.payee === "Landlord");
+    assert.deepEqual([income?.amountCents, income?.categoryId], [300_000, null]);
+    assert.deepEqual([expense?.amountCents, expense?.categoryId], [-90_000, rent.rows[0]!.id]);
 
     await pool.query("DELETE FROM workspaces WHERE id = $1", [workspace]);
   });
