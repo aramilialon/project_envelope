@@ -137,6 +137,13 @@
   min-width: 0;
 }
 
+/* A `<Link>` wearing `.btn` ("Import", #59) is still an anchor — reset the browser's own link
+   underline so it reads as the same button every `<button class="btn">` elsewhere already does. */
+.register-screen a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .register-screen .search {
   display: flex;
   align-items: center;

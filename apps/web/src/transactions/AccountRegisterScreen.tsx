@@ -2,7 +2,7 @@ import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -83,11 +83,11 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
  * this account's own events only, a "To do" list of its own (Record an overdue scheduled
  * transaction, Mark a pending one cleared, Reconcile once there is something to fold in — opens
  * `ReconciliationScreen`, `#60`), filter tabs with counts, search, the transaction list with a
- * running balance (newest first), and the "+ New transaction"/edit side panel (`TransactionForm`)
- * for outflows, inflows, transfers and splits. "Import", also drawn in the mockup, is left out —
- * it has no screen yet (`#59`). A reconciled transaction opens a read-only summary with an
- * "Unlock" action instead of the form (`#60`): editing a locked transaction directly has no
- * endpoint, only this explicit, audited unlock.
+ * running balance (newest first), the "+ New transaction"/edit side panel (`TransactionForm`)
+ * for outflows, inflows, transfers and splits, and "Import" (opens `ImportScreen`, `#59`). A
+ * reconciled transaction opens a read-only summary with an "Unlock" action instead of the form
+ * (`#60`): editing a locked transaction directly has no endpoint, only this explicit, audited
+ * unlock.
  *
  * The timeline and "To do" list fold away entirely while a side sheet is open (`open !== null`),
  * to leave the register room (design.md, confirmed in the mockup: opening a row removes both from
@@ -375,6 +375,9 @@ export default function AccountRegisterScreen() {
               }
             />
           </label>
+          <Link className="btn" to={`/${workspaceId}/accounts/${accountId}/import`}>
+            {intl.formatMessage({ id: "register.import", defaultMessage: "Import" })}
+          </Link>
           <button type="button" className="btn primary" onClick={() => setOpen("new")}>
             {intl.formatMessage({ id: "register.new", defaultMessage: "New transaction" })}
           </button>

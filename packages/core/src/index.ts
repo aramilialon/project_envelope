@@ -37,7 +37,7 @@ export type { DuplicateMatch, ExistingTransaction, ImportedTransaction } from ".
 export { detectDuplicates } from "./import/duplicate-detection.ts";
 export type { ImportRow } from "./import/row.ts";
 export type { CsvDateFormat, CsvMapping, CsvRow, DecimalSeparator } from "./import/csv.ts";
-export { parseCsv } from "./import/csv.ts";
+export { parseCsv, splitCsvLine } from "./import/csv.ts";
 export { parseOfx } from "./import/ofx.ts";
 export type { QifDateFormat, QifDecimalSeparator, QifHints } from "./import/qif.ts";
 export { parseQif } from "./import/qif.ts";
