@@ -33,7 +33,7 @@ const ROLES: readonly ColumnRole[] = ["", "date", "desc", "amount", "out", "in",
 const INCOME_SELECTION = "__income__";
 const TRANSFER_PREFIX = "__transfer__";
 
-function decisionFromSelection(stagedTransactionId: string, selection: string): StagedTransactionDecision | undefined {
+function decisionFromSelection(stagedTransactionId: string, selection: string, transferCategoryId?: string): StagedTransactionDecision | undefined {
   if (!selection) {
     return undefined;
   }
@@ -41,7 +41,12 @@ function decisionFromSelection(stagedTransactionId: string, selection: string): 
     return { stagedTransactionId, kind: "income" };
   }
   if (selection.startsWith(TRANSFER_PREFIX)) {
-    return { stagedTransactionId, kind: "transfer", otherAccountId: selection.slice(TRANSFER_PREFIX.length) };
+    return {
+      stagedTransactionId,
+      kind: "transfer",
+      otherAccountId: selection.slice(TRANSFER_PREFIX.length),
+      ...(transferCategoryId ? { categoryId: transferCategoryId } : {}),
+    };
   }
   return { stagedTransactionId, kind: "category", categoryId: selection };
 }
@@ -97,6 +102,7 @@ export default function ImportScreen() {
   const [stageResult, setStageResult] = useState<StageImportResult | null>(null);
   const [includes, setIncludes] = useState<Record<string, boolean>>({});
   const [selections, setSelections] = useState<Record<string, string>>({});
+  const [transferCategories, setTransferCategories] = useState<Record<string, string>>({});
   const [confirmResult, setConfirmResult] = useState<{ confirmed: number; clearedDuplicates: number; rejected: number; stillStaged: number } | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -113,6 +119,23 @@ export default function ImportScreen() {
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const otherAccounts = accounts.filter((a) => a.id !== accountId);
   const openCategories = categories.filter((c) => !c.archived);
+
+  // design.md, "Account register": "transfers to an off-budget account ask for a category" —
+  // money is leaving or entering the budget, the same as ordinary spending (#378, #379).
+  function needsTransferCategory(selection: string): boolean {
+    if (!selection.startsWith(TRANSFER_PREFIX)) {
+      return false;
+    }
+    const other = otherAccounts.find((a) => a.id === selection.slice(TRANSFER_PREFIX.length));
+    return other !== undefined && other.onBudget !== account.onBudget;
+  }
+
+  function rowIsReady(selection: string | undefined, transferCategoryId: string | undefined): boolean {
+    if (!selection) {
+      return false;
+    }
+    return !needsTransferCategory(selection) || !!transferCategoryId;
+  }
 
   function closingBalanceCents(): number | undefined {
     if (!closingBalanceStr.trim()) {
@@ -234,8 +257,8 @@ export default function ImportScreen() {
       if (row.duplicateOf !== null) {
         // Inert: the server clears a duplicate row from its own staged record, whatever decision it is given.
         decisions.push({ stagedTransactionId: row.id, kind: "income" });
-      } else if (includes[row.id] && selections[row.id]) {
-        const decision = decisionFromSelection(row.id, selections[row.id]!);
+      } else if (includes[row.id] && rowIsReady(selections[row.id], transferCategories[row.id])) {
+        const decision = decisionFromSelection(row.id, selections[row.id]!, transferCategories[row.id]);
         if (decision) {
           decisions.push(decision);
         }
@@ -270,6 +293,7 @@ export default function ImportScreen() {
     setStageResult(null);
     setIncludes({});
     setSelections({});
+    setTransferCategories({});
     setConfirmResult(null);
     setError(null);
   }
@@ -289,8 +313,8 @@ export default function ImportScreen() {
   const staged = stageResult?.staged ?? [];
   const newRows = staged.filter((r) => r.duplicateOf === null);
   const duplicateRows = staged.filter((r) => r.duplicateOf !== null);
-  const readyCount = newRows.filter((r) => includes[r.id] && selections[r.id]).length;
-  const missingCount = newRows.filter((r) => includes[r.id] && !selections[r.id]).length;
+  const readyCount = newRows.filter((r) => includes[r.id] && rowIsReady(selections[r.id], transferCategories[r.id])).length;
+  const missingCount = newRows.filter((r) => includes[r.id] && !rowIsReady(selections[r.id], transferCategories[r.id])).length;
   const canConfirm = readyCount > 0 || duplicateRows.length > 0;
 
   return (
@@ -506,7 +530,7 @@ export default function ImportScreen() {
                     </span>
                     {isDuplicate ? (
                       <span className="badge dup">{intl.formatMessage({ id: "import.check.badge.duplicate", defaultMessage: "Already there" })}</span>
-                    ) : !selections[row.id] ? (
+                    ) : !rowIsReady(selections[row.id], transferCategories[row.id]) ? (
                       <span className="badge need">{intl.formatMessage({ id: "import.check.badge.need", defaultMessage: "Needs a category" })}</span>
                     ) : (
                       <span className="badge new">{intl.formatMessage({ id: "import.check.badge.new", defaultMessage: "New" })}</span>
@@ -537,6 +561,25 @@ export default function ImportScreen() {
                           </option>
                         ))}
                       </select>
+                      {needsTransferCategory(selections[row.id] ?? "") && (
+                        <>
+                          <label className="sr-only" htmlFor={`import-transfer-cat-${row.id}`}>
+                            {intl.formatMessage({ id: "import.check.column.category", defaultMessage: "Category" })}
+                          </label>
+                          <select
+                            id={`import-transfer-cat-${row.id}`}
+                            value={transferCategories[row.id] ?? ""}
+                            onChange={(event) => setTransferCategories((current) => ({ ...current, [row.id]: event.target.value }))}
+                          >
+                            <option value="">{intl.formatMessage({ id: "import.check.chooseCategory", defaultMessage: "Choose a category" })}</option>
+                            {openCategories.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
                     </span>
                   )}
                   <span className="r n">{money(row.amountCents)}</span>

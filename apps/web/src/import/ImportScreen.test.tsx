@@ -26,15 +26,16 @@ const CHECKING: Account = {
   createdAt: "2026-01-01",
 };
 const SAVINGS: Account = { ...CHECKING, id: "acc-savings", name: "Savings" };
+const BROKERAGE: Account = { ...CHECKING, id: "acc-brokerage", name: "Brokerage", onBudget: false };
 const GROCERIES: Category = { id: "cat-groceries", workspaceId: "ws-1", groupId: "g1", name: "Groceries", sortOrder: 1, archived: false };
 
 function csvFile(name: string, content: string): File {
   return new File([content], name, { type: "text/csv" });
 }
 
-function renderScreen() {
+function renderScreen(accounts: Account[] = [CHECKING, SAVINGS]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
-  vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING, SAVINGS]);
+  vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
   vi.spyOn(importApi, "getImportMapping").mockResolvedValue(undefined);
   return renderWithIntl(
@@ -149,5 +150,41 @@ describe("ImportScreen (#59)", () => {
     );
     expect(await screen.findByText("Import complete")).toBeInTheDocument();
     expect(screen.getByText("1 transaction added as cleared, 1 already there marked cleared.")).toBeInTheDocument();
+  });
+
+  it("asks for a category on a transfer to an off-budget account, and sends it (#378, #379)", async () => {
+    renderScreen([CHECKING, SAVINGS, BROKERAGE]);
+    await screen.findByText(/Checking/);
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [
+        { id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Brokerage deposit", memo: null, amountCents: -5_000, externalId: null, duplicateOf: null, createdAt: "2026-09-01" },
+      ],
+      duplicateCount: 0,
+    });
+    const file = new File(["<OFX></OFX>"], "statement.ofx");
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText("Brokerage deposit");
+
+    fireEvent.change(screen.getByLabelText("Category", { selector: "select" }), { target: { value: "__transfer__acc-brokerage" } });
+    expect(screen.getByText("Needs a category")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Import 0 transactions" })).toBeDisabled();
+
+    const transferCategorySelect = document.querySelector("#import-transfer-cat-new-1") as HTMLSelectElement;
+    expect(transferCategorySelect).toBeInTheDocument();
+    fireEvent.change(transferCategorySelect, { target: { value: "cat-groceries" } });
+    expect(screen.getByRole("button", { name: "Import 1 transaction" })).toBeEnabled();
+
+    const confirm = vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([
+      { stagedTransactionId: "new-1", outcome: "confirmed", transactionId: "t1" },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Import 1 transaction" }));
+
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith("t", "ws-1", "acc-checking", [
+        { stagedTransactionId: "new-1", kind: "transfer", otherAccountId: "acc-brokerage", categoryId: "cat-groceries" },
+      ]),
+    );
   });
 });

@@ -242,7 +242,13 @@ export async function listStagedTransactions(
 export type StagedTransactionDecision =
   | { readonly stagedTransactionId: string; readonly kind: "income" }
   | { readonly stagedTransactionId: string; readonly kind: "category"; readonly categoryId: string }
-  | { readonly stagedTransactionId: string; readonly kind: "transfer"; readonly otherAccountId: string }
+  | {
+      readonly stagedTransactionId: string;
+      readonly kind: "transfer";
+      readonly otherAccountId: string;
+      /** Required, and applied to the on-budget leg, when `staged.accountId` and `otherAccountId` disagree on on-budget status (#378, #379). */
+      readonly categoryId?: string;
+    }
   /** A row named in the confirmation with no category, transfer or income recognition — blocks only that row (design.md, #28's own acceptance criteria). */
   | { readonly stagedTransactionId: string; readonly kind: "invalid" };
 
@@ -324,6 +330,7 @@ async function confirmAsNewTransaction(
       status: "cleared",
       ...(staged.payee ? { payee: staged.payee } : {}),
       ...(staged.memo ? { memo: staged.memo } : {}),
+      ...(decision.categoryId !== undefined ? { categoryId: decision.categoryId } : {}),
     });
     return transfer.source.accountId === staged.accountId ? transfer.source.id : transfer.destination.id;
   }

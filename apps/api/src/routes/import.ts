@@ -81,7 +81,12 @@ function parseDecisions(body: Record<string, unknown>): StagedTransactionDecisio
     } else if (kind === "category" && typeof categoryId === "string") {
       decisions.push({ stagedTransactionId, kind: "category", categoryId });
     } else if (kind === "transfer" && typeof otherAccountId === "string") {
-      decisions.push({ stagedTransactionId, kind: "transfer", otherAccountId });
+      decisions.push({
+        stagedTransactionId,
+        kind: "transfer",
+        otherAccountId,
+        ...(typeof categoryId === "string" ? { categoryId } : {}),
+      });
     } else {
       // No category, transfer or income recognition: blocks only this row's confirmation, not the whole batch.
       decisions.push({ stagedTransactionId, kind: "invalid" });
@@ -180,7 +185,9 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
       return;
     }
 
-    const categoryIdsToCheck = decisions.filter((d) => d.kind === "category").map((d) => d.categoryId);
+    const categoryIdsToCheck = decisions
+      .map((d) => (d.kind === "category" ? d.categoryId : d.kind === "transfer" ? d.categoryId : undefined))
+      .filter((id): id is string => id !== undefined);
     if (categoryIdsToCheck.length > 0) {
       const categories = await listCategories(request.db!, request.workspace!.id);
       const knownCategoryIds = new Set(categories.map((c) => c.id));

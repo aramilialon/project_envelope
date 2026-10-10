@@ -67,6 +67,7 @@ describe("import repository", () => {
   let workspaceId: string;
   let accountId: string;
   let otherAccountId: string;
+  let offBudgetAccountId: string;
   let categoryId: string;
 
   before(async () => {
@@ -87,6 +88,11 @@ describe("import repository", () => {
       [workspaceId],
     );
     otherAccountId = otherAccount.rows[0]!.id;
+    const offBudgetAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    offBudgetAccountId = offBudgetAccount.rows[0]!.id;
     const group = await pool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -228,6 +234,36 @@ describe("import repository", () => {
     const destinationTransactions = await listTransactionsForAccount(pool, workspaceId, otherAccountId);
     const destinationLeg = destinationTransactions.find((t) => t.id === sourceLeg?.transferId);
     assert.equal(destinationLeg?.splits[0]?.amountCents, 2000);
+  });
+
+  it("confirms a transfer to an off-budget account given a category, on its on-budget leg (#378, #379)", async () => {
+    const content = "Date,Description,Amount\n2026-09-23,To brokerage,-30.00\n";
+    const staged = await stageCsvImport(pool, workspaceId, accountId, content, MAPPING);
+    const stagedId = staged.staged[0]!.id;
+
+    const outcomes = await confirmStagedTransactions(pool, workspaceId, accountId, [
+      { stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId, categoryId },
+    ]);
+    assert.equal(outcomes[0]?.outcome, "confirmed");
+
+    const sourceTransactions = await listTransactionsForAccount(pool, workspaceId, accountId);
+    const sourceLeg = sourceTransactions.find((t) => t.payee === "To brokerage");
+    assert.equal(sourceLeg?.splits[0]?.categoryId, categoryId);
+  });
+
+  it("leaves a transfer to an off-budget account staged, rejected for lack of a category (#378, #379)", async () => {
+    const content = "Date,Description,Amount\n2026-09-24,To brokerage again,-40.00\n";
+    const staged = await stageCsvImport(pool, workspaceId, accountId, content, MAPPING);
+    const stagedId = staged.staged[0]!.id;
+
+    const outcomes = await confirmStagedTransactions(pool, workspaceId, accountId, [
+      { stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId },
+    ]);
+    assert.equal(outcomes[0]?.outcome, "rejected");
+    assert.ok(outcomes[0] && "code" in outcomes[0] && outcomes[0].code === "uncategorized_transaction");
+
+    const remaining = await listStagedTransactions(pool, workspaceId, accountId);
+    assert.ok(remaining.some((r) => r.id === stagedId), "the row stays staged for a retry, not lost");
   });
 
   it("confirming a duplicate-matched row clears the existing transaction instead of creating a new one", async () => {
