@@ -82,7 +82,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   const [submitting, setSubmitting] = useState(false);
 
   const otherAccounts = accounts.filter((a) => a.id !== accountId);
-  const openCategories = categories.filter((c) => !c.archived);
+  // A card's own payment category is never a valid choice here (#386) — `packages/core` accepts
+  // one as an ordinary Activity.categoryId only for the system-generated starting-balance split,
+  // never a category the user picks by hand.
+  const paymentCategoryIds = new Set(accounts.map((a) => a.paymentCategoryId).filter((id): id is string => id !== null));
+  const openCategories = categories.filter((c) => !c.archived && !paymentCategoryIds.has(c.id));
 
   // design.md, "Account register": "transfers to an off-budget account ask for a category" —
   // money is leaving (or entering) the budget, the same as ordinary spending or income, on

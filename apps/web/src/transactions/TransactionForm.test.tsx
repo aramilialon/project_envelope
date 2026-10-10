@@ -26,6 +26,8 @@ const SAVINGS: Account = { ...CHECKING, id: "acc-savings", name: "Savings" };
 const BROKERAGE: Account = { ...CHECKING, id: "acc-brokerage", name: "Brokerage", onBudget: false };
 const GROCERIES: Category = { id: "cat-groceries", workspaceId: "ws-1", groupId: "g1", name: "Groceries", sortOrder: 1, archived: false };
 const RESTAURANTS: Category = { id: "cat-restaurants", workspaceId: "ws-1", groupId: "g1", name: "Restaurants", sortOrder: 2, archived: false };
+const VISA_PAYMENT: Category = { id: "cat-visa-payment", workspaceId: "ws-1", groupId: "g2", name: "Visa payment", sortOrder: 1, archived: false };
+const VISA: Account = { ...CHECKING, id: "acc-visa", name: "Visa", type: "credit_card", paymentCategoryId: "cat-visa-payment" };
 
 function renderForm(overrides: Partial<Parameters<typeof TransactionForm>[0]> = {}) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
@@ -73,6 +75,12 @@ describe("TransactionForm (#54)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+  });
+
+  it("never offers a card's own payment category as an ordinary outflow's category (#386)", () => {
+    renderForm({ accounts: [CHECKING, VISA], categories: [GROCERIES, RESTAURANTS, VISA_PAYMENT] });
+    const options = [...screen.getByLabelText("Category").querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(["Choose a category", "Groceries", "Restaurants"]);
   });
 
   it("creates an inflow with no category as ready-to-assign income", async () => {
