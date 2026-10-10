@@ -29,7 +29,10 @@ function parseScheduledSplits(body: Record<string, unknown>): ScheduledSplitInpu
       return undefined;
     }
     const { categoryId, amountCents, memo } = item as Record<string, unknown>;
-    if (typeof categoryId !== "string" || typeof amountCents !== "number") {
+    if (categoryId !== null && typeof categoryId !== "string") {
+      return undefined;
+    }
+    if (typeof amountCents !== "number") {
       return undefined;
     }
     splits.push({ categoryId, amountCents, ...(typeof memo === "string" ? { memo } : {}) });
@@ -37,9 +40,9 @@ function parseScheduledSplits(body: Record<string, unknown>): ScheduledSplitInpu
   return splits;
 }
 
-/** The first split's categoryId that does not name a category of this workspace, if any. */
+/** The first split's categoryId that does not name a category of this workspace, if any — `null` (income, #347) always names one of its own, since there is none to look up. */
 function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonly ScheduledSplitInput[]): string | undefined {
-  return splits.map((s) => s.categoryId).find((id) => !categoryIds.has(id));
+  return splits.map((s) => s.categoryId).find((id): id is string => id !== null && !categoryIds.has(id));
 }
 
 export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: DbPool, queue?: QueueDriver): void {

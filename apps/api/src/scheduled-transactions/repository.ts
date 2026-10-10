@@ -7,16 +7,22 @@ import { createTransaction, type TransactionRecord } from "../transactions/repos
 export type { RecurUnit };
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
 
-/** A scheduled transaction is never income: unlike `SplitInput` on a real transaction, `categoryId` is always required. */
+/**
+ * `categoryId: null` means scheduled income (#347) — the single-split-only convention a real
+ * transaction's own `SplitInput` already uses (design.md, "Scheduled": "income reserves nothing
+ * and lands in unassigned money when recorded"). A multi-split template still needs a real
+ * category on every row; `null` mixed into one is rejected the same way a real transaction's own
+ * split would be.
+ */
 export interface ScheduledSplitInput {
-  readonly categoryId: string;
+  readonly categoryId: string | null;
   readonly amountCents: number;
   readonly memo?: string;
 }
 
 export interface ScheduledSplitRecord {
   readonly id: string;
-  readonly categoryId: string;
+  readonly categoryId: string | null;
   readonly amountCents: number;
   readonly memo: string | null;
 }
@@ -75,7 +81,7 @@ interface ScheduledTransactionRow {
 interface ScheduledSplitRow {
   readonly id: string;
   readonly scheduled_transaction_id: string;
-  readonly category_id: string;
+  readonly category_id: string | null;
   readonly amount_cents: string;
   readonly memo: string | null;
 }
@@ -99,13 +105,14 @@ function assertValidRecurrence(recurEvery: number, recurUnit: RecurUnit): void {
 
 /**
  * Validates a scheduled transaction's splits, mirroring `transactions/repository.ts`'s own
- * `validateSplits` minus the two things that only make sense for something already recorded:
- * a split is never income here (`categoryId` is always required), and an amount is always
- * positive — a scheduled item only ever reserves money (design.md, "Scheduled transactions";
- * `packages/core`'s `ScheduledItem.amount`). A payment category is rejected too: reserving
- * against a card's own payment category is not a supported combination (core's `computeBudgetMonth`
- * would otherwise reject it at budget-month time as an "unknown category", since scheduled items
- * are only ever validated against the regular category set).
+ * `validateSplits`: a `null` category means income (#347), rejected when mixed into more than
+ * one split, the same as a real transaction's own split. Unlike a real transaction, an amount is
+ * always positive — a scheduled item only ever reserves (an expense) or expects (income) money,
+ * never a signed, already-happened one (design.md, "Scheduled transactions"; `packages/core`'s
+ * `ScheduledItem.amount`). A payment category is rejected too: reserving against a card's own
+ * payment category is not a supported combination (core's `computeBudgetMonth` would otherwise
+ * reject it at budget-month time as an "unknown category", since scheduled items are only ever
+ * validated against the regular category set).
  */
 function validateScheduledSplits(
   splits: readonly ScheduledSplitInput[],
@@ -120,10 +127,13 @@ function validateScheduledSplits(
     assertCents(split.amountCents);
     if (split.amountCents <= 0) {
       throw new ValidationError("invalid_amount", "a scheduled item's amount must be positive", {
-        categoryId: split.categoryId,
+        ...(split.categoryId !== null ? { categoryId: split.categoryId } : {}),
       });
     }
-    if (paymentCategoryIds.has(split.categoryId)) {
+    if (split.categoryId === null && splits.length > 1) {
+      throw new ValidationError("unsupported_transaction", "income cannot be part of a split");
+    }
+    if (split.categoryId !== null && paymentCategoryIds.has(split.categoryId)) {
       throw new ValidationError(
         "unsupported_transaction",
         "a scheduled item cannot reserve money in a payment category",
@@ -301,9 +311,15 @@ export async function recordScheduledTransaction(
       occurredAt: existing.nextDueDate,
       ...(existing.payee ? { payee: existing.payee } : {}),
       ...(existing.memo ? { memo: existing.memo } : {}),
-      // A scheduled split's own amount is always positive (a reservation); a real outflow split
-      // is negative, the same sign flip `listScheduledEventsForMonth` (#325) already does.
-      splits: existing.splits.map((s) => ({ categoryId: s.categoryId, amountCents: -s.amountCents, ...(s.memo ? { memo: s.memo } : {}) })),
+      // A scheduled split's own amount is always positive (a reservation, or income expected to
+      // arrive); a real outflow split is negative, the same sign flip `listScheduledEventsForMonth`
+      // (#325) already does — income (`categoryId: null`, #347) stays positive either way, the
+      // same convention a real income transaction's own split already uses.
+      splits: existing.splits.map((s) => ({
+        categoryId: s.categoryId,
+        amountCents: s.categoryId === null ? s.amountCents : -s.amountCents,
+        ...(s.memo ? { memo: s.memo } : {}),
+      })),
     },
     queue,
   );
@@ -360,24 +376,34 @@ export async function fireDueScheduledTransactions(
  * split whose scheduled transaction is due in exactly that month. Nothing here marks a row
  * "recorded" yet — materialization is a separate, later issue (0.1.5 Queue and notifications) —
  * so every row in the table qualifies as long as its own due date falls in the requested month.
+ * Scheduled income (`category_id IS NULL`, #347) is excluded: it reserves nothing, design.md's
+ * own "income reserves nothing and lands in unassigned money when recorded" — `ScheduledItem`
+ * itself has no representation for it, only for a reservation.
  */
 export async function listReservationsForMonth(db: DbPool | DbClient, workspaceId: string, month: string): Promise<ScheduledItem[]> {
   const { rows } = await db.query<{ category_id: string; amount_cents: string }>(
     `SELECT s.category_id, s.amount_cents
      FROM scheduled_transaction_splits s
      JOIN scheduled_transactions t ON t.id = s.scheduled_transaction_id
-     WHERE t.workspace_id = $1 AND to_char(t.next_due_date, 'YYYY-MM') = $2`,
+     WHERE t.workspace_id = $1 AND to_char(t.next_due_date, 'YYYY-MM') = $2 AND s.category_id IS NOT NULL`,
     [workspaceId, month],
   );
   return rows.map((row) => ({ categoryId: row.category_id, amount: Number(row.amount_cents) }));
 }
 
-/** One event per split, mirroring `transactions/repository.ts`'s own `listTransactionEventsForMonth` (#325). A scheduled split's own `amountCents` is always positive (a reservation, never signed); the event negates it, the same sign convention a real expense split already uses. */
+/**
+ * One event per split, mirroring `transactions/repository.ts`'s own `listTransactionEventsForMonth`
+ * (#325). A scheduled split's own `amountCents` is always positive (a reservation, or income
+ * expected to arrive, never signed); the event negates it for an expense, the same sign
+ * convention a real outflow split already uses, but leaves income (`categoryId: null`, #347)
+ * positive, matching a real income transaction's own split.
+ */
 export interface ScheduledEvent {
   readonly date: string;
   readonly amountCents: number;
   readonly payee: string | null;
-  readonly categoryId: string;
+  /** Null for scheduled income (#347). */
+  readonly categoryId: string | null;
   readonly kind: "scheduled";
   readonly scheduledTransactionId: string;
 }
@@ -386,7 +412,7 @@ interface ScheduledEventRow {
   readonly date: string;
   readonly amount_cents: string;
   readonly payee: string | null;
-  readonly category_id: string;
+  readonly category_id: string | null;
   readonly scheduled_transaction_id: string;
 }
 
@@ -415,7 +441,7 @@ export async function listScheduledEventsForMonth(
   );
   return rows.map((row) => ({
     date: row.date,
-    amountCents: -Number(row.amount_cents),
+    amountCents: row.category_id === null ? Number(row.amount_cents) : -Number(row.amount_cents),
     payee: row.payee,
     categoryId: row.category_id,
     kind: "scheduled",

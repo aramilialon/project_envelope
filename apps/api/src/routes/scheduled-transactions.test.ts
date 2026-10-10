@@ -150,6 +150,41 @@ describe("scheduled transactions routes", () => {
     assert.equal(removedAgain.statusCode, 404);
   });
 
+  it("creates and records a scheduled income transaction, with no category (#347)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: {
+        accountId,
+        payee: "Salary",
+        nextDueDate: "2026-10-15",
+        recurEvery: 1,
+        recurUnit: "month",
+        splits: [{ categoryId: null, amountCents: 300_000 }],
+      },
+    });
+    assert.equal(created.statusCode, 201);
+    const scheduledTransactionId = created.json().id as string;
+    assert.deepEqual(
+      created.json().splits.map((s: { categoryId: string | null; amountCents: number }) => [s.categoryId, s.amountCents]),
+      [[null, 300_000]],
+    );
+
+    const recorded = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/record`,
+      headers: auth,
+    });
+    assert.equal(recorded.statusCode, 201);
+    assert.deepEqual(
+      recorded.json().transaction.splits.map((s: { categoryId: string | null; amountCents: number }) => [s.categoryId, s.amountCents]),
+      [[null, 300_000]],
+    );
+  });
+
   it("rejects an unknown category", async () => {
     const response = await app.fastify.inject({
       method: "POST",
