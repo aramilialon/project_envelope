@@ -23,6 +23,7 @@ const CHECKING: Account = {
   createdAt: "2026-01-01",
 };
 const SAVINGS: Account = { ...CHECKING, id: "acc-savings", name: "Savings" };
+const BROKERAGE: Account = { ...CHECKING, id: "acc-brokerage", name: "Brokerage", onBudget: false };
 const GROCERIES: Category = { id: "cat-groceries", workspaceId: "ws-1", groupId: "g1", name: "Groceries", sortOrder: 1, archived: false };
 const RESTAURANTS: Category = { id: "cat-restaurants", workspaceId: "ws-1", groupId: "g1", name: "Restaurants", sortOrder: 2, archived: false };
 
@@ -120,6 +121,38 @@ describe("TransactionForm (#54)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Choose a destination account.");
+  });
+
+  it("asks for a category on a transfer to an off-budget account, and sends it (#378)", async () => {
+    const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
+    renderForm({ accounts: [CHECKING, BROKERAGE] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "50.00" } });
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-brokerage" } });
+    expect(screen.getByLabelText("Category")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+    expect(createTransfer).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(createTransfer).toHaveBeenCalledWith(
+        "t",
+        "ws-1",
+        expect.objectContaining({ destinationAccountId: "acc-brokerage", categoryId: "cat-groceries" }),
+      ),
+    );
+  });
+
+  it("does not ask for a category on a transfer between two on-budget accounts", async () => {
+    renderForm();
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-savings" } });
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
   });
 
   it("rejects an invalid amount without calling the API", async () => {

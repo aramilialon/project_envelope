@@ -34,6 +34,7 @@ describe("transactions repository", () => {
   let savingsAccountId: string;
   let creditCardAccountId: string;
   let otherCreditCardAccountId: string;
+  let offBudgetAccountId: string;
   let categoryId: string;
   let otherCategoryId: string;
 
@@ -67,6 +68,11 @@ describe("transactions repository", () => {
       [workspaceId],
     );
     otherCreditCardAccountId = otherCreditCardAccount.rows[0]!.id;
+    const offBudgetAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    offBudgetAccountId = offBudgetAccount.rows[0]!.id;
     const group = await pool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -294,6 +300,61 @@ describe("transactions repository", () => {
     });
     assert.equal(transfer.destination.accountId, creditCardAccountId);
     assert.equal(transfer.destination.splits[0]?.amountCents, 2000);
+  });
+
+  it("puts the given category on the on-budget leg of a transfer to an off-budget account (#378)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-11",
+      amountCents: 4000,
+      categoryId,
+    });
+    assert.equal(transfer.source.splits[0]?.categoryId, categoryId);
+    assert.equal(transfer.source.splits[0]?.amountCents, -4000);
+    assert.equal(transfer.destination.splits[0]?.categoryId, null);
+  });
+
+  it("puts the given category on the on-budget leg of a transfer from an off-budget account (#378)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: accountId,
+      occurredAt: "2026-09-11",
+      amountCents: 1500,
+      categoryId: otherCategoryId,
+    });
+    assert.equal(transfer.source.splits[0]?.categoryId, null);
+    assert.equal(transfer.destination.splits[0]?.categoryId, otherCategoryId);
+    assert.equal(transfer.destination.splits[0]?.amountCents, 1500);
+  });
+
+  it("rejects a transfer between an on-budget and an off-budget account with no category (#378)", async () => {
+    await assert.rejects(
+      () =>
+        createTransfer(pool, {
+          workspaceId,
+          sourceAccountId: accountId,
+          destinationAccountId: offBudgetAccountId,
+          occurredAt: "2026-09-11",
+          amountCents: 1000,
+        }),
+      (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+    );
+  });
+
+  it("ignores a given category when both accounts are on-budget (#378)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-11",
+      amountCents: 600,
+      categoryId,
+    });
+    assert.equal(transfer.source.splits[0]?.categoryId, null);
+    assert.equal(transfer.destination.splits[0]?.categoryId, null);
   });
 
   it("creates a transfer between two on-budget credit cards the same way, no special-casing (#260)", async () => {

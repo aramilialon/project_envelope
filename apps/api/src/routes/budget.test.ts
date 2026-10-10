@@ -354,7 +354,7 @@ describe("budget routes", () => {
         method: "POST",
         url: `/workspaces/${workspaceId}/transfers`,
         headers: auth(),
-        payload: { sourceAccountId: accountId, destinationAccountId: offBudgetId, occurredAt: "2026-10-10", amountCents: 6_000 },
+        payload: { sourceAccountId: accountId, destinationAccountId: offBudgetId, occurredAt: "2026-10-10", amountCents: 6_000, categoryId },
       });
 
       const response = await app.fastify.inject({

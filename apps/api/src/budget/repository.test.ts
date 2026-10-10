@@ -5,7 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { isValidationError } from "@envelope/core";
 
 import { createAssignmentBatch } from "../assignments/repository.ts";
-import { createTransaction } from "../transactions/repository.ts";
+import { createTransaction, createTransfer } from "../transactions/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { createScheduledTransaction } from "../scheduled-transactions/repository.ts";
@@ -24,6 +24,7 @@ describe("budget month repository", () => {
   let workspaceId: string;
   let authorId: string;
   let checkingAccountId: string;
+  let offBudgetAccountId: string;
   let groupId: string;
   let categoryId: string;
 
@@ -45,6 +46,11 @@ describe("budget month repository", () => {
       [workspaceId],
     );
     checkingAccountId = account.rows[0]!.id;
+    const offBudgetAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    offBudgetAccountId = offBudgetAccount.rows[0]!.id;
     const group = await pool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -215,5 +221,31 @@ describe("budget month repository", () => {
     const groceriesDecember = december.categories.find((c) => c.categoryId === categoryId);
     assert.equal(groceriesDecember?.reserved, 0);
     assert.equal(december.reserved, 0);
+  });
+
+  it("counts a transfer to an off-budget account as activity on its on-budget leg's category, not an uncategorized transaction (#378)", async () => {
+    const otherCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Investments', 4) RETURNING id",
+      [workspaceId, groupId],
+    );
+    const investmentsCategoryId = otherCategory.rows[0]!.id;
+    await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2026-10", sourceCategoryId: null, destinationCategoryId: investmentsCategoryId, amountCents: 20_000 }],
+    });
+    await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: checkingAccountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-10-05",
+      amountCents: 12_000,
+      categoryId: investmentsCategoryId,
+    });
+
+    const october = await getBudgetMonth(pool, workspaceId, "2026-10");
+    const investments = october.categories.find((c) => c.categoryId === investmentsCategoryId);
+    assert.equal(investments?.activity, -12_000);
+    assert.equal(investments?.available, 8_000);
   });
 });

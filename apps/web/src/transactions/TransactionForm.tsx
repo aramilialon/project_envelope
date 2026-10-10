@@ -84,6 +84,19 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   const otherAccounts = accounts.filter((a) => a.id !== accountId);
   const openCategories = categories.filter((c) => !c.archived);
 
+  // design.md, "Account register": "transfers to an off-budget account ask for a category" —
+  // money is leaving (or entering) the budget, the same as ordinary spending or income, on
+  // whichever of the two accounts is on-budget. Symmetric, since the same is true in reverse
+  // when this account is the off-budget one.
+  const currentAccount = accounts.find((a) => a.id === accountId);
+  const destinationAccount = accounts.find((a) => a.id === destinationAccountId);
+  const needsTransferCategory =
+    kind === "transfer" &&
+    !isEditing &&
+    currentAccount !== undefined &&
+    destinationAccount !== undefined &&
+    currentAccount.onBudget !== destinationAccount.onBudget;
+
   function parsePositive(text: string): number {
     const amount = parseAmount(text, { locale: intl.locale, currency });
     if (amount <= 0) {
@@ -135,6 +148,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             setSubmitting(false);
             return;
           }
+          if (needsTransferCategory && !categoryId) {
+            setError(intl.formatMessage({ id: "transactions.form.chooseCategory", defaultMessage: "Choose a category." }));
+            setSubmitting(false);
+            return;
+          }
           await createTransfer(accessToken, workspaceId, {
             sourceAccountId: accountId,
             destinationAccountId,
@@ -142,6 +160,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             amountCents: amount,
             ...(payee ? { payee } : {}),
             ...(memo ? { memo } : {}),
+            ...(needsTransferCategory ? { categoryId } : {}),
             status: cleared ? "cleared" : "pending",
           });
         }
@@ -277,7 +296,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} />
         </div>
 
-        {kind !== "transfer" && !split && (
+        {(kind !== "transfer" || needsTransferCategory) && !split && (
           <div className="field">
             <label htmlFor="tx-category">{intl.formatMessage({ id: "transactions.form.category", defaultMessage: "Category" })}</label>
             <select id="tx-category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>

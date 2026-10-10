@@ -88,6 +88,7 @@ describe("days of buffer repository", () => {
       destinationAccountId: brokerAccountId,
       occurredAt: "2026-08-15",
       amountCents: 1_000,
+      categoryId,
     });
 
     const result = await getDaysOfBuffer(pool, workspaceId, "2026-08-15");

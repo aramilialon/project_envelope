@@ -7,10 +7,11 @@ import { createTestUser } from "./keycloak-test-user.ts";
  * The milestone's own "done when" criterion (0.1.7 Web MVP: "a month of budgeting is possible
  * from the browser"): one continuous journey through a real headless Chromium, touching every
  * screen the milestone built rather than one screen in isolation — categories and accounts
- * (#51, #52), the budget month and its band (#53, #58, #217), transactions and a transfer (#54),
- * assigning and moving money, including a card's own payment category (#55, #56, #57), import
- * and reconciliation (#59, #60), and the instant unresolved-problem toast (#61). Each of these
- * already has its own focused spec for its edge cases; this one only proves they fit together
+ * (#51, #52), the budget month and its band (#53, #58, #217), transactions and a transfer to an
+ * off-budget account with its own required category (#54, #378), assigning and moving money,
+ * including a card's own payment category (#55, #56, #57), import and reconciliation (#59, #60),
+ * and the instant unresolved-problem toast (#61). Each of these already has its own focused spec
+ * for its edge cases; this one only proves they fit together
  * into a single month end to end. Needs `apps/api` and Keycloak already running; see
  * `e2e/README.md`.
  */
@@ -25,7 +26,12 @@ test.describe("a full budget month (#63)", () => {
     await page.waitForURL("/");
   }
 
-  async function addAccount(page: import("@playwright/test").Page, name: string, typeLabel?: string, owed?: string) {
+  async function addAccount(
+    page: import("@playwright/test").Page,
+    name: string,
+    typeLabel?: string,
+    options?: { readonly owed?: string; readonly onBudget?: boolean },
+  ) {
     await page.getByRole("button", { name: "+ Add account" }).click();
     const dialog = page.getByRole("dialog");
     await page.getByLabel("Name").fill(name);
@@ -34,8 +40,11 @@ test.describe("a full budget month (#63)", () => {
       // user clicks its label, same as the transaction-type picker in transactions.spec.ts.
       await dialog.getByText(typeLabel, { exact: true }).click();
     }
-    if (owed !== undefined) {
-      await page.getByLabel("How much do you currently owe on this card?").fill(owed);
+    if (options?.onBudget === false) {
+      await dialog.getByLabel("On budget").uncheck();
+    }
+    if (options?.owed !== undefined) {
+      await page.getByLabel("How much do you currently owe on this card?").fill(options.owed);
     }
     await dialog.getByRole("button", { name: "Add account", exact: true }).click();
     await expect(dialog).not.toBeVisible();
@@ -87,8 +96,10 @@ test.describe("a full budget month (#63)", () => {
       await page.getByRole("link", { name: "Accounts" }).click();
       await page.waitForURL(`/${workspace.id}/accounts`);
       await addAccount(page, "Checking");
-      await addAccount(page, "Credit card", "Credit card", "100.00");
-      await addAccount(page, "Savings", "Savings");
+      await addAccount(page, "Credit card", "Credit card", { owed: "100.00" });
+      // Off-budget (a brokerage, design.md's own example): the transfer below needs a category
+      // on its on-budget leg (#378), the account itself is outside the budget entirely.
+      await addAccount(page, "Savings", "Savings", { onBudget: false });
 
       // Income lands as unassigned money, not a category (#53's own "ready to assign").
       await page.getByRole("button", { name: "Checking" }).click();
@@ -138,10 +149,13 @@ test.describe("a full budget month (#63)", () => {
       await expect(page.getByRole("dialog")).not.toBeVisible();
       await expect(page.getByRole("button", { name: "Grocery store", exact: true })).toBeVisible();
 
+      // A transfer to the off-budget Savings account: money leaving the budget needs a category,
+      // the same as ordinary spending (#378).
       await page.getByRole("button", { name: "New transaction" }).click();
       await page.getByRole("dialog").getByText("Transfer", { exact: true }).click();
       await page.getByLabel("Amount").fill("50.00");
       await page.getByLabel("To account").selectOption({ label: "Savings" });
+      await page.getByLabel("Category").selectOption({ label: "Groceries" });
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.getByRole("dialog")).not.toBeVisible();
 
