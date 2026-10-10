@@ -5,6 +5,7 @@ import AccountsScreen from "./accounts/AccountsScreen.tsx";
 import SignIn from "./auth/SignIn.tsx";
 import BudgetScreen from "./budget/BudgetScreen.tsx";
 import CategoriesScreen from "./categories/CategoriesScreen.tsx";
+import ImportScreen from "./import/ImportScreen.tsx";
 import AppLayout from "./layout/AppLayout.tsx";
 import ReconciliationScreen from "./reconciliation/ReconciliationScreen.tsx";
 import AccountRegisterScreen from "./transactions/AccountRegisterScreen.tsx";
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="accounts" element={<AccountsScreen />} />
         <Route path="accounts/:accountId" element={<AccountRegisterScreen />} />
         <Route path="accounts/:accountId/reconcile" element={<ReconciliationScreen />} />
+        <Route path="accounts/:accountId/import" element={<ImportScreen />} />
         <Route path="settings/categories" element={<CategoriesScreen />} />
       </Route>
     </Routes>

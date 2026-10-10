@@ -1,0 +1,393 @@
+/* The import screen (#59): `docs/ux/mockups/import-reconciliation.html`'s own `.steps`, `.stage`,
+   `.drop`, `.mapwrap`, `.sum`, `.icols` etc., with this app's own 10px input radius
+   (`SideSheet.css`'s own convention) instead of the mockup's generic 3px. */
+
+.import-screen .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.import-screen .n {
+  font-variant-numeric: tabular-nums;
+}
+
+.import-screen .crumb-back {
+  display: inline-block;
+  margin-bottom: 10px;
+  color: var(--pen);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.import-screen .page-h {
+  margin: 0;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+.import-screen .hint {
+  max-width: 75ch;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.import-screen .hint.bad {
+  color: var(--red-text);
+  font-weight: 600;
+}
+
+.import-screen .ok {
+  color: var(--pen);
+  font-weight: 600;
+}
+
+.import-screen a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.import-screen .steps {
+  display: flex;
+  gap: 0;
+  margin: 22px 0 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--rule);
+}
+
+.import-screen .steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px 9px 0;
+  margin-right: 18px;
+  margin-bottom: -1px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+
+.import-screen .steps li .num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.import-screen .steps li.done {
+  color: var(--ink-2);
+}
+
+.import-screen .steps li.done .num {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+  color: var(--paper);
+}
+
+.import-screen .steps li.now {
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom-color: var(--ink);
+}
+
+.import-screen .steps li.now .num {
+  border-color: var(--ink);
+}
+
+.import-screen .stage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 22px;
+  max-width: 980px;
+}
+
+.import-screen .drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  border: 1.5px dashed var(--rule);
+  text-align: center;
+  background: var(--paper-2);
+  cursor: pointer;
+}
+
+.import-screen .drop.over {
+  border-color: var(--pen);
+  background: var(--pen-soft);
+}
+
+.import-screen .drop b {
+  font-size: 18px;
+  font-weight: 700;
+  font-stretch: 85%;
+}
+
+.import-screen .drop .hint {
+  max-width: 52ch;
+}
+
+.import-screen .file-in {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.import-screen .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 320px;
+}
+
+.import-screen .field label {
+  font-weight: 600;
+}
+
+.import-screen .field input,
+.import-screen .field select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  font: inherit;
+}
+
+.import-screen .money-in {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.import-screen .money-in input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  outline: none;
+}
+
+.import-screen .opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-end;
+}
+
+.import-screen .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.import-screen .check input {
+  accent-color: var(--pen);
+  width: 16px;
+  height: 16px;
+}
+
+.import-screen .mapwrap {
+  overflow-x: auto;
+  border: 1px solid var(--rule);
+}
+
+.import-screen table.map {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.import-screen table.map th,
+.import-screen table.map td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.import-screen table.map thead th {
+  background: var(--paper-2);
+  vertical-align: bottom;
+}
+
+.import-screen table.map select {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.import-screen table.map td.muted {
+  color: var(--muted);
+}
+
+.import-screen table.map .raw {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.import-screen .sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+  align-self: flex-start;
+}
+
+.import-screen .sum div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 16px;
+  border-right: 1px solid var(--rule);
+}
+
+.import-screen .sum div:last-child {
+  border-right: 0;
+}
+
+.import-screen .sum small {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.import-screen .sum b {
+  font-size: 20px;
+  font-stretch: 85%;
+}
+
+.import-screen .icols {
+  display: grid;
+  grid-template-columns: 34px 58px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1.3fr) 100px;
+  align-items: center;
+  gap: 0;
+}
+
+.import-screen .ihead {
+  padding: 10px 0 8px;
+  border-bottom: 1px solid var(--rule-strong);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.import-screen .irow {
+  min-height: 52px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.import-screen .irow.skip {
+  color: var(--muted);
+}
+
+.import-screen .irow.skip .n {
+  text-decoration: line-through;
+}
+
+.import-screen .irow > * {
+  padding-right: 10px;
+  min-width: 0;
+}
+
+.import-screen .irow select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.import-screen .irow .raw {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-screen .irow .r {
+  text-align: right;
+}
+
+.import-screen .badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.import-screen .badge.dup {
+  background: var(--rule-soft);
+  color: var(--ink-2);
+}
+
+.import-screen .badge.new {
+  background: var(--pen-soft);
+  color: var(--pen);
+}
+
+.import-screen .badge.need {
+  background: var(--amber);
+  color: var(--amber-ink);
+}
+
+.import-screen .row-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.import-screen .done-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 60ch;
+  padding: 18px;
+  border: 1px solid var(--rule-strong);
+}
+
+.import-screen .done-box h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-stretch: 78%;
+  font-size: 24px;
+  font-weight: 700;
+}

@@ -38,8 +38,14 @@ export type CsvMapping = (AmountColumnMapping | SplitColumnMapping) & {
 /** CSV never carries a bank transaction id: `externalId` is always absent (see `ImportRow`). */
 export type CsvRow = ImportRow;
 
-/** One CSV line's fields, honoring double-quoted fields (with embedded commas, and "" as an escaped quote). */
-function splitCsvLine(line: string): string[] {
+/**
+ * One CSV line's fields, honoring double-quoted fields (with embedded commas, and "" as an
+ * escaped quote). Exported (not just `parseCsv`'s own internal) so the web app's own column
+ * mapping step (#59) can split the same file into a preview grid before a mapping even exists
+ * yet — the one piece of CSV parsing that happens before the user has picked which column is
+ * which, so it cannot go through `parseCsv` itself.
+ */
+export function splitCsvLine(line: string): string[] {
   const fields: string[] = [];
   let field = "";
   let inQuotes = false;

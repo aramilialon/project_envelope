@@ -36,6 +36,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | `transactions.spec.ts` | The account register (`#54`): reaching it from the Accounts screen (`#323`), adding an outflow with a category and a transfer to another account, and toggling a transaction's status |
 | `targets.spec.ts` | Targets and quick assign (`#55`): setting a monthly target on a category from the "Targets" panel, seeing it reflected there, and running "Quick assign" with its default scope and mode |
 | `reconciliation.spec.ts` | The reconciliation screen (`#60`): a cleared transaction, a matching statement balance, locking it from the account register's own "Reconcile" to-do item, then unlocking it again |
+| `import.spec.ts` | The import screen (`#59`): a CSV statement, column mapping, reviewing the staged rows, confirming one into a real transaction |
 
 ## In CI
 
