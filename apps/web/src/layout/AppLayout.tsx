@@ -4,8 +4,11 @@ import { useAuth } from "react-oidc-context";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import NotificationsToggle from "../notifications/NotificationsToggle.tsx";
+import QuickEntryOverlay from "../transactions/QuickEntryOverlay.tsx";
+import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.tsx";
 import { BandSecondRowSlotContext } from "./bandSecondRowSlot.ts";
+import { BudgetDataVersionContext } from "./budgetDataVersion.ts";
 import { usePhoneWidth } from "./usePhoneWidth.ts";
 import "./AppLayout.css";
 
@@ -23,11 +26,13 @@ import "./AppLayout.css";
  * Below 600px (`usePhoneWidth`), a fixed tab bar (design.md, "Budget month on the phone") adds
  * bottom-of-thumb navigation on every screen, alongside the band above (kept, not replaced — it
  * is still the only way to reach the workspace switcher and sign out on a phone, since nothing in
- * design.md says those move elsewhere). Its own "Budget"/"Portfolio" and "a central button for
- * quick expense entry" are the same two the band's own nav already leaves out: Portfolio has no
- * screen yet, and quick entry has no screen yet either (`#331`'s own follow-up). "More" goes to
- * the one workspace-settings destination that exists so far, the same place the band's own
- * switcher menu sends it.
+ * design.md says those move elsewhere). "Portfolio" stays out of the tab bar too, same reason as
+ * the band's own nav above. The central button opens `QuickEntryOverlay` (`#367`) — rendered here,
+ * not a route, so closing it returns to exactly whatever screen was open underneath, not a fresh
+ * remount of it; hidden for a `read_only` member, the same `canWrite` convention `BudgetScreen.tsx`
+ * already uses (`#61`), since recording an expense is a write. "More" goes to the one
+ * workspace-settings destination that exists so far, the same place the band's own switcher menu
+ * sends it.
  */
 export default function AppLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -35,7 +40,12 @@ export default function AppLayout() {
   const auth = useAuth();
   const navigate = useNavigate();
   const isPhone = usePhoneWidth();
+  const workspaces = useWorkspaces();
+  const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+  const canWrite = currentWorkspace?.role === "owner" || currentWorkspace?.role === "editor";
   const [secondRowSlot, setSecondRowSlot] = useState<HTMLDivElement | null>(null);
+  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
+  const [budgetDataVersion, setBudgetDataVersion] = useState(0);
 
   return (
     <div className="app-layout">
@@ -63,7 +73,9 @@ export default function AppLayout() {
       </header>
       <div className="main">
         <BandSecondRowSlotContext.Provider value={secondRowSlot}>
-          <Outlet />
+          <BudgetDataVersionContext.Provider value={budgetDataVersion}>
+            <Outlet />
+          </BudgetDataVersionContext.Provider>
         </BandSecondRowSlotContext.Provider>
       </div>
       {isPhone && (
@@ -76,11 +88,28 @@ export default function AppLayout() {
             <AccountsIcon />
             {intl.formatMessage({ id: "layout.nav.accounts", defaultMessage: "Accounts" })}
           </NavLink>
+          {canWrite && (
+            <button
+              type="button"
+              className="add"
+              aria-label={intl.formatMessage({ id: "quickEntry.newExpense", defaultMessage: "New expense" })}
+              onClick={() => setQuickEntryOpen(true)}
+            >
+              <PlusIcon />
+            </button>
+          )}
           <button type="button" onClick={() => navigate(`/${workspaceId}/settings/categories`)}>
             <MoreIcon />
             {intl.formatMessage({ id: "layout.tabbar.more", defaultMessage: "More" })}
           </button>
         </nav>
+      )}
+      {quickEntryOpen && workspaceId && (
+        <QuickEntryOverlay
+          workspaceId={workspaceId}
+          onClose={() => setQuickEntryOpen(false)}
+          onSaved={() => setBudgetDataVersion((v) => v + 1)}
+        />
       )}
     </div>
   );
@@ -98,6 +127,14 @@ function AccountsIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
       <path d="M4 7h16M4 12h16M4 17h10" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }
