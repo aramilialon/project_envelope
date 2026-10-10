@@ -29,6 +29,7 @@ describe("transactions routes", () => {
   let workspaceId: string;
   let accountId: string;
   let savingsAccountId: string;
+  let offBudgetAccountId: string;
   let categoryId: string;
   let token: string;
 
@@ -61,6 +62,11 @@ describe("transactions routes", () => {
       [workspaceId],
     );
     savingsAccountId = savingsAccount.rows[0]!.id;
+    const offBudgetAccount = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    offBudgetAccountId = offBudgetAccount.rows[0]!.id;
     const group = await superuserPool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -241,5 +247,57 @@ describe("transactions routes", () => {
     });
     assert.equal(response.statusCode, 400);
     assert.equal(response.json().error, "duplicate_account");
+  });
+
+  it("creates a transfer to an off-budget account with a category on the on-budget leg (#378)", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        sourceAccountId: accountId,
+        destinationAccountId: offBudgetAccountId,
+        occurredAt: "2026-09-21",
+        amountCents: 2000,
+        categoryId,
+      },
+    });
+    assert.equal(response.statusCode, 201);
+    const transfer = response.json();
+    assert.equal(transfer.source.splits[0].categoryId, categoryId);
+    assert.equal(transfer.destination.splits[0].categoryId, null);
+  });
+
+  it("rejects a transfer to an off-budget account with no category, with a translatable error (#378)", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        sourceAccountId: accountId,
+        destinationAccountId: offBudgetAccountId,
+        occurredAt: "2026-09-21",
+        amountCents: 1000,
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error, "uncategorized_transaction");
+  });
+
+  it("rejects a transfer naming an unknown categoryId (#378)", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        sourceAccountId: accountId,
+        destinationAccountId: offBudgetAccountId,
+        occurredAt: "2026-09-21",
+        amountCents: 1000,
+        categoryId: randomUUID(),
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.json().error, /does not name a category of this workspace/);
   });
 });

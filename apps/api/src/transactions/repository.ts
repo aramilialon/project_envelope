@@ -225,6 +225,15 @@ export interface CreateTransferInput {
   readonly payee?: string;
   readonly memo?: string;
   readonly status?: TransactionStatus;
+  /**
+   * Required, and applied to whichever leg is on-budget, when exactly one of the two accounts is
+   * off-budget (design.md, "Account register": "transfers to an off-budget account ask for a
+   * category") — money is leaving (or entering) the budget, the same as ordinary spending or
+   * income, so `packages/core` needs a category on that leg the same way it would for an
+   * outflow. Ignored when both accounts are on-budget or both are off-budget, where a transfer
+   * is budget-neutral (or entirely outside the budget) either way.
+   */
+  readonly categoryId?: string;
 }
 
 export interface TransferRecord {
@@ -233,12 +242,12 @@ export interface TransferRecord {
 }
 
 /**
- * Creates a transfer as two linked `transactions` rows (`transfer_id`), each
- * with a single split whose `categoryId` is null — the transfer amount
- * itself here, not income (income is the only meaning `null` gets on a
- * non-transfer transaction; see `SplitInput`). Card-to-card is a card-to-card
- * transfer (#260), moving money between the two cards' payment categories
- * once the budget month is computed, same as any other transfer here.
+ * Creates a transfer as two linked `transactions` rows (`transfer_id`), each with a single
+ * split. Both legs are categoryless (the transfer amount itself, not income — income is the
+ * only meaning `null` gets on a non-transfer transaction; see `SplitInput`) unless exactly one
+ * account is off-budget, in which case the on-budget leg carries `input.categoryId` instead.
+ * Card-to-card is a card-to-card transfer (#260), moving money between the two cards' payment
+ * categories once the budget month is computed, same as any other transfer here.
  */
 export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput, queue?: QueueDriver): Promise<TransferRecord> {
   assertCents(input.amountCents);
@@ -251,18 +260,36 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
     });
   }
 
-  const { rows } = await db.query<{ id: string }>(
-    "SELECT id FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+  const { rows } = await db.query<{ id: string; on_budget: boolean }>(
+    "SELECT id, on_budget FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],
   );
-  const knownIds = new Set(rows.map((row) => row.id));
-  if (!knownIds.has(input.sourceAccountId) || !knownIds.has(input.destinationAccountId)) {
-    const missing = knownIds.has(input.sourceAccountId) ? input.destinationAccountId : input.sourceAccountId;
+  const onBudgetById = new Map(rows.map((row) => [row.id, row.on_budget]));
+  const sourceOnBudget = onBudgetById.get(input.sourceAccountId);
+  const destinationOnBudget = onBudgetById.get(input.destinationAccountId);
+  if (sourceOnBudget === undefined || destinationOnBudget === undefined) {
+    const missing = sourceOnBudget === undefined ? input.sourceAccountId : input.destinationAccountId;
     throw new ValidationError("unknown_account", `unknown account: "${missing}"`, { accountId: missing });
   }
 
-  const sourceId = await insertTransferLeg(db, input, input.sourceAccountId, -input.amountCents);
-  const destinationId = await insertTransferLeg(db, input, input.destinationAccountId, input.amountCents);
+  let sourceCategoryId: string | null = null;
+  let destinationCategoryId: string | null = null;
+  if (sourceOnBudget !== destinationOnBudget) {
+    if (input.categoryId === undefined) {
+      throw new ValidationError(
+        "uncategorized_transaction",
+        "a transfer between an on-budget and an off-budget account needs a category on its on-budget leg",
+      );
+    }
+    if (sourceOnBudget) {
+      sourceCategoryId = input.categoryId;
+    } else {
+      destinationCategoryId = input.categoryId;
+    }
+  }
+
+  const sourceId = await insertTransferLeg(db, input, input.sourceAccountId, -input.amountCents, sourceCategoryId);
+  const destinationId = await insertTransferLeg(db, input, input.destinationAccountId, input.amountCents, destinationCategoryId);
   await db.query("UPDATE transactions SET transfer_id = $1 WHERE id = $2 AND workspace_id = $3", [
     destinationId,
     sourceId,
@@ -289,6 +316,7 @@ async function insertTransferLeg(
   input: CreateTransferInput,
   accountId: string,
   signedAmountCents: number,
+  categoryId: string | null,
 ): Promise<string> {
   const id = await insertTransactionRow(db, {
     workspaceId: input.workspaceId,
@@ -299,7 +327,7 @@ async function insertTransferLeg(
     status: input.status ?? "pending",
     externalId: null,
   });
-  await insertSplits(db, input.workspaceId, id, [{ categoryId: null, amountCents: signedAmountCents }]);
+  await insertSplits(db, input.workspaceId, id, [{ categoryId, amountCents: signedAmountCents }]);
   return id;
 }
 

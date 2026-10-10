@@ -165,6 +165,14 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
       ? (body.status as TransactionStatus)
       : undefined;
+    const categoryId = typeof body.categoryId === "string" ? body.categoryId : undefined;
+    if (categoryId !== undefined) {
+      const categories = await listCategories(request.db!, request.workspace!.id);
+      if (!categories.some((c) => c.id === categoryId)) {
+        await reply.code(400).send({ error: `categoryId "${categoryId}" does not name a category of this workspace` });
+        return;
+      }
+    }
 
     try {
       const transfer = await createTransfer(
@@ -178,6 +186,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
           ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
           ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
           ...(status ? { status } : {}),
+          ...(categoryId !== undefined ? { categoryId } : {}),
         },
         queue,
       );

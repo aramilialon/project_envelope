@@ -56,6 +56,8 @@ export interface CreateTransferInput {
   readonly payee?: string;
   readonly memo?: string;
   readonly status?: TransactionStatus;
+  /** Required when exactly one of the two accounts is off-budget (design.md, "Account register"). */
+  readonly categoryId?: string;
 }
 
 export interface Transfer {

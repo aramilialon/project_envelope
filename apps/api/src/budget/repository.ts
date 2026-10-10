@@ -69,12 +69,17 @@ function toBudgetTransaction(transaction: TransactionRecord, accountByTransactio
   const amount = totalOf(transaction);
   if (transaction.transferId !== null) {
     const transferAccountId = accountByTransactionId.get(transaction.transferId);
+    // Usually null (a transfer between two on-budget accounts, or a card payment, needs no
+    // category), but a transfer to or from an off-budget account carries one on its on-budget
+    // leg (#378) — `packages/core` needs it to treat that leg as ordinary activity.
+    const categoryId = transaction.splits.length === 1 ? (transaction.splits[0]?.categoryId ?? null) : null;
     return {
       id: transaction.id,
       accountId: transaction.accountId,
       date: transaction.budgetDate,
       amount,
       ...(transferAccountId !== undefined ? { transferAccountId } : {}),
+      ...(categoryId !== null ? { categoryId } : {}),
     };
   }
   if (transaction.splits.length === 1 && transaction.splits[0]?.categoryId === null) {
