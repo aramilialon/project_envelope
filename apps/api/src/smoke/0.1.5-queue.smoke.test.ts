@@ -114,14 +114,18 @@ describe("smoke: 0.1.5 Queue, against the real process", () => {
     await superuserPool.end();
   });
 
-  function auth(): Record<string, string> {
+  // The test realm's own access tokens live 3 seconds (`keycloak.ts`), deliberately short so
+  // other tests can wait one out — too short for this test's own polling loop to reuse a single
+  // one, so every call fetches a fresh token rather than relying on `token` surviving the wait.
+  async function auth(): Promise<Record<string, string>> {
+    token = await realm.getUserToken();
     return { authorization: `Bearer ${token}`, "content-type": "application/json" };
   }
 
   async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetch(`${server.baseUrl}/workspaces/${workspaceId}${path}`, {
       method,
-      headers: auth(),
+      headers: await auth(),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!response.ok) {
