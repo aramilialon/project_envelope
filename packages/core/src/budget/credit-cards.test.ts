@@ -206,4 +206,72 @@ describe("credit cards", () => {
       assert.equal(card.uncovered, 0);
     });
   });
+
+  describe("attributing uncovered debt to its source (#355)", () => {
+    const CARD2 = "card-payment-2";
+
+    it("an ordinary category never has overspendingBy or hasStartingBalance", () => {
+      const groceries = find(computeBudgetMonth(budget({}), "2026-09").categories, "groceries");
+      assert.equal(groceries.overspendingBy, undefined);
+      assert.equal(groceries.hasStartingBalance, undefined);
+    });
+
+    it("a payment category with no overspending has an empty overspendingBy, and no starting balance by default", () => {
+      const card = find(computeBudgetMonth(budget({}), "2026-09").paymentCategories, CARD);
+      assert.deepEqual(card.overspendingBy, []);
+      assert.equal(card.hasStartingBalance, false);
+    });
+
+    it("attributes a category's own credit overspending to its one card", () => {
+      const input = budget({
+        assignments: [{ categoryId: "groceries", month: "2026-09", amount: 5000 }],
+        activity: [{ categoryId: "groceries", month: "2026-09", amount: -8000, paymentCategoryId: CARD }],
+      });
+
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+      assert.deepEqual(card.overspendingBy, [{ categoryId: "groceries", amount: 3000 }]);
+    });
+
+    it("splits one category's overspending across two cards, each absorbing up to its own outflow", () => {
+      const input = budget({
+        paymentCategoryIds: [CARD, CARD2],
+        assignments: [{ categoryId: "groceries", month: "2026-09", amount: 1000 }],
+        activity: [
+          { categoryId: "groceries", month: "2026-09", amount: -4000, paymentCategoryId: CARD },
+          { categoryId: "groceries", month: "2026-09", amount: -5000, paymentCategoryId: CARD2 },
+        ],
+      });
+
+      const result = computeBudgetMonth(input, "2026-09");
+      const groceries = find(result.categories, "groceries");
+      assert.equal(groceries.creditOverspending, 8000); // all 90 spent is overspending (only 10 assigned)
+
+      // Stable order is by payment category id: CARD absorbs its own full €40 outflow first,
+      // CARD2 absorbs the remaining €40 of the €80 total overspending.
+      assert.deepEqual(find(result.paymentCategories, CARD).overspendingBy, [{ categoryId: "groceries", amount: 4000 }]);
+      assert.deepEqual(find(result.paymentCategories, CARD2).overspendingBy, [{ categoryId: "groceries", amount: 4000 }]);
+    });
+
+    it("lists more than one category attributed to the same card", () => {
+      const input = budget({
+        categoryIds: ["groceries", "fun"],
+        activity: [
+          { categoryId: "groceries", month: "2026-09", amount: -3000, paymentCategoryId: CARD },
+          { categoryId: "fun", month: "2026-09", amount: -2000, paymentCategoryId: CARD },
+        ],
+      });
+
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+      assert.deepEqual(card.overspendingBy, [
+        { categoryId: "fun", amount: 2000 },
+        { categoryId: "groceries", amount: 3000 },
+      ]);
+    });
+
+    it("reports hasStartingBalance exactly as given", () => {
+      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000, hasStartingBalance: true }] });
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+      assert.equal(card.hasStartingBalance, true);
+    });
+  });
 });

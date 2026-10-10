@@ -15,6 +15,10 @@ export interface BudgetMonthCategory {
   readonly cashOverspending: number;
   readonly reserved: number;
   readonly uncovered: number;
+  /** Payment categories only (#355): which ordinary categories' credit overspending this month is attributable to this card, joined with each one's own name. */
+  readonly overspendingBy?: readonly { readonly categoryId: string; readonly name: string; readonly amount: number }[];
+  /** Payment categories only (#355): whether the card had a starting balance when added. */
+  readonly hasStartingBalance?: boolean;
 }
 
 export interface BudgetMonthResponse {

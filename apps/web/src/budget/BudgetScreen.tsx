@@ -307,6 +307,8 @@ export default function BudgetScreen() {
         categoryName={category.name}
         available={category.available}
         uncovered={category.uncovered}
+        {...(category.hasStartingBalance !== undefined ? { hasStartingBalance: category.hasStartingBalance } : {})}
+        {...(category.overspendingBy !== undefined ? { overspendingBy: category.overspendingBy } : {})}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
         readOnly={!canWrite}

@@ -117,7 +117,8 @@ test.describe("a full budget month (#63)", () => {
       await page.waitForURL(`/${workspace.id}`);
       await expect(page.locator(".rta .amt")).toHaveText("€600.00");
       await page.getByRole("button", { name: /^Credit card payment /  }).click();
-      await expect(page.getByText("Some of the card's debt has no money set aside yet: assign money to this category to cover it.")).toBeVisible();
+      // The card has a starting balance (#355): the specific sentence, not the generic fallback.
+      await expect(page.getByText(/already there when you added the card/)).toBeVisible();
 
       // Assigning (#55/#56), including the payment category's own dedicated action (#57): the
       // card's debt becomes fully covered, and the two spending categories get their budgets.
