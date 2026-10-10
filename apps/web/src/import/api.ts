@@ -51,7 +51,13 @@ export interface StageImportResult {
 export type StagedTransactionDecision =
   | { readonly stagedTransactionId: string; readonly kind: "income" }
   | { readonly stagedTransactionId: string; readonly kind: "category"; readonly categoryId: string }
-  | { readonly stagedTransactionId: string; readonly kind: "transfer"; readonly otherAccountId: string };
+  | {
+      readonly stagedTransactionId: string;
+      readonly kind: "transfer";
+      readonly otherAccountId: string;
+      /** Required when the other account's on-budget status differs from this one's (#378, #379). */
+      readonly categoryId?: string;
+    };
 
 export type ConfirmationOutcome =
   | { readonly stagedTransactionId: string; readonly outcome: "confirmed"; readonly transactionId: string }

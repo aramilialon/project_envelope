@@ -38,6 +38,7 @@ describe("import routes", () => {
   let workspaceId: string;
   let accountId: string;
   let savingsAccountId: string;
+  let offBudgetAccountId: string;
   let categoryId: string;
   let token: string;
 
@@ -70,6 +71,11 @@ describe("import routes", () => {
       [workspaceId],
     );
     savingsAccountId = savingsAccount.rows[0]!.id;
+    const offBudgetAccount = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Brokerage', 'savings', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    offBudgetAccountId = offBudgetAccount.rows[0]!.id;
     const group = await superuserPool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -300,6 +306,49 @@ describe("import routes", () => {
       url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
       headers: auth,
       payload: { decisions: [{ stagedTransactionId: stagedId, kind: "category", categoryId: randomUUID() }] },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  it("confirms a staged row as a transfer to an off-budget account given a category (#378, #379)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-09-18,To brokerage,-50.00\n" },
+    });
+    const stagedId = imported.json().staged[0].id;
+
+    const confirmed = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+      headers: auth,
+      payload: { decisions: [{ stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId, categoryId }] },
+    });
+    assert.equal(confirmed.statusCode, 200);
+    assert.equal(confirmed.json().outcomes[0].outcome, "confirmed");
+  });
+
+  it("rejects a transfer confirmation naming an unknown category", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-09-19,To brokerage again,-60.00\n" },
+    });
+    const stagedId = imported.json().staged[0].id;
+
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+      headers: auth,
+      payload: {
+        decisions: [{ stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId, categoryId: randomUUID() }],
+      },
     });
     assert.equal(response.statusCode, 400);
   });
