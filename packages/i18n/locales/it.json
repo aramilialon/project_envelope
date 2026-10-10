@@ -53,6 +53,8 @@
   "budget.payment.setAsideLine": "Messi da parte",
   "budget.payment.toCover": "Da coprire",
   "budget.payment.uncovered": "Parte del debito della carta non ha ancora soldi messi da parte: assegna soldi a questa categoria per coprirlo.",
+  "budget.payment.uncoveredFromCategories": "Il debito non coperto viene da spese con la carta oltre il disponibile: {categories}. Se copri quelle categorie entro fine mese, i soldi arrivano qui; altrimenti il mese prossimo ripartono da zero e il debito resta da coprire in questa riga.",
+  "budget.payment.uncoveredStartingBalance": "Una parte di questo debito c'era già quando hai aggiunto la carta: è il suo saldo iniziale. Non deriva da nuove spese, quindi non toglie nulla da «da assegnare». Assegna soldi a questa categoria un po' alla volta per coprirlo.",
   "budget.phone.back": "Budget",
   "budget.reserved": "Prenotato per le programmate",
   "budget.row.assigned": "Assegnato questo mese",

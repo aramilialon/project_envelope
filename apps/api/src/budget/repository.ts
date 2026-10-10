@@ -35,6 +35,10 @@ export interface BudgetMonthCategory {
   readonly cashOverspending: number;
   readonly reserved: number;
   readonly uncovered: number;
+  /** Payment categories only (#355): which ordinary categories' credit overspending this month is attributable to this card, joined with each one's own name. */
+  readonly overspendingBy?: readonly { readonly categoryId: string; readonly name: string; readonly amount: number }[];
+  /** Payment categories only (#355): whether the card had a starting balance when added. */
+  readonly hasStartingBalance?: boolean;
 }
 
 export interface BudgetMonthResponse {
@@ -152,6 +156,16 @@ function joinCategory(
     cashOverspending: categoryMonth.cashOverspending,
     reserved: categoryMonth.reserved,
     uncovered: categoryMonth.uncovered,
+    ...(categoryMonth.overspendingBy !== undefined
+      ? {
+          overspendingBy: categoryMonth.overspendingBy.map((o) => ({
+            categoryId: o.categoryId,
+            name: categoriesById.get(o.categoryId)?.name ?? "",
+            amount: o.amount,
+          })),
+        }
+      : {}),
+    ...(categoryMonth.hasStartingBalance !== undefined ? { hasStartingBalance: categoryMonth.hasStartingBalance } : {}),
   };
 }
 
@@ -189,7 +203,11 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
 
   const cardBalances: CardBalance[] = accounts
     .filter((a) => a.paymentCategoryId !== null)
-    .map((a) => ({ paymentCategoryId: a.paymentCategoryId as string, owed: owedAsOf(transactions, a.id, month) }));
+    .map((a) => ({
+      paymentCategoryId: a.paymentCategoryId as string,
+      owed: owedAsOf(transactions, a.id, month),
+      hasStartingBalance: transactions.some((t) => t.accountId === a.id && isStartingBalance(t, paymentCategoryIdByAccountId)),
+    }));
 
   const assignments: Assignment[] = assignmentTotals.map((t) => ({
     categoryId: t.categoryId,

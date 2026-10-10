@@ -153,6 +153,82 @@ describe("budget month repository", () => {
     assert.equal(withSomeAssigned.unassigned, unassignedBefore - 20_000);
   });
 
+  it("reports hasStartingBalance true for a card with one, false for a card without (#355)", async () => {
+    const withBalance = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Card with balance', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    const paymentCategoryWithBalance = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Card with balance payment', 4) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await pool.query("UPDATE accounts SET payment_category_id = $1 WHERE id = $2", [
+      paymentCategoryWithBalance.rows[0]!.id,
+      withBalance.rows[0]!.id,
+    ]);
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: withBalance.rows[0]!.id,
+      occurredAt: "2026-08-01",
+      status: "cleared",
+      splits: [{ categoryId: paymentCategoryWithBalance.rows[0]!.id, amountCents: -5_000 }],
+    });
+
+    const withoutBalance = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Card without balance', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    const paymentCategoryWithoutBalance = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Card without balance payment', 5) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await pool.query("UPDATE accounts SET payment_category_id = $1 WHERE id = $2", [
+      paymentCategoryWithoutBalance.rows[0]!.id,
+      withoutBalance.rows[0]!.id,
+    ]);
+
+    const budgetMonth = await getBudgetMonth(pool, workspaceId, "2026-11");
+    assert.equal(
+      budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategoryWithBalance.rows[0]!.id)?.hasStartingBalance,
+      true,
+    );
+    assert.equal(
+      budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategoryWithoutBalance.rows[0]!.id)?.hasStartingBalance,
+      false,
+    );
+  });
+
+  it("attributes a card's uncovered debt to the categories whose overspending caused it, with their own names (#355)", async () => {
+    const cardAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Attribution card', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    const paymentCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Attribution card payment', 6) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await pool.query("UPDATE accounts SET payment_category_id = $1 WHERE id = $2", [
+      paymentCategory.rows[0]!.id,
+      cardAccount.rows[0]!.id,
+    ]);
+    // A brand new category, never assigned anything: the whole spend is credit overspending.
+    const spendingCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Hobbies', 7) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: cardAccount.rows[0]!.id,
+      occurredAt: "2026-11-05",
+      splits: [{ categoryId: spendingCategory.rows[0]!.id, amountCents: -7_500 }],
+    });
+
+    const budgetMonth = await getBudgetMonth(pool, workspaceId, "2026-11");
+    const card = budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategory.rows[0]!.id);
+    assert.deepEqual(card?.overspendingBy, [{ categoryId: spendingCategory.rows[0]!.id, name: "Hobbies", amount: 7_500 }]);
+    assert.equal(card?.hasStartingBalance, false);
+  });
+
   it("a packages/core ValidationError surfaces with its stable code, not a raw message", async () => {
     await assert.rejects(
       () => getBudgetMonth(pool, workspaceId, "not-a-month"),

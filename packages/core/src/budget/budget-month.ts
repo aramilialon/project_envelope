@@ -100,6 +100,12 @@ export interface CardBalance {
   readonly paymentCategoryId: string;
   /** Positive: amount currently owed on the card. */
   readonly owed: Cents;
+  /**
+   * Whether the card had a starting balance when its account was created (#355) — the amount
+   * and date are already on the account/transaction itself, not reproduced here; a boolean is
+   * enough to pick between the two specific "uncovered debt" sentences design.md describes.
+   */
+  readonly hasStartingBalance?: boolean;
 }
 
 /**
@@ -172,6 +178,23 @@ export interface CategoryMonth {
    * never persisted or carried to the next month; 0 when no `cardBalances` entry is given.
    */
   readonly uncovered: Cents;
+  /**
+   * Payment categories only (#355): which ordinary categories' credit overspending this month is
+   * attributable to this specific card, and how much — `apps/web`'s own "the uncovered debt comes
+   * from card spending beyond what was available" sentence names them. A category overspent
+   * across more than one card attributes to each in the same stable order `movedToPayment`
+   * already uses internally, each card absorbing up to its own outflow before the next one's own
+   * contributes — a presentational breakdown only, independent of `movedToPayment`/`uncovered`.
+   * Always present for a payment category (possibly empty), absent for an ordinary one.
+   */
+  readonly overspendingBy?: readonly { readonly categoryId: string; readonly amount: Cents }[];
+  /**
+   * Payment categories only (#355): whether the card had a starting balance when added —
+   * `apps/web`'s own "the card already had €X of debt when you added it" sentence needs this to
+   * pick between the two specific explanations design.md describes. Always present for a payment
+   * category, absent for an ordinary one.
+   */
+  readonly hasStartingBalance?: boolean;
 }
 
 export interface BudgetMonth {
@@ -296,6 +319,8 @@ function computePaymentCategories(
     paymentsBy: ReadonlyMap<string, Cents>;
     cardBalanceBy: ReadonlyMap<string, Cents>;
     cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
+    hasStartingBalanceBy: ReadonlyMap<string, boolean>;
+    overspendingByCard: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
   },
 ): CategoryMonth[] {
   const pre = paymentIds.map((id) => {
@@ -344,6 +369,10 @@ function computePaymentCategories(
       // unassigned (cashOverspending); counting its negative available again here
       // would double the same shortfall into both mechanisms.
       uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
+      overspendingBy: [...(data.overspendingByCard.get(p.id) ?? [])]
+        .map(([categoryId, amount]) => ({ categoryId, amount }))
+        .sort((a, b) => (a.categoryId < b.categoryId ? -1 : a.categoryId > b.categoryId ? 1 : 0)),
+      hasStartingBalance: data.hasStartingBalanceBy.get(p.id) ?? false,
     };
   });
 }
@@ -365,10 +394,14 @@ function computeMonth(
     /** Only ever non-empty for the month actually requested (rule 7: reservations do not carry over). */
     reservedBy: ReadonlyMap<string, Cents>;
     cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
+    hasStartingBalanceBy: ReadonlyMap<string, boolean>;
   },
 ): MonthState {
   const paymentIds = input.paymentCategoryIds ?? [];
   const movedToPayment = new Map<string, Cents>(paymentIds.map((id): [string, Cents] => [id, 0]));
+  // #355: paymentCategoryId -> categoryId -> amount, built alongside movedToPayment below but
+  // never read by it — a separate, presentational breakdown of creditOverspending by card.
+  const overspendingByCard = new Map<string, Map<string, Cents>>();
 
   const categories = input.categoryIds.map((id): CategoryMonth => {
     const carriedOver = carried.get(id) ?? 0;
@@ -390,6 +423,21 @@ function computeMonth(
     // Rule 6: overspending is attributed to card spending first.
     const creditOverspending = Math.min(overspent, cardOutflow);
     const cashOverspending = overspent - creditOverspending;
+
+    // #355: attribute creditOverspending to the specific card(s) it came from, in the same
+    // stable order, each card absorbing up to its own outflow before the next one's own
+    // contributes. Independent of the `movedToPayment` allocation below.
+    let remainingOverspending = creditOverspending;
+    for (const [paymentId, net] of byCard) {
+      if (net >= 0 || remainingOverspending === 0) continue;
+      const attributed = Math.min(-net, remainingOverspending);
+      remainingOverspending -= attributed;
+      if (attributed > 0) {
+        const byCategory = overspendingByCard.get(paymentId) ?? new Map<string, Cents>();
+        addTo(byCategory, id, attributed);
+        overspendingByCard.set(paymentId, byCategory);
+      }
+    }
 
     // Rule 4: the covered part of card spending moves to the payment categories.
     let toCover = cardOutflow - creditOverspending;
@@ -418,7 +466,7 @@ function computeMonth(
     };
   });
 
-  const paymentCategories = computePaymentCategories(paymentIds, m, carried, movedToPayment, data);
+  const paymentCategories = computePaymentCategories(paymentIds, m, carried, movedToPayment, { ...data, overspendingByCard });
 
   return { categories, paymentCategories };
 }
@@ -448,7 +496,11 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   }
   for (const p of input.cardPayments ?? []) addTo(paymentsBy, key(p.paymentCategoryId, p.month), p.amount);
   const cardBalanceBy = new Map<string, Cents>();
-  for (const b of input.cardBalances ?? []) cardBalanceBy.set(b.paymentCategoryId, b.owed);
+  const hasStartingBalanceBy = new Map<string, boolean>();
+  for (const b of input.cardBalances ?? []) {
+    cardBalanceBy.set(b.paymentCategoryId, b.owed);
+    if (b.hasStartingBalance) hasStartingBalanceBy.set(b.paymentCategoryId, true);
+  }
   const reservedBy = new Map<string, Cents>();
   for (const s of input.scheduledItems ?? []) addTo(reservedBy, s.categoryId, s.amount);
   const cardTransfersBy = new Map<Month, CardTransfer[]>();
@@ -465,6 +517,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     cardBalanceBy,
     reservedBy: new Map<string, Cents>(),
     cardTransfersBy,
+    hasStartingBalanceBy,
   };
 
   // 2. Find the first month with data: the computation starts there.

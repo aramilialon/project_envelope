@@ -53,6 +53,8 @@
   "budget.payment.setAsideLine": "Set aside",
   "budget.payment.toCover": "To cover",
   "budget.payment.uncovered": "Some of the card's debt has no money set aside yet: assign money to this category to cover it.",
+  "budget.payment.uncoveredFromCategories": "The uncovered debt comes from card spending beyond what was available: {categories}. Covering those categories by the end of the month sends the money here; otherwise they restart at zero next month and the debt stays here to cover.",
+  "budget.payment.uncoveredStartingBalance": "Some of this debt was already there when you added the card — its starting balance. It does not come from new spending, so it takes nothing from unassigned money. Assign money to this category a bit at a time to cover it.",
   "budget.phone.back": "Budget",
   "budget.reserved": "Reserved for scheduled transactions",
   "budget.row.assigned": "Assigned this month",

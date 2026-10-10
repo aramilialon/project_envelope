@@ -43,6 +43,33 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(screen.getByText("€120.00")).toBeInTheDocument(); // uncovered, "To cover"
   });
 
+  it("shows the starting-balance sentence when the card has one, even with named categories also given (#355)", () => {
+    renderDetail({
+      available: 30_000,
+      uncovered: 12_000,
+      hasStartingBalance: true,
+      overspendingBy: [{ categoryId: "c1", name: "Groceries", amount: 3_000 }],
+    });
+
+    expect(screen.getByText(/already there when you added the card/)).toBeInTheDocument();
+    expect(screen.queryByText(/comes from card spending beyond what was available/)).not.toBeInTheDocument();
+  });
+
+  it("names the categories whose card spending caused the uncovered debt (#355)", () => {
+    renderDetail({
+      available: 30_000,
+      uncovered: 12_000,
+      overspendingBy: [
+        { categoryId: "c1", name: "Groceries", amount: 3_000 },
+        { categoryId: "c2", name: "Fun", amount: 9_000 },
+      ],
+    });
+
+    const explain = screen.getByText(/comes from card spending beyond what was available/);
+    expect(explain).toHaveTextContent("Groceries (€30.00)");
+    expect(explain).toHaveTextContent("Fun (€90.00)");
+  });
+
   it("'Assign from unassigned money' calls onAssignFromUnassigned", () => {
     const { onAssignFromUnassigned } = renderDetail({ available: 0, uncovered: 5_000 });
     fireEvent.click(screen.getByRole("button", { name: "Assign €50.00 from unassigned money" }));
