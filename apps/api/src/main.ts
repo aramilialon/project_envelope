@@ -14,7 +14,8 @@ async function main(): Promise<void> {
   const queuePool = createPool(config.databaseUrl);
   const queue = createQueueDriver(loadQueueConfig(), queuePool);
   await queue.start();
-  const pushDrivers = createPushDrivers(loadPushConfig());
+  const pushConfig = loadPushConfig();
+  const pushDrivers = createPushDrivers(pushConfig);
   await queue.work(BUDGET_RECOMPUTE_JOB, createBudgetRecomputeHandler(pushDrivers));
   // Hourly: frequent enough that every workspace's own local midnight (whatever its time zone)
   // is caught within the hour, without polling far more often than a day-granularity due date
@@ -22,7 +23,7 @@ async function main(): Promise<void> {
   await queue.schedule(SCHEDULED_TRANSACTIONS_FIRE_JOB, "0 * * * *");
   await queue.work(SCHEDULED_TRANSACTIONS_FIRE_JOB, createScheduledTransactionsFireHandler(queue));
 
-  const app = buildApp(config, queue);
+  const app = buildApp(config, queue, pushConfig.vapidPublicKey);
 
   await app.fastify.listen({ host: config.host, port: config.port });
 

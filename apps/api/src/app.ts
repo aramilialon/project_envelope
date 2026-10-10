@@ -12,6 +12,7 @@ import { registerAssignmentsRoutes } from "./routes/assignments.ts";
 import { registerBudgetRoutes } from "./routes/budget.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerDaysOfBufferRoutes } from "./routes/days-of-buffer.ts";
+import { registerDeviceTokensRoutes } from "./routes/device-tokens.ts";
 import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerImportRoutes } from "./routes/import.ts";
@@ -38,9 +39,12 @@ export interface App {
 /**
  * `queue`, when given, lets a write path enqueue a job in the same transaction as the data
  * that triggers it (#35). Omitted, routes work exactly as before: no queue, no job enqueued —
- * every existing test that builds an app without one keeps working unchanged.
+ * every existing test that builds an app without one keeps working unchanged. `vapidPublicKey`,
+ * when given, registers the Web Push opt-in routes (`#61`); omitted (most existing tests, which
+ * have no VAPID config of their own), they simply do not exist, the same accommodation `queue`
+ * already makes.
  */
-export function buildApp(config: Config, queue?: QueueDriver): App {
+export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: string): App {
   const loggerOptions = config.logPretty
     ? { level: config.logLevel, transport: { target: "pino-pretty" } }
     : { level: config.logLevel };
@@ -72,6 +76,9 @@ export function buildApp(config: Config, queue?: QueueDriver): App {
   registerBudgetRoutes(fastify, pool);
   registerCategoriesRoutes(fastify, pool);
   registerDaysOfBufferRoutes(fastify, pool);
+  if (vapidPublicKey) {
+    registerDeviceTokensRoutes(fastify, pool, vapidPublicKey);
+  }
   registerGoalsRoutes(fastify, pool);
   registerImportRoutes(fastify, pool);
   registerMyWorkspacesRoute(fastify, pool);

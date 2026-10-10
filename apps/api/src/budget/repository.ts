@@ -2,10 +2,12 @@ import {
   aggregateTransactions,
   compareMonths,
   computeBudgetMonth,
+  computeBudgetProblems,
   monthOf,
   UNASSIGNED,
   type Assignment,
   type BudgetAccount,
+  type BudgetProblem,
   type BudgetTransaction,
   type CardBalance,
   type CategoryMonth,
@@ -221,52 +223,20 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
   };
 }
 
-export type BudgetProblemKind = "overspent_category" | "uncovered_card_debt" | "unassigned_money";
-
-export interface BudgetProblem {
-  readonly kind: BudgetProblemKind;
-  /** Absent only for "unassigned_money", which is not about any one category. */
-  readonly categoryId?: string;
-  readonly name?: string;
-  readonly groupName?: string;
-  /** How negative the category is, how much of its card debt is uncovered, or how much unassigned money sits idle. */
-  readonly amountCents: number;
-}
+export type { BudgetProblem, BudgetProblemKind } from "@envelope/core";
 
 /**
- * The current issues a workspace/month has that need an owner or editor to
- * act on (#23): derived entirely from the same `getBudgetMonth` computation
- * — no separate stored "problem" state (design.md: "derived values are
- * never the source of truth").
+ * The current issues a workspace/month has that need an owner or editor to act on (#23):
+ * derived entirely from the same `getBudgetMonth` computation — no separate stored "problem"
+ * state (design.md: "derived values are never the source of truth"). The derivation itself is
+ * `@envelope/core`'s own `computeBudgetProblems` (`#61`): the same rule `apps/web` applies
+ * locally to its own already-fetched budget month, for an instant, offline-capable alert
+ * (design.md, "Notifications": "computed locally by the shared core, even offline").
  */
 export async function listBudgetProblems(db: DbPool | DbClient, workspaceId: string, month: string): Promise<BudgetProblem[]> {
   const budgetMonth = await getBudgetMonth(db, workspaceId, month);
-  const problems: BudgetProblem[] = [];
-
-  for (const category of [...budgetMonth.categories, ...budgetMonth.paymentCategories]) {
-    if (category.available < 0) {
-      problems.push({
-        kind: "overspent_category",
-        categoryId: category.categoryId,
-        name: category.name,
-        groupName: category.groupName,
-        amountCents: -category.available,
-      });
-    }
-    if (category.uncovered > 0) {
-      problems.push({
-        kind: "uncovered_card_debt",
-        categoryId: category.categoryId,
-        name: category.name,
-        groupName: category.groupName,
-        amountCents: category.uncovered,
-      });
-    }
-  }
-
-  if (budgetMonth.unassigned > 0) {
-    problems.push({ kind: "unassigned_money", amountCents: budgetMonth.unassigned });
-  }
-
-  return problems;
+  return computeBudgetProblems({
+    unassigned: budgetMonth.unassigned,
+    categories: [...budgetMonth.categories, ...budgetMonth.paymentCategories],
+  });
 }

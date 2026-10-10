@@ -259,3 +259,32 @@
     height: 10px;
   }
 }
+
+.budget-screen .toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  color: var(--ink-2);
+}
+
+.budget-screen .toast span {
+  flex: 1;
+}
+
+.budget-screen .plain {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.budget-screen .plain.quiet {
+  color: var(--muted);
+  font-weight: 500;
+}

@@ -1,4 +1,5 @@
 import {
+  computeBudgetProblems,
   computeCategoryBar,
   computePaymentCategoryBar,
   computeTimeline,
@@ -7,10 +8,11 @@ import {
   monthOf,
   reservationShortfall,
   type Bar as BarGeometry,
+  type BudgetProblem,
   type OverdueScheduledItem,
   type TodoItem,
 } from "@envelope/core";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
 
@@ -70,6 +72,33 @@ function groupAvailable(group: BudgetGroup): number {
 
 function groupOverspentCount(group: BudgetGroup): number {
   return group.categories.filter((c) => c.cashOverspending > 0 || c.creditOverspending > 0).length;
+}
+
+/**
+ * The instant toast's own text for one newly-arrived problem (#61) — neutral wording, the same
+ * convention `apps/api`'s own `budget-alert-text.ts` already follows for the push notification
+ * the other members get for the very same problem, just composed with `react-intl` here instead
+ * of that file's own small English/Italian lookup (design.md: FormatJS is for the apps, not the
+ * server).
+ */
+function describeBudgetProblem(problem: BudgetProblem, intl: ReturnType<typeof useIntl>, money: (cents: number) => string): string {
+  switch (problem.kind) {
+    case "overspent_category":
+      return intl.formatMessage(
+        { id: "budget.toast.overspent", defaultMessage: "{category} is negative by {amount}." },
+        { category: problem.name ?? "", amount: money(problem.amountCents) },
+      );
+    case "uncovered_card_debt":
+      return intl.formatMessage(
+        { id: "budget.toast.uncoveredDebt", defaultMessage: "{category} has {amount} of card debt not yet covered." },
+        { category: problem.name ?? "", amount: money(problem.amountCents) },
+      );
+    case "unassigned_money":
+      return intl.formatMessage(
+        { id: "budget.toast.unassigned", defaultMessage: "{amount} arrived and is still unassigned." },
+        { amount: money(problem.amountCents) },
+      );
+  }
 }
 
 function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: string } | undefined): OverdueScheduledItem[] {
@@ -132,8 +161,47 @@ export default function BudgetScreen() {
   const scheduledState = useScheduledTransactions(workspaceId!);
   const daysOfBufferState = useDaysOfBuffer(workspaceId!);
 
+  // The instant alert design.md's own "Notifications" section asks for ("the alert appears
+  // immediately, computed locally by the shared core, even offline") — not a server round trip,
+  // just `@envelope/core`'s own `computeBudgetProblems` run again on whatever the budget month
+  // already fetched, compared against the set from before the triggering action. `null` the
+  // first time (nothing to compare the very first successful fetch against) deliberately never
+  // toasts on initial load, only on a genuine change afterward.
+  const previousProblemsRef = useRef<readonly BudgetProblem[] | null>(null);
+  const [toastProblem, setToastProblem] = useState<BudgetProblem | null>(null);
+  useEffect(() => {
+    if (state.status !== "ok") {
+      return;
+    }
+    const problems = computeBudgetProblems({
+      unassigned: state.budgetMonth.unassigned,
+      categories: [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories],
+    });
+    const previous = previousProblemsRef.current;
+    previousProblemsRef.current = problems;
+    if (!previous) {
+      return;
+    }
+    const newProblem = problems.find((p) => !previous.some((old) => old.kind === p.kind && old.categoryId === p.categoryId));
+    if (newProblem) {
+      setToastProblem(newProblem);
+    }
+  }, [state]);
+
+  /** Every write action goes through this instead of `state.refetch()` directly, so a problem that appears because of it gets the instant toast above. */
+  function refetchAndCheckProblems() {
+    state.refetch();
+  }
+
   const currency = currentWorkspace?.baseCurrency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });
+  // Design.md, "Notifications": "resolving any of these needs the owner or editor role" — a
+  // `read_only` member sees every bar/row/detail exactly as before, just none of the actions
+  // that would write (#61). Defaults to `false` until the role itself actually loads (`workspaces`
+  // is its own independent fetch from the budget month, so one can resolve well before the
+  // other) — a brief flash of hidden actions for an owner/editor is the safer default than ever
+  // showing one a read-only member could click before the real role arrives.
+  const canWrite = currentWorkspace?.role === "owner" || currentWorkspace?.role === "editor";
 
   const secondRow = useBandSecondRow(
     state.status === "ok" ? (
@@ -165,9 +233,11 @@ export default function BudgetScreen() {
             <small>{intl.formatMessage({ id: "budget.unassigned", defaultMessage: "Unassigned" })}</small>
             <span className={`amt n${state.budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(state.budgetMonth.unassigned)}</span>
           </div>
-          <button type="button" className="btn primary" onClick={() => setMoveMoney({ kind: "assign" })}>
-            {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
-          </button>
+          {canWrite && (
+            <button type="button" className="btn primary" onClick={() => setMoveMoney({ kind: "assign" })}>
+              {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
+            </button>
+          )}
         </div>
         <div className="facts">
           <span>
@@ -239,6 +309,7 @@ export default function BudgetScreen() {
         uncovered={category.uncovered}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
         onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
         onMoveMoneyHere={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
@@ -252,8 +323,9 @@ export default function BudgetScreen() {
         assigned={category.assigned}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
-        onChanged={() => state.refetch()}
+        onChanged={() => refetchAndCheckProblems()}
         onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
       />
     );
@@ -275,6 +347,20 @@ export default function BudgetScreen() {
   return (
     <div className="budget-screen">
       {secondRow}
+
+      {toastProblem && (
+        <div className="toast" role="status" aria-live="polite">
+          <span>{describeBudgetProblem(toastProblem, intl, money)}</span>
+          <button
+            type="button"
+            className="plain quiet"
+            aria-label={intl.formatMessage({ id: "budget.toast.close", defaultMessage: "Close this message" })}
+            onClick={() => setToastProblem(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {phoneOpenCategory ? (
         renderDetail(phoneOpenCategory, true)
@@ -335,17 +421,19 @@ export default function BudgetScreen() {
             />
           </div>
 
-          <div className="acts">
-            <button type="button" className="btn" onClick={() => setPanel("targets")}>
-              {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
-            </button>
-            <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
-              {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
-            </button>
-            <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
-              {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
-            </button>
-          </div>
+          {canWrite && (
+            <div className="acts">
+              <button type="button" className="btn" onClick={() => setPanel("targets")}>
+                {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
+              </button>
+              <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
+                {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
+              </button>
+              <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
+                {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
+              </button>
+            </div>
+          )}
 
           {groups.length === 0 ? (
             <p className="empty">
@@ -489,7 +577,7 @@ export default function BudgetScreen() {
           categories={state.budgetMonth.categories}
           currency={currency ?? "EUR"}
           onClose={() => setPanel(null)}
-          onChanged={() => state.refetch()}
+          onChanged={() => refetchAndCheckProblems()}
         />
       )}
       {panel === "quickAssign" && (
@@ -500,7 +588,7 @@ export default function BudgetScreen() {
           onClose={() => setPanel(null)}
           onDone={() => {
             setPanel(null);
-            state.refetch();
+            refetchAndCheckProblems();
           }}
         />
       )}
@@ -512,7 +600,7 @@ export default function BudgetScreen() {
           currency={currency ?? "EUR"}
           timeZone={timeZone}
           onClose={() => setPanel(null)}
-          onChanged={() => state.refetch()}
+          onChanged={() => refetchAndCheckProblems()}
         />
       )}
       {moveMoney && (
@@ -527,7 +615,7 @@ export default function BudgetScreen() {
           onClose={() => setMoveMoney(null)}
           onChanged={() => {
             setMoveMoney(null);
-            state.refetch();
+            refetchAndCheckProblems();
           }}
         />
       )}

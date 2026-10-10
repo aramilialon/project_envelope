@@ -78,10 +78,11 @@ function renderScreen(
   goalsByCategory: ReadonlyMap<string, GoalProgress> = new Map(),
   eventsImpl?: () => Promise<readonly MonthEvent[]>,
   scheduledTransactions: readonly budgetApi.ScheduledTransaction[] = [],
+  role: workspacesApi.WorkspaceRole = "owner",
 ) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "UTC" },
+    { id: "ws-1", name: "Famiglia", role, baseCurrency: "EUR", timeZone: "UTC" },
   ]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
@@ -682,5 +683,80 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(name);
     expect(screen.queryByText("Groceries")).not.toBeInTheDocument();
+  });
+
+  describe("read_only role gating (#61)", () => {
+    it("hides Assign, Targets, Quick assign and Scheduled for a read_only member", async () => {
+      renderScreen(budgetMonth({ categories: [category({})] }), [HOME], [], new Map(), undefined, [], "read_only");
+      await screen.findByText("Groceries");
+
+      expect(screen.queryByRole("button", { name: "Assign" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Targets" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Quick assign" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Scheduled" })).not.toBeInTheDocument();
+    });
+
+    it("opens a category's own row detail read-only, with no edit or 'Move money'", async () => {
+      renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME], [], new Map(), undefined, [], "read_only");
+      await screen.findByText("Groceries");
+
+      fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+      const input = await screen.findByLabelText("Assigned this month");
+      expect(input).toHaveAttribute("readonly");
+      expect(screen.queryByRole("button", { name: "Move money" })).not.toBeInTheDocument();
+    });
+
+    it("still lets an owner/editor use these actions (not hidden for everyone)", async () => {
+      renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      expect(screen.getByRole("button", { name: "Assign" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Targets" })).toBeInTheDocument();
+    });
+  });
+
+  describe("instant budget-problem toast (#61)", () => {
+    it("shows a toast once an action turns up a new overspent category, computed from the already-fetched month", async () => {
+      vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+      const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 1_000, available: 1_000 })] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      // The row detail's own commit always refetches; this is what the server would really
+      // report back once the edit above pushed the category negative.
+      getBudgetMonth.mockResolvedValueOnce(
+        budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: -500, available: -500 })] }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+      const input = await screen.findByLabelText("Assigned this month");
+      input.focus();
+      fireEvent.change(input, { target: { value: "-5.00" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(await screen.findByText("Groceries is negative by €5.00.")).toBeInTheDocument();
+    });
+
+    it("never toasts on the very first load, only once something actually changes afterward", async () => {
+      renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", available: -500 })] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      expect(screen.queryByText(/is negative by/)).not.toBeInTheDocument();
+    });
+
+    it("dismisses the toast on its own close button", async () => {
+      vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+      const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", available: 1_000 })] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      getBudgetMonth.mockResolvedValueOnce(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", available: -500 })] }));
+      fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
+      const input = await screen.findByLabelText("Assigned this month");
+      input.focus();
+      fireEvent.change(input, { target: { value: "-5.00" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await screen.findByText("Groceries is negative by €5.00.");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close this message" }));
+      expect(screen.queryByText("Groceries is negative by €5.00.")).not.toBeInTheDocument();
+    });
   });
 });
