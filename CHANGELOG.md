@@ -6,6 +6,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-10
+
 ### Added
 
 - Docs: UX and visual design for the web app (`docs/ux/README.md`) — a screen inventory against the existing mockups, the navigation structure, a reusable component catalog, the accessibility baseline every mockup already follows, and the translation-key convention (ADR 0004) screens must use instead of literal text; a new sign-in mockup, the one screen design.md still listed as undesigned (`#70`).
