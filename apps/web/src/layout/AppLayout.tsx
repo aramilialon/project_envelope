@@ -3,6 +3,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
+import NotificationsToggle from "../notifications/NotificationsToggle.tsx";
 import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.tsx";
 import { BandSecondRowSlotContext } from "./bandSecondRowSlot.ts";
 import { usePhoneWidth } from "./usePhoneWidth.ts";
@@ -53,6 +54,7 @@ export default function AppLayout() {
           </nav>
           <WorkspaceSwitcher />
           <span className="who">{auth.user?.profile.name ?? auth.user?.profile.preferred_username ?? ""}</span>
+          <NotificationsToggle />
           <button type="button" className="me" onClick={() => void auth.signoutRedirect()}>
             {intl.formatMessage({ id: "common.action.signOut", defaultMessage: "Sign out" })}
           </button>

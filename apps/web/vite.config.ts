@@ -8,6 +8,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      // injectManifest (not the default generateSW): Web Push (#61) needs its own `push`/
+      // `notificationclick` handlers, which only a service worker source file this app owns
+      // can add — generateSW's own auto-written one has no room for them.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       manifest: {
         name: "envelope",
         short_name: "envelope",
@@ -20,7 +26,7 @@ export default defineConfig({
         // proper multi-resolution PNG/maskable icons are a visual-design follow-up.
         icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml" }],
       },
-      workbox: {
+      injectManifest: {
         // The default glob (js/css/html/ico/png/svg) does not include the self-hosted font
         // files (#323): without this, an installed, offline PWA would lose Bricolage
         // Grotesque/Figtree the moment the network is gone, even though self-hosting already

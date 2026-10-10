@@ -21,6 +21,8 @@ interface Props {
   onMoveMoney(): void;
   /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
   readonly fullScreen?: boolean;
+  /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own edit controls. */
+  readonly readOnly?: boolean;
 }
 
 /** A plain, locale-formatted number, no currency symbol — the field's own displayed value, same convention `AccountRegisterScreen.tsx`'s own `plainAmount` uses for an editable/tabular amount. */
@@ -38,7 +40,7 @@ function plainAmount(cents: number, locale: string, currency: string): string {
  * target meter, the scheduled list, the ledger, quick assign, the assignment and transaction
  * history) is later issues' own job, layered onto this same row.
  */
-export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen }: Props) {
+export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen, readOnly }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const [value, setValue] = useState(() => plainAmount(assigned, intl.locale, currency));
@@ -103,6 +105,7 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
             inputMode="decimal"
             className="asg-in n"
             value={value}
+            readOnly={readOnly}
             aria-describedby={`asg-h-${categoryId}`}
             onChange={(event) => setValue(event.target.value)}
             onKeyDown={(event) => {
@@ -126,9 +129,11 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
         <small className="asg-h" id={`asg-h-${categoryId}`}>
           {intl.formatMessage({ id: "budget.row.assignedHint", defaultMessage: "Type an amount, or +20 / -15, then Enter." })}
         </small>
-        <button type="button" className="plain" onClick={onMoveMoney}>
-          {intl.formatMessage({ id: "budget.row.moveMoney", defaultMessage: "Move money" })}
-        </button>
+        {!readOnly && (
+          <button type="button" className="plain" onClick={onMoveMoney}>
+            {intl.formatMessage({ id: "budget.row.moveMoney", defaultMessage: "Move money" })}
+          </button>
+        )}
       </div>
     </DetailFrame>
   );

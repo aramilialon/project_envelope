@@ -6,6 +6,8 @@
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { PushDriver, PushPayload } from "./driver.ts";
 
+export type DevicePlatform = "ios" | "android" | "web";
+
 export interface PushDrivers {
   readonly web: PushDriver;
   readonly ios: PushDriver;
@@ -14,7 +16,7 @@ export interface PushDrivers {
 
 interface DeviceTokenRow {
   readonly id: string;
-  readonly platform: "ios" | "android" | "web";
+  readonly platform: DevicePlatform;
   readonly token: string;
 }
 
@@ -65,5 +67,47 @@ export async function sendPushToUser(
       await db.query("DELETE FROM device_tokens WHERE id = $1", [device.id]);
     }
     // "failed" (a transient error): the row stays 'pending', left for a future retry.
+  }
+}
+
+/**
+ * Registers a device for push notifications (`#61`'s own opt-in; `ios`/`android` get a real
+ * caller once the mobile app exists, 0.3.0). `device_tokens` has no request of its own to derive
+ * `app.user_id` from here — this route has no workspace, just the signed-in user — so this opens
+ * its own transaction and sets it directly, the same convention `listWorkspacesForUser` already
+ * established. Idempotent: re-subscribing the same browser is a silent no-op, matching the
+ * table's own `(user_id, platform, token)` uniqueness instead of erroring on a repeat.
+ */
+export async function registerDeviceToken(pool: DbPool, userId: string, platform: DevicePlatform, token: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    await client.query(
+      "INSERT INTO device_tokens (user_id, platform, token) VALUES ($1, $2, $3) ON CONFLICT (user_id, platform, token) DO NOTHING",
+      [userId, platform, token],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Opting back out (`#61`): removing a row a failed push would eventually clean up anyway (`invalid_token`, above), just without waiting for one. */
+export async function removeDeviceToken(pool: DbPool, userId: string, platform: DevicePlatform, token: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+    await client.query("DELETE FROM device_tokens WHERE user_id = $1 AND platform = $2 AND token = $3", [userId, platform, token]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 }

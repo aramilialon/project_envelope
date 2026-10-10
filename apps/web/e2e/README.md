@@ -37,6 +37,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | `targets.spec.ts` | Targets and quick assign (`#55`): setting a monthly target on a category from the "Targets" panel, seeing it reflected there, and running "Quick assign" with its default scope and mode |
 | `reconciliation.spec.ts` | The reconciliation screen (`#60`): a cleared transaction, a matching statement balance, locking it from the account register's own "Reconcile" to-do item, then unlocking it again |
 | `import.spec.ts` | The import screen (`#59`): a CSV statement, column mapping, reviewing the staged rows, confirming one into a real transaction |
+| `notifications.spec.ts` | Role gating (`#61`): a `read_only` member sees the budget month with no write actions at all. The Web Push opt-in itself is not covered here — headless Chromium's own push stack needs a reachable push service to complete a real subscription, which would make this test slow and flaky for no real product signal; `usePushSubscription`'s own state machine already has solid unit coverage instead |
 
 ## In CI
 

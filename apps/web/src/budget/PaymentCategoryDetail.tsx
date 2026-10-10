@@ -18,6 +18,8 @@ interface Props {
   onMoveMoneyHere(): void;
   /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
   readonly fullScreen?: boolean;
+  /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own two actions. */
+  readonly readOnly?: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ interface Props {
  * own three-column list for this row) are deliberately not built here, the same way #327 left
  * them out of an ordinary category's own detail — no issue has fetched that data yet.
  */
-export default function PaymentCategoryDetail({ categoryName, available, uncovered, currency, onClose, onAssignFromUnassigned, onMoveMoneyHere, fullScreen }: Props) {
+export default function PaymentCategoryDetail({ categoryName, available, uncovered, currency, onClose, onAssignFromUnassigned, onMoveMoneyHere, fullScreen, readOnly }: Props) {
   const intl = useIntl();
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const covered = uncovered <= 0;
@@ -80,12 +82,16 @@ export default function PaymentCategoryDetail({ categoryName, available, uncover
             <span className="dots" />
             <span className="n warnl">{money(uncovered)}</span>
           </div>
-          <button type="button" className="plain" onClick={onAssignFromUnassigned}>
-            {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(uncovered) })}
-          </button>
-          <button type="button" className="plain" onClick={onMoveMoneyHere}>
-            {intl.formatMessage({ id: "budget.payment.moveMoneyHere", defaultMessage: "Move money here" })}
-          </button>
+          {!readOnly && (
+            <>
+              <button type="button" className="plain" onClick={onAssignFromUnassigned}>
+                {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(uncovered) })}
+              </button>
+              <button type="button" className="plain" onClick={onMoveMoneyHere}>
+                {intl.formatMessage({ id: "budget.payment.moveMoneyHere", defaultMessage: "Move money here" })}
+              </button>
+            </>
+          )}
         </div>
       )}
     </DetailFrame>
