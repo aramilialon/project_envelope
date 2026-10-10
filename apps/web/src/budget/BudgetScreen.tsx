@@ -12,10 +12,11 @@ import {
   type OverdueScheduledItem,
   type TodoItem,
 } from "@envelope/core";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useParams } from "react-router-dom";
 
+import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import { useBandSecondRow } from "../layout/useBandSecondRow.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
@@ -192,6 +193,24 @@ export default function BudgetScreen() {
   function refetchAndCheckProblems() {
     state.refetch();
   }
+
+  // The quick-entry overlay (#367) is not a route: this screen never unmounts to pick up a
+  // transaction recorded through it the way navigating here fresh would, so it watches the
+  // shared version number instead. A ref holds the latest `refetchAndCheckProblems` so the
+  // effect only needs `budgetDataVersion` itself as a dependency — depending on `state` directly
+  // would re-run this on every fetch it triggers, refetching forever. Guarded by `> 0` so the
+  // very first render (nothing has changed yet) does not trigger a redundant extra fetch
+  // alongside `useBudgetMonth`'s own.
+  const budgetDataVersion = useContext(BudgetDataVersionContext);
+  const refetchAndCheckProblemsRef = useRef(refetchAndCheckProblems);
+  useEffect(() => {
+    refetchAndCheckProblemsRef.current = refetchAndCheckProblems;
+  });
+  useEffect(() => {
+    if (budgetDataVersion > 0) {
+      refetchAndCheckProblemsRef.current();
+    }
+  }, [budgetDataVersion]);
 
   const currency = currentWorkspace?.baseCurrency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currency ?? "EUR" });

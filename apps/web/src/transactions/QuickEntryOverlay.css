@@ -1,0 +1,152 @@
+/* The phone tab bar's own central "+" button (#367), a full-screen overlay fixed above
+   everything else, including the tab bar itself — `docs/ux/mockups/account-register.html`'s own
+   `.qe`/`.chips2`/`.keys` rules, copied and scoped here. */
+.quick-entry {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow-y: auto;
+  background: var(--paper);
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.quick-entry p[role="status"],
+.quick-entry p[role="alert"] {
+  margin-top: 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.quick-entry .qe {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quick-entry .qe-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.quick-entry .qe-top h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 700;
+  font-stretch: 72%;
+}
+
+.quick-entry .ph-back {
+  border: 0;
+  background: transparent;
+  color: var(--pen);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.quick-entry .qe-amt {
+  padding: 14px 0 6px;
+  text-align: center;
+  font-family: var(--display);
+  font-size: 44px;
+  font-weight: 700;
+  font-stretch: 85%;
+  border-bottom: 1px solid var(--rule);
+}
+
+.quick-entry .qe-amt.zero {
+  color: var(--muted);
+}
+
+.quick-entry h5 {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-stretch: 78%;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quick-entry input[type="text"] {
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+}
+
+.quick-entry .chips2 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick-entry .chip2 {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.quick-entry .chip2[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+.quick-entry .chip2 small {
+  margin-left: 6px;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick-entry .keys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.quick-entry .keys button {
+  min-height: 48px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 10px;
+  background: var(--paper-2);
+  color: inherit;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quick-entry .qe-save {
+  min-height: 50px;
+  font-size: 16px;
+}
+
+.quick-entry .toast {
+  padding: 12px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 14px;
+}
+
+.quick-entry .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

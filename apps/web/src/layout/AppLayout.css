@@ -200,7 +200,11 @@
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Not a fixed column count: the central "+" (#367) is only one of the children for a
+     write-capable member, absent for a `read_only` one — auto-columns keeps every child the
+     same width either way, instead of hardcoding how many there are. */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   align-items: center;
   height: 76px;
   padding: 0 6px calc(14px + env(safe-area-inset-bottom, 0px));
@@ -228,4 +232,13 @@
 .app-layout .tabbar a[aria-current="page"] {
   color: var(--ink);
   font-weight: 700;
+}
+
+.app-layout .tabbar .add {
+  justify-self: center;
+  width: 52px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--pen);
+  color: var(--pen-ink);
 }

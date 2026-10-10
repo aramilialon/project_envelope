@@ -1,5 +1,5 @@
 import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney } from "@envelope/core";
-import { useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { recordScheduledTransaction } from "../budget/api.ts";
 import { daysInMonth, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
 import Timeline from "../budget/Timeline.tsx";
 import { formatPayees } from "../budget/timelineLabels.ts";
+import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { unlockReconciliation } from "../reconciliation/api.ts";
@@ -122,6 +123,23 @@ export default function AccountRegisterScreen() {
   // nothing here ever changes it.
   const month = currentMonthIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const state = useAccountRegister(workspaceId!, accountId!, month);
+  // The quick-entry overlay (#367) is not a route: this screen never unmounts to pick up a
+  // transaction recorded through it the way navigating here fresh would, so it watches the
+  // shared version number instead. A ref holds the latest `refetch` so the effect only needs
+  // `budgetDataVersion` itself as a dependency — depending on `state` directly would re-run this
+  // on every fetch it triggers, refetching forever. Guarded by `> 0` so the very first render
+  // (nothing has changed yet) does not trigger a redundant extra fetch alongside
+  // `useAccountRegister`'s own.
+  const budgetDataVersion = useContext(BudgetDataVersionContext);
+  const refetchRef = useRef(state.refetch);
+  useEffect(() => {
+    refetchRef.current = state.refetch;
+  });
+  useEffect(() => {
+    if (budgetDataVersion > 0) {
+      refetchRef.current();
+    }
+  }, [budgetDataVersion]);
   const isPhone = usePhoneWidth();
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
