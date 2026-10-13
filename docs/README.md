@@ -4,6 +4,7 @@
 | --- | --- |
 | [Design document](design.md) | Vision, features, architecture, roadmap and decisions |
 | [Getting started](getting-started.md) | Set up a Debian 13 development VM, run tests and services, publish to GitHub |
+| [Domain guide](domain-guide.md) | The rules of envelope budgeting and portfolio rebalancing, with numeric examples |
 | [How-to guides](how-to/) | Step-by-step recipes for changing the project |
 | [Decisions (ADR)](adr/) | Why a solution was chosen, and which alternatives were discarded |
 | [Glossary](glossary.md) | Financial and technical terms used in the code |
