@@ -32,7 +32,6 @@ import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
 import Timeline from "./Timeline.tsx";
-import { formatPayees } from "./timelineLabels.ts";
 import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
@@ -396,8 +395,6 @@ export default function BudgetScreen() {
                   today: today?.day,
                   events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
                   compact: true,
-                  formatAmount: money,
-                  formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
                 })}
                 monthLabel={monthLabel(month, intl.locale)}
                 money={money}
@@ -411,8 +408,6 @@ export default function BudgetScreen() {
                   daysInMonth: daysInMonth(month),
                   today: today?.day,
                   events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
-                  formatAmount: money,
-                  formatPayees: (payees, extra) => formatPayees(payees, extra, intl),
                 })}
                 monthLabel={monthLabel(month, intl.locale)}
                 money={money}

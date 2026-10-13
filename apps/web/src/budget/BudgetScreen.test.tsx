@@ -539,8 +539,8 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(screen.getByText(/day by day/)).toBeInTheDocument();
-    expect(document.querySelector(".time svg .t-stem.t-out")).not.toBeNull();
-    expect(document.querySelector(".time svg .t-stem.t-in")).not.toBeNull();
+    expect(document.querySelector(".time svg .t-line.t-out")).not.toBeNull();
+    expect(document.querySelector(".time svg .t-line.t-in")).not.toBeNull();
     expect(screen.getByText("Cover Groceries")).toBeInTheDocument();
     expect(screen.getByText("€50.00")).toBeInTheDocument(); // the cash-overspending item's own amount
   });
@@ -555,8 +555,12 @@ describe("BudgetScreen (#53, #324)", () => {
     );
 
     expect(await screen.findByText("Cover Groceries")).toBeInTheDocument();
-    expect(document.querySelector(".time")).not.toBeNull(); // still mounted, same size, just no marks yet
-    expect(document.querySelector(".time svg .t-stem")).toBeNull();
+    // Still mounted, same size — a flat line (no events yet) rather than nothing at all, so
+    // nothing around it jumps once the real ones arrive.
+    expect(document.querySelector(".time")).not.toBeNull();
+    expect(document.querySelectorAll(".time svg .t-line")).not.toHaveLength(0);
+    expect(document.querySelector(".time svg .t-line.t-in")).toBeNull();
+    expect(document.querySelector(".time svg .t-line.t-out")).toBeNull();
   });
 
   it("shows the 'To do' list even when the events fetch fails outright, just without overdue entries", async () => {

@@ -8,8 +8,8 @@ import Timeline from "./Timeline.tsx";
 
 const money = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 
-describe("Timeline (#326)", () => {
-  it("shows the month's own heading and note, and draws the axis", () => {
+describe("Timeline (#326, redesigned #390)", () => {
+  it("shows the month's own heading and note, and draws the zero axis", () => {
     const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [] });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
@@ -17,48 +17,46 @@ describe("Timeline (#326)", () => {
     expect(document.querySelector(".t-axis")).not.toBeNull();
   });
 
-  it("draws a solid stem for a recorded outflow, dashed for one still scheduled", () => {
+  it("draws the running total solid up to today, dashed for what is still scheduled", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
-      today: undefined,
+      today: 15,
       events: [
-        { day: 5, amountCents: 10_000, direction: "out", status: "recorded", payee: "Supermarket" },
-        { day: 10, amountCents: 5_000, direction: "out", status: "scheduled", payee: "Rent" },
+        { day: 5, amountCents: 10_000, direction: "out", status: "recorded" },
+        { day: 20, amountCents: 5_000, direction: "in", status: "scheduled" },
       ],
     });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
-    expect(document.querySelector(".t-stem.t-out:not(.plan)")).not.toBeNull();
-    expect(document.querySelector(".t-stem.t-out.plan")).not.toBeNull();
+    expect(document.querySelector(".t-line.t-out:not(.plan)")).not.toBeNull();
+    expect(document.querySelector(".t-line.t-in.plan")).not.toBeNull();
   });
 
-  it("gives an overdue item its own amber, dashed stem and label", () => {
+  it("shows the current value, signed, at today's own line", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
       today: 15,
-      events: [{ day: 5, amountCents: 4_500, direction: "out", status: "overdue", payee: "Vet clinic" }],
+      events: [{ day: 5, amountCents: 4_200, direction: "in", status: "recorded" }],
     });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
-    expect(document.querySelector(".t-stem.t-late")).not.toBeNull();
-    expect(document.querySelector(".t-l.t-late")).toHaveTextContent("Vet clinic");
+    expect(screen.getByText("+€42.00")).toBeInTheDocument();
   });
 
-  it("shows at most two payees plus a count, never more, for a day with many events", () => {
+  it("gives an overdue, not-yet-recorded item its own marker, without changing the current value's own colour", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
-      today: undefined,
-      formatAmount: money,
-      events: [1, 2, 3, 4, 5].map((n) => ({ day: 10, amountCents: 100 * n, direction: "in" as const, status: "recorded" as const, payee: `Payee ${n}` })),
+      today: 15,
+      events: [{ day: 5, amountCents: 4_500, direction: "out", status: "overdue" }],
     });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
 
-    // Intl.ListFormat's own conjunction style ("A and B"), never a raw "+3" that could be
-    // mistaken for the timeline's own "+" sign (an inflow) — design.md, #326's own review round.
-    expect(screen.getByText(/Payee 1 and Payee 2 and 3 more/)).toBeInTheDocument();
+    expect(document.querySelector(".t-overdue")).not.toBeNull();
+    // The real total is unaffected until it is actually recorded.
+    expect(screen.getByText("+€0.00")).toBeInTheDocument();
   });
 
-  it("draws the 'today' line only when the month shown is the current one", () => {
+  it("draws the 'today' line and the current value only when the month shown is the current one", () => {
     const current = computeTimeline({ daysInMonth: 30, today: 12, events: [] });
     const { rerender } = render(
       <IntlProvider locale="en" defaultLocale="en" messages={{}}>
@@ -66,6 +64,7 @@ describe("Timeline (#326)", () => {
       </IntlProvider>,
     );
     expect(document.querySelector(".t-today")).not.toBeNull();
+    expect(document.querySelector(".t-cur")).not.toBeNull();
 
     const other = computeTimeline({ daysInMonth: 30, today: undefined, events: [] });
     rerender(
@@ -74,15 +73,18 @@ describe("Timeline (#326)", () => {
       </IntlProvider>,
     );
     expect(document.querySelector(".t-today")).toBeNull();
+    expect(document.querySelector(".t-cur")).toBeNull();
   });
 
-  it("drops the heading and note in compact mode, for the phone's own small timeline (#331)", () => {
-    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [], compact: true });
+  it("drops the heading, note and current-value label in compact mode, for the phone's own small timeline (#331)", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: 12, events: [], compact: true });
     renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} compact />);
 
     expect(screen.queryByText("September 2026, day by day")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Income above the line/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/What has moved/)).not.toBeInTheDocument();
     expect(document.querySelector(".time.compact")).not.toBeNull();
     expect(document.querySelector(".t-axis")).not.toBeNull();
+    // Still drawn (compact just trims the surrounding chrome, not the chart itself).
+    expect(document.querySelector(".t-cur")).not.toBeNull();
   });
 });

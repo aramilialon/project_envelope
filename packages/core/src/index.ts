@@ -47,16 +47,18 @@ export { compareHlc, nextHlc } from "./sync/hlc.ts";
 export type { Bar, BarSegment, CategoryBar, PaymentCategoryBar, TailKind } from "./presentation/bars.ts";
 export { computeCategoryBar, computePaymentCategoryBar, TAIL_PERCENT, TRACK_PERCENT } from "./presentation/bars.ts";
 export type {
+  TimelineCurrent,
   TimelineDayTick,
   TimelineDirection,
   TimelineEvent,
   TimelineEventStatus,
   TimelineInput,
-  TimelineLabel,
   TimelineLayout,
-  TimelineMark,
+  TimelinePoint,
+  TimelineSegment,
+  TimelineStepDirection,
 } from "./presentation/timeline.ts";
-export { computeTimeline, MAX_LABEL_PAYEES } from "./presentation/timeline.ts";
+export { computeTimeline } from "./presentation/timeline.ts";
 export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
 export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";
 export { computeProjectedBalance } from "./presentation/projectedBalance.ts";
