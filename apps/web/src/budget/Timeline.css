@@ -6,14 +6,14 @@
 }
 
 /* The phone's own small timeline (`#331`): tighter padding, no heading/note to make room for
-   (suppressed in `Timeline.tsx` itself), a slightly thinner stem matching the mockup's own
-   `.ph-time .t-stem` — `computeTimeline`'s own `compact: true` already halves the canvas. */
+   (suppressed in `Timeline.tsx` itself), a slightly thinner line matching the mockup's own
+   `.ph-time .t-line` — `computeTimeline`'s own `compact: true` already halves the canvas. */
 .time.compact {
   padding: 8px 8px 4px;
 }
 
-.time.compact .t-stem {
-  stroke-width: 4;
+.time.compact .t-line {
+  stroke-width: 2;
 }
 
 .time h5 {
@@ -61,51 +61,50 @@
   font-weight: 700;
 }
 
-.t-stem {
-  stroke-width: 5;
+/* The running total itself — never the app's own `red`/`amber` (design.md's visual language:
+   those stay reserved for a real problem, not an ordinary day of spending). */
+.t-line {
+  fill: none;
+  stroke-width: 2.5;
   stroke-linecap: round;
 }
 
-.t-stem.t-out {
-  stroke: var(--ink);
-}
-
-.t-stem.t-out.plan {
-  stroke: var(--ink-2);
-  stroke-dasharray: 2 3;
+.t-line.plan {
+  stroke-dasharray: 4 4;
   stroke-linecap: butt;
 }
 
-.t-stem.t-in {
+.t-line.t-in {
   stroke: var(--pen);
 }
 
-.t-stem.t-in.plan {
-  stroke-dasharray: 2 3;
-  stroke-linecap: butt;
+.t-line.t-out {
+  stroke: var(--ink);
 }
 
-.t-stem.t-late {
-  stroke: var(--hatch);
+.t-line.t-flat {
+  stroke: var(--ink-2);
+}
+
+/* The current value: a dashed reference line at today's own height, with its amount — the
+   equivalent of a price chart's own current-price tag. */
+.t-cur {
+  stroke: var(--ink-2);
+  stroke-width: 1;
   stroke-dasharray: 3 3;
-  stroke-linecap: butt;
 }
 
-.t-l {
+.t-cur-l {
+  fill: var(--ink);
   font-size: 12px;
-  fill: var(--ink-2);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   paint-order: stroke;
   stroke: var(--desk);
   stroke-width: 4px;
   stroke-linejoin: round;
 }
 
-.t-l.t-in {
-  fill: var(--pen);
-  font-weight: 700;
-}
-
-.t-l.t-late {
+.t-overdue {
   fill: var(--warn);
-  font-weight: 700;
 }

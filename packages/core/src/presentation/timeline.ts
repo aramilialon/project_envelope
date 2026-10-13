@@ -1,61 +1,63 @@
 import type { Cents } from "../money.ts";
 
 /**
- * The month's own day-by-day timeline (design.md, "Budget month on the desktop" — "Timeline";
- * `docs/ux/mockups/budget-month.html`'s own `timelineSvg`, the literal reference this mirrors).
- * Plain coordinates, lengths and label positions out, never rendered SVG or literal text (no
- * user-facing text in `packages/core`) — `apps/web`'s `Timeline.tsx` draws the actual `<svg>`
- * from this, formatting each label's own amount with `Intl.NumberFormat` at render time. A mark's
- * `label.payees` are the transactions' (or scheduled transactions') own stored payees — raw user
- * data, not UI copy — carried through so the renderer can compose "payees, amount" itself; capped
- * to `MAX_LABEL_PAYEES`, with `extraPayeeCount` for the rest, so a day with many events never
- * grows a label past what `TimelineInput.formatAmount`'s own width estimate actually accounts for.
+ * The month's own day-by-day timeline (design.md, "Timeline"; `docs/ux/mockups/budget-month.html`'s
+ * own `timelineSvg`, the literal reference this mirrors): a running total of the month's own
+ * events, not a per-event mark. Plain coordinates out, never rendered SVG or literal text (no
+ * user-facing text in `packages/core`) — `apps/web`'s `Timeline.tsx` draws the actual `<svg>` from
+ * this, formatting `TimelineCurrent.amountCents` with `Intl.NumberFormat` at render time.
  *
- * Reused as-is by `#337` (the account register's own timeline): the layout math does not care
+ * Reused as-is by the account register's own timeline (`#337`): the layout math does not care
  * whether the events are workspace-wide or one account's own, only `compact` (the account
  * register's own, smaller rendering) changes the numbers.
+ *
+ * Redesigned (`#390`) from the original per-event marks (a stem above/below a center axis, sized
+ * by the square root of the amount) into a running total: each day's own net amount accumulates
+ * into the day before it, starting at zero on day 1. A day's own segment is coloured by whether it
+ * moved the total up or down — never the app's own `red`/`amber` (design.md's visual language:
+ * those stay reserved for a real problem, not an ordinary day of spending) — and the current
+ * value (today's own point) is called out the same way a price chart calls out its current price:
+ * a dashed reference line and the amount itself, `TimelineCurrent`.
  */
 
 export type TimelineDirection = "in" | "out";
-/** `recorded`: a real transaction, drawn solid. `scheduled`: not yet due, dashed. `overdue`: scheduled, dashed and amber. */
+/** `recorded`: a real transaction, counted into the solid, actual part of the line. `scheduled`/`overdue`: not yet recorded, counted into the dashed, projected part instead — an `overdue` one (its own day already past) folds into today's own point rather than its own earlier day, so the solid/dashed split stays one single vertical line. */
 export type TimelineEventStatus = "recorded" | "scheduled" | "overdue";
 
 export interface TimelineEvent {
   /** 1-based day of the month. */
   readonly day: number;
-  /** Always positive — `direction` says which way it moves. */
+  /** Always positive — `direction` says which way it moves the running total. */
   readonly amountCents: Cents;
   readonly direction: TimelineDirection;
   readonly status: TimelineEventStatus;
-  /** The transaction's (or scheduled transaction's) own payee — raw data, never composed UI text. */
-  readonly payee: string;
 }
 
-/** At most this many payees are ever spelled out in a label; the rest become `extraPayeeCount` ("+N", composed by the renderer). */
-export const MAX_LABEL_PAYEES = 2;
+/** Never a judgement colour (`red`/`amber` stay reserved for a real problem) — `in` the same `pen` token already used for income and "today", `out` the ordinary `ink`, `flat` a day with no net change at all. */
+export type TimelineStepDirection = "in" | "out" | "flat";
 
-export interface TimelineLabel {
+export interface TimelinePoint {
+  readonly day: number;
   readonly x: number;
   readonly y: number;
-  /** The first `MAX_LABEL_PAYEES` payees sharing this mark (several events landed on the same day, direction and status) — never more, however many actually share it. */
-  readonly payees: readonly string[];
-  /** How many more payees shared this mark beyond `payees` — 0 when `payees` already lists every one. */
-  readonly extraPayeeCount: number;
-  /** Its own estimated rendered width (`x` to `x + width` never crosses the canvas's own edge or the "today" line) — `TimelineInput.formatAmount`'s own contribution to it. */
-  readonly width: number;
 }
 
-export interface TimelineMark {
-  readonly day: number;
-  readonly direction: TimelineDirection;
-  readonly status: TimelineEventStatus;
-  /** Net of every event sharing this mark's day, direction and status. */
+export interface TimelineSegment {
+  readonly from: TimelinePoint;
+  readonly to: TimelinePoint;
+  readonly direction: TimelineStepDirection;
+  /** `false` up to today (recorded only, solid); `true` from today on (recorded + scheduled, dashed). Every segment is `false` when `today` itself is absent — a month that is not the current one has nothing left to project. */
+  readonly projected: boolean;
+}
+
+export interface TimelineCurrent {
+  /** The running total through today, recorded events only — can be negative. */
   readonly amountCents: Cents;
-  readonly x: number;
-  /** Where the mark's own stem ends — the axis is `TimelineLayout.axisY`. */
-  readonly stemY: number;
-  /** Present only for a mark design.md calls out: the largest recorded outflows, everything still to come, and all income. */
-  readonly label: TimelineLabel | undefined;
+  readonly y: number;
+  /** Whether an overdue, not-yet-recorded item is folded into this point — a small marker, never changing the line's own colour. */
+  readonly hasOverdue: boolean;
+  /** Where that marker sits — the running total as if the overdue item had already been recorded. Present only when `hasOverdue` is `true`, and never the same `y` as above, or there would be nothing to mark. */
+  readonly overdueY: number | undefined;
 }
 
 export interface TimelineDayTick {
@@ -66,13 +68,16 @@ export interface TimelineDayTick {
 export interface TimelineLayout {
   readonly width: number;
   readonly height: number;
-  readonly axisY: number;
+  /** Where zero falls on the vertical scale — not necessarily the canvas's own center, since the month's own running total can sit entirely above or below it. */
+  readonly zeroY: number;
   readonly axisX0: number;
   readonly axisX1: number;
   /** The "today" line's own x, and the start of the lighter "future" ground past it — absent when the month shown is not the current one. */
   readonly todayX: number | undefined;
   readonly dayTicks: readonly TimelineDayTick[];
-  readonly marks: readonly TimelineMark[];
+  readonly segments: readonly TimelineSegment[];
+  /** Present only when `today` is given. */
+  readonly current: TimelineCurrent | undefined;
 }
 
 export interface TimelineInput {
@@ -82,45 +87,18 @@ export interface TimelineInput {
   readonly events: readonly TimelineEvent[];
   /** The account register's own, smaller rendering (`#337`) — default `false`, the budget month's own. */
   readonly compact?: boolean;
-  /**
-   * Formats a positive amount exactly as the renderer will show it (currency symbol, decimals,
-   * locale) — used only to estimate a label's own width for collision avoidance, never exposed in
-   * the output (no user-facing text in `packages/core`). Without it, a plain `"1234.56"`-shaped
-   * estimate stands in — close enough for tests, but a real caller should always pass its own,
-   * since a locale's own symbol and separators can meaningfully change how much room a label needs.
-   */
-  readonly formatAmount?: (amountCents: Cents) => string;
-  /**
-   * Formats the payees sharing a mark's own label exactly as the renderer will show them (its own
-   * list style, and its own translated "and N more") — used only to estimate a label's own width,
-   * same reason and same rule as `formatAmount`. Without it, a plain `"a, b +N"`-shaped estimate
-   * stands in; a real caller should always pass its own, since a translated "and N more" is not
-   * the same length as "+N" (and some languages need more room still).
-   */
-  readonly formatPayees?: (payees: readonly string[], extraPayeeCount: number) => string;
 }
 
 interface Size {
   readonly width: number;
   readonly height: number;
-  readonly axisY: number;
   readonly inset: number;
-  readonly lengthScale: number;
-  readonly lengthBase: number;
-  readonly maxLength: number;
-  readonly charWidth: number;
-  readonly labelGap: number;
-  readonly laneStep: number;
+  readonly padTop: number;
+  readonly padBottom: number;
 }
 
-const FULL: Size = { width: 660, height: 200, axisY: 100, inset: 20, lengthScale: 1.15, lengthBase: 10, maxLength: 72, charWidth: 6.4, labelGap: 6, laneStep: 13 };
-const COMPACT: Size = { width: 330, height: 120, axisY: 62, inset: 12, lengthScale: 0.7, lengthBase: 6, maxLength: 40, charWidth: 6, labelGap: 6, laneStep: 13 };
-
-/** Mark length grows with the square root of the amount (design.md), so a mortgage payment and a coffee both stay readable. */
-function markLength(amountCents: Cents, size: Size): number {
-  const euros = amountCents / 100;
-  return Math.min(size.maxLength, Math.sqrt(euros) * size.lengthScale + size.lengthBase);
-}
+const FULL: Size = { width: 660, height: 200, inset: 20, padTop: 10, padBottom: 20 };
+const COMPACT: Size = { width: 330, height: 120, inset: 12, padTop: 8, padBottom: 16 };
 
 /** Weekly-ish ticks (1, 8, 15, 22...), always ending on the month's own last day. */
 function dayTicks(daysInMonth: number, compact: boolean): readonly number[] {
@@ -136,181 +114,101 @@ function dayTicks(daysInMonth: number, compact: boolean): readonly number[] {
   return [first, middle, final];
 }
 
-function defaultFormatAmount(amountCents: Cents): string {
-  return (amountCents / 100).toFixed(2);
-}
-
-function defaultFormatPayees(payees: readonly string[], extraPayeeCount: number): string {
-  return payees.join(", ") + (extraPayeeCount > 0 ? ` +${extraPayeeCount}` : "");
+function stepDirection(before: number, after: number): TimelineStepDirection {
+  return after > before ? "in" : after < before ? "out" : "flat";
 }
 
 /**
- * A label's own estimated rendered width: `text.length * charWidth`, the same crude estimate
- * `docs/ux/mockups/budget-month.html`'s own `timelineSvg` already relies on, never exact font
- * metrics — but the text itself is exactly what gets rendered (`formatPayees`'s own real payee
- * list and "and N more", the sign, `formatAmount`'s own real formatted string), not a stand-in
- * shape, so the estimate stays accurate enough that the amount is never the part that runs off
- * the canvas.
- */
-function estimateLabelWidth(
-  payees: readonly string[],
-  extraPayeeCount: number,
-  amountCents: Cents,
-  direction: TimelineDirection,
-  size: Size,
-  formatAmount: (amountCents: Cents) => string,
-  formatPayees: (payees: readonly string[], extraPayeeCount: number) => string,
-): number {
-  const payeeText = formatPayees(payees, extraPayeeCount);
-  const sign = direction === "in" ? "+" : "−";
-  const amountText = formatAmount(amountCents);
-  // +1 for the space between the payee text and the signed amount.
-  return (payeeText.length + 1 + sign.length + amountText.length) * size.charWidth;
-}
-
-/**
- * Where a label of `width` can go without crossing `leftBound`/`rightBound` (the "today" line on
- * whichever side applies, or the canvas's own edge when there is none) — the stem's own right
- * side first (natural reading order), its left side otherwise, or no room at all (design.md: a
- * label never crosses the "today" line; omitted rather than overlapping it, the mark's own stem
- * and colour already carry the same information without it).
- */
-function placeHorizontally(stemX: number, width: number, gap: number, leftBound: number, rightBound: number): number | undefined {
-  const right = stemX + gap;
-  if (right + width <= rightBound) {
-    return right;
-  }
-  const left = stemX - gap - width;
-  if (left >= leftBound) {
-    return left;
-  }
-  return undefined;
-}
-
-interface Lane {
-  x1: number;
-  x2: number;
-  y: number;
-}
-
-/** A mark's own stem — the vertical line from the axis to `stemY` — as an obstacle a label must also step away from, not just another label (`#351`). */
-interface StemObstacle {
-  readonly x: number;
-  readonly yTop: number;
-  readonly yBottom: number;
-}
-
-function placeLabel(lane: Lane[], stems: readonly StemObstacle[], x: number, y: number, width: number, step: number, up: boolean): number {
-  let placedY = y;
-  let collided = true;
-  while (collided) {
-    collided =
-      lane.some((other) => x < other.x2 + 4 && x + width > other.x1 - 4 && Math.abs(placedY - other.y) < step) ||
-      stems.some((stem) => x - 4 <= stem.x && stem.x <= x + width + 4 && placedY >= stem.yTop - 4 && placedY <= stem.yBottom + 4);
-    if (collided) {
-      placedY += up ? -step : step;
-    }
-  }
-  lane.push({ x1: x, x2: x + width, y: placedY });
-  return placedY;
-}
-
-/**
- * Lays out a month's events as the timeline design.md describes: outflows hang below the axis,
- * income rises above it; recorded movements are solid, scheduled ones dashed, an overdue one
- * amber (`TimelineMark.status`, left to the renderer); the largest outflows, everything still to
- * come and all income carry a label that never crosses the "today" line, stepping down a line
- * instead of overlapping another one already placed.
+ * Lays out a month's events as a running total, as the timeline design.md describes: starting at
+ * zero on day 1, each day's own net amount accumulates into the day before it; recorded events
+ * build the solid, actual line up to today, scheduled ones (an overdue one folded into today's
+ * own point) extend it, dashed, to the end of the month.
  */
 export function computeTimeline(input: TimelineInput): TimelineLayout {
   const size = input.compact ? COMPACT : FULL;
-  const formatAmount = input.formatAmount ?? defaultFormatAmount;
-  const formatPayees = input.formatPayees ?? defaultFormatPayees;
   const x0 = size.inset;
   const x1 = size.width - size.inset;
   const span = Math.max(1, input.daysInMonth - 1);
   const x = (day: number): number => x0 + ((day - 1) * (x1 - x0)) / span;
   const todayX = input.today === undefined ? undefined : x(input.today);
 
-  const buckets = new Map<string, { day: number; direction: TimelineDirection; status: TimelineEventStatus; amountCents: number; payees: string[] }>();
+  const recordedNet = new Map<number, number>();
+  const scheduledNet = new Map<number, number>();
   for (const e of input.events) {
-    const k = `${e.direction}:${e.status}:${e.day}`;
-    const existing = buckets.get(k);
-    if (existing) {
-      existing.amountCents += e.amountCents;
-      existing.payees.push(e.payee);
-    } else {
-      buckets.set(k, { day: e.day, direction: e.direction, status: e.status, amountCents: e.amountCents, payees: [e.payee] });
+    const signed = e.direction === "in" ? e.amountCents : -e.amountCents;
+    const bucket = e.status === "recorded" ? recordedNet : scheduledNet;
+    bucket.set(e.day, (bucket.get(e.day) ?? 0) + signed);
+  }
+
+  // Without "today" (a month that is not the current one), there is nothing left to project:
+  // every event — scheduled ones included — is folded straight into the one, solid line.
+  const lastActualDay = input.today ?? input.daysInMonth;
+  const actual: number[] = [0];
+  for (let d = 1; d <= lastActualDay; d++) {
+    actual[d] = actual[d - 1]! + (recordedNet.get(d) ?? 0) + (input.today === undefined ? (scheduledNet.get(d) ?? 0) : 0);
+  }
+
+  let overdueHere = 0;
+  const projected = new Map<number, number>();
+  if (input.today !== undefined) {
+    for (const [day, amount] of scheduledNet) {
+      if (day <= input.today) overdueHere += amount;
+    }
+    projected.set(input.today, actual[input.today]! + overdueHere);
+    for (let d = input.today + 1; d <= input.daysInMonth; d++) {
+      projected.set(d, projected.get(d - 1)! + (scheduledNet.get(d) ?? 0));
     }
   }
-  const list = [...buckets.values()].sort((a, b) => a.day - b.day);
 
-  // The four largest recorded outflows get a label even though ordinary recorded outflows
-  // otherwise do not (design.md: "the largest outflows, everything still to come and all income").
-  const biggestOut = list
-    .filter((e) => e.direction === "out" && e.status === "recorded")
-    .sort((a, b) => b.amountCents - a.amountCents)
-    .slice(0, 4);
-  const biggestOutKeys = new Set(biggestOut.map((e) => `${e.direction}:${e.status}:${e.day}`));
-
-  // Every mark's own position and stem, computed once up front — so a label can be checked
-  // against every OTHER mark's own stem too (`#351`), including a day with no label of its own.
-  const positioned = list.map((e) => {
-    const up = e.direction === "in";
-    const length = markLength(e.amountCents, size);
-    const stemY = up ? size.axisY - length : size.axisY + length;
-    return { e, up, stemY, ex: x(e.day) };
-  });
-  const stems: StemObstacle[] = positioned.map(({ ex, stemY }) => ({
-    x: ex,
-    yTop: Math.min(size.axisY, stemY),
-    yBottom: Math.max(size.axisY, stemY),
-  }));
-
-  const lanes = { up: [] as Lane[], down: [] as Lane[] };
-  const marks: TimelineMark[] = [];
-  for (const { e, up, stemY, ex } of positioned) {
-    const key = `${e.direction}:${e.status}:${e.day}`;
-    const labelled = input.compact ? up : e.direction !== "out" || e.status !== "recorded" || biggestOutKeys.has(key);
-    let label: TimelineLabel | undefined;
-    if (labelled) {
-      const displayedPayees = e.payees.slice(0, MAX_LABEL_PAYEES);
-      const extraPayeeCount = Math.max(0, e.payees.length - MAX_LABEL_PAYEES);
-      const width = estimateLabelWidth(displayedPayees, extraPayeeCount, e.amountCents, e.direction, size, formatAmount, formatPayees);
-
-      // The "today" line splits the canvas in two for this purpose: a past event's label must
-      // stay left of it, a future one's right of it — never crossing it either way (design.md).
-      // Without a "today" line at all (not the current month), the only bounds are the canvas's
-      // own edges.
-      let leftBound = x0;
-      let rightBound = size.width - 2;
-      if (todayX !== undefined) {
-        if (e.day < input.today!) {
-          rightBound = todayX - 4;
-        } else {
-          leftBound = todayX + 4;
-        }
-      }
-      const lx = placeHorizontally(ex, width, size.labelGap, leftBound, rightBound);
-
-      if (lx !== undefined) {
-        const lane = up ? lanes.up : lanes.down;
-        const ly = placeLabel(lane, stems, lx, up ? stemY : stemY + 4, width, size.laneStep, up);
-        label = { x: lx, y: ly, payees: displayedPayees, extraPayeeCount, width };
-      }
-    }
-
-    marks.push({ day: e.day, direction: e.direction, status: e.status, amountCents: e.amountCents, x: ex, stemY, label });
+  const values = [0, ...actual.slice(1, lastActualDay + 1), ...projected.values()];
+  let minV = Math.min(...values);
+  let maxV = Math.max(...values);
+  if (minV === maxV) {
+    minV -= 100;
+    maxV += 100;
   }
+  const plotHeight = size.height - size.padTop - size.padBottom;
+  const y = (v: number): number => size.padTop + plotHeight * (1 - (v - minV) / (maxV - minV));
+
+  const segments: TimelineSegment[] = [];
+  for (let d = 2; d <= lastActualDay; d++) {
+    segments.push({
+      from: { day: d - 1, x: x(d - 1), y: y(actual[d - 1]!) },
+      to: { day: d, x: x(d), y: y(actual[d]!) },
+      direction: stepDirection(actual[d - 1]!, actual[d]!),
+      projected: false,
+    });
+  }
+  if (input.today !== undefined) {
+    for (let d = input.today + 1; d <= input.daysInMonth; d++) {
+      segments.push({
+        from: { day: d - 1, x: x(d - 1), y: y(projected.get(d - 1)!) },
+        to: { day: d, x: x(d), y: y(projected.get(d)!) },
+        direction: stepDirection(projected.get(d - 1)!, projected.get(d)!),
+        projected: true,
+      });
+    }
+  }
+
+  const current: TimelineCurrent | undefined =
+    input.today === undefined
+      ? undefined
+      : {
+          amountCents: actual[input.today]!,
+          y: y(actual[input.today]!),
+          hasOverdue: overdueHere !== 0,
+          overdueY: overdueHere !== 0 ? y(projected.get(input.today)!) : undefined,
+        };
 
   return {
     width: size.width,
     height: size.height,
-    axisY: size.axisY,
+    zeroY: y(0),
     axisX0: x0,
     axisX1: x1,
     todayX,
     dayTicks: dayTicks(input.daysInMonth, input.compact ?? false).map((day) => ({ day, x: x(day) })),
-    marks,
+    segments,
+    current,
   };
 }

@@ -30,6 +30,6 @@ export function toTimelineEvents(events: readonly MonthEvent[], today: { iso: st
   return events.map((e): TimelineEvent => {
     const direction = e.amountCents >= 0 ? "in" : "out";
     const status: TimelineEventStatus = e.kind !== "scheduled" ? "recorded" : today !== undefined && e.date < today.iso ? "overdue" : "scheduled";
-    return { day: Number(e.date.slice(8, 10)), amountCents: Math.abs(e.amountCents), direction, status, payee: e.payee ?? "" };
+    return { day: Number(e.date.slice(8, 10)), amountCents: Math.abs(e.amountCents), direction, status };
   });
 }

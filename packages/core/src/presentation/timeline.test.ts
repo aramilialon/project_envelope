@@ -4,157 +4,135 @@ import { describe, it } from "node:test";
 import { computeTimeline, type TimelineEvent } from "./timeline.ts";
 
 function event(overrides: Partial<TimelineEvent> = {}): TimelineEvent {
-  return { day: 15, amountCents: 10_000, direction: "out", status: "recorded", payee: "Supermarket", ...overrides };
+  return { day: 15, amountCents: 10_000, direction: "out", status: "recorded", ...overrides };
 }
 
 describe("computeTimeline", () => {
-  it("places a day on the x axis proportionally across the month", () => {
-    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 1 }), event({ day: 30 })] });
-    const first = layout.marks.find((m) => m.day === 1)!;
-    const last = layout.marks.find((m) => m.day === 30)!;
-    assert.equal(first.x, layout.axisX0);
-    assert.equal(last.x, layout.axisX1);
+  it("starts at zero and accumulates each day's own net amount into the running total", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 10,
+      events: [event({ day: 3, amountCents: 5_000, direction: "in" }), event({ day: 6, amountCents: 2_000, direction: "out" })],
+    });
+    assert.equal(layout.current!.amountCents, 3_000);
   });
 
-  it("an outflow hangs below the axis, an inflow rises above it", () => {
+  it("an inflow day colours its own segment 'in', an outflow day 'out'", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
       today: undefined,
-      events: [event({ day: 10, direction: "out" }), event({ day: 20, direction: "in" })],
+      events: [event({ day: 5, direction: "in" }), event({ day: 10, direction: "out" })],
     });
-    const out = layout.marks.find((m) => m.direction === "out")!;
-    const inflow = layout.marks.find((m) => m.direction === "in")!;
-    assert.ok(out.stemY > layout.axisY);
-    assert.ok(inflow.stemY < layout.axisY);
+    const risingSegment = layout.segments.find((s) => s.to.day === 5)!;
+    const fallingSegment = layout.segments.find((s) => s.to.day === 10)!;
+    assert.equal(risingSegment.direction, "in");
+    assert.equal(fallingSegment.direction, "out");
   });
 
-  it("a mark's length grows with the square root of the amount, never past the maximum", () => {
-    const small = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ amountCents: 1_000 })] }).marks[0]!;
-    const big = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ amountCents: 90_000 })] }).marks[0]!;
-    const huge = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ amountCents: 50_000_000 })] }).marks[0]!;
-    const smallLength = small.stemY - 100;
-    const bigLength = big.stemY - 100;
-    const hugeLength = huge.stemY - 100;
-    assert.ok(smallLength > 0 && smallLength < bigLength);
-    assert.ok(bigLength < hugeLength);
-    // Doubling the amount nine times over (90,000 -> 50,000,000) grows the length far less than
-    // ninefold — the whole point of the square root (design.md).
-    assert.ok(hugeLength / bigLength < 9);
-    assert.ok(hugeLength <= 72); // FULL's own maxLength
+  it("a day with no event at all stays flat, carrying the previous level forward", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 5 })] });
+    const flat = layout.segments.find((s) => s.to.day === 6)!;
+    assert.equal(flat.direction, "flat");
+    assert.equal(flat.from.y, flat.to.y);
   });
 
-  it("events on the same day, direction and status net into one mark", () => {
+  it("events on the same day net together before the segment is drawn", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
       today: undefined,
-      events: [event({ day: 5, amountCents: 1_000, payee: "A" }), event({ day: 5, amountCents: 2_000, payee: "B" })],
+      events: [event({ day: 5, amountCents: 1_000, direction: "in" }), event({ day: 5, amountCents: 400, direction: "out" })],
     });
-    assert.equal(layout.marks.length, 1);
-    assert.equal(layout.marks[0]!.amountCents, 3_000);
-    assert.deepEqual(layout.marks[0]!.label?.payees, ["A", "B"]);
+    const segment = layout.segments.find((s) => s.to.day === 5)!;
+    assert.equal(segment.direction, "in"); // net +600 on day 5
   });
 
-  it("events on the same day but a different status stay on separate marks", () => {
+  it("only recorded events count toward the actual total through today", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 10,
+      events: [event({ day: 5, amountCents: 1_000, direction: "in", status: "scheduled" })],
+    });
+    assert.equal(layout.current!.amountCents, 0); // the scheduled event does not count yet
+  });
+
+  it("an overdue item does not count as actually happened, but flags its own marker, folded into today's point rather than its own earlier day", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 10,
+      events: [event({ day: 5, amountCents: 1_000, direction: "out", status: "overdue" })],
+    });
+    assert.equal(layout.current!.amountCents, 0); // not recorded yet — the real total is unchanged
+    assert.equal(layout.current!.hasOverdue, true);
+    assert.notEqual(layout.current!.overdueY, layout.current!.y); // the marker sits where the total would be if it had already happened
+    // Folded in at today, not drawn as its own earlier-day segment: the actual line (days 1..10)
+    // never moves on day 5 at all — flat, the same as a day with nothing on it.
+    const day5 = layout.segments.find((s) => s.to.day === 5 && !s.projected)!;
+    assert.equal(day5.direction, "flat");
+  });
+
+  it("has no overdue marker when every scheduled item is still ahead of today", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 10,
+      events: [event({ day: 20, amountCents: 1_000, direction: "out", status: "scheduled" })],
+    });
+    assert.equal(layout.current!.hasOverdue, false);
+    assert.equal(layout.current!.overdueY, undefined);
+  });
+
+  it("scheduled items project the line past today, dashed, and recorded ones do not reach that far", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 10,
+      events: [event({ day: 20, amountCents: 1_000, direction: "in", status: "scheduled" })],
+    });
+    const projectedRise = layout.segments.find((s) => s.to.day === 20)!;
+    assert.equal(projectedRise.projected, true);
+    assert.equal(projectedRise.direction, "in");
+    assert.ok(layout.segments.every((s) => s.to.day <= 10 || s.projected));
+  });
+
+  it("without 'today', nothing is projected: scheduled events fold straight into the one solid line", () => {
     const layout = computeTimeline({
       daysInMonth: 30,
       today: undefined,
-      events: [event({ day: 5, status: "recorded" }), event({ day: 5, status: "scheduled" })],
+      events: [event({ day: 20, amountCents: 1_000, direction: "in", status: "scheduled" })],
     });
-    assert.equal(layout.marks.length, 2);
+    assert.ok(layout.segments.every((s) => !s.projected));
+    assert.equal(layout.current, undefined);
+    const segment = layout.segments.find((s) => s.to.day === 20)!;
+    assert.equal(segment.direction, "in");
   });
 
-  it("labels the largest recorded outflows, but not an ordinary smaller one", () => {
-    const events = [1, 2, 3, 4, 5].map((day) => event({ day, amountCents: day * 10_000 }));
-    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events });
-    const labelled = layout.marks.filter((m) => m.label !== undefined).map((m) => m.day);
-    assert.deepEqual(labelled.sort((a, b) => a - b), [2, 3, 4, 5]); // the four largest, not day 1's smallest
-  });
-
-  it("every inflow and every scheduled or overdue item is labelled, regardless of size", () => {
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: undefined,
-      events: [
-        event({ day: 1, amountCents: 100, direction: "in" }),
-        event({ day: 2, amountCents: 100, status: "scheduled" }),
-        event({ day: 3, amountCents: 100, status: "overdue" }),
-      ],
-    });
-    assert.ok(layout.marks.every((m) => m.label !== undefined));
-  });
-
-  it("marks the 'today' line and the lighter ground past it only for the current month", () => {
+  it("marks the 'today' line only for the current month", () => {
     const current = computeTimeline({ daysInMonth: 30, today: 12, events: [] });
     assert.ok(current.todayX !== undefined);
     const other = computeTimeline({ daysInMonth: 30, today: undefined, events: [] });
     assert.equal(other.todayX, undefined);
+    assert.equal(other.current, undefined);
   });
 
-  it("a past event's label never crosses the 'today' line", () => {
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: 15,
-      events: [event({ day: 14, amountCents: 1, direction: "in" })], // a tiny inflow, always labelled
-    });
-    const mark = layout.marks[0]!;
-    assert.ok(mark.label!.x + 40 < layout.todayX!); // well short of the line, not just barely
+  it("places day 1 and the month's own last day at the axis's own two ends", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 1 }), event({ day: 30 })] });
+    const first = layout.segments.find((s) => s.to.day === 2)!; // day 1 has no segment of its own (nothing before it)
+    const last = layout.segments.find((s) => s.to.day === 30)!;
+    assert.equal(first.from.x, layout.axisX0);
+    assert.equal(last.to.x, layout.axisX1);
   });
 
-  it("omits a label rather than crossing the 'today' line or running off the chart's own left edge", () => {
-    // "today" on day 2 — a label needing to clear it has almost no room to its left at all, not
-    // nearly enough for "Internet provider 45.00" either side of day 1's own stem.
-    const layout = computeTimeline({
-      daysInMonth: 31,
-      today: 2,
-      events: [{ day: 1, amountCents: 4_500, direction: "out", status: "scheduled", payee: "Internet provider" }],
-    });
-    const mark = layout.marks[0]!;
-    assert.equal(mark.label, undefined);
+  it("zero sits wherever it falls in the month's own value range, not always the canvas's own center", () => {
+    const allNegative = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 15, direction: "out" })] });
+    const allPositive = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 15, direction: "in" })] });
+    // A month that only ever goes down keeps zero near the top of the plotted range; one that
+    // only ever goes up keeps it near the bottom — opposite of each other.
+    assert.ok(allNegative.zeroY < allPositive.zeroY);
   });
 
-  it("still labels a day-1 event when its own text is short enough to fit before 'today'", () => {
-    // A short month (more pixels per day) leaves enough room for a short label even this close to "today".
-    const layout = computeTimeline({
-      daysInMonth: 5,
-      today: 2,
-      events: [{ day: 1, amountCents: 100, direction: "out", status: "scheduled", payee: "X" }],
-    });
-    const mark = layout.marks[0]!;
-    assert.notEqual(mark.label, undefined);
-    assert.ok(mark.label!.x >= layout.axisX0);
-    assert.ok(mark.label!.x + 10 < layout.todayX!); // some real width, well short of the line
-  });
-
-  it("two labels close enough to collide step apart instead of overlapping", () => {
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: undefined,
-      events: [event({ day: 10, direction: "in", amountCents: 1 }), event({ day: 11, direction: "in", amountCents: 1 })],
-    });
-    const labels = layout.marks.map((m) => m.label!);
-    assert.notEqual(labels[0]!.y, labels[1]!.y);
-  });
-
-  it("a label steps away from a nearby mark's own stem too, not just another label (#351)", () => {
-    // A small inflow right next to a much larger one, one day over: the small mark's own label
-    // sits close to the axis, right where the large mark's own tall stem passes through on its
-    // way up — without checking stems, nothing would ever push the label out of its way.
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: undefined,
-      events: [
-        event({ day: 15, direction: "in", amountCents: 100, payee: "Salary" }),
-        event({ day: 16, direction: "in", amountCents: 5_000_000, payee: "Freelance payment" }),
-      ],
-    });
-    const small = layout.marks.find((m) => m.day === 15)!;
-    const big = layout.marks.find((m) => m.day === 16)!;
-    const label = small.label!;
-    const stemYTop = Math.min(layout.axisY, big.stemY);
-    const stemYBottom = Math.max(layout.axisY, big.stemY);
-    const crossesHorizontally = label.x - 4 <= big.x && big.x <= label.x + label.width + 4;
-    const crossesVertically = label.y >= stemYTop - 4 && label.y <= stemYBottom + 4;
-    assert.ok(!(crossesHorizontally && crossesVertically), "the small mark's own label must step clear of the big mark's own stem");
+  it("a flat month (no events at all) still lays out without dividing by zero", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: 10, events: [] });
+    assert.equal(layout.current!.amountCents, 0);
+    assert.ok(Number.isFinite(layout.zeroY));
+    assert.ok(layout.segments.every((s) => Number.isFinite(s.from.y) && Number.isFinite(s.to.y)));
   });
 
   it("day ticks span the month and always include its own last day", () => {
@@ -166,58 +144,13 @@ describe("computeTimeline", () => {
   it("a shorter month (28 days) still lays out cleanly, last day included", () => {
     const layout = computeTimeline({ daysInMonth: 28, today: undefined, events: [event({ day: 28 })] });
     assert.equal(layout.dayTicks[layout.dayTicks.length - 1]!.day, 28);
-    assert.equal(layout.marks[0]!.x, layout.axisX1);
+    const last = layout.segments.find((s) => s.to.day === 28)!;
+    assert.equal(last.to.x, layout.axisX1);
   });
 
-  it("compact mode uses a smaller canvas and labels only inflows", () => {
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: undefined,
-      events: [event({ day: 10, direction: "out", amountCents: 999_999 }), event({ day: 11, direction: "in" })],
-      compact: true,
-    });
+  it("compact mode uses a smaller canvas", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [], compact: true });
     assert.equal(layout.width, 330);
-    const out = layout.marks.find((m) => m.direction === "out")!;
-    const inflow = layout.marks.find((m) => m.direction === "in")!;
-    assert.equal(out.label, undefined);
-    assert.notEqual(inflow.label, undefined);
-  });
-
-  it("caps a day with many events to two payees plus a count, and its label never leaves the canvas", () => {
-    // A realistic, longer formatted amount — a plain digit count badly underestimates this.
-    const formatAmount = (cents: number) => `${(cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2 })} €`;
-    const layout = computeTimeline({
-      daysInMonth: 30,
-      today: undefined,
-      formatAmount,
-      events: [
-        { day: 2, amountCents: 87_40, direction: "in", status: "recorded", payee: "Supermarket" },
-        { day: 2, amountCents: 640_00, direction: "in", status: "recorded", payee: "Restaurant" },
-        { day: 2, amountCents: 350_00, direction: "in", status: "recorded", payee: "Shopping run" },
-        { day: 2, amountCents: 425_00, direction: "in", status: "recorded", payee: "Shopping run" },
-        { day: 2, amountCents: 9_99, direction: "in", status: "recorded", payee: "Streaming service" },
-        { day: 2, amountCents: 500_00, direction: "in", status: "recorded", payee: "Investment platform" },
-        { day: 2, amountCents: 1_20, direction: "in", status: "recorded", payee: "Starting balance" },
-      ],
-    });
-    const mark = layout.marks[0]!;
-    assert.equal(mark.label!.payees.length, 2);
-    assert.deepEqual(mark.label!.payees, ["Supermarket", "Restaurant"]);
-    assert.equal(mark.label!.extraPayeeCount, 5);
-    assert.ok(mark.label!.x + mark.label!.width <= layout.width - 2);
-  });
-
-  it("uses the caller's own formatPayees for the width estimate, not a plain '+N' guess", () => {
-    const money = (cents: number) => `€${(cents / 100).toFixed(2)}`;
-    // A translated "and N more" is longer than "+N" — the estimate must reflect that, not underrun it.
-    const formatPayees = (payees: readonly string[], extra: number) => (extra > 0 ? `${payees.join(", ")} and ${extra} more` : payees.join(", "));
-    const events = [
-      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "A" },
-      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "B" },
-      { day: 10, amountCents: 1_000, direction: "in" as const, status: "recorded" as const, payee: "C" },
-    ];
-    const withDefault = computeTimeline({ daysInMonth: 30, today: undefined, formatAmount: money, events });
-    const withCustom = computeTimeline({ daysInMonth: 30, today: undefined, formatAmount: money, formatPayees, events });
-    assert.ok(withCustom.marks[0]!.label!.width > withDefault.marks[0]!.label!.width);
+    assert.equal(layout.height, 120);
   });
 });
