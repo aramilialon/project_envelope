@@ -66,7 +66,7 @@ export default function Timeline({ layout, monthLabel, money, compact }: Props) 
           <>
             <line x1={layout.todayX} y1={current.y} x2={layout.axisX1} y2={current.y} className="t-cur" />
             {!compact && (
-              <text x={layout.axisX1 - 2} y={current.y - 5} textAnchor="end" className="t-cur-l">
+              <text x={layout.axisX1 - 2} y={current.labelY} textAnchor="end" className="t-cur-l">
                 {current.amountCents >= 0 ? "+" : ""}
                 {money(current.amountCents)}
               </text>

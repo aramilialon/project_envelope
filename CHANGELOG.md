@@ -15,6 +15,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the dev server (`pnpm dev`) only bound to whatever `localhost` resolved to first — IPv6-only on some machines — breaking an SSH tunnel for remote access (`docs/getting-started.md`) that targets `127.0.0.1` literally. Binds the wildcard address instead, reachable via `127.0.0.1`, `::1` and `localhost` all at once (`#393`).
 - `apps/web`: a `<Link>` wearing the shared `.btn` class ("Import", "Reconcile now", a completed reconciliation's own back link) read with its text sitting near the top instead of centred — a real `<button class="btn">` always centred regardless, since the browser's own styling does that for a `<button>` element but not a plain `<a>` (`#395`).
 - `apps/web`: the import review step's "Transfer to {account}" option read backwards for a row that is actually money arriving *from* another account — always "to", regardless of the staged row's own direction. Labels it "from" for an inflow, "to" for an outflow, mirroring the sign already shown on the row's own amount (`#399`).
+- `apps/web`/`@envelope/core`: the Timeline's own current-value label was placed a fixed 5px above the line regardless of position, clipped past the canvas's own top edge whenever the line sat near the top of its own range. Placed below the line instead when there is not enough room above (`#407`).
 
 ### Changed
 
