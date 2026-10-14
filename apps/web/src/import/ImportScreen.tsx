@@ -552,7 +552,9 @@ export default function ImportScreen() {
                         <option value={INCOME_SELECTION}>{intl.formatMessage({ id: "import.check.income", defaultMessage: "Income" })}</option>
                         {otherAccounts.map((other) => (
                           <option key={other.id} value={`${TRANSFER_PREFIX}${other.id}`}>
-                            {intl.formatMessage({ id: "import.check.transferTo", defaultMessage: "Transfer to {account}" }, { account: other.name })}
+                            {row.amountCents >= 0
+                              ? intl.formatMessage({ id: "import.check.transferFrom", defaultMessage: "Transfer from {account}" }, { account: other.name })
+                              : intl.formatMessage({ id: "import.check.transferTo", defaultMessage: "Transfer to {account}" }, { account: other.name })}
                           </option>
                         ))}
                         {openCategories.map((category) => (

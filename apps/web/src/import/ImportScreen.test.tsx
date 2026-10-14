@@ -187,4 +187,26 @@ describe("ImportScreen (#59)", () => {
       ]),
     );
   });
+
+  it("labels a transfer option by the row's own direction, not always 'to' (#399)", async () => {
+    renderScreen([CHECKING, SAVINGS]);
+    await screen.findByText(/Checking/);
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [
+        { id: "out-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "To savings", memo: null, amountCents: -5_000, externalId: null, duplicateOf: null, createdAt: "2026-09-01" },
+        { id: "in-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-02", payee: "From savings", memo: null, amountCents: 3_000, externalId: null, duplicateOf: null, createdAt: "2026-09-02" },
+      ],
+      duplicateCount: 0,
+    });
+    const file = new File(["<OFX></OFX>"], "statement.ofx");
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText("To savings");
+
+    const outSelect = screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" });
+    const inSelect = screen.getByLabelText("Category", { selector: "select[id='import-cat-in-1']" });
+    expect([...outSelect.querySelectorAll("option")].map((o) => o.textContent)).toContain("Transfer to Savings");
+    expect([...inSelect.querySelectorAll("option")].map((o) => o.textContent)).toContain("Transfer from Savings");
+  });
 });
