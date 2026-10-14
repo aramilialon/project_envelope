@@ -10,6 +10,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
 
+### Fixed
+
+- `apps/web`: the dev server (`pnpm dev`) only bound to whatever `localhost` resolved to first — IPv6-only on some machines — breaking an SSH tunnel for remote access (`docs/getting-started.md`) that targets `127.0.0.1` literally. Binds the wildcard address instead, reachable via `127.0.0.1`, `::1` and `localhost` all at once (`#393`).
+
 ### Changed
 
 - `apps/web`: the budget month's own Timeline (and the account register's own copy) redesigned as a running total, not a per-event mark — a line starting at zero on day 1, solid (recorded) up to today and dashed (scheduled) past it, each day's own segment coloured by whether it moved the total up or down (never red/amber, reserved for a real problem). A dashed "current value" reference line at today's own height calls out what has moved so far this month; an overdue, not-yet-recorded item folds into today's own point with a small amber marker instead of moving the solid line itself (`#390`).
