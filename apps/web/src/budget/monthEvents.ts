@@ -9,6 +9,12 @@ export function monthLabel(month: string, locale: string): string {
   return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(date);
 }
 
+/** "Sep" — the Timeline's own first day tick, so its x-axis names which month it is without relying only on the heading above it (`#406`). */
+export function monthAbbrev(month: string, locale: string): string {
+  const date = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
+  return new Intl.DateTimeFormat(locale, { month: "short" }).format(date);
+}
+
 /** A calendar month's own last day — `#326`, shared by the budget month's own timeline and the account register's (`#337`). */
 export function daysInMonth(month: string): number {
   const year = Number(month.slice(0, 4));

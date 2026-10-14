@@ -87,4 +87,19 @@ describe("Timeline (#326, redesigned #390)", () => {
     // Still drawn (compact just trims the surrounding chrome, not the chart itself).
     expect(document.querySelector(".t-cur")).not.toBeNull();
   });
+
+  it("names the month on its own first day tick, so the x-axis says which month it is (#406)", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [] });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" monthAbbrev="Sep" money={money} />);
+
+    expect(screen.getByText("Sep 1")).toBeInTheDocument();
+  });
+
+  it("keeps a bare day number on the first tick in compact mode, where space is already tight", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [], compact: true });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" monthAbbrev="Sep" money={money} compact />);
+
+    expect(screen.queryByText("Sep 1")).not.toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+  });
 });

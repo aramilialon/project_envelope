@@ -27,7 +27,7 @@ import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent, ScheduledTransaction } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
-import { daysInMonth, monthLabel, todayOf, toTimelineEvents } from "./monthEvents.ts";
+import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
@@ -414,6 +414,7 @@ export default function BudgetScreen() {
                   events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
                 })}
                 monthLabel={monthLabel(month, intl.locale)}
+                monthAbbrev={monthAbbrev(month, intl.locale)}
                 money={money}
               />
             )}
