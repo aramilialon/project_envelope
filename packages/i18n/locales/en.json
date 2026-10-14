@@ -99,6 +99,7 @@
   "categories.category.moveDown": "Move {name} down",
   "categories.category.moveUp": "Move {name} up",
   "categories.category.name": "Category name",
+  "categories.empty": "Groups organize categories — Home, Bills, Fun… Add one, then its first category.",
   "categories.error": "We could not load your categories.",
   "categories.group.add": "+ Add a group",
   "categories.group.moveDown": "Move {name} down",
