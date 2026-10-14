@@ -14,14 +14,6 @@
   text-decoration: none;
 }
 
-/* A `<Link>` wearing `.btn`/`.btn.primary` (the "Back to the account" link on a completed
-   reconciliation) is still an anchor — reset the browser's own link underline so it reads as the
-   same button every `<button class="btn">` elsewhere in the app already does. */
-.reconcile-screen a.btn {
-  display: inline-block;
-  text-decoration: none;
-}
-
 .reconcile-screen .page-h {
   margin: 0;
   font-family: var(--display);

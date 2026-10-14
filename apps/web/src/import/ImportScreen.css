@@ -50,11 +50,6 @@
   font-weight: 600;
 }
 
-.import-screen a.btn {
-  display: inline-block;
-  text-decoration: none;
-}
-
 .import-screen .steps {
   display: flex;
   gap: 0;
