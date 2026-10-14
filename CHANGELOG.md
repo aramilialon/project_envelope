@@ -17,6 +17,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the import review step's "Transfer to {account}" option read backwards for a row that is actually money arriving *from* another account — always "to", regardless of the staged row's own direction. Labels it "from" for an inflow, "to" for an outflow, mirroring the sign already shown on the row's own amount (`#399`).
 - `apps/web`/`@envelope/core`: the Timeline's own current-value label was placed a fixed 5px above the line regardless of position, clipped past the canvas's own top edge whenever the line sat near the top of its own range. Placed below the line instead when there is not enough room above (`#407`).
 - `apps/web`: a new transaction's own date could never be set — the field was unconditionally disabled with no way to change it, even though the form's own documented intent was for this to be locked only when editing an existing transaction, never when creating a new one (`#408`).
+- `apps/web`: pressing "Sign out" showed "Signing in" — the pending redirect state is reached both mid-sign-in and mid-sign-out, and assumed the former. Picks the wording by the OIDC client's own `activeNavigator` instead (`#409`).
 
 ### Changed
 
