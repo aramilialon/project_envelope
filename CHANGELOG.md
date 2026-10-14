@@ -21,6 +21,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Changed
 
 - `apps/web`: the budget month's own Timeline (and the account register's own copy) redesigned as a running total, not a per-event mark — a line starting at zero on day 1, solid (recorded) up to today and dashed (scheduled) past it, each day's own segment coloured by whether it moved the total up or down (never red/amber, reserved for a real problem). A dashed "current value" reference line at today's own height calls out what has moved so far this month; an overdue, not-yet-recorded item folds into today's own point with a small amber marker instead of moving the solid line itself (`#390`).
+- `apps/web`: pressing "Assign", "Targets", "Quick assign", "Scheduled" or "New transaction" again while its own panel is already open now closes it, instead of leaving it open with no effect (`#410`).
 
 ## [0.1.7] - 2026-10-10
 
