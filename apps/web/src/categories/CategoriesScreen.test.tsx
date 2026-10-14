@@ -79,6 +79,20 @@ describe("CategoriesScreen (#52)", () => {
     expect(screen.getByText("Hobby")).toBeInTheDocument();
   });
 
+  it("explains why a group comes first, for a brand new workspace with none yet (#401)", async () => {
+    renderScreen([], []);
+    await screen.findByRole("button", { name: "+ Add a group" });
+
+    expect(screen.getByText(/Groups organize categories/)).toBeInTheDocument();
+  });
+
+  it("drops the empty-state hint once a group exists", async () => {
+    renderScreen([HOME], []);
+    await screen.findByText("Home");
+
+    expect(screen.queryByText(/Groups organize categories/)).not.toBeInTheDocument();
+  });
+
   it("disables moving the first group up and the last group down", async () => {
     renderScreen([HOME, FUN], []);
     await screen.findByText("Home");

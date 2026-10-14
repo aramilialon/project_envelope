@@ -99,6 +99,7 @@
   "categories.category.moveDown": "Sposta giù {name}",
   "categories.category.moveUp": "Sposta su {name}",
   "categories.category.name": "Nome della categoria",
+  "categories.empty": "I gruppi organizzano le categorie — Casa, Bollette, Svago… Aggiungine uno, poi la sua prima categoria.",
   "categories.error": "Non siamo riusciti a caricare le tue categorie.",
   "categories.group.add": "+ Aggiungi un gruppo",
   "categories.group.moveDown": "Sposta giù {name}",

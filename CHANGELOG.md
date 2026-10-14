@@ -9,6 +9,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Added
 
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
+- `apps/web`: a brand new workspace's own Categories screen (Workspace settings → Categories), with no groups yet, now explains that a group comes first and holds its own categories, instead of showing only a bare "+ Add a group" button with no context (`#401`).
 
 ### Fixed
 

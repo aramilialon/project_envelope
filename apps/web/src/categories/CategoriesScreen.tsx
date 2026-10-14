@@ -167,6 +167,15 @@ export default function CategoriesScreen() {
     <div className="categories-screen">
       <h1>{intl.formatMessage({ id: "categories.title", defaultMessage: "Categories" })}</h1>
 
+      {groups.length === 0 && (
+        <p className="explain">
+          {intl.formatMessage({
+            id: "categories.empty",
+            defaultMessage: "Groups organize categories — Home, Bills, Fun… Add one, then its first category.",
+          })}
+        </p>
+      )}
+
       {groups.map((group, groupIndex) => {
         const groupCategories = categoriesOf(group.id);
         const open = groupCategories.filter((c) => !c.archived);
