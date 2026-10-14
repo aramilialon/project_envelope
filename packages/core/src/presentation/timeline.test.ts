@@ -17,6 +17,21 @@ describe("computeTimeline", () => {
     assert.equal(layout.current!.amountCents, 3_000);
   });
 
+  it("places the current-value label above the line when there is room for it", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: 10, events: [] });
+    assert.ok(layout.current!.labelY < layout.current!.y);
+  });
+
+  it("places the current-value label below the line instead when the line sits at the canvas's own top edge (#407)", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 1,
+      events: [event({ day: 1, amountCents: 100_000, direction: "in" })],
+    });
+    // Today's own value is the whole range's own maximum, so its point sits right at the top.
+    assert.ok(layout.current!.labelY > layout.current!.y);
+  });
+
   it("an inflow day colours its own segment 'in', an outflow day 'out'", () => {
     const layout = computeTimeline({
       daysInMonth: 30,

@@ -54,6 +54,8 @@ export interface TimelineCurrent {
   /** The running total through today, recorded events only — can be negative. */
   readonly amountCents: Cents;
   readonly y: number;
+  /** Where the renderer draws the current-value label's own text — above the line, unless that would run past the canvas's own top edge, in which case below it instead (`#407`). */
+  readonly labelY: number;
   /** Whether an overdue, not-yet-recorded item is folded into this point — a small marker, never changing the line's own colour. */
   readonly hasOverdue: boolean;
   /** Where that marker sits — the running total as if the overdue item had already been recorded. Present only when `hasOverdue` is `true`, and never the same `y` as above, or there would be nothing to mark. */
@@ -193,12 +195,20 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
   const current: TimelineCurrent | undefined =
     input.today === undefined
       ? undefined
-      : {
-          amountCents: actual[input.today]!,
-          y: y(actual[input.today]!),
-          hasOverdue: overdueHere !== 0,
-          overdueY: overdueHere !== 0 ? y(projected.get(input.today)!) : undefined,
-        };
+      : (() => {
+          const currentY = y(actual[input.today!]!);
+          // Above the line by default, the same way a price chart's own current-price tag
+          // reads — but below it instead when that would run the label past the canvas's own
+          // top edge (`#407`), the one case a fixed offset can't always place safely.
+          const labelY = currentY - 5 < size.padTop + 10 ? currentY + 14 : currentY - 5;
+          return {
+            amountCents: actual[input.today!]!,
+            y: currentY,
+            labelY,
+            hasOverdue: overdueHere !== 0,
+            overdueY: overdueHere !== 0 ? y(projected.get(input.today!)!) : undefined,
+          };
+        })();
 
   return {
     width: size.width,
