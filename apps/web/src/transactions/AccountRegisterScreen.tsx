@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
-import { daysInMonth, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
+import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
 import Timeline from "../budget/Timeline.tsx";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import SideSheet from "../layout/SideSheet.tsx";
@@ -356,7 +356,12 @@ export default function AccountRegisterScreen() {
           />
         ) : (
           <div className="over">
-            <Timeline layout={timelineLayout} monthLabel={monthLabel(month, intl.locale)} money={money} />
+            <Timeline
+              layout={timelineLayout}
+              monthLabel={monthLabel(month, intl.locale)}
+              monthAbbrev={monthAbbrev(month, intl.locale)}
+              money={money}
+            />
             <RegisterTodo
               items={registerTodoItems}
               money={money}

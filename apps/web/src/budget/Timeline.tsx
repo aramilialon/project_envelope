@@ -6,6 +6,12 @@ interface Props {
   readonly layout: TimelineLayout;
   /** The month's own display name ("September 2026"), for the heading and the `aria-label`. */
   readonly monthLabel: string;
+  /**
+   * "Sep" — named on the first day tick ("Sep 1"), full mode only, so the x-axis itself says
+   * which month it is (`#406`). Left out of compact mode, where a bare day number is already a
+   * tight fit and the band above it already names the month.
+   */
+  readonly monthAbbrev?: string;
   readonly money: (cents: number) => string;
   /**
    * The phone's own small timeline (`#331`, design.md: "keeps only the running line and 'today'"):
@@ -27,7 +33,7 @@ interface Props {
  * is `aria-hidden` the same way `Bar.tsx`'s is — the heading and note around it, and the category
  * rows and "To do" list beside it, already carry the same information in accessible text.
  */
-export default function Timeline({ layout, monthLabel, money, compact }: Props) {
+export default function Timeline({ layout, monthLabel, monthAbbrev, money, compact }: Props) {
   const intl = useIntl();
   const current = layout.current;
 
@@ -39,9 +45,9 @@ export default function Timeline({ layout, monthLabel, money, compact }: Props) 
           <rect x={layout.todayX} y={4} width={layout.axisX1 - layout.todayX + 6} height={layout.height - 18} className="t-future" />
         )}
         <line x1={layout.axisX0} y1={layout.zeroY} x2={layout.axisX1} y2={layout.zeroY} className="t-axis" />
-        {layout.dayTicks.map((tick) => (
+        {layout.dayTicks.map((tick, index) => (
           <text key={tick.day} x={tick.x} y={layout.height - 3} textAnchor="middle" className="t-day">
-            {tick.day}
+            {!compact && index === 0 && monthAbbrev ? `${monthAbbrev} ${tick.day}` : tick.day}
           </text>
         ))}
         {layout.segments.map((segment) => (
