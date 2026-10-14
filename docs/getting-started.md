@@ -220,6 +220,14 @@ $ pnpm --filter @envelope/web dev
 
 Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in then lands back on the placeholder screen, which reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
 
+Browsing from your laptop rather than the VM itself needs all three services tunneled, not just Keycloak's own admin console from section 8 — the web app's own origin, the API it talks to, and Keycloak for the sign-in redirect:
+
+```bash
+ssh -L 5173:127.0.0.1:5173 -L 3000:127.0.0.1:3000 -L 8080:127.0.0.1:8080 dev@envelope-dev
+```
+
+Keep that session open and browse to `http://localhost:5173` on the laptop, same as from the VM itself.
+
 See [`apps/web/README.md`](../apps/web/README.md) for the rest.
 
 ## 11. Editing the code
@@ -266,6 +274,6 @@ without building it up by hand through the web app.
 | `pnpm: command not found` | corepack not enabled | `corepack enable` |
 | `permission denied` on `/var/run/docker.sock` | Group change not applied yet | Sign out and back in, or `newgrp docker` |
 | Keycloak keeps restarting | Not enough memory, or the database is not ready | `docker compose logs keycloak`; give the VM more RAM |
-| Browser cannot reach `localhost:8080` | SSH tunnel not open | Run the `ssh -L` command from section 8 and keep it open |
+| Browser cannot reach `localhost:8080`, `:3000` or `:5173` | SSH tunnel not open, or not forwarding that port | Run the `ssh -L` command from section 8 (Keycloak only) or section 10 (all three) and keep it open |
 | CI fails on `--frozen-lockfile` | `pnpm-lock.yaml` out of date or not pushed | `pnpm install`, then commit the lockfile |
 | `git clone` asks for a password or says "Permission denied (publickey)" | The VM key is not registered on GitHub | Section 6 |

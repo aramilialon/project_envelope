@@ -4,6 +4,15 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    // Plain `localhost` resolves to whatever a given machine's own DNS/getaddrinfo order
+    // prefers — IPv6-only (`::1`) on some, breaking a `127.0.0.1`-only SSH tunnel for remote
+    // access (`docs/getting-started.md`) even though nothing was wrong locally, since a
+    // same-machine browser or `curl` resolves "localhost" the same way the server bound it.
+    // The wildcard address is reachable via `127.0.0.1`, `::1` and `localhost` all at once, so
+    // nothing already relying on any of those regresses.
+    host: true,
+  },
   plugins: [
     react(),
     VitePWA({
