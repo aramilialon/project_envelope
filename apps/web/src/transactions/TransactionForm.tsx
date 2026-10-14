@@ -61,7 +61,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   const isTransferLeg = transaction !== undefined && transaction.transferId !== null;
 
   const [kind, setKind] = useState<Kind>(kindOf(transaction));
-  const [date] = useState(transaction?.budgetDate ?? today());
+  const [date, setDate] = useState(transaction?.budgetDate ?? today());
   const [amountStr, setAmountStr] = useState(transaction ? centsToInput(Math.abs(totalOf(transaction)), intl.locale) : "");
   const [payee, setPayee] = useState(transaction?.payee ?? "");
   const [memo, setMemo] = useState(transaction?.memo ?? "");
@@ -260,7 +260,14 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         <div className="two">
           <div className="field">
             <label htmlFor="tx-date">{intl.formatMessage({ id: "transactions.form.date", defaultMessage: "Date" })}</label>
-            <input id="tx-date" type="date" value={date} disabled readOnly />
+            <input
+              id="tx-date"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+              disabled={isEditing}
+              required
+            />
           </div>
           <div className="field">
             <label htmlFor="tx-amount">{intl.formatMessage({ id: "transactions.form.amount", defaultMessage: "Amount" })}</label>

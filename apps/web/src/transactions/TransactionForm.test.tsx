@@ -69,6 +69,19 @@ describe("TransactionForm (#54)", () => {
     expect(onSaved).toHaveBeenCalledOnce();
   });
 
+  it("lets a new transaction's own date be set, unlike an existing one's (#408)", async () => {
+    const createTransaction = vi.spyOn(transactionsApi, "createTransaction").mockResolvedValue({} as Transaction);
+    renderForm();
+
+    expect(screen.getByLabelText("Date")).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-02" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "10.00" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(createTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", expect.objectContaining({ occurredAt: "2026-09-02" })));
+  });
+
   it("requires a category for an outflow", async () => {
     renderForm();
     fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "10.00" } });
