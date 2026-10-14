@@ -128,6 +128,7 @@
   "import.check.missing": "Senza categoria",
   "import.check.new": "Nuove",
   "import.check.rows": "Righe",
+  "import.check.transferFrom": "Trasferimento da {account}",
   "import.check.transferTo": "Trasferimento verso {account}",
   "import.closingBalance": "Saldo sull’estratto conto (facoltativo)",
   "import.columns.column": "Colonna {n}",

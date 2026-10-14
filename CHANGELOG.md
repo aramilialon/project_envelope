@@ -13,6 +13,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Fixed
 
 - `apps/web`: the dev server (`pnpm dev`) only bound to whatever `localhost` resolved to first — IPv6-only on some machines — breaking an SSH tunnel for remote access (`docs/getting-started.md`) that targets `127.0.0.1` literally. Binds the wildcard address instead, reachable via `127.0.0.1`, `::1` and `localhost` all at once (`#393`).
+- `apps/web`: a `<Link>` wearing the shared `.btn` class ("Import", "Reconcile now", a completed reconciliation's own back link) read with its text sitting near the top instead of centred — a real `<button class="btn">` always centred regardless, since the browser's own styling does that for a `<button>` element but not a plain `<a>` (`#395`).
+- `apps/web`: the import review step's "Transfer to {account}" option read backwards for a row that is actually money arriving *from* another account — always "to", regardless of the staged row's own direction. Labels it "from" for an inflow, "to" for an outflow, mirroring the sign already shown on the row's own amount (`#399`).
 
 ### Changed
 

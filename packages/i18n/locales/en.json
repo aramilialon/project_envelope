@@ -128,6 +128,7 @@
   "import.check.missing": "Still need a category",
   "import.check.new": "New",
   "import.check.rows": "Rows",
+  "import.check.transferFrom": "Transfer from {account}",
   "import.check.transferTo": "Transfer to {account}",
   "import.closingBalance": "Closing balance on the statement (optional)",
   "import.columns.column": "Column {n}",
