@@ -393,7 +393,7 @@ export default function AccountRegisterScreen() {
           <Link className="btn" to={`/${workspaceId}/accounts/${accountId}/import`}>
             {intl.formatMessage({ id: "register.import", defaultMessage: "Import" })}
           </Link>
-          <button type="button" className="btn primary" onClick={() => setOpen("new")}>
+          <button type="button" className="btn primary" onClick={() => setOpen((current) => (current === "new" ? null : "new"))}>
             {intl.formatMessage({ id: "register.new", defaultMessage: "New transaction" })}
           </button>
         </div>

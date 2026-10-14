@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -528,6 +528,24 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Scheduled" }));
     expect(await screen.findByRole("heading", { name: "Scheduled" })).toBeInTheDocument();
+  });
+
+  it("closes a toolbar panel when its own button is pressed again (#410)", async () => {
+    renderScreen(budgetMonth({ unassigned: 5_000, categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Targets" }));
+    expect(await screen.findByRole("heading", { name: "Targets" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Targets" }));
+    expect(screen.queryByRole("heading", { name: "Targets" })).not.toBeInTheDocument();
+
+    // The band's own "Assign" button, not the form's own submit button it opens (same accessible
+    // name before an amount is typed in).
+    const band = within(document.querySelector(".rta")!);
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
   });
 
   it("shows the month's own timeline and 'To do' list, built from its events (#326)", async () => {

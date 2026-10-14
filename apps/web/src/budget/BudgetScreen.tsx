@@ -252,7 +252,11 @@ export default function BudgetScreen() {
             <span className={`amt n${state.budgetMonth.unassigned < 0 ? " low" : ""}`}>{money(state.budgetMonth.unassigned)}</span>
           </div>
           {canWrite && (
-            <button type="button" className="btn primary" onClick={() => setMoveMoney({ kind: "assign" })}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={() => setMoveMoney((current) => (current?.kind === "assign" ? null : { kind: "assign" }))}
+            >
               {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
             </button>
           )}
@@ -439,13 +443,13 @@ export default function BudgetScreen() {
 
           {canWrite && (
             <div className="acts">
-              <button type="button" className="btn" onClick={() => setPanel("targets")}>
+              <button type="button" className="btn" onClick={() => setPanel((current) => (current === "targets" ? null : "targets"))}>
                 {intl.formatMessage({ id: "budget.actions.targets", defaultMessage: "Targets" })}
               </button>
-              <button type="button" className="btn" onClick={() => setPanel("quickAssign")}>
+              <button type="button" className="btn" onClick={() => setPanel((current) => (current === "quickAssign" ? null : "quickAssign"))}>
                 {intl.formatMessage({ id: "budget.actions.quickAssign", defaultMessage: "Quick assign" })}
               </button>
-              <button type="button" className="btn" onClick={() => setPanel("scheduled")}>
+              <button type="button" className="btn" onClick={() => setPanel((current) => (current === "scheduled" ? null : "scheduled"))}>
                 {intl.formatMessage({ id: "budget.actions.scheduled", defaultMessage: "Scheduled" })}
               </button>
             </div>

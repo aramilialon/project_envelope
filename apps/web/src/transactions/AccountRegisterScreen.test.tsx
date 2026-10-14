@@ -216,6 +216,16 @@ describe("AccountRegisterScreen (#54, #333)", () => {
     expect(await screen.findByRole("heading", { name: "New transaction" })).toBeInTheDocument();
   });
 
+  it("closes the 'New transaction' form when its own button is pressed again (#410)", async () => {
+    renderScreen([]);
+    await screen.findByText("No transactions match this filter.");
+
+    fireEvent.click(screen.getByRole("button", { name: "New transaction" }));
+    expect(await screen.findByRole("heading", { name: "New transaction" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New transaction" }));
+    expect(screen.queryByRole("heading", { name: "New transaction" })).not.toBeInTheDocument();
+  });
+
   describe("the phone list (usePhoneWidth true, a different tree, not just a CSS reflow)", () => {
     it("groups transactions by day, with a day header", async () => {
       setWidth(390);
