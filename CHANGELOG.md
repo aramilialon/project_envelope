@@ -27,6 +27,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: pressing "Assign", "Targets", "Quick assign", "Scheduled" or "New transaction" again while its own panel is already open now closes it, instead of leaving it open with no effect (`#410`).
 - `apps/web`: the Timeline's own first day tick now reads "Sep 1" instead of a bare "1", in its full (non-compact) mode, so the x-axis itself names which month it is (`#406`).
 - `apps/web`: the "Add account" form's "On budget" choice is now shown only for a savings account — every other type (checking, cash, credit card) is always on budget, matching the real distinction already enforced elsewhere in the schema, instead of offering a toggle that made no real difference for them (`#402`).
+- `apps/web`: the budget month's own "To do" list now opens its own destination on click on the desktop too, not just the phone — a collapsed group expands first if the item's own category is inside one (`#411`).
 
 ## [0.1.7] - 2026-10-10
 

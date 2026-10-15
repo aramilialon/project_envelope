@@ -395,6 +395,22 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
   });
 
+  it("opens a category's own row detail from a 'To do' item on the desktop too, expanding its group if collapsed (#411)", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", cashOverspending: 5_000, available: -5_000 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Home" }));
+    expect(screen.queryByText("Groceries")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Cover Groceries/ }));
+
+    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Assigned this month")).toBeInTheDocument();
+  });
+
   it("refetches the budget month once the row detail changes the assigned amount (#327)", async () => {
     vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
     const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
@@ -429,7 +445,9 @@ describe("BudgetScreen (#53, #324)", () => {
     );
     await screen.findByText("Visa payment");
 
-    fireEvent.click(screen.getByRole("button", { name: /Visa payment/ }));
+    // Scoped to the category list, not the "To do" list — uncovered debt also shows there now,
+    // as its own clickable item ("Debt to cover: Visa payment", #411), sharing the same name.
+    fireEvent.click(within(document.querySelector(".bars")!).getByRole("button", { name: /Visa payment/ }));
     expect(await screen.findByText("To cover")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Move money here" }));
@@ -690,13 +708,6 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Fund 2 targets/ }));
     expect(await screen.findByRole("heading", { name: "Targets" })).toBeInTheDocument();
-  });
-
-  it("stays plain, informational text for a to-do item on the desktop (#326's own docblock)", async () => {
-    renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", cashOverspending: 5_000 })] }), [HOME]);
-    await screen.findByText("Cover Groceries");
-
-    expect(screen.queryByRole("button", { name: /Cover Groceries/ })).not.toBeInTheDocument();
   });
 
   it("collapses a group by tapping its own name, not just the chevron (#331, design.md)", async () => {
