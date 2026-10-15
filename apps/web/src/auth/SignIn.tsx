@@ -8,8 +8,11 @@ import "./SignIn.css";
  * Sign-in (#49, docs/ux/mockups/sign-in.html): the app owns no credentials of its own, so this
  * is a redirect, not a login form — idle (offer to sign in), pending (mid-redirect) and error,
  * driven entirely by `react-oidc-context`'s `useAuth()`. Rendered by `App.tsx` whenever
- * `auth.isAuthenticated` is false. The mockup's own "A problem? Write to your server's admin"
- * footer is left out — the app has no admin-contact destination to send it to yet.
+ * `auth.isAuthenticated` is false — which briefly includes the moment right after pressing
+ * "Sign out" too, so the pending state's own wording picks between "Signing in"/"Signing out"
+ * by `activeNavigator` instead of assuming sign-in (`#409`). The mockup's own "A problem? Write
+ * to your server's admin" footer is left out — the app has no admin-contact destination to send
+ * it to yet.
  */
 export default function SignIn() {
   const auth = useAuth();
@@ -38,6 +41,11 @@ export default function SignIn() {
   }
 
   if (auth.isLoading) {
+    // Reached both mid-sign-in (`App.tsx` renders this whenever `isAuthenticated` is false,
+    // which is also true for the instant between pressing "Sign out" and its own redirect
+    // landing) and mid-sign-out — `activeNavigator` is the only way to tell which one, so the
+    // wording does not call a sign-out "Signing in" (`#409`).
+    const signingOut = auth.activeNavigator === "signoutRedirect";
     return (
       <CenteredCard>
         <p className="mark" aria-hidden="true">
@@ -48,13 +56,20 @@ export default function SignIn() {
         </p>
         <button type="button" className="primary" disabled aria-busy="true">
           <span className="spin" aria-hidden="true" />
-          {intl.formatMessage({ id: "signIn.pending.action", defaultMessage: "Signing in" })}
+          {signingOut
+            ? intl.formatMessage({ id: "signIn.pending.action.signOut", defaultMessage: "Signing out" })
+            : intl.formatMessage({ id: "signIn.pending.action", defaultMessage: "Signing in" })}
         </button>
         <p className="sr-only" role="status">
-          {intl.formatMessage({
-            id: "signIn.pending.status",
-            defaultMessage: "Redirecting to the sign-in page",
-          })}
+          {signingOut
+            ? intl.formatMessage({
+                id: "signIn.pending.status.signOut",
+                defaultMessage: "Redirecting to the sign-out page",
+              })
+            : intl.formatMessage({
+                id: "signIn.pending.status",
+                defaultMessage: "Redirecting to the sign-in page",
+              })}
         </p>
       </CenteredCard>
     );

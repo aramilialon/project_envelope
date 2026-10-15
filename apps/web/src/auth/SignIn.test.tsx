@@ -27,6 +27,14 @@ describe("SignIn (#49)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Redirecting to the sign-in page");
   });
 
+  it("says 'Signing out', not 'Signing in', while a sign-out redirect is pending (#409)", () => {
+    useAuth.mockReturnValue({ isLoading: true, error: undefined, activeNavigator: "signoutRedirect" });
+    renderWithIntl(<SignIn />);
+
+    expect(screen.getByRole("button", { name: /Signing out/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Redirecting to the sign-out page");
+  });
+
   it("shows the sign-in error and retries on click (error state)", () => {
     const signinRedirect = vi.fn();
     useAuth.mockReturnValue({
