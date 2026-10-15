@@ -12,10 +12,12 @@ interface Props {
   /**
    * Makes each item (but `overassigned`, which names no single destination) a button instead of
    * plain text, opening the item's own category — or, for `targetsNeeded`, the "Targets" panel,
-   * since several categories can share one such item (the phone layout, `#331`). The desktop
-   * leaves this out: a row's own detail already opens by tapping the row itself, and `#330`'s
-   * own "Scheduled" panel is already a toolbar action, so a to-do item staying informational-only
-   * there is deliberate, not a gap (`#326`'s own docblock already said so).
+   * since several categories can share one such item. Wired on both the phone and the desktop
+   * layout alike (`#411`): the desktop used to leave this out on the theory that a row's own
+   * detail already opens by tapping the row itself, but a to-do item is its own shortcut to a
+   * category that may not even be visible on screen (it can sit in a collapsed group, or further
+   * down the list than the page currently shows), so staying informational-only there was a real
+   * gap, not a deliberate omission.
    */
   readonly onItemClick?: (item: TodoItem) => void;
 }
@@ -99,10 +101,9 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
 
 /**
  * The budget month's own "To do" list (`@envelope/core`'s `computeTodos`, #326), replacing the
- * old one-line notices (#61): what needs attention this month, each with its own amount. Not yet
- * interactive — opening a category's own row (#327), recording a scheduled transaction (#330) and
- * funding targets for an arbitrary subset of categories have no destination to open into yet, so
- * each row is informational only, the same way an ordinary category row is until #327 lands.
+ * old one-line notices (#61): what needs attention this month, each with its own amount. Each
+ * item opens its own destination when `onItemClick` is given (`#411`) — the caller passes it on
+ * both the phone and the desktop layout now.
  */
 export default function Todo({ items, categoryNameById, money, locale, limit, onItemClick }: Props) {
   const intl = useIntl();

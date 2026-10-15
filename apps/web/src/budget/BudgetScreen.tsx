@@ -363,6 +363,12 @@ export default function BudgetScreen() {
     if (item.kind === "overassigned") {
       return;
     }
+    // On the desktop, a collapsed group never renders its own categories at all (`#411`): opening
+    // one from the "To do" list needs its group expanded first, or nothing visible would change.
+    const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === item.categoryId));
+    if (ownGroup) {
+      setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
+    }
     setOpenCategoryId(item.categoryId);
   }
 
@@ -438,7 +444,8 @@ export default function BudgetScreen() {
               categoryNameById={categoryNameById}
               money={money}
               locale={intl.locale}
-              {...(isPhone ? { limit: 3, onItemClick: handleTodoItemClick } : {})}
+              onItemClick={handleTodoItemClick}
+              {...(isPhone ? { limit: 3 } : {})}
             />
           </div>
 

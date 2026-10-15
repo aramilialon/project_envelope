@@ -113,7 +113,7 @@ describe("Todo (#326)", () => {
     expect(screen.queryByRole("button", { name: /assigned more/ })).not.toBeInTheDocument();
   });
 
-  it("stays plain, informational text with no onItemClick, exactly as the desktop uses it", () => {
+  it("stays plain, informational text when no onItemClick is given at all", () => {
     const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 }];
     renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
     expect(screen.queryByRole("button", { name: /Cover Groceries/ })).not.toBeInTheDocument();
