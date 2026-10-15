@@ -44,16 +44,61 @@ describe("AddAccountForm (#51)", () => {
     expect(onCreated).toHaveBeenCalledOnce();
   });
 
-  it("only shows the amount owed when the type is an on-budget credit card", () => {
+  it("only shows the amount owed once the type is a credit card", () => {
     renderForm();
 
     expect(screen.queryByLabelText(/owe on this card/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: "Credit card" }));
     expect(screen.getByLabelText(/owe on this card/)).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByLabelText("On budget"));
-    expect(screen.queryByLabelText(/owe on this card/)).not.toBeInTheDocument();
+  it("shows the 'On budget' choice only for a savings account — every other type is always on budget (#402)", async () => {
+    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue({
+      id: "a1",
+      workspaceId: "ws-1",
+      name: "Wallet",
+      type: "cash",
+      currency: "EUR",
+      onBudget: true,
+      paymentCategoryId: null,
+      closedAt: null,
+      createdAt: "2026-01-01",
+    });
+    renderForm();
+
+    expect(screen.queryByLabelText("On budget")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Savings" }));
+    expect(screen.getByLabelText("On budget")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Checking" }));
+    expect(screen.queryByLabelText("On budget")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Cash" }));
+    expect(screen.queryByLabelText("On budget")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Credit card" }));
+    expect(screen.queryByLabelText("On budget")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Cash" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Wallet" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    await waitFor(() =>
+      expect(createAccount).toHaveBeenCalledWith(
+        "t",
+        "ws-1",
+        expect.objectContaining({ type: "cash", onBudget: true }),
+      ),
+    );
+  });
+
+  it("names and explains each account type", () => {
+    renderForm();
+
+    expect(screen.getByText("Salary, bills, debit card")).toBeInTheDocument();
+    expect(screen.getByText("Money set aside, on or off budget as you choose")).toBeInTheDocument();
+    expect(screen.getByText("Your wallet")).toBeInTheDocument();
+    expect(screen.getByText("Debt you pay off, with its own payment category")).toBeInTheDocument();
   });
 
   it("negates the entered amount owed into a starting balance", async () => {

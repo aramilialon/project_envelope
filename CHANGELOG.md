@@ -10,6 +10,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
 - `apps/web`: a brand new workspace's own Categories screen (Workspace settings → Categories), with no groups yet, now explains that a group comes first and holds its own categories, instead of showing only a bare "+ Add a group" button with no context (`#401`).
+- `apps/web`: the "Add account" form explains each account type with a short hint under its own label (`#402`).
 
 ### Fixed
 
@@ -25,6 +26,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the budget month's own Timeline (and the account register's own copy) redesigned as a running total, not a per-event mark — a line starting at zero on day 1, solid (recorded) up to today and dashed (scheduled) past it, each day's own segment coloured by whether it moved the total up or down (never red/amber, reserved for a real problem). A dashed "current value" reference line at today's own height calls out what has moved so far this month; an overdue, not-yet-recorded item folds into today's own point with a small amber marker instead of moving the solid line itself (`#390`).
 - `apps/web`: pressing "Assign", "Targets", "Quick assign", "Scheduled" or "New transaction" again while its own panel is already open now closes it, instead of leaving it open with no effect (`#410`).
 - `apps/web`: the Timeline's own first day tick now reads "Sep 1" instead of a bare "1", in its full (non-compact) mode, so the x-axis itself names which month it is (`#406`).
+- `apps/web`: the "Add account" form's "On budget" choice is now shown only for a savings account — every other type (checking, cash, credit card) is always on budget, matching the real distinction already enforced elsewhere in the schema, instead of offering a toggle that made no real difference for them (`#402`).
 
 ## [0.1.7] - 2026-10-10
 

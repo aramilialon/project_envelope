@@ -69,7 +69,7 @@
 
 .side-sheet .opt {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 9px 0;
   border-bottom: 1px solid var(--rule-soft);
@@ -77,7 +77,14 @@
 }
 
 .side-sheet .opt input {
+  margin-top: 3px;
   accent-color: var(--pen);
+}
+
+.side-sheet .opt small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .side-sheet .chk {

@@ -4,7 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import SideSheet from "../layout/SideSheet.tsx";
-import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
+import { ACCOUNT_TYPE_HINTS, ACCOUNT_TYPE_LABELS } from "./accountType.ts";
 import { createAccount, type AccountType } from "./api.ts";
 
 const TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card"];
@@ -33,9 +33,15 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Whether on/off budget is even a choice: a checking, cash or credit card account is always
+  // on budget — only a savings account (money set aside, not necessarily budgeted day-to-day)
+  // leaves it up to the user (`#402`).
+  const onBudgetEditable = type === "savings";
+  const effectiveOnBudget = onBudgetEditable ? onBudget : true;
+
   // Only an on-budget credit card has a payment category to seed: `apps/api`'s own
   // `createAccount` ignores `startingBalanceCents` for every other account type.
-  const showOwed = type === "credit_card" && onBudget;
+  const showOwed = type === "credit_card" && effectiveOnBudget;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,7 +72,7 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
         name: trimmedName,
         type,
         currency: baseCurrency,
-        onBudget,
+        onBudget: effectiveOnBudget,
         ...(startingBalanceCents === undefined ? {} : { startingBalanceCents }),
       });
       onCreated();
@@ -88,16 +94,32 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
           <legend>{intl.formatMessage({ id: "accounts.form.type", defaultMessage: "Account type" })}</legend>
           {TYPES.map((t) => (
             <label className="opt" key={t}>
-              <input type="radio" name="acc-type" value={t} checked={type === t} onChange={() => setType(t)} />
-              <b>{intl.formatMessage(ACCOUNT_TYPE_LABELS[t])}</b>
+              <input
+                type="radio"
+                name="acc-type"
+                value={t}
+                checked={type === t}
+                onChange={() => setType(t)}
+                aria-describedby={`acc-type-hint-${t}`}
+              />
+              <span>
+                <b>{intl.formatMessage(ACCOUNT_TYPE_LABELS[t])}</b>
+                {/* Not part of the radio's own accessible name (`aria-hidden`) — it is already
+                    reachable as its accessible description, via `aria-describedby` above. */}
+                <small id={`acc-type-hint-${t}`} aria-hidden="true">
+                  {intl.formatMessage(ACCOUNT_TYPE_HINTS[t])}
+                </small>
+              </span>
             </label>
           ))}
         </fieldset>
 
-        <label className="chk">
-          <input type="checkbox" checked={onBudget} onChange={(event) => setOnBudget(event.target.checked)} />
-          {intl.formatMessage({ id: "accounts.form.onBudget", defaultMessage: "On budget" })}
-        </label>
+        {onBudgetEditable && (
+          <label className="chk">
+            <input type="checkbox" checked={onBudget} onChange={(event) => setOnBudget(event.target.checked)} />
+            {intl.formatMessage({ id: "accounts.form.onBudget", defaultMessage: "On budget" })}
+          </label>
+        )}
 
         {showOwed && (
           <div className="field">
