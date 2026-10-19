@@ -3,23 +3,27 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
+import CreateWorkspaceForm from "./CreateWorkspaceForm.tsx";
+import DeleteWorkspaceForm from "./DeleteWorkspaceForm.tsx";
+import { clearLastUsedWorkspaceId, setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
 import { useWorkspaces } from "./useWorkspaces.ts";
 import "./WorkspaceSwitcher.css";
+
+type Sheet = "create" | "delete" | null;
 
 /**
  * The sidebar's workspace switcher (#50, `docs/ux/mockups/settings-first-run.html`): a button
  * naming the current workspace, opening a popover listing every workspace the user belongs to,
- * and "Workspace settings" (#52 gives it its first real destination, the categories screen;
- * only one settings section exists so far, so the button goes straight to it rather than an
- * empty settings shell with a single tab). "+ New workspace", also drawn in that mockup, stays
- * left out — that feature still has no screen, and a button that does nothing is worse than no
- * button.
+ * "+ New workspace" (`#394`, opens `CreateWorkspaceForm`), "Delete workspace" (`#394`, owner-only,
+ * opens `DeleteWorkspaceForm`) and "Workspace settings" (#52 gives it its first real destination,
+ * the categories screen; only one settings section exists so far, so the button goes straight to
+ * it rather than an empty settings shell with a single tab).
  */
 export default function WorkspaceSwitcher() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const state = useWorkspaces();
   const [open, setOpen] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const intl = useIntl();
   const navigate = useNavigate();
   const auth = useAuth();
@@ -67,12 +71,67 @@ export default function WorkspaceSwitcher() {
             role="menuitem"
             onClick={() => {
               setOpen(false);
+              setSheet("create");
+            }}
+          >
+            {intl.formatMessage({ id: "workspaceSwitcher.new", defaultMessage: "+ New workspace" })}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
               navigate(`/${workspaceId}/settings/categories`);
             }}
           >
             {intl.formatMessage({ id: "workspaceSwitcher.settings", defaultMessage: "Workspace settings" })}
           </button>
+          {current?.role === "owner" && (
+            <>
+              <hr />
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  setOpen(false);
+                  setSheet("delete");
+                }}
+              >
+                {intl.formatMessage({ id: "workspaceSwitcher.delete", defaultMessage: "Delete workspace" })}
+              </button>
+            </>
+          )}
         </div>
+      )}
+      {sheet === "create" && (
+        <CreateWorkspaceForm
+          onClose={() => setSheet(null)}
+          onCreated={(workspace) => {
+            setSheet(null);
+            state.refetch();
+            const subject = auth.user?.profile?.sub;
+            if (subject) {
+              setLastUsedWorkspaceId(subject, workspace.id);
+            }
+            navigate(`/${workspace.id}`);
+          }}
+        />
+      )}
+      {sheet === "delete" && current && (
+        <DeleteWorkspaceForm
+          workspaceId={current.id}
+          workspaceName={current.name}
+          onClose={() => setSheet(null)}
+          onDeleted={() => {
+            setSheet(null);
+            const subject = auth.user?.profile?.sub;
+            if (subject) {
+              clearLastUsedWorkspaceId(subject);
+            }
+            navigate("/", { replace: true });
+          }}
+        />
       )}
     </div>
   );

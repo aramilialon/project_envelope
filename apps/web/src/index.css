@@ -147,6 +147,15 @@ body {
   font-weight: 600;
 }
 
+/* A destructive action more serious than `.plain.danger` (an ordinary archive) warrants —
+   deleting a workspace outright, for every member (`#394`). */
+.btn.bad {
+  border-color: var(--red);
+  background: var(--red);
+  color: var(--red-ink);
+  font-weight: 600;
+}
+
 .plain {
   padding: 0;
   border: 0;

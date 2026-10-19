@@ -96,6 +96,17 @@ export async function requireWriteAccess(request: FastifyRequest, reply: Fastify
   }
 }
 
+/**
+ * Chained after `createWorkspaceMembershipPreHandler` on an endpoint restricted to the
+ * workspace's own owner (`#394`: deleting it outright) — design.md, "Settings": "Changing
+ * workspace settings needs the owner role, except categories, which editors can manage."
+ */
+export async function requireOwnerRole(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.workspace?.role !== "owner") {
+    await reply.code(403).send({ error: "only the workspace's own owner can do this" });
+  }
+}
+
 function extractWorkspaceId(request: FastifyRequest): string | undefined {
   const params = request.params as Record<string, unknown> | undefined;
   const fromParams = params?.workspaceId;

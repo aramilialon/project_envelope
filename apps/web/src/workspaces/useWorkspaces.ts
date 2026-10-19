@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 
 import { listMyWorkspaces, type Workspace } from "./api.ts";
@@ -8,11 +8,16 @@ export type WorkspacesState =
   | { status: "error" }
   | { status: "ok"; workspaces: readonly Workspace[] };
 
-/** Fetches the signed-in user's own workspaces (#50), re-fetching whenever the access token changes. */
-export function useWorkspaces(): WorkspacesState {
+/**
+ * Fetches the signed-in user's own workspaces (#50), re-fetching whenever the access token
+ * changes, or on demand via `refetch` — needed after creating one (`#394`), so the switcher's own
+ * list includes it without waiting for the next token refresh.
+ */
+export function useWorkspaces(): WorkspacesState & { refetch(): void } {
   const auth = useAuth();
   const accessToken = auth.user?.access_token;
   const [state, setState] = useState<WorkspacesState>({ status: "loading" });
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     if (!accessToken) {
@@ -36,7 +41,9 @@ export function useWorkspaces(): WorkspacesState {
     return () => {
       cancelled = true;
     };
-  }, [accessToken]);
+  }, [accessToken, generation]);
 
-  return state;
+  const refetch = useCallback(() => setGeneration((g) => g + 1), []);
+
+  return { ...state, refetch };
 }
