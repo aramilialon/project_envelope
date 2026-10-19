@@ -345,11 +345,19 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       await waitFor(() => expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t1", { status: "cleared" }));
     });
 
-    it("shows Reconcile once something is cleared", async () => {
+    it("offers a plain, always-available 'Reconcile' toolbar link, not a 'To do' nag (#404)", async () => {
       renderScreen([transaction({ status: "cleared" })]);
       await screen.findByText("Supermarket");
 
-      expect(screen.getByText("Reconcile the account")).toBeInTheDocument();
+      expect(screen.queryByText("Reconcile the account")).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Reconcile" })).toHaveAttribute("href", "/ws-1/accounts/acc-checking/reconcile");
+    });
+
+    it("keeps the 'Reconcile' link even with nothing cleared yet (#404)", async () => {
+      renderScreen([transaction({ status: "pending" })]);
+      await screen.findByText("Supermarket");
+
+      expect(screen.getByRole("link", { name: "Reconcile" })).toBeInTheDocument();
     });
 
     it("folds the timeline and 'To do' list away entirely while a side sheet is open", async () => {

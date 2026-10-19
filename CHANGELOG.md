@@ -28,6 +28,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the Timeline's own first day tick now reads "Sep 1" instead of a bare "1", in its full (non-compact) mode, so the x-axis itself names which month it is (`#406`).
 - `apps/web`: the "Add account" form's "On budget" choice is now shown only for a savings account — every other type (checking, cash, credit card) is always on budget, matching the real distinction already enforced elsewhere in the schema, instead of offering a toggle that made no real difference for them (`#402`).
 - `apps/web`: the budget month's own "To do" list now opens its own destination on click on the desktop too, not just the phone — a collapsed group expands first if the item's own category is inside one (`#411`).
+- `apps/web`: the account register's "Reconcile the account" nag appeared the moment any single transaction was cleared — right after one import, or one manually-ticked "cleared" checkbox — long before there was anything worth checking. Reconciling is now a plain, always-available toolbar action instead of a "To do" item, for whenever the balance actually looks wrong; the import screen's own "Reconcile now" is the primary action only once the statement's closing balance actually differs from the account's own (`#404`).
 
 ## [0.1.7] - 2026-10-10
 
