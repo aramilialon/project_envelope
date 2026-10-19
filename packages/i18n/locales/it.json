@@ -384,6 +384,8 @@
   "transactions.form.chooseDestination": "Scegli un conto di destinazione.",
   "transactions.form.cleared": "Verificata in banca",
   "transactions.form.date": "Data",
+  "transactions.form.delete": "Elimina",
+  "transactions.form.deleteError": "Non siamo riusciti a eliminare questa transazione.",
   "transactions.form.destination": "Verso il conto",
   "transactions.form.error": "Non siamo riusciti a salvare questa transazione.",
   "transactions.form.invalidAmount": "Scrivi un importo maggiore di zero.",

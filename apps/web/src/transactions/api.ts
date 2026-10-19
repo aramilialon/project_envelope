@@ -121,6 +121,24 @@ export async function updateTransaction(
   return (await response.json()) as Transaction;
 }
 
+/** `409` when the transaction (or, for a transfer, either of its two legs) is reconciled — unlock it first (`#403`). */
+export async function deleteTransaction(
+  accessToken: string,
+  workspaceId: string,
+  accountId: string,
+  transactionId: string,
+): Promise<void> {
+  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId}`, {
+    method: "DELETE",
+    headers: authHeaders(accessToken),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `DELETE /workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId} failed: ${response.status}`,
+    );
+  }
+}
+
 export async function createTransfer(
   accessToken: string,
   workspaceId: string,

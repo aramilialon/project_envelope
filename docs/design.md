@@ -266,7 +266,7 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Workspace | name, base currency, reference time zone, plan | Security boundary: every query is filtered by workspace |
 | Membership | user, workspace, role | Owner, editor, read-only |
 | Account | type, currency, on or off budget, closed | Bank accounts, cards, brokers; each real account lives in exactly one workspace |
-| Transaction | account, date, amount, payee, status (pending, cleared, reconciled) | Corrections become new rows or tracked versions |
+| Transaction | account, date, amount, payee, status (pending, cleared, reconciled) | Edited in place, or deleted outright (both legs together for a transfer); reconciled transactions neither, until unlocked |
 | Split | transaction, category, amount | One transaction across several categories |
 | Category / Group | name, order, archived | |
 | AssignmentEntry | batch (device-generated, shared by every entry of one user action), month, source category (null = unassigned), destination category (null = unassigned), amount, author, reverses (another entry, optional) | Append-only ledger, never a mutable total: assigning is null→category, unassigning is category→null, moving money is one entry from A to B; quick assign is one entry per category, sharing a batch, undone together. A category's assigned amount in a month is incoming minus outgoing entries. Undo is new entries with `reverses` set, never an edit ([ADR 0008](adr/0008-assignment-ledger.md)) |

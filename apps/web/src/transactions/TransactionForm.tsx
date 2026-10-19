@@ -6,7 +6,7 @@ import { useAuth } from "react-oidc-context";
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
-import { createTransaction, createTransfer, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
+import { createTransaction, createTransfer, deleteTransaction, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
@@ -50,9 +50,10 @@ function centsToInput(cents: number, locale: string): string {
  * `occurredAt` field, so an existing transaction's date cannot be changed here, only at
  * creation; a transfer's amount and destination account are the same way (`createTransfer` is
  * the only atomic, two-legs-at-once write) — editing an existing transfer is limited to its
- * payee, memo and cleared status. Deleting a transaction has no endpoint yet, so there is no
- * "Delete" button, unlike the mockup. A reconciled transaction is never handed to this form —
- * `AccountRegisterScreen` shows it read-only instead, since unlocking one has no endpoint yet.
+ * payee, memo and cleared status. "Delete" (`#403`, the mockup's own `data-delete`) removes an
+ * existing transaction outright — both legs together for a transfer, `apps/api`'s own
+ * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
+ * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
  */
 export default function TransactionForm({ workspaceId, accountId, accounts, categories, currency, transaction, onClose, onSaved }: Props) {
   const intl = useIntl();
@@ -228,6 +229,22 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     } catch {
       setError(intl.formatMessage({ id: "transactions.form.error", defaultMessage: "We could not save this transaction." }));
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete() {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken || !transaction) {
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await deleteTransaction(accessToken, workspaceId, accountId, transaction.id);
+      onSaved();
+    } catch {
+      setError(intl.formatMessage({ id: "transactions.form.deleteError", defaultMessage: "We could not delete this transaction." }));
       setSubmitting(false);
     }
   }
@@ -410,6 +427,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
                 : { id: "transactions.form.add", defaultMessage: "Add" },
             )}
           </button>
+          {isEditing && (
+            <button type="button" className="plain danger" disabled={submitting} onClick={() => void handleDelete()}>
+              {intl.formatMessage({ id: "transactions.form.delete", defaultMessage: "Delete" })}
+            </button>
+          )}
         </div>
       </form>
     </SideSheet>

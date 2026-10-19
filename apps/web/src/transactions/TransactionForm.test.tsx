@@ -289,4 +289,57 @@ describe("TransactionForm (#54)", () => {
       }),
     );
   });
+
+  it("deletes an existing transaction (#403)", async () => {
+    const deleteTransaction = vi.spyOn(transactionsApi, "deleteTransaction").mockResolvedValue(undefined);
+    const transaction: Transaction = {
+      id: "t1",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: "Supermarket",
+      memo: null,
+      status: "cleared",
+      transferId: null,
+      externalId: null,
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
+    };
+    const { onSaved } = renderForm({ transaction });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(deleteTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t1"));
+    expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it("has no Delete button for a brand new transaction", () => {
+    renderForm();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("shows an error and stays open when deleting fails", async () => {
+    vi.spyOn(transactionsApi, "deleteTransaction").mockRejectedValue(new Error("409"));
+    const transaction: Transaction = {
+      id: "t1",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: "Supermarket",
+      memo: null,
+      status: "cleared",
+      transferId: null,
+      externalId: null,
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
+    };
+    const { onSaved } = renderForm({ transaction });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not delete this transaction.");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
 });

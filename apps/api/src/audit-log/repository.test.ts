@@ -63,6 +63,22 @@ describe("recordAuditLog", () => {
     });
   });
 
+  it("accepts an array for before/after, not just a plain object (#403)", async () => {
+    await recordAuditLog(pool, {
+      workspaceId,
+      userId,
+      action: "transaction.delete",
+      before: [{ id: "t1" }, { id: "t2" }],
+      after: null,
+    });
+
+    const { rows } = await pool.query(
+      "SELECT before FROM audit_log WHERE workspace_id = $1 AND action = 'transaction.delete'",
+      [workspaceId],
+    );
+    assert.deepEqual(rows[0]?.before, [{ id: "t1" }, { id: "t2" }]);
+  });
+
   it("allows a null actor, for system-initiated actions", async () => {
     await recordAuditLog(pool, { workspaceId, userId: null, action: "system.something", before: null, after: null });
 
