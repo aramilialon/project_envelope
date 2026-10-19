@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -47,6 +47,28 @@ describe("WorkspaceGate (#50)", () => {
     renderGate();
 
     expect(await screen.findByText("You do not belong to any workspace yet.")).toBeInTheDocument();
+  });
+
+  it("offers to create a workspace from the empty state, landing on the new one (#394)", async () => {
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([]);
+    const createWorkspace = vi.spyOn(workspacesApi, "createWorkspace").mockResolvedValue({
+      id: "ws-new",
+      name: "Famiglia",
+      role: "owner",
+      baseCurrency: "EUR",
+      timeZone: "Europe/Rome",
+    });
+    renderGate();
+    await screen.findByText("You do not belong to any workspace yet.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Create a workspace" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Famiglia" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+
+    await waitFor(() =>
+      expect(createWorkspace).toHaveBeenCalledWith("t", { name: "Famiglia", baseCurrency: "EUR", timeZone: "Europe/Rome" }),
+    );
+    expect(await screen.findByText("Landed on a workspace")).toBeInTheDocument();
   });
 
   it("skips straight to the only workspace when there is exactly one", async () => {

@@ -63,6 +63,10 @@
   background: var(--pen-soft);
 }
 
+.workspace-switcher .menu-pop button.danger {
+  color: var(--red-text);
+}
+
 .workspace-switcher .menu-pop hr {
   width: 100%;
   height: 0;

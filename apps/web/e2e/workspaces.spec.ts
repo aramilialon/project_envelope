@@ -76,4 +76,31 @@ test.describe("workspace switcher (#50, #343)", () => {
       await user.teardown();
     }
   });
+
+  test("creates a workspace from the zero-membership state, then deletes it from the switcher (#394)", async ({ page }) => {
+    const user = await createTestUser();
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+
+      await page.getByRole("button", { name: "Create a workspace" }).click();
+      await page.getByLabel("Name").fill("Famiglia");
+      await page.getByRole("button", { name: "Create workspace" }).click();
+      await page.waitForURL(/\/[0-9a-f-]+$/);
+      await expect(page.getByRole("button", { name: "Famiglia" })).toBeVisible();
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Delete workspace" }).click();
+      const confirmButton = page.getByRole("button", { name: "Delete the workspace" });
+      await expect(confirmButton).toBeDisabled();
+      await page.getByLabel("To confirm, type Famiglia").fill("Famiglia");
+      await expect(confirmButton).toBeEnabled();
+      await confirmButton.click();
+
+      await page.waitForURL("/");
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+    } finally {
+      await user.teardown();
+    }
+  });
 });

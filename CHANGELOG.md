@@ -13,6 +13,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/web`: the "Add account" form explains each account type with a short hint under its own label (`#402`).
 - `apps/web`/`@envelope/core`: the Timeline's own vertical scale had no reference at all for what a given height on the line actually meant in money. A handful of light gridlines now mark a few round amounts along it, in its full (non-compact) mode (`#405`).
 - `apps/api`/`apps/web`: a transaction can now be deleted outright — both legs together for a transfer — the same way its own edit form already lets you change it; a reconciled transaction refuses deletion the same way it already refuses an edit (`#403`).
+- `apps/api`/`apps/web`: a signed-in user can now create their own first workspace (zero-membership state, and "+ New workspace" in the switcher), and an owner can delete one outright (type its own name to confirm) — until now the only way either happened was a developer's own raw SQL (`#394`).
 
 ### Fixed
 

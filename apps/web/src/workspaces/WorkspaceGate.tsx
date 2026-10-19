@@ -1,25 +1,30 @@
+import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 
 import CenteredCard from "../layout/CenteredCard.tsx";
-import { clearLastUsedWorkspaceId, getLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
+import CreateWorkspaceForm from "./CreateWorkspaceForm.tsx";
+import { clearLastUsedWorkspaceId, getLastUsedWorkspaceId, setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
 import WorkspacePicker from "./WorkspacePicker.tsx";
 import { useWorkspaces } from "./useWorkspaces.ts";
 
 /**
  * The "/" route (#50): fetches the signed-in user's own workspaces and decides what to show —
  * the last workspace this browser used, if the signed-in user is still a member of it (#343);
- * otherwise none (nothing to enter yet), exactly one (skip straight to it, no pointless extra
- * screen for the common personal/family case), or several (`WorkspacePicker`). A URL that already
- * names a workspace (`/:workspaceId`) never reaches this component at all — `App.tsx`'s own route
- * table sends it straight to `AppLayout` instead, which is rule 1 of #343's own order, satisfied
- * by routing alone.
+ * otherwise none ("Create a workspace" opens `CreateWorkspaceForm`, `#394` — there used to be
+ * nothing to do here at all, a workspace only ever came from a developer's own raw SQL), exactly
+ * one (skip straight to it, no pointless extra screen for the common personal/family case), or
+ * several (`WorkspacePicker`). A URL that already names a workspace (`/:workspaceId`) never
+ * reaches this component at all — `App.tsx`'s own route table sends it straight to `AppLayout`
+ * instead, which is rule 1 of #343's own order, satisfied by routing alone.
  */
 export default function WorkspaceGate() {
   const intl = useIntl();
   const auth = useAuth();
+  const navigate = useNavigate();
   const state = useWorkspaces();
+  const [creating, setCreating] = useState(false);
 
   if (state.status === "loading") {
     return (
@@ -62,6 +67,21 @@ export default function WorkspaceGate() {
             defaultMessage: "You do not belong to any workspace yet.",
           })}
         </p>
+        <button type="button" className="btn primary" onClick={() => setCreating(true)}>
+          {intl.formatMessage({ id: "workspacePicker.create", defaultMessage: "Create a workspace" })}
+        </button>
+        {creating && (
+          <CreateWorkspaceForm
+            onClose={() => setCreating(false)}
+            onCreated={(workspace) => {
+              const subject = auth.user?.profile?.sub;
+              if (subject) {
+                setLastUsedWorkspaceId(subject, workspace.id);
+              }
+              navigate(`/${workspace.id}`);
+            }}
+          />
+        )}
       </CenteredCard>
     );
   }
