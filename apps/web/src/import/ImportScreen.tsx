@@ -634,10 +634,20 @@ export default function ImportScreen() {
               </p>
             )}
             <div className="row-btns">
-              <Link className="btn primary" to={`/${workspaceId}/accounts/${accountId}/reconcile`}>
+              {/* "Reconcile now" is the primary action only once there is actually a difference
+                  worth checking (`#404`) — otherwise reconciling stays available, but as an
+                  ordinary, optional action, not a suggestion this screen pushes on everyone. */}
+              <Link
+                className={`btn${stageResult?.closingBalance && stageResult.closingBalance.differenceCents !== 0 ? " primary" : ""}`}
+                to={`/${workspaceId}/accounts/${accountId}/reconcile`}
+              >
                 {intl.formatMessage({ id: "import.done.reconcile", defaultMessage: "Reconcile now" })}
               </Link>
-              <button type="button" className="btn" onClick={startOver}>
+              <button
+                type="button"
+                className={`btn${!stageResult?.closingBalance || stageResult.closingBalance.differenceCents === 0 ? " primary" : ""}`}
+                onClick={startOver}
+              >
                 {intl.formatMessage({ id: "import.done.another", defaultMessage: "Import another file" })}
               </button>
             </div>

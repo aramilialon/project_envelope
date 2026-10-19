@@ -152,6 +152,54 @@ describe("ImportScreen (#59)", () => {
     expect(screen.getByText("1 transaction added as cleared, 1 already there marked cleared.")).toBeInTheDocument();
   });
 
+  it("makes 'Reconcile now' the primary action only once the statement's closing balance actually differs (#404)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+
+    fireEvent.change(screen.getByLabelText(/Closing balance/), { target: { value: "100.00" } });
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [{ id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Supermarket", memo: null, amountCents: -4_250, externalId: null, duplicateOf: null, createdAt: "2026-09-01" }],
+      duplicateCount: 0,
+      closingBalance: { statementCents: 10_000, projectedCents: 9_000, differenceCents: 1_000 },
+    });
+    const file = new File(["<OFX></OFX>"], "statement.ofx");
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText("Supermarket");
+
+    fireEvent.change(screen.getByLabelText("Category", { selector: "select" }), { target: { value: "cat-groceries" } });
+    vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([{ stagedTransactionId: "new-1", outcome: "confirmed", transactionId: "t1" }]);
+    fireEvent.click(screen.getByRole("button", { name: /Import 1 transaction/ }));
+
+    expect(await screen.findByText(/differs from the account by/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reconcile now" })).toHaveClass("primary");
+    expect(screen.getByRole("button", { name: "Import another file" })).not.toHaveClass("primary");
+  });
+
+  it("leaves 'Import another file' as the primary action once the statement's closing balance already matches", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+
+    fireEvent.change(screen.getByLabelText(/Closing balance/), { target: { value: "100.00" } });
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [{ id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Supermarket", memo: null, amountCents: -4_250, externalId: null, duplicateOf: null, createdAt: "2026-09-01" }],
+      duplicateCount: 0,
+      closingBalance: { statementCents: 10_000, projectedCents: 10_000, differenceCents: 0 },
+    });
+    const file = new File(["<OFX></OFX>"], "statement.ofx");
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText("Supermarket");
+
+    fireEvent.change(screen.getByLabelText("Category", { selector: "select" }), { target: { value: "cat-groceries" } });
+    vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([{ stagedTransactionId: "new-1", outcome: "confirmed", transactionId: "t1" }]);
+    fireEvent.click(screen.getByRole("button", { name: /Import 1 transaction/ }));
+
+    expect(await screen.findByText("The statement's closing balance matches the account.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Reconcile now" })).not.toHaveClass("primary");
+    expect(screen.getByRole("button", { name: "Import another file" })).toHaveClass("primary");
+  });
+
   it("asks for a category on a transfer to an off-budget account, and sends it (#378, #379)", async () => {
     renderScreen([CHECKING, SAVINGS, BROKERAGE]);
     await screen.findByText(/Checking/);

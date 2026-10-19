@@ -2,7 +2,7 @@ import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney
 import { useContext, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -81,13 +81,18 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
  * The account register (#54, #323, #333, #337): reached from the Accounts screen. Balances
  * (cleared, pending and projected at month end), the same timeline the budget month uses but fed
  * this account's own events only, a "To do" list of its own (Record an overdue scheduled
- * transaction, Mark a pending one cleared, Reconcile once there is something to fold in — opens
- * `ReconciliationScreen`, `#60`), filter tabs with counts, search, the transaction list with a
- * running balance (newest first), the "+ New transaction"/edit side panel (`TransactionForm`)
- * for outflows, inflows, transfers and splits, and "Import" (opens `ImportScreen`, `#59`). A
- * reconciled transaction opens a read-only summary with an "Unlock" action instead of the form
- * (`#60`): editing a locked transaction directly has no endpoint, only this explicit, audited
- * unlock.
+ * transaction, Mark a pending one cleared), filter tabs with counts, search, the transaction list
+ * with a running balance (newest first), the "+ New transaction"/edit side panel
+ * (`TransactionForm`) for outflows, inflows, transfers and splits, "Reconcile" (opens
+ * `ReconciliationScreen`, `#60`) and "Import" (opens `ImportScreen`, `#59`). A reconciled
+ * transaction opens a read-only summary with an "Unlock" action instead of the form (`#60`):
+ * editing a locked transaction directly has no endpoint, only this explicit, audited unlock.
+ *
+ * "Reconcile" used to be a third "To do" item instead, appearing the moment any single
+ * transaction was cleared — nagging after one import, or one manually-ticked "cleared" checkbox
+ * (`#404`). The account's own running balance already tells the truth; reconciling is a manual
+ * action for when it looks wrong, not something to keep suggesting, so it is a plain toolbar
+ * action instead, always there, next to "Import".
  *
  * The timeline and "To do" list fold away entirely while a side sheet is open (`open !== null`),
  * to leave the register room (design.md, confirmed in the mockup: opening a row removes both from
@@ -111,7 +116,6 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
 export default function AccountRegisterScreen() {
   const intl = useIntl();
   const auth = useAuth();
-  const navigate = useNavigate();
   const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
@@ -306,9 +310,7 @@ export default function AccountRegisterScreen() {
   const markItems: RegisterTodoItem[] = transactions
     .filter((t) => t.status === "pending")
     .map((t) => ({ kind: "markPending", transactionId: t.id, payee: t.payee ?? "", date: t.budgetDate, amountCents: Math.abs(totalOf(t)) }));
-  const reconcileItems: RegisterTodoItem[] =
-    counts.cleared > 0 ? [{ kind: "reconcile", clearedCount: counts.cleared, clearedCents: total - pendingTotal }] : [];
-  const registerTodoItems: RegisterTodoItem[] = [...recordItems, ...markItems, ...reconcileItems];
+  const registerTodoItems: RegisterTodoItem[] = [...recordItems, ...markItems];
 
   return (
     <div className="register-screen">
@@ -352,7 +354,6 @@ export default function AccountRegisterScreen() {
             locale={intl.locale}
             onRecord={(id) => void handleRecordScheduled(id)}
             onMark={(id) => void handleMarkCleared(id)}
-            onReconcile={() => navigate(`/${workspaceId}/accounts/${accountId}/reconcile`)}
           />
         ) : (
           <div className="over">
@@ -368,7 +369,6 @@ export default function AccountRegisterScreen() {
               locale={intl.locale}
               onRecord={(id) => void handleRecordScheduled(id)}
               onMark={(id) => void handleMarkCleared(id)}
-              onReconcile={() => navigate(`/${workspaceId}/accounts/${accountId}/reconcile`)}
             />
           </div>
         ))}
@@ -395,6 +395,9 @@ export default function AccountRegisterScreen() {
               }
             />
           </label>
+          <Link className="btn" to={`/${workspaceId}/accounts/${accountId}/reconcile`}>
+            {intl.formatMessage({ id: "register.reconcile", defaultMessage: "Reconcile" })}
+          </Link>
           <Link className="btn" to={`/${workspaceId}/accounts/${accountId}/import`}>
             {intl.formatMessage({ id: "register.import", defaultMessage: "Import" })}
           </Link>

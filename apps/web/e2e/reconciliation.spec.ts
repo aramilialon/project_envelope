@@ -56,7 +56,7 @@ test.describe("reconciliation (#60)", () => {
       await page.getByRole("button", { name: /change status/ }).first().click();
       await expect(page.getByRole("button", { name: /Cleared: change status/ }).first()).toBeVisible();
 
-      await page.getByRole("button", { name: /Reconcile the account/ }).click();
+      await page.getByRole("link", { name: "Reconcile" }).click();
       await page.waitForURL(/\/accounts\/.+\/reconcile/);
       await expect(page.getByRole("heading", { name: "Reconcile with your bank" })).toBeVisible();
       await expect(page.getByText("€500.00").first()).toBeVisible();

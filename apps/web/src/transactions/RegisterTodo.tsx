@@ -11,7 +11,6 @@ interface Props {
   readonly limit?: number;
   onRecord(scheduledTransactionId: string): void;
   onMark(transactionId: string): void;
-  onReconcile(): void;
 }
 
 function shortDate(iso: string, locale: string): string {
@@ -21,11 +20,10 @@ function shortDate(iso: string, locale: string): string {
 
 /**
  * The account register's own "To do" list (#337): reuses the budget month's own `.todo`/`.todo-i`
- * structure and tokens (`Todo.css`), with this screen's own three actions instead — Record,
- * Mark, Reconcile — never `@envelope/core`'s `computeTodos` (a different list, `registerTodo.ts`).
- * "Reconcile" opens `ReconciliationScreen` (`#60`).
+ * structure and tokens (`Todo.css`), with this screen's own two actions instead — Record, Mark —
+ * never `@envelope/core`'s `computeTodos` (a different list, `registerTodo.ts`).
  */
-export default function RegisterTodo({ items, money, locale, limit, onRecord, onMark, onReconcile }: Props) {
+export default function RegisterTodo({ items, money, locale, limit, onRecord, onMark }: Props) {
   const intl = useIntl();
   const shown = limit === undefined ? items : items.slice(0, limit);
   const hiddenCount = items.length - shown.length;
@@ -41,23 +39,6 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
         <span>{intl.formatMessage({ id: "budget.todo.count", defaultMessage: "{count, plural, one {# thing} other {# things}}" }, { count: items.length })}</span>
       </h5>
       {shown.map((item) => {
-        if (item.kind === "recordOverdue") {
-          return (
-            <button key={`record:${item.scheduledTransactionId}`} type="button" className="todo-i" onClick={() => onRecord(item.scheduledTransactionId)}>
-              <span className="dot" />
-              <span>
-                <b>{intl.formatMessage({ id: "register.todo.record.title", defaultMessage: "Record {payee}" }, { payee: item.payee })}</b>
-                <small>
-                  {intl.formatMessage(
-                    { id: "register.todo.record.sub", defaultMessage: "scheduled for {date}, not yet in the account" },
-                    { date: shortDate(item.date, locale) },
-                  )}
-                </small>
-              </span>
-              <span className="n">{money(item.amountCents)}</span>
-            </button>
-          );
-        }
         if (item.kind === "markPending") {
           return (
             <button key={`mark:${item.transactionId}`} type="button" className="todo-i" onClick={() => onMark(item.transactionId)}>
@@ -76,18 +57,18 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
           );
         }
         return (
-          <button key="reconcile" type="button" className="todo-i" onClick={() => onReconcile()}>
+          <button key={`record:${item.scheduledTransactionId}`} type="button" className="todo-i" onClick={() => onRecord(item.scheduledTransactionId)}>
             <span className="dot" />
             <span>
-              <b>{intl.formatMessage({ id: "register.todo.reconcile.title", defaultMessage: "Reconcile the account" })}</b>
+              <b>{intl.formatMessage({ id: "register.todo.record.title", defaultMessage: "Record {payee}" }, { payee: item.payee })}</b>
               <small>
                 {intl.formatMessage(
-                  { id: "register.todo.reconcile.sub", defaultMessage: "{count, plural, one {# transaction} other {# transactions}} cleared" },
-                  { count: item.clearedCount },
+                  { id: "register.todo.record.sub", defaultMessage: "scheduled for {date}, not yet in the account" },
+                  { date: shortDate(item.date, locale) },
                 )}
               </small>
             </span>
-            <span className="n">{money(item.clearedCents)}</span>
+            <span className="n">{money(item.amountCents)}</span>
           </button>
         );
       })}

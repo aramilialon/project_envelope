@@ -188,7 +188,7 @@ test.describe("a full budget month (#63)", () => {
       await page.getByRole("button", { name: /Pending: change status/ }).first().click();
       await expect(page.getByRole("button", { name: /Cleared: change status/ })).toBeVisible();
 
-      await page.getByRole("button", { name: /Reconcile the account/ }).click();
+      await page.getByRole("link", { name: "Reconcile" }).click();
       await page.waitForURL(/\/accounts\/.+\/reconcile/);
       await page.getByLabel("Statement balance").fill("50.00");
       await expect(page.getByText("Everything matches.")).toBeVisible();
