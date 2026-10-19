@@ -57,6 +57,7 @@ export type {
   TimelinePoint,
   TimelineSegment,
   TimelineStepDirection,
+  TimelineValueTick,
 } from "./presentation/timeline.ts";
 export { computeTimeline } from "./presentation/timeline.ts";
 export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";

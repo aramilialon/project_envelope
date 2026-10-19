@@ -199,7 +199,7 @@ describe("BudgetScreen (#53, #324)", () => {
     );
     await screen.findByText("Groceries");
 
-    expect(screen.getByText("€1.00")).toBeInTheDocument(); // -200 + 300 = 100
+    expect(document.querySelector(".gsum")).toHaveTextContent("€1.00"); // -200 + 300 = 100, scoped: the Timeline's own scale reference (#405) can show the same amount
     expect(document.querySelector(".count.over")).toHaveTextContent("1"); // one overspent category, scoped: the timeline's own day-1 tick is also "1"
   });
 

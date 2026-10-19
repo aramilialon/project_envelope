@@ -11,6 +11,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
 - `apps/web`: a brand new workspace's own Categories screen (Workspace settings → Categories), with no groups yet, now explains that a group comes first and holds its own categories, instead of showing only a bare "+ Add a group" button with no context (`#401`).
 - `apps/web`: the "Add account" form explains each account type with a short hint under its own label (`#402`).
+- `apps/web`/`@envelope/core`: the Timeline's own vertical scale had no reference at all for what a given height on the line actually meant in money. A handful of light gridlines now mark a few round amounts along it, in its full (non-compact) mode (`#405`).
 
 ### Fixed
 

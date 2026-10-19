@@ -168,4 +168,41 @@ describe("computeTimeline", () => {
     assert.equal(layout.width, 330);
     assert.equal(layout.height, 120);
   });
+
+  describe("valueTicks (#405)", () => {
+    it("gives the chart a handful of amounts, evenly spaced by a 'nice' 1/2/5 × a power of ten step", () => {
+      const layout = computeTimeline({
+        daysInMonth: 30,
+        today: undefined,
+        events: [event({ day: 15, amountCents: 983_217, direction: "in" })],
+      });
+      assert.ok(layout.valueTicks.length >= 2);
+      assert.ok(layout.valueTicks.length <= 5);
+      const step = layout.valueTicks[1]!.amountCents - layout.valueTicks[0]!.amountCents;
+      for (let i = 1; i < layout.valueTicks.length; i++) {
+        assert.equal(layout.valueTicks[i]!.amountCents - layout.valueTicks[i - 1]!.amountCents, step);
+      }
+      const magnitude = 10 ** Math.floor(Math.log10(step));
+      assert.ok([1, 2, 5].includes(step / magnitude));
+    });
+
+    it("places each tick at its own value's own height on the vertical scale", () => {
+      const layout = computeTimeline({
+        daysInMonth: 30,
+        today: undefined,
+        events: [event({ day: 15, amountCents: 100_000, direction: "in" })],
+      });
+      for (const tick of layout.valueTicks) {
+        if (tick.amountCents === 0) {
+          assert.equal(tick.y, layout.zeroY);
+        }
+      }
+    });
+
+    it("still lays out cleanly for a flat month, with no events at all", () => {
+      const layout = computeTimeline({ daysInMonth: 30, today: undefined, events: [] });
+      assert.ok(layout.valueTicks.length >= 1);
+      assert.ok(layout.valueTicks.every((t) => Number.isFinite(t.y)));
+    });
+  });
 });
