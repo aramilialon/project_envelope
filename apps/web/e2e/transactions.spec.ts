@@ -181,4 +181,58 @@ test.describe("account register (#54)", () => {
       await user.teardown();
     }
   });
+
+  test("deletes an existing transaction (#403)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Group name").fill("Everyday");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await page.getByRole("button", { name: "+ Add a category" }).click();
+      await page.getByLabel("Category name").fill("Groceries");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Groceries")).toBeVisible();
+
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Checking");
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await page.getByLabel("Amount").fill("42.50");
+      await page.getByLabel("Payee").fill("Grocery store");
+      await page.getByLabel("Category").selectOption({ label: "Groceries" });
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await expect(page.getByRole("button", { name: "Grocery store", exact: true })).toBeVisible();
+
+      await page.getByRole("button", { name: "Grocery store", exact: true }).click();
+      await page.getByRole("button", { name: "Delete" }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await expect(page.getByText("Grocery store")).not.toBeVisible();
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
 });

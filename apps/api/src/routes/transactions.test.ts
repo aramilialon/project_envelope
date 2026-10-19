@@ -300,4 +300,99 @@ describe("transactions routes", () => {
     assert.equal(response.statusCode, 400);
     assert.match(response.json().error, /does not name a category of this workspace/);
   });
+
+  it("deletes a transaction (#403)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: auth,
+      payload: { occurredAt: "2026-09-22", payee: "To delete", splits: [{ categoryId, amountCents: -500 }] },
+    });
+    const transaction = created.json();
+
+    const deleted = await app.fastify.inject({
+      method: "DELETE",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transaction.id}`,
+      headers: auth,
+    });
+    assert.equal(deleted.statusCode, 204);
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: auth,
+    });
+    assert.ok(!listed.json().transactions.some((t: { id: string }) => t.id === transaction.id));
+  });
+
+  it("deletes both legs of a transfer together, never just one (#403)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-22", amountCents: 1500 },
+    });
+    const transfer = created.json();
+
+    const deleted = await app.fastify.inject({
+      method: "DELETE",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transfer.source.id}`,
+      headers: auth,
+    });
+    assert.equal(deleted.statusCode, 204);
+
+    const destinationList = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${savingsAccountId}/transactions`,
+      headers: auth,
+    });
+    assert.ok(!destinationList.json().transactions.some((t: { id: string }) => t.id === transfer.destination.id));
+  });
+
+  it("refuses to delete a reconciled transaction (#403)", async () => {
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { occurredAt: "2026-09-22", status: "reconciled", splits: [{ categoryId, amountCents: -100 }] },
+    });
+    const transaction = created.json();
+
+    const response = await app.fastify.inject({
+      method: "DELETE",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transaction.id}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 409);
+  });
+
+  it("refuses to delete a transfer when its other leg is reconciled, even though the requested leg itself is not (#403)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-22", amountCents: 750 },
+    });
+    const transfer = created.json();
+    await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [transfer.destination.id]);
+
+    const response = await app.fastify.inject({
+      method: "DELETE",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transfer.source.id}`,
+      headers: auth,
+    });
+    assert.equal(response.statusCode, 409);
+  });
+
+  it("deleting an unknown transaction is a 404 (#403)", async () => {
+    const response = await app.fastify.inject({
+      method: "DELETE",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${randomUUID()}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.statusCode, 404);
+  });
 });

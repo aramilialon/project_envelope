@@ -8,6 +8,7 @@ import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
   createTransfer,
+  deleteTransaction,
   listTransactionsForAccount,
   updateTransaction,
   type SplitInput,
@@ -148,6 +149,20 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       }
       throw error;
     }
+  });
+
+  app.delete(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
+    const { transactionId } = request.params as { transactionId: string };
+    const result = await deleteTransaction(request.db!, request.workspace!.id, transactionId, request.userId!);
+    if (result === "not_found") {
+      await reply.code(404).send({ error: "transaction not found" });
+      return;
+    }
+    if (result === "reconciled") {
+      await reply.code(409).send({ error: "a reconciled transaction cannot be deleted; unlock it first" });
+      return;
+    }
+    await reply.code(204).send();
   });
 
   app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler }, async (request, reply) => {

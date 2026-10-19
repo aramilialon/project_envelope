@@ -384,6 +384,8 @@
   "transactions.form.chooseDestination": "Choose a destination account.",
   "transactions.form.cleared": "Cleared against the bank",
   "transactions.form.date": "Date",
+  "transactions.form.delete": "Delete",
+  "transactions.form.deleteError": "We could not delete this transaction.",
   "transactions.form.destination": "To account",
   "transactions.form.error": "We could not save this transaction.",
   "transactions.form.invalidAmount": "Enter an amount greater than zero.",

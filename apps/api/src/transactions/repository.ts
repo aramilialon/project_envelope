@@ -1,5 +1,6 @@
 import { assertCents, monthOf, ValidationError } from "@envelope/core";
 
+import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
@@ -546,6 +547,48 @@ export async function updateTransaction(
     throw new Error("updateTransaction: the transaction just updated was not found");
   }
   return record;
+}
+
+/**
+ * Deletes a transaction outright — splits cascade via their own FK. A transfer's two legs are
+ * deleted together, never just one, so neither side is left orphaned with a dangling
+ * `transferId` (`#403`). Refuses a reconciled transaction, the same rule `updateTransaction`
+ * already follows (design.md: "Reconciled transactions cannot be edited or deleted" — unlocking
+ * one is #32's own explicit, audited action) — checked on both legs of a transfer, since one
+ * side being reconciled must block deleting the pair even if the other side is not. Recorded in
+ * the audit log, the same way unlocking a reconciliation is.
+ */
+export async function deleteTransaction(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  transactionId: string,
+  userId: string | null,
+): Promise<"deleted" | "not_found" | "reconciled"> {
+  const existing = await getTransaction(db, workspaceId, transactionId);
+  if (!existing) {
+    return "not_found";
+  }
+  if (existing.status === "reconciled") {
+    return "reconciled";
+  }
+
+  const other = existing.transferId ? await getTransaction(db, workspaceId, existing.transferId) : undefined;
+  if (other?.status === "reconciled") {
+    return "reconciled";
+  }
+
+  const ids = other ? [existing.id, other.id] : [existing.id];
+  await db.query("DELETE FROM transactions WHERE id = ANY($1) AND workspace_id = $2", [ids, workspaceId]);
+
+  await recordAuditLog(db, {
+    workspaceId,
+    userId,
+    action: "transaction.delete",
+    before: other ? [existing, other] : [existing],
+    after: null,
+  });
+
+  return "deleted";
 }
 
 async function insertSplits(
