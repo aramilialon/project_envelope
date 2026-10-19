@@ -29,9 +29,12 @@ interface Props {
  * running total, not a per-event mark — solid up to today, dashed past it, each day's own step
  * coloured `t-in`/`t-out`/`t-flat` by `TimelineSegment.direction` (never the app's own `red`/
  * `amber`, reserved for a real problem) — with a dashed "current value" reference line at today's
- * own height and its amount, the equivalent of a price chart's own current-price tag. The `<svg>`
- * is `aria-hidden` the same way `Bar.tsx`'s is — the heading and note around it, and the category
- * rows and "To do" list beside it, already carry the same information in accessible text.
+ * own height and its amount, the equivalent of a price chart's own current-price tag. A handful of
+ * light gridlines mark a few round money amounts along the vertical scale (`valueTicks`, `#405`,
+ * full mode only), so a given height on the line reads as an actual amount, not just a relative
+ * shape. The `<svg>` is `aria-hidden` the same way `Bar.tsx`'s is — the heading and note around
+ * it, and the category rows and "To do" list beside it, already carry the same information in
+ * accessible text.
  */
 export default function Timeline({ layout, monthLabel, monthAbbrev, money, compact }: Props) {
   const intl = useIntl();
@@ -44,6 +47,18 @@ export default function Timeline({ layout, monthLabel, monthAbbrev, money, compa
         {layout.todayX !== undefined && (
           <rect x={layout.todayX} y={4} width={layout.axisX1 - layout.todayX + 6} height={layout.height - 18} className="t-future" />
         )}
+        {!compact &&
+          layout.valueTicks.map((tick) => (
+            <g key={tick.amountCents}>
+              {/* No separate line for the tick that lands on zero — the axis line below already marks it. */}
+              {Math.abs(tick.y - layout.zeroY) > 0.5 && (
+                <line x1={layout.axisX0} y1={tick.y} x2={layout.axisX1} y2={tick.y} className="t-grid" />
+              )}
+              <text x={layout.axisX0 + 2} y={tick.y - 3} textAnchor="start" className="t-grid-l">
+                {money(tick.amountCents)}
+              </text>
+            </g>
+          ))}
         <line x1={layout.axisX0} y1={layout.zeroY} x2={layout.axisX1} y2={layout.zeroY} className="t-axis" />
         {layout.dayTicks.map((tick, index) => (
           <text key={tick.day} x={tick.x} y={layout.height - 3} textAnchor="middle" className="t-day">

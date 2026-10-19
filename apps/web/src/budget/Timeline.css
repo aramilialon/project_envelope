@@ -40,6 +40,18 @@
   stroke-width: 1.5;
 }
 
+/* The vertical scale's own reference lines (`#405`) — lighter than `.t-axis`, never competing
+   with the running total itself for attention. */
+.t-grid {
+  stroke: var(--rule-soft);
+  stroke-width: 1;
+}
+
+.t-grid-l {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
 .t-day {
   fill: var(--muted);
   font-size: 11px;

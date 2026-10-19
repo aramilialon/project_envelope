@@ -102,4 +102,32 @@ describe("Timeline (#326, redesigned #390)", () => {
     expect(screen.queryByText("Sep 1")).not.toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
   });
+
+  it("marks a few round money amounts along the vertical scale, each with its own label (#405)", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      events: [{ day: 15, amountCents: 100_000, direction: "in", status: "recorded" }],
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
+
+    expect(layout.valueTicks.length).toBeGreaterThan(0);
+    for (const tick of layout.valueTicks) {
+      expect(screen.getByText(money(tick.amountCents))).toBeInTheDocument();
+    }
+    // One fewer gridline than label: the tick that lands on zero shares the existing axis line.
+    expect(document.querySelectorAll(".t-grid").length).toBe(layout.valueTicks.length - 1);
+  });
+
+  it("drops the vertical scale's own reference lines in compact mode", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      events: [{ day: 15, amountCents: 100_000, direction: "in", status: "recorded" }],
+      compact: true,
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} compact />);
+
+    expect(document.querySelectorAll(".t-grid-l")).toHaveLength(0);
+  });
 });

@@ -67,6 +67,12 @@ export interface TimelineDayTick {
   readonly x: number;
 }
 
+export interface TimelineValueTick {
+  /** A "nice" round amount (a multiple of 1, 2 or 5 × a power of ten) — never an arbitrary data point — so the axis reads as a scale, not a second set of data labels (`#405`). */
+  readonly amountCents: Cents;
+  readonly y: number;
+}
+
 export interface TimelineLayout {
   readonly width: number;
   readonly height: number;
@@ -77,9 +83,23 @@ export interface TimelineLayout {
   /** The "today" line's own x, and the start of the lighter "future" ground past it — absent when the month shown is not the current one. */
   readonly todayX: number | undefined;
   readonly dayTicks: readonly TimelineDayTick[];
+  /** A handful of round money amounts spanning the month's own range, each at its own height — the chart's own vertical scale, there was previously no reference at all for what a given height on the line actually means in money (`#405`). Full (non-compact) mode only, the same restraint `monthAbbrev` already follows. */
+  readonly valueTicks: readonly TimelineValueTick[];
   readonly segments: readonly TimelineSegment[];
   /** Present only when `today` is given. */
   readonly current: TimelineCurrent | undefined;
+}
+
+/** Rounds a rough step up to the nearest "nice" 1, 2 or 5 × a power of ten, so `valueTicks` read as round money amounts ("€500", "€1,000"), never an arbitrary in-between figure. */
+function niceStep(rough: number): number {
+  if (rough <= 0) {
+    return 1;
+  }
+  const exponent = Math.floor(Math.log10(rough));
+  const base = 10 ** exponent;
+  const fraction = rough / base;
+  const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+  return niceFraction * base;
 }
 
 export interface TimelineInput {
@@ -172,6 +192,16 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
   const plotHeight = size.height - size.padTop - size.padBottom;
   const y = (v: number): number => size.padTop + plotHeight * (1 - (v - minV) / (maxV - minV));
 
+  const valueTicks: TimelineValueTick[] = (() => {
+    const TARGET_COUNT = 4;
+    const step = niceStep((maxV - minV) / TARGET_COUNT);
+    const ticks: TimelineValueTick[] = [];
+    for (let v = Math.ceil(minV / step) * step; v <= maxV; v += step) {
+      ticks.push({ amountCents: Math.round(v), y: y(v) });
+    }
+    return ticks;
+  })();
+
   const segments: TimelineSegment[] = [];
   for (let d = 2; d <= lastActualDay; d++) {
     segments.push({
@@ -218,6 +248,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     axisX1: x1,
     todayX,
     dayTicks: dayTicks(input.daysInMonth, input.compact ?? false).map((day) => ({ day, x: x(day) })),
+    valueTicks,
     segments,
     current,
   };
