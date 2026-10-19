@@ -584,7 +584,9 @@ export async function deleteTransaction(
     workspaceId,
     userId,
     action: "transaction.delete",
-    before: other ? [existing, other] : [existing],
+    // A plain object, never a bare array: `pg` serializes a top-level JS array parameter as a
+    // Postgres ARRAY literal, not JSON, which a `jsonb` column rejects.
+    before: other ? { transaction: existing, transferPartner: other } : { transaction: existing },
     after: null,
   });
 

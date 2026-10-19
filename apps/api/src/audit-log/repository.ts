@@ -19,6 +19,17 @@ export async function recordAuditLog(db: DbPool | DbClient, entry: AuditLogEntry
   await db.query(
     `INSERT INTO audit_log (workspace_id, user_id, action, before, after)
      VALUES ($1, $2, $3, $4, $5)`,
-    [entry.workspaceId, entry.userId, entry.action, entry.before ?? null, entry.after ?? null],
+    [
+      entry.workspaceId,
+      entry.userId,
+      entry.action,
+      // `JSON.stringify` explicitly, never the bare value: `pg` serializes a top-level JS array
+      // parameter as a Postgres ARRAY literal, not JSON, which the `jsonb` columns below reject —
+      // a caller's `before`/`after` happening to be an array (not just a plain object) would
+      // otherwise fail at the SQL layer, not at the type system (`#403`). `null`/`undefined`
+      // bypass this entirely, a plain SQL `NULL`, same as before.
+      entry.before === null || entry.before === undefined ? null : JSON.stringify(entry.before),
+      entry.after === null || entry.after === undefined ? null : JSON.stringify(entry.after),
+    ],
   );
 }
