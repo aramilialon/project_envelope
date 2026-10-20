@@ -136,13 +136,12 @@ async function stageParsedRows(
   const matches = detectDuplicates(incoming, existing);
   const duplicateOfByIndex = new Map(matches.map((m) => [m.incomingIndex, m.existingId]));
 
-  const staged: StagedTransactionRecord[] = [];
-  for (const [index, row] of parsedRows.entries()) {
-    const { rows } = await db.query<StagedTransactionRow>(
-      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING ${STAGED_COLUMNS}`,
-      [
+  let staged: StagedTransactionRecord[] = [];
+  if (parsedRows.length > 0) {
+    const columnsPerRow = 8;
+    const values: unknown[] = [];
+    const placeholders = parsedRows.map((row, index) => {
+      values.push(
         workspaceId,
         accountId,
         row.date,
@@ -151,13 +150,20 @@ async function stageParsedRows(
         row.amountCents,
         row.externalId ?? null,
         duplicateOfByIndex.get(index) ?? null,
-      ],
+      );
+      const base = index * columnsPerRow;
+      return `(${Array.from({ length: columnsPerRow }, (_, i) => `$${base + i + 1}`).join(", ")})`;
+    });
+
+    // A single multi-row INSERT ... RETURNING always returns its rows in the same order as
+    // the VALUES list that produced them, so `rows[i]` is `parsedRows[i]`'s own staged row.
+    const { rows } = await db.query<StagedTransactionRow>(
+      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of)
+       VALUES ${placeholders.join(", ")}
+       RETURNING ${STAGED_COLUMNS}`,
+      values,
     );
-    const inserted = rows[0];
-    if (!inserted) {
-      throw new Error("stageParsedRows: INSERT ... RETURNING produced no row");
-    }
-    staged.push(toStagedRecord(inserted));
+    staged = rows.map(toStagedRecord);
   }
 
   const currentBalanceCents = sumCents(existing.map((e) => e.amount));
