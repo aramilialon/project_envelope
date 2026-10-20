@@ -1,4 +1,4 @@
-import type { DbClient, DbPool } from "../db/pool.ts";
+import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
 export interface WorkspaceMember {
   readonly userId: string;
@@ -44,10 +44,7 @@ export interface UserWorkspace {
  * than `workspace-membership.ts`'s usual per-request one.
  */
 export async function listWorkspacesForUser(pool: DbPool, userId: string): Promise<UserWorkspace[]> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+  const rows = await withUserScopedTransaction(pool, userId, async (client) => {
     const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole; base_currency: string; time_zone: string }>(
       `SELECT w.id, w.name, m.role, w.base_currency, w.time_zone
        FROM memberships m
@@ -56,12 +53,7 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
        ORDER BY w.name`,
       [userId],
     );
-    await client.query("COMMIT");
-    return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency, timeZone: row.time_zone }));
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+    return rows;
+  });
+  return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency, timeZone: row.time_zone }));
 }

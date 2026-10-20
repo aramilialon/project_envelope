@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ValidationError } from "@envelope/core";
 
-import type { DbClient, DbPool } from "../db/pool.ts";
+import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
 export interface CreateWorkspaceInput {
   readonly name: string;
@@ -49,25 +49,20 @@ export async function createWorkspace(pool: DbPool, userId: string, input: Creat
   assertValidTimeZone(input.timeZone);
 
   const id = randomUUID();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.workspace_id', $1, true)", [id]);
-    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
-    await client.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, $2, $3, $4)", [
-      id,
-      input.name,
-      input.baseCurrency,
-      input.timeZone,
-    ]);
-    await client.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')", [userId, id]);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  await withUserScopedTransaction(
+    pool,
+    userId,
+    async (client) => {
+      await client.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, $2, $3, $4)", [
+        id,
+        input.name,
+        input.baseCurrency,
+        input.timeZone,
+      ]);
+      await client.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')", [userId, id]);
+    },
+    { "app.workspace_id": id },
+  );
   return { id, name: input.name, role: "owner", baseCurrency: input.baseCurrency, timeZone: input.timeZone };
 }
 
