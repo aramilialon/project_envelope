@@ -1,7 +1,7 @@
 import type { Hlc } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { applyIncomingChange, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
 import { listChangesSince } from "../sync/repository.ts";
@@ -62,7 +62,7 @@ function parseSince(query: Record<string, unknown>): Hlc | undefined | "invalid"
  */
 export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = [preHandler, requireWriteAccess];
+  const writePreHandler = withWriteAccess(preHandler);
 
   app.post("/workspaces/:workspaceId/changes", { preHandler: writePreHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;

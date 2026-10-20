@@ -1,7 +1,7 @@
 import { assertMonth } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
@@ -47,7 +47,7 @@ function parseGoalInput(body: Record<string, unknown>): GoalInput | string {
 
 export function registerGoalsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = [preHandler, requireWriteAccess];
+  const writePreHandler = withWriteAccess(preHandler);
   const base = "/workspaces/:workspaceId/categories/:categoryId/goal";
 
   app.put(base, { preHandler: writePreHandler }, async (request, reply) => {

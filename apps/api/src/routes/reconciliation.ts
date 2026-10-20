@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
@@ -28,7 +28,7 @@ function parseAdjustment(body: Record<string, unknown>): ReconciliationAdjustmen
 
 export function registerReconciliationRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = [preHandler, requireWriteAccess];
+  const writePreHandler = withWriteAccess(preHandler);
   const base = "/workspaces/:workspaceId/accounts/:accountId";
 
   app.get(`${base}/reconciliation-candidates`, { preHandler }, async (request, reply) => {
