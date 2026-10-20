@@ -3,6 +3,16 @@ import type { TimelineEvent, TimelineEventStatus } from "@envelope/core";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import type { MonthEvent } from "./api.ts";
 
+/** Shifts a "YYYY-MM" month by `delta` months (either direction, any size), wrapping the year. */
+export function shiftMonth(month: string, delta: number): string {
+  const year = Number(month.slice(0, 4));
+  const monthNumber = Number(month.slice(5, 7)) + delta;
+  const zeroBased = monthNumber - 1;
+  const wrappedYear = year + Math.floor(zeroBased / 12);
+  const wrappedMonth = ((zeroBased % 12) + 12) % 12;
+  return `${wrappedYear}-${String(wrappedMonth + 1).padStart(2, "0")}`;
+}
+
 /** "September 2026" — the month heading/timeline label, shared by the budget month and the account register (`#337`). */
 export function monthLabel(month: string, locale: string): string {
   const date = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
