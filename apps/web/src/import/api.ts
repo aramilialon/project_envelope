@@ -1,4 +1,6 @@
 /** The import endpoints (#28, #29, #59): `apps/api/src/import/repository.ts`'s own shapes, mirrored. */
+import { apiFetch, authHeaders } from "../apiFetch.ts";
+
 const API_URL: string = import.meta.env.VITE_API_URL;
 
 export type CsvDateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
@@ -65,10 +67,7 @@ export type ConfirmationOutcome =
   | { readonly stagedTransactionId: string; readonly outcome: "rejected"; readonly code: string }
   | { readonly stagedTransactionId: string; readonly outcome: "not_found" };
 
-function authHeaders(accessToken: string): HeadersInit {
-  return { Authorization: `Bearer ${accessToken}` };
-}
-
+/** `undefined` for a 404 ("no mapping saved yet"), not an error — the one call here that cannot go through `apiFetch`, which would throw before this gets the chance to look. */
 export async function getImportMapping(accessToken: string, workspaceId: string, accountId: string): Promise<CsvMapping | undefined> {
   const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/import-mapping`, {
     headers: authHeaders(accessToken),
@@ -88,14 +87,7 @@ export async function saveImportMapping(
   accountId: string,
   mapping: CsvMapping,
 ): Promise<CsvMapping> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/import-mapping`, {
-    method: "PUT",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(mapping),
-  });
-  if (!response.ok) {
-    throw new Error(`PUT .../accounts/${accountId}/import-mapping failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "PUT", `/workspaces/${workspaceId}/accounts/${accountId}/import-mapping`, mapping);
   return (await response.json()) as CsvMapping;
 }
 
@@ -112,14 +104,7 @@ export async function stageImport(
   accountId: string,
   input: StageImportInput,
 ): Promise<StageImportResult> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/import`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST .../accounts/${accountId}/import failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts/${accountId}/import`, input);
   return (await response.json()) as StageImportResult;
 }
 
@@ -129,14 +114,12 @@ export async function confirmStagedTransactions(
   accountId: string,
   decisions: readonly StagedTransactionDecision[],
 ): Promise<ConfirmationOutcome[]> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify({ decisions }),
-  });
-  if (!response.ok) {
-    throw new Error(`POST .../accounts/${accountId}/staged-transactions/confirm failed: ${response.status}`);
-  }
+  const response = await apiFetch(
+    accessToken,
+    "POST",
+    `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+    { decisions },
+  );
   const body = (await response.json()) as { outcomes: ConfirmationOutcome[] };
   return body.outcomes;
 }

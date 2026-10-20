@@ -1,5 +1,5 @@
 /** The workspaces endpoint (#50): the first authenticated API call this app makes. */
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export type WorkspaceRole = "owner" | "editor" | "read_only";
 
@@ -19,36 +19,18 @@ export interface CreateWorkspaceInput {
 }
 
 export async function listMyWorkspaces(accessToken: string): Promise<Workspace[]> {
-  const response = await fetch(`${API_URL}/me/workspaces`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`GET /me/workspaces failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", "/me/workspaces");
   const body = (await response.json()) as { workspaces: Workspace[] };
   return body.workspaces;
 }
 
 /** `#394`: creates a workspace with the signed-in user as its own first member, `owner`. */
 export async function createWorkspace(accessToken: string, input: CreateWorkspaceInput): Promise<Workspace> {
-  const response = await fetch(`${API_URL}/workspaces`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", "/workspaces", input);
   return (await response.json()) as Workspace;
 }
 
 /** `#394`: deletes a workspace outright — owner-only, `403` for anyone else. */
 export async function deleteWorkspace(accessToken: string, workspaceId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`DELETE /workspaces/${workspaceId} failed: ${response.status}`);
-  }
+  await apiFetch(accessToken, "DELETE", `/workspaces/${workspaceId}`);
 }

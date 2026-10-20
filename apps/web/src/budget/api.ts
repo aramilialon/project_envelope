@@ -1,5 +1,5 @@
 /** The budget month endpoint (#53): `apps/api/src/budget/repository.ts`'s own response shape, mirrored. */
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export interface BudgetMonthCategory {
   readonly categoryId: string;
@@ -37,12 +37,7 @@ export async function getBudgetMonth(
   workspaceId: string,
   month: string,
 ): Promise<BudgetMonthResponse> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/budget-months/${month}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/budget-months/${month} failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/budget-months/${month}`);
   return (await response.json()) as BudgetMonthResponse;
 }
 
@@ -62,14 +57,8 @@ export async function getBudgetMonthEvents(
   month: string,
   accountId?: string,
 ): Promise<readonly MonthEvent[]> {
-  const url = new URL(`${API_URL}/workspaces/${workspaceId}/budget-months/${month}/events`);
-  if (accountId !== undefined) {
-    url.searchParams.set("accountId", accountId);
-  }
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/budget-months/${month}/events failed: ${response.status}`);
-  }
+  const query = accountId !== undefined ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/budget-months/${month}/events${query}`);
   const body = (await response.json()) as { events: MonthEvent[] };
   return body.events;
 }
@@ -83,14 +72,7 @@ export interface AssignmentEntryInput {
 }
 
 export async function createAssignments(accessToken: string, workspaceId: string, entries: readonly AssignmentEntryInput[]): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/assignments`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ entries }),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/assignments failed: ${response.status}`);
-  }
+  await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/assignments`, { entries });
 }
 
 /** The scheduled transactions endpoints (#330): `apps/api/src/scheduled-transactions/repository.ts`'s own response shapes, mirrored. A split's `categoryId` is always a real category — a scheduled transaction is never income yet (`#347`). */
@@ -128,12 +110,7 @@ export interface CreateScheduledTransactionInput {
 }
 
 export async function listScheduledTransactions(accessToken: string, workspaceId: string): Promise<readonly ScheduledTransaction[]> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/scheduled-transactions`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/scheduled-transactions failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/scheduled-transactions`);
   const body = (await response.json()) as { scheduledTransactions: ScheduledTransaction[] };
   return body.scheduledTransactions;
 }
@@ -144,14 +121,11 @@ export async function createScheduledTransaction(
   input: CreateScheduledTransactionInput,
 ): Promise<ScheduledTransaction> {
   const { categoryId, amountCents, ...rest } = input;
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/scheduled-transactions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ ...rest, amountCents, splits: [{ categoryId, amountCents }] }),
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/scheduled-transactions`, {
+    ...rest,
+    amountCents,
+    splits: [{ categoryId, amountCents }],
   });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/scheduled-transactions failed: ${response.status}`);
-  }
   return (await response.json()) as ScheduledTransaction;
 }
 
@@ -165,24 +139,12 @@ export async function recordScheduledTransaction(
   workspaceId: string,
   scheduledTransactionId: string,
 ): Promise<RecordScheduledTransactionResult> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/record`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/record failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/record`);
   return (await response.json()) as RecordScheduledTransactionResult;
 }
 
 export async function skipScheduledTransaction(accessToken: string, workspaceId: string, scheduledTransactionId: string): Promise<ScheduledTransaction> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/skip`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/skip failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/scheduled-transactions/${scheduledTransactionId}/skip`);
   return (await response.json()) as ScheduledTransaction;
 }
 
@@ -193,11 +155,6 @@ export interface DaysOfBuffer {
 }
 
 export async function getDaysOfBuffer(accessToken: string, workspaceId: string): Promise<DaysOfBuffer> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/days-of-buffer`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/days-of-buffer failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/days-of-buffer`);
   return (await response.json()) as DaysOfBuffer;
 }

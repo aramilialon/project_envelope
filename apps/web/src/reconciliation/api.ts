@@ -1,5 +1,5 @@
 /** The reconciliation endpoints (#32, #60): `apps/api/src/reconciliation/repository.ts`'s own shapes, mirrored. */
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export interface CandidateTransaction {
   readonly id: string;
@@ -46,23 +46,17 @@ export type ReconcileResult =
   | { readonly outcome: "reconciled"; readonly reconciliation: ReconciliationRecord }
   | { readonly outcome: "difference"; readonly differenceCents: number; readonly suggestion?: ReconciliationSuggestion };
 
-function authHeaders(accessToken: string): HeadersInit {
-  return { Authorization: `Bearer ${accessToken}` };
-}
-
 export async function getReconciliationCandidates(
   accessToken: string,
   workspaceId: string,
   accountId: string,
   date: string,
 ): Promise<ReconciliationCandidates> {
-  const response = await fetch(
-    `${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/reconciliation-candidates?date=${encodeURIComponent(date)}`,
-    { headers: authHeaders(accessToken) },
+  const response = await apiFetch(
+    accessToken,
+    "GET",
+    `/workspaces/${workspaceId}/accounts/${accountId}/reconciliation-candidates?date=${encodeURIComponent(date)}`,
   );
-  if (!response.ok) {
-    throw new Error(`GET .../accounts/${accountId}/reconciliation-candidates failed: ${response.status}`);
-  }
   return (await response.json()) as ReconciliationCandidates;
 }
 
@@ -72,23 +66,10 @@ export async function reconcileAccount(
   accountId: string,
   input: ReconcileInput,
 ): Promise<ReconcileResult> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST .../accounts/${accountId}/reconciliations failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`, input);
   return (await response.json()) as ReconcileResult;
 }
 
 export async function unlockReconciliation(accessToken: string, workspaceId: string, transactionId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/transactions/${transactionId}/unlock-reconciliation`, {
-    method: "POST",
-    headers: authHeaders(accessToken),
-  });
-  if (!response.ok) {
-    throw new Error(`POST .../transactions/${transactionId}/unlock-reconciliation failed: ${response.status}`);
-  }
+  await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transactions/${transactionId}/unlock-reconciliation`);
 }

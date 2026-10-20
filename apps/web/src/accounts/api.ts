@@ -1,5 +1,5 @@
 /** The accounts endpoints (#51): list, create and close an account in a workspace. */
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export type AccountType = "checking" | "savings" | "cash" | "credit_card";
 
@@ -25,12 +25,7 @@ export interface CreateAccountInput {
 }
 
 export async function listAccounts(accessToken: string, workspaceId: string): Promise<Account[]> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/accounts failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/accounts`);
   const body = (await response.json()) as { accounts: Account[] };
   return body.accounts;
 }
@@ -40,24 +35,11 @@ export async function createAccount(
   workspaceId: string,
   input: CreateAccountInput,
 ): Promise<Account> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/accounts failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts`, input);
   return (await response.json()) as Account;
 }
 
 export async function closeAccount(accessToken: string, workspaceId: string, accountId: string): Promise<Account> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/close`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!response.ok) {
-    throw new Error(`PATCH /workspaces/${workspaceId}/accounts/${accountId}/close failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "PATCH", `/workspaces/${workspaceId}/accounts/${accountId}/close`);
   return (await response.json()) as Account;
 }

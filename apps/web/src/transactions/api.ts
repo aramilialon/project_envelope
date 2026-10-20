@@ -1,5 +1,5 @@
 /** The transactions and transfers endpoints (#54): `apps/api/src/transactions/repository.ts`'s own shapes, mirrored. */
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export type TransactionStatus = "pending" | "cleared" | "reconciled";
 
@@ -65,21 +65,12 @@ export interface Transfer {
   readonly destination: Transaction;
 }
 
-function authHeaders(accessToken: string): HeadersInit {
-  return { Authorization: `Bearer ${accessToken}` };
-}
-
 export async function listTransactionsForAccount(
   accessToken: string,
   workspaceId: string,
   accountId: string,
 ): Promise<Transaction[]> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/transactions`, {
-    headers: authHeaders(accessToken),
-  });
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/accounts/${accountId}/transactions failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`);
   const body = (await response.json()) as { transactions: Transaction[] };
   return body.transactions;
 }
@@ -90,14 +81,7 @@ export async function createTransaction(
   accountId: string,
   input: CreateTransactionInput,
 ): Promise<Transaction> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/transactions`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/accounts/${accountId}/transactions failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`, input);
   return (await response.json()) as Transaction;
 }
 
@@ -108,16 +92,12 @@ export async function updateTransaction(
   transactionId: string,
   input: UpdateTransactionInput,
 ): Promise<Transaction> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId}`, {
-    method: "PATCH",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `PATCH /workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId} failed: ${response.status}`,
-    );
-  }
+  const response = await apiFetch(
+    accessToken,
+    "PATCH",
+    `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId}`,
+    input,
+  );
   return (await response.json()) as Transaction;
 }
 
@@ -128,15 +108,7 @@ export async function deleteTransaction(
   accountId: string,
   transactionId: string,
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId}`, {
-    method: "DELETE",
-    headers: authHeaders(accessToken),
-  });
-  if (!response.ok) {
-    throw new Error(
-      `DELETE /workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId} failed: ${response.status}`,
-    );
-  }
+  await apiFetch(accessToken, "DELETE", `/workspaces/${workspaceId}/accounts/${accountId}/transactions/${transactionId}`);
 }
 
 export async function createTransfer(
@@ -144,13 +116,6 @@ export async function createTransfer(
   workspaceId: string,
   input: CreateTransferInput,
 ): Promise<Transfer> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/transfers`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/transfers failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transfers`, input);
   return (await response.json()) as Transfer;
 }
