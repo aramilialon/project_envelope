@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
-import { listAccounts, type Account } from "../accounts/api.ts";
+import { useAccounts } from "../accounts/useAccounts.ts";
 import { useBudgetMonth } from "../budget/useBudgetMonth.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -59,9 +59,7 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
   const month = currentMonthIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const budgetMonth = useBudgetMonth(workspaceId, month);
 
-  const [accountsState, setAccountsState] = useState<{ status: "loading" } | { status: "error" } | { status: "ok"; accounts: readonly Account[] }>({
-    status: "loading",
-  });
+  const accountsState = useAccounts(workspaceId);
   const [amountStr, setAmountStr] = useState("");
   const [payee, setPayee] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -69,24 +67,6 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
-
-  useEffect(() => {
-    const accessToken = auth.user?.access_token;
-    if (!accessToken) {
-      return;
-    }
-    let cancelled = false;
-    listAccounts(accessToken, workspaceId)
-      .then((accounts) => {
-        if (!cancelled) setAccountsState({ status: "ok", accounts });
-      })
-      .catch(() => {
-        if (!cancelled) setAccountsState({ status: "error" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [auth.user?.access_token, workspaceId]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

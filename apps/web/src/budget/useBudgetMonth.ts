@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 
 import { listCategoryGroups } from "../categories/api.ts";
+import { useFetchState, type FetchState } from "../useFetchState.ts";
 import { getBudgetMonth, type BudgetMonthCategory, type BudgetMonthResponse } from "./api.ts";
 
 export interface BudgetGroupCategory extends BudgetMonthCategory {
@@ -15,10 +15,7 @@ export interface BudgetGroup {
   readonly categories: readonly BudgetGroupCategory[];
 }
 
-export type BudgetMonthState =
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "ok"; budgetMonth: BudgetMonthResponse; groups: readonly BudgetGroup[] };
+export type BudgetMonthState = FetchState<{ budgetMonth: BudgetMonthResponse; groups: readonly BudgetGroup[] }>;
 
 /**
  * Fetches a workspace's budget month (#53) and groups its categories (ordinary and payment
@@ -31,56 +28,41 @@ export type BudgetMonthState =
 export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthState & { refetch(): void } {
   const auth = useAuth();
   const accessToken = auth.user?.access_token;
-  const [state, setState] = useState<BudgetMonthState>({ status: "loading" });
-  const [generation, setGeneration] = useState(0);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-    let cancelled = false;
-    // Deliberately does not reset to "loading" here, the same way `useAccounts`/`useCategories`
-    // don't: switching months should swap straight to the new numbers, not blank the whole
-    // table to a spinner first.
-    Promise.all([getBudgetMonth(accessToken, workspaceId, month), listCategoryGroups(accessToken, workspaceId)])
-      .then(([budgetMonth, categoryGroups]) => {
-        if (cancelled) {
-          return;
-        }
-        const allCategories: BudgetGroupCategory[] = [
-          ...budgetMonth.categories.map((c) => ({ ...c, isPaymentCategory: false })),
-          ...budgetMonth.paymentCategories.map((c) => ({ ...c, isPaymentCategory: true })),
-        ];
-        const byGroup = new Map<string, BudgetGroupCategory[]>();
-        for (const category of allCategories) {
-          const list = byGroup.get(category.groupId);
-          if (list) {
-            list.push(category);
-          } else {
-            byGroup.set(category.groupId, [category]);
+  return useFetchState(
+    () => {
+      if (!accessToken) {
+        return undefined;
+      }
+      // Deliberately does not reset to "loading" (useFetchState's default): switching months
+      // should swap straight to the new numbers, not blank the whole table to a spinner first.
+      return Promise.all([getBudgetMonth(accessToken, workspaceId, month), listCategoryGroups(accessToken, workspaceId)]).then(
+        ([budgetMonth, categoryGroups]) => {
+          const allCategories: BudgetGroupCategory[] = [
+            ...budgetMonth.categories.map((c) => ({ ...c, isPaymentCategory: false })),
+            ...budgetMonth.paymentCategories.map((c) => ({ ...c, isPaymentCategory: true })),
+          ];
+          const byGroup = new Map<string, BudgetGroupCategory[]>();
+          for (const category of allCategories) {
+            const list = byGroup.get(category.groupId);
+            if (list) {
+              list.push(category);
+            } else {
+              byGroup.set(category.groupId, [category]);
+            }
           }
-        }
-        const groups: BudgetGroup[] = [...categoryGroups]
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((g) => ({
-            id: g.id,
-            name: g.name,
-            categories: (byGroup.get(g.id) ?? []).toSorted((a, b) => a.sortOrder - b.sortOrder),
-          }))
-          .filter((g) => g.categories.length > 0);
-        setState({ status: "ok", budgetMonth, groups });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setState({ status: "error" });
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, workspaceId, month, generation]);
-
-  const refetch = () => setGeneration((g) => g + 1);
-
-  return { ...state, refetch };
+          const groups: BudgetGroup[] = [...categoryGroups]
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((g) => ({
+              id: g.id,
+              name: g.name,
+              categories: (byGroup.get(g.id) ?? []).toSorted((a, b) => a.sortOrder - b.sortOrder),
+            }))
+            .filter((g) => g.categories.length > 0);
+          return { budgetMonth, groups };
+        },
+      );
+    },
+    [accessToken, workspaceId, month],
+  );
 }
