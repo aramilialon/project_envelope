@@ -28,7 +28,7 @@ import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent, ScheduledTransaction } from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
-import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "./monthEvents.ts";
+import { daysInMonth, monthAbbrev, monthLabel, shiftMonth, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
@@ -42,18 +42,6 @@ import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | "scheduled" | null;
 type Status = "credit" | "cash" | "short" | "pos" | "zero";
-
-function shiftMonth(month: string, delta: 1 | -1): string {
-  const year = Number(month.slice(0, 4));
-  const monthNumber = Number(month.slice(5, 7)) + delta;
-  if (monthNumber === 0) {
-    return `${year - 1}-12`;
-  }
-  if (monthNumber === 13) {
-    return `${year + 1}-01`;
-  }
-  return `${year}-${String(monthNumber).padStart(2, "0")}`;
-}
 
 function barFor(category: BudgetGroupCategory): BarGeometry {
   return category.isPaymentCategory ? computePaymentCategoryBar(category) : computeCategoryBar(category);

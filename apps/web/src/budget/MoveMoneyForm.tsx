@@ -6,7 +6,7 @@ import { useAuth } from "react-oidc-context";
 import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createAssignments } from "./api.ts";
-import { monthLabel } from "./monthEvents.ts";
+import { monthLabel, shiftMonth } from "./monthEvents.ts";
 import type { BudgetGroup, BudgetGroupCategory } from "./useBudgetMonth.ts";
 import "./MoveMoneyForm.css";
 
@@ -36,15 +36,6 @@ interface Props {
   onClose(): void;
   /** Called once the move actually happens — the budget month needs refetching. */
   onChanged(): void;
-}
-
-function shiftMonth(month: string, delta: number): string {
-  const year = Number(month.slice(0, 4));
-  const monthNumber = Number(month.slice(5, 7)) + delta;
-  const zeroBased = monthNumber - 1;
-  const wrappedYear = year + Math.floor(zeroBased / 12);
-  const wrappedMonth = ((zeroBased % 12) + 12) % 12;
-  return `${wrappedYear}-${String(wrappedMonth + 1).padStart(2, "0")}`;
 }
 
 function flatten(groups: readonly BudgetGroup[]): Map<string, BudgetGroupCategory & { readonly groupName: string }> {
