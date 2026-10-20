@@ -1,4 +1,4 @@
-import { formatMoney, monthOf, nextMonth, parseAmount } from "@envelope/core";
+import { formatMoney, monthOf, parseAmount, shiftMonth } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -74,7 +74,7 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
   const dueThisMonth = thisMonth.filter((s) => !overdue.includes(s));
   const reservedThisMonth = thisMonth.reduce((sum, s) => sum + splitTotal(s), 0);
 
-  const theNextMonth = nextMonth(month);
+  const theNextMonth = shiftMonth(month, 1);
   const nextMonthItems = list.filter((s) => monthOf(s.nextDueDate) === theNextMonth);
   const nextMonthByCategory = new Map<string, { amountCents: number; recurEvery: number; recurUnit: RecurUnit; count: number }>();
   for (const s of nextMonthItems) {

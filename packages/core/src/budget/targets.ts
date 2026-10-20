@@ -16,7 +16,7 @@
 import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
 import type { Month } from "../month.ts";
-import { assertMonth, compareMonths, monthRange, nextMonth } from "../month.ts";
+import { assertMonth, compareMonths, monthRange, shiftMonth } from "../month.ts";
 
 /** Every N months a repeating expense is due, design.md's own fixed choices. */
 export type RepeatInterval = 2 | 3 | 4 | 6 | 12 | 24;
@@ -62,20 +62,11 @@ export interface CategoryTargetState {
   readonly available: Cents;
 }
 
-/** Adds `count` months to a month, wrapping the year — `nextMonth` applied `count` times. */
-function addMonths(month: Month, count: number): Month {
-  let result = month;
-  for (let i = 0; i < count; i++) {
-    result = nextMonth(result);
-  }
-  return result;
-}
-
 /** Rolls `dueMonth` forward by `every` until it is no longer in the past relative to `currentMonth`. */
 function effectiveDueMonth(dueMonth: Month, every: RepeatInterval, currentMonth: Month): Month {
   let due = dueMonth;
   while (compareMonths(due, currentMonth) < 0) {
-    due = addMonths(due, every);
+    due = shiftMonth(due, every);
   }
   return due;
 }
