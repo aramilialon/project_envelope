@@ -99,12 +99,14 @@ export async function reorderCategoryGroups(
   if (!sameIds(current.rows.map((r) => r.id), groupIds)) {
     return false;
   }
-  for (const [index, id] of groupIds.entries()) {
-    await db.query("UPDATE category_groups SET sort_order = $1 WHERE id = $2 AND workspace_id = $3", [
-      index + 1,
-      id,
-      workspaceId,
-    ]);
+  if (groupIds.length > 0) {
+    await db.query(
+      `UPDATE category_groups AS cg
+       SET sort_order = data.sort_order
+       FROM (SELECT * FROM unnest($1::uuid[], $2::int[]) AS t(id, sort_order)) AS data
+       WHERE cg.id = data.id AND cg.workspace_id = $3`,
+      [groupIds, groupIds.map((_, index) => index + 1), workspaceId],
+    );
   }
   return true;
 }
@@ -162,13 +164,14 @@ export async function reorderCategories(
   if (!sameIds(current.rows.map((r) => r.id), categoryIds)) {
     return false;
   }
-  for (const [index, id] of categoryIds.entries()) {
-    await db.query("UPDATE categories SET sort_order = $1 WHERE id = $2 AND workspace_id = $3 AND group_id = $4", [
-      index + 1,
-      id,
-      workspaceId,
-      groupId,
-    ]);
+  if (categoryIds.length > 0) {
+    await db.query(
+      `UPDATE categories AS c
+       SET sort_order = data.sort_order
+       FROM (SELECT * FROM unnest($1::uuid[], $2::int[]) AS t(id, sort_order)) AS data
+       WHERE c.id = data.id AND c.workspace_id = $3 AND c.group_id = $4`,
+      [categoryIds, categoryIds.map((_, index) => index + 1), workspaceId, groupId],
+    );
   }
   return true;
 }
