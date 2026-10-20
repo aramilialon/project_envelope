@@ -11,11 +11,11 @@ the one part with real dependencies — currently the demo data seed.
 same way `apps/web` itself does — not direct SQL. Workspace budgeting's correctness lives in a
 few places only the real API exercises: the assignment ledger is append-only (ADR 0008), every
 request goes through a workspace's Row-Level Security policy, and `@envelope/core`'s own
-invariant only holds if the data was built the way the real app builds it. Two narrow exceptions,
-both isolated in `lib/db.ts`: there is no HTTP endpoint yet to create or delete a workspace and its
-first membership, and no way to ask `POST .../accounts` to date a credit card's own "Starting
-balance" transaction as anything but `now()` (`#326`) — everything else (accounts, categories,
-transactions, splits, transfers, assignments, scheduled transactions, goals) is a real API call.
+invariant only holds if the data was built the way the real app builds it. One narrow exception,
+isolated in `lib/db.ts`: no way to ask `POST .../accounts` to date a credit card's own "Starting
+balance" transaction as anything but `now()` (`#326`) — everything else, including creating and
+deleting the workspace itself (accounts, categories, transactions, splits, transfers, assignments,
+scheduled transactions, goals), is a real API call.
 
 Getting a real access token without a browser is the other wrinkle: the `envelope-api` Keycloak
 client is public, PKCE-only, with no password grant (by design). `lib/keycloak.ts` drives the
@@ -127,7 +127,7 @@ deliberate step once bars/timeline/phone layout actually exist (`#324`, `#326`, 
 | `seed-demo.ts` | The demo data seed (above) |
 | `screenshot-demo.ts` | Regenerates the reference screenshots from the seeded "Demo" workspace (above) |
 | `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or any given URL that is not local, naming which one (`lib/env.test.ts`) |
-| `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake; `subjectOf`: an access token's own `sub` claim |
+| `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake |
 | `lib/api.ts` | `Api`: a thin authenticated `fetch` wrapper against `apps/api` — no generated client exists yet |
-| `lib/db.ts` | The two steps done with direct SQL: creating/deleting the "Demo" workspace and its first membership, and backdating a credit card's own "Starting balance" transaction (see above) |
+| `lib/db.ts` | The one step done with direct SQL: backdating a credit card's own "Starting balance" transaction (see above) |
 | `lib/dates.ts` | `todayAt(now, timeZone)`: every date the seed uses, relative to an injected "today" (never read from the clock directly, so it is testable — `lib/dates.test.ts`). The rule it encodes: a *recorded* transaction's date is never after today (`onOrBeforeToday` clamps a fixed day down to today); a scheduled transaction can genuinely be due before or after today (`beforeTodaySameMonth`/`afterTodaySameMonth`, each falling back to the adjacent month at the rare edge — today being the 1st or the month's last day) |
