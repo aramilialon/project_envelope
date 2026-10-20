@@ -5,8 +5,7 @@ import { useAuth } from "react-oidc-context";
 
 import { listAccounts, type Account } from "../accounts/api.ts";
 import { useBudgetMonth } from "../budget/useBudgetMonth.ts";
-import { today } from "../format.ts";
-import { currentMonthIn } from "../workspaceDate.ts";
+import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { createTransaction } from "./api.ts";
 import "./QuickEntryOverlay.css";
@@ -149,7 +148,7 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
     setError(null);
     try {
       await createTransaction(accessToken, workspaceId, selectedAccountId, {
-        occurredAt: today(),
+        occurredAt: todayIsoIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
         ...(payee.trim() ? { payee: payee.trim() } : {}),
         splits: [{ categoryId, amountCents: -cents }],
       });

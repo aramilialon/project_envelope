@@ -494,6 +494,7 @@ export default function AccountRegisterScreen() {
           accounts={accounts}
           categories={categories}
           currency={resolvedCurrency}
+          today={today}
           onClose={() => setOpen(null)}
           onSaved={() => {
             setOpen(null);
@@ -526,6 +527,7 @@ export default function AccountRegisterScreen() {
           accounts={accounts}
           categories={categories}
           currency={resolvedCurrency}
+          today={today}
           transaction={open.transaction}
           onClose={() => setOpen(null)}
           onSaved={() => {
