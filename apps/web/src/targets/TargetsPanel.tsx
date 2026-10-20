@@ -5,17 +5,11 @@ import { useAuth } from "react-oidc-context";
 
 import type { BudgetMonthCategory } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
-import { runQuickAssign } from "./api.ts";
+import { runQuickAssign, type GoalKind } from "./api.ts";
 import TargetEditor from "./TargetEditor.tsx";
+import { targetKindLabel } from "./targetKindLabels.ts";
 import { useTargets } from "./useTargets.ts";
 import "./TargetsPanel.css";
-
-const KIND_LABEL: Record<string, string> = {
-  monthly: "Monthly amount",
-  by_date: "Amount by a date",
-  repeating: "Repeating expense",
-  balance: "Balance to keep",
-};
 
 interface Props {
   readonly workspaceId: string;
@@ -104,7 +98,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
 
   const withTarget = categories.filter((c) => targets.progressByCategory.has(c.categoryId));
   const withoutTarget = categories.filter((c) => !targets.progressByCategory.has(c.categoryId));
-  const byKind = new Map<string, BudgetMonthCategory[]>();
+  const byKind = new Map<GoalKind, BudgetMonthCategory[]>();
   for (const category of withTarget) {
     const kind = targets.progressByCategory.get(category.categoryId)!.goal.kind;
     const list = byKind.get(kind);
@@ -126,7 +120,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
 
         {[...byKind.entries()].map(([kind, kindCategories]) => (
           <div className="sec" key={kind}>
-            <h5>{KIND_LABEL[kind] ?? kind}</h5>
+            <h5>{targetKindLabel(kind, intl)}</h5>
             <ul className="target-list">
               {kindCategories.map((category) => {
                 const progress = targets.progressByCategory.get(category.categoryId)!;

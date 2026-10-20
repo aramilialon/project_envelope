@@ -5,14 +5,9 @@ import { useAuth } from "react-oidc-context";
 
 import SideSheet from "../layout/SideSheet.tsx";
 import { deleteGoal, upsertGoal, type GoalKind, type GoalRecord, type RepeatInterval } from "./api.ts";
+import { TARGET_KINDS, targetKindHint, targetKindLabel } from "./targetKindLabels.ts";
 import "./TargetEditor.css";
 
-const KINDS: readonly { kind: GoalKind; label: string; hint: string }[] = [
-  { kind: "monthly", label: "Monthly amount", hint: "Asks the same amount every month." },
-  { kind: "by_date", label: "Amount by a date", hint: "Saves up a total by a due month, spread over the months left." },
-  { kind: "repeating", label: "Repeating expense", hint: "Like \"amount by a date\", but the due month moves forward once it passes." },
-  { kind: "balance", label: "Balance to keep", hint: "Asks enough to keep the category's available amount at or above a threshold." },
-];
 const INTERVALS: readonly RepeatInterval[] = [2, 3, 4, 6, 12, 24];
 
 interface Props {
@@ -57,6 +52,7 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
   const [submitting, setSubmitting] = useState(false);
 
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
+  const kinds = TARGET_KINDS.map((k) => ({ kind: k, label: targetKindLabel(k, intl), hint: targetKindHint(k, intl) }));
 
   let preview: ReturnType<typeof computeTarget> | null = null;
   let previewAmount: number | null = null;
@@ -122,7 +118,7 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
       <form className="target-editor" onSubmit={(event) => void handleSubmit(event)}>
         <fieldset className="types">
           <legend className="sr-only">{intl.formatMessage({ id: "targets.editor.kind", defaultMessage: "Kind" })}</legend>
-          {KINDS.map((k) => (
+          {kinds.map((k) => (
             <label className="opt" key={k.kind}>
               <input type="radio" name="goal-kind" checked={kind === k.kind} onChange={() => setKind(k.kind)} />
               <span>
