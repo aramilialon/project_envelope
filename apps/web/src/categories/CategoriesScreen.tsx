@@ -78,7 +78,7 @@ export default function CategoriesScreen() {
   const { groups, categories, refetch } = state;
   const accessToken = auth.user?.access_token;
   const groupIds = groups.map((g) => g.id);
-  const groupArchived = groups.map(() => false);
+  const groupArchived = groups.map((g) => g.archived);
 
   function categoriesOf(groupId: string): Category[] {
     return categories.filter((c) => c.groupId === groupId);

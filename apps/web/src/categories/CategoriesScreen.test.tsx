@@ -103,6 +103,17 @@ describe("CategoriesScreen (#52)", () => {
     expect(screen.getByRole("button", { name: "Move Fun down" })).toBeDisabled();
   });
 
+  it("moves a group down, skipping an archived one in between (listed, but never created through this screen)", async () => {
+    const reorderCategoryGroups = vi.spyOn(categoriesApi, "reorderCategoryGroups").mockResolvedValue([]);
+    const RETIRED: CategoryGroup = { id: "g-retired", workspaceId: "ws-1", name: "Retired", sortOrder: 2, archived: true };
+    renderScreen([HOME, RETIRED, FUN], []);
+    await screen.findByText("Home");
+
+    fireEvent.click(screen.getByRole("button", { name: "Move Home down" }));
+
+    await waitFor(() => expect(reorderCategoryGroups).toHaveBeenCalledWith("t", "ws-1", ["g2", "g-retired", "g1"]));
+  });
+
   it("lists an archived category read-only, with no move or archive controls", async () => {
     renderScreen(
       [HOME],
