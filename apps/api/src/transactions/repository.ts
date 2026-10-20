@@ -4,6 +4,7 @@ import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
+import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "./splits.ts";
 
 /**
  * Queued in the same transaction as the write that triggers it (design.md, "Notifications";
@@ -110,14 +111,6 @@ interface TransactionRow {
   readonly created_at: Date;
 }
 
-interface SplitRow {
-  readonly id: string;
-  readonly transaction_id: string;
-  readonly category_id: string | null;
-  readonly amount_cents: string;
-  readonly memo: string | null;
-}
-
 /**
  * Validates a transaction's splits before anything is written — mirroring
  * `packages/core`'s own `aggregateTransactions` checks, so a bad request
@@ -126,26 +119,7 @@ interface SplitRow {
  * handles these identically, since they are the same kind of problem.
  */
 function validateSplits(splits: readonly SplitInput[], expectedTotal: number | undefined): void {
-  if (splits.length === 0) {
-    throw new ValidationError("uncategorized_transaction", "a transaction needs at least one split");
-  }
-  let total = 0;
-  for (const split of splits) {
-    assertCents(split.amountCents);
-    if (split.categoryId === null && splits.length > 1) {
-      throw new ValidationError("unsupported_transaction", "income cannot be part of a split");
-    }
-    total += split.amountCents;
-  }
-  if (expectedTotal !== undefined) {
-    assertCents(expectedTotal);
-    if (expectedTotal !== total) {
-      throw new ValidationError("split_mismatch", `splits add up to ${total} instead of ${expectedTotal}`, {
-        splitTotal: total,
-        amount: expectedTotal,
-      });
-    }
-  }
+  validateSplitTotals(splits, expectedTotal, "a transaction needs at least one split");
 }
 
 /** An instant with its own explicit offset ("Z" or "+02:00") needs no anchoring: it already names one exact moment. */
@@ -599,29 +573,28 @@ async function insertSplits(
   transactionId: string,
   splits: readonly SplitInput[],
 ): Promise<void> {
-  for (const split of splits) {
-    await db.query(
-      "INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents, memo) VALUES ($1, $2, $3, $4, $5)",
-      [workspaceId, transactionId, split.categoryId, split.amountCents, split.memo ?? null],
-    );
+  if (splits.length === 0) {
+    return;
   }
+  const { sql, params } = buildMultiRowValues(splits, (split) => [
+    workspaceId,
+    transactionId,
+    split.categoryId,
+    split.amountCents,
+    split.memo ?? null,
+  ]);
+  await db.query(`INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents, memo) VALUES ${sql}`, params);
 }
 
 async function loadSplits(db: DbPool | DbClient, transactionIds: readonly string[]): Promise<Map<string, SplitRecord[]>> {
-  const byTransaction = new Map<string, SplitRecord[]>();
   if (transactionIds.length === 0) {
-    return byTransaction;
+    return new Map();
   }
-  const { rows } = await db.query<SplitRow>(
-    "SELECT id, transaction_id, category_id, amount_cents, memo FROM splits WHERE transaction_id = ANY($1) ORDER BY id",
+  const { rows } = await db.query<SplitRowLike>(
+    "SELECT id, transaction_id AS parent_id, category_id, amount_cents, memo FROM splits WHERE transaction_id = ANY($1) ORDER BY id",
     [transactionIds],
   );
-  for (const row of rows) {
-    const list = byTransaction.get(row.transaction_id) ?? [];
-    list.push({ id: row.id, categoryId: row.category_id, amountCents: Number(row.amount_cents), memo: row.memo });
-    byTransaction.set(row.transaction_id, list);
-  }
-  return byTransaction;
+  return groupSplitsByParent<SplitRecord>(rows);
 }
 
 function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]): TransactionRecord {

@@ -1,8 +1,9 @@
-import { advanceDate, assertCents, assertDate, ValidationError, type RecurUnit, type ScheduledItem } from "@envelope/core";
+import { advanceDate, assertDate, ValidationError, type RecurUnit, type ScheduledItem } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { createTransaction, type TransactionRecord } from "../transactions/repository.ts";
+import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "../transactions/splits.ts";
 
 export type { RecurUnit };
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
@@ -78,14 +79,6 @@ interface ScheduledTransactionRow {
   readonly updated_at: Date;
 }
 
-interface ScheduledSplitRow {
-  readonly id: string;
-  readonly scheduled_transaction_id: string;
-  readonly category_id: string | null;
-  readonly amount_cents: string;
-  readonly memo: string | null;
-}
-
 const SCHEDULED_TRANSACTION_COLUMNS = `
   id, workspace_id, account_id, payee, memo,
   to_char(next_due_date, 'YYYY-MM-DD') AS next_due_date,
@@ -119,19 +112,11 @@ function validateScheduledSplits(
   expectedTotal: number | undefined,
   paymentCategoryIds: ReadonlySet<string>,
 ): void {
-  if (splits.length === 0) {
-    throw new ValidationError("uncategorized_transaction", "a scheduled transaction needs at least one split");
-  }
-  let total = 0;
-  for (const split of splits) {
-    assertCents(split.amountCents);
+  validateSplitTotals(splits, expectedTotal, "a scheduled transaction needs at least one split", (split) => {
     if (split.amountCents <= 0) {
       throw new ValidationError("invalid_amount", "a scheduled item's amount must be positive", {
         ...(split.categoryId !== null ? { categoryId: split.categoryId } : {}),
       });
-    }
-    if (split.categoryId === null && splits.length > 1) {
-      throw new ValidationError("unsupported_transaction", "income cannot be part of a split");
     }
     if (split.categoryId !== null && paymentCategoryIds.has(split.categoryId)) {
       throw new ValidationError(
@@ -140,17 +125,7 @@ function validateScheduledSplits(
         { categoryId: split.categoryId },
       );
     }
-    total += split.amountCents;
-  }
-  if (expectedTotal !== undefined) {
-    assertCents(expectedTotal);
-    if (expectedTotal !== total) {
-      throw new ValidationError("split_mismatch", `splits add up to ${total} instead of ${expectedTotal}`, {
-        splitTotal: total,
-        amount: expectedTotal,
-      });
-    }
-  }
+  });
 }
 
 async function paymentCategoryIdSet(db: DbPool | DbClient, workspaceId: string): Promise<Set<string>> {
@@ -455,33 +430,34 @@ async function insertScheduledSplits(
   scheduledTransactionId: string,
   splits: readonly ScheduledSplitInput[],
 ): Promise<void> {
-  for (const split of splits) {
-    await db.query(
-      `INSERT INTO scheduled_transaction_splits (workspace_id, scheduled_transaction_id, category_id, amount_cents, memo)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [workspaceId, scheduledTransactionId, split.categoryId, split.amountCents, split.memo ?? null],
-    );
+  if (splits.length === 0) {
+    return;
   }
+  const { sql, params } = buildMultiRowValues(splits, (split) => [
+    workspaceId,
+    scheduledTransactionId,
+    split.categoryId,
+    split.amountCents,
+    split.memo ?? null,
+  ]);
+  await db.query(
+    `INSERT INTO scheduled_transaction_splits (workspace_id, scheduled_transaction_id, category_id, amount_cents, memo) VALUES ${sql}`,
+    params,
+  );
 }
 
 async function loadScheduledSplits(
   db: DbPool | DbClient,
   scheduledTransactionIds: readonly string[],
 ): Promise<Map<string, ScheduledSplitRecord[]>> {
-  const byScheduledTransaction = new Map<string, ScheduledSplitRecord[]>();
   if (scheduledTransactionIds.length === 0) {
-    return byScheduledTransaction;
+    return new Map();
   }
-  const { rows } = await db.query<ScheduledSplitRow>(
-    "SELECT id, scheduled_transaction_id, category_id, amount_cents, memo FROM scheduled_transaction_splits WHERE scheduled_transaction_id = ANY($1) ORDER BY id",
+  const { rows } = await db.query<SplitRowLike>(
+    "SELECT id, scheduled_transaction_id AS parent_id, category_id, amount_cents, memo FROM scheduled_transaction_splits WHERE scheduled_transaction_id = ANY($1) ORDER BY id",
     [scheduledTransactionIds],
   );
-  for (const row of rows) {
-    const list = byScheduledTransaction.get(row.scheduled_transaction_id) ?? [];
-    list.push({ id: row.id, categoryId: row.category_id, amountCents: Number(row.amount_cents), memo: row.memo });
-    byScheduledTransaction.set(row.scheduled_transaction_id, list);
-  }
-  return byScheduledTransaction;
+  return groupSplitsByParent<ScheduledSplitRecord>(rows);
 }
 
 function toScheduledTransactionRecord(row: ScheduledTransactionRow, splits: readonly ScheduledSplitRecord[]): ScheduledTransactionRecord {
