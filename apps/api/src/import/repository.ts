@@ -155,8 +155,9 @@ async function stageParsedRows(
       return `(${Array.from({ length: columnsPerRow }, (_, i) => `$${base + i + 1}`).join(", ")})`;
     });
 
-    // A single multi-row INSERT ... RETURNING always returns its rows in the same order as
-    // the VALUES list that produced them, so `rows[i]` is `parsedRows[i]`'s own staged row.
+    // One multi-row INSERT instead of one per row; duplicateOfByIndex is already baked into
+    // each row's own VALUES above, so nothing downstream needs the returned rows in any
+    // particular order.
     const { rows } = await db.query<StagedTransactionRow>(
       `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, memo, amount_cents, external_id, duplicate_of)
        VALUES ${placeholders.join(", ")}
