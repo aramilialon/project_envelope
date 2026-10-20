@@ -15,10 +15,9 @@ const FOCUSABLE =
 
 /**
  * The shared side sheet (#323, docs/ux/README.md's component catalog): the fixed-width panel
- * every entity's detail form and month-wide tool opens in — `AddAccountForm` here, and
- * `TargetsPanel`/`QuickAssignPanel`/`TargetEditor`/`TransactionForm` once their own issues move
- * them off the old `.side-panel` drawer this replaces. Closes on "× Close", Esc, or whatever the
- * caller wires to a second click of the thing that opened it.
+ * every entity's detail form and month-wide tool opens in (`AddAccountForm`, `TargetsPanel`,
+ * `QuickAssignPanel`, `TargetEditor`, `TransactionForm`, among others). Closes on "× Close", Esc,
+ * or whatever the caller wires to a second click of the thing that opened it.
  *
  * A `role="dialog"` with `aria-modal="true"` is a lie to assistive tech unless focus actually
  * behaves modally: on mount, focus moves to the first focusable field in `children` (the title
@@ -29,9 +28,9 @@ const FOCUSABLE =
  *
  * The mockup's own side sheet is a grid column that narrows the page's main content while open
  * (docs/design.md: "narrows the bars while it is open") — that needs the hosting screen's own
- * layout to reserve a column for it, which no screen in this foundational issue has yet. This
- * version is a correct, accessible overlay (fixed position, like the old `.side-panel`); the
- * narrowing behaviour is each consuming issue's own job once it has real content to narrow.
+ * layout to reserve a column for it, which no screen does yet. This version is a correct,
+ * accessible overlay (fixed position) instead; the narrowing behaviour is each consuming
+ * screen's own job once it has real content to narrow.
  */
 export default function SideSheet({ title, onClose, children }: Props) {
   const intl = useIntl();
