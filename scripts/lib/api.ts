@@ -24,6 +24,10 @@ export class Api {
     return this.request<T>("PATCH", path, body);
   }
 
+  async delete<T>(path: string): Promise<T> {
+    return this.request<T>("DELETE", path);
+  }
+
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,

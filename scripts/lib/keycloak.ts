@@ -23,16 +23,6 @@ function pkcePair(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-/** The `sub` claim of an access token, without pulling in a JWT library for one field. */
-export function subjectOf(accessToken: string): string {
-  const payload = accessToken.split(".")[1];
-  if (!payload) {
-    throw new Error("subjectOf: not a JWT (no payload segment)");
-  }
-  const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { sub: string };
-  return json.sub;
-}
-
 async function adminToken(keycloakUrl: string, adminPassword: string): Promise<string> {
   const response = await fetch(`${keycloakUrl}/realms/master/protocol/openid-connect/token`, {
     method: "POST",

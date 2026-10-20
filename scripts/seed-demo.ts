@@ -1,14 +1,15 @@
 import { Api } from "./lib/api.ts";
-import { backdateStartingBalance, createWorkspaceWithOwner, deleteWorkspace, findUserIdBySubject } from "./lib/db.ts";
+import { backdateStartingBalance } from "./lib/db.ts";
 import { monthOffset, todayAt } from "./lib/dates.ts";
 import { assertSafeToRun, requireEnv } from "./lib/env.ts";
-import { ensureDemoUser, signInAsDemoUser, subjectOf } from "./lib/keycloak.ts";
+import { ensureDemoUser, signInAsDemoUser } from "./lib/keycloak.ts";
 
 /**
  * Seeds a "Demo" workspace through the real `apps/api` HTTP API — see `scripts/README.md` for
  * why (the assignment ledger, Row-Level Security and `@envelope/core`'s own invariants only mean
- * anything if the data was built the way the real app builds it), the one exception (workspace
- * and membership creation/deletion, `lib/db.ts`), and the exact commands to run this.
+ * anything if the data was built the way the real app builds it), the one exception (backdating
+ * a credit card's own "Starting balance" transaction, `lib/db.ts`), and the exact commands to
+ * run this.
  *
  * `--reset` deletes a previously seeded "Demo" workspace first; without it, an existing one makes
  * this exit immediately rather than silently leaving two.
@@ -42,7 +43,6 @@ async function main(): Promise<void> {
   await ensureDemoUser(keycloakUrl, keycloakAdminPassword, DEMO_USERNAME, demoPassword);
   const accessToken = await signInAsDemoUser(keycloakUrl, clientId, DEMO_USERNAME, demoPassword);
   const api = new Api(apiUrl, accessToken);
-  const subject = subjectOf(accessToken);
 
   // The user-mapper preHandler creates the local `users` row on the first authenticated
   // request — this is that first request, and also how we check for an existing "Demo" workspace.
@@ -54,16 +54,15 @@ async function main(): Promise<void> {
   }
   if (existing) {
     console.log(`== Deleting the previous "${WORKSPACE_NAME}" workspace (${existing.id})`);
-    await deleteWorkspace(databaseUrl, existing.id);
-  }
-
-  const userId = await findUserIdBySubject(databaseUrl, subject);
-  if (!userId) {
-    throw new Error("expected a local user row for the demo user's subject after signing in");
+    await api.delete(`/workspaces/${existing.id}`);
   }
 
   console.log(`== Creating the "${WORKSPACE_NAME}" workspace`);
-  const workspaceId = await createWorkspaceWithOwner(databaseUrl, WORKSPACE_NAME, TIME_ZONE, BASE_CURRENCY, userId);
+  const { id: workspaceId } = await api.post<{ id: string }>("/workspaces", {
+    name: WORKSPACE_NAME,
+    baseCurrency: BASE_CURRENCY,
+    timeZone: TIME_ZONE,
+  });
   const base = `/workspaces/${workspaceId}`;
 
   const { month: currentMonth, isoDate, onOrBeforeToday, beforeTodaySameMonth, afterTodaySameMonth } = todayAt(new Date(), TIME_ZONE);
