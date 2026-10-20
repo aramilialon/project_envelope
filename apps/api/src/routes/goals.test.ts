@@ -2,25 +2,10 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
-import { decodeJwt } from "jose";
-
-import { buildApp, type App } from "../app.ts";
-import { loadConfig } from "../config.ts";
-import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
-import { createPool, type DbPool } from "../db/pool.ts";
-import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
-import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
-
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) {
-  throw new Error(
-    "Set DATABASE_URL to a test database before running the integration tests, " +
-      "e.g. postgres://envelope:<password>@127.0.0.1:5432/envelope_test",
-  );
-}
-if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
-  throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
-}
+import { type App } from "../app.ts";
+import { type DbPool } from "../db/pool.ts";
+import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
 
 describe("goals routes", () => {
   let superuserPool: DbPool;
@@ -31,24 +16,8 @@ describe("goals routes", () => {
   let token: string;
 
   before(async () => {
-    superuserPool = createPool(databaseUrl);
-    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
-    await ensureAppRoleLogin(superuserPool);
-    realm = await setUpKeycloakTestRealm();
+    ({ superuserPool, realm, app, workspaceId, token } = await setupIntegrationTest());
 
-    app = buildApp(
-      loadConfig({
-        APP_DATABASE_URL: appConnectionString(databaseUrl),
-        KEYCLOAK_ISSUER: realm.issuer,
-        KEYCLOAK_AUDIENCE: realm.audience,
-      }),
-    );
-
-    workspaceId = randomUUID();
-    await superuserPool.query(
-      "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Mine', 'EUR', 'Europe/Rome')",
-      [workspaceId],
-    );
     const group = await superuserPool.query<{ id: string }>(
       "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
       [workspaceId],
@@ -58,30 +27,10 @@ describe("goals routes", () => {
       [workspaceId, group.rows[0]!.id],
     );
     categoryId = category.rows[0]!.id;
-
-    token = await realm.getUserToken();
-    await app.fastify.inject({
-      method: "GET",
-      url: `/workspaces/${workspaceId}/categories/${categoryId}/goal?month=2026-09`,
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const subject = decodeJwt(token).sub;
-    const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [
-      subject,
-    ]);
-    const userId = rows[0]?.id;
-    assert.ok(userId, "expected the user mapper to have created a local user for this token's subject");
-    await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')", [
-      userId,
-      workspaceId,
-    ]);
   });
 
   after(async () => {
-    await app.close();
-    await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
-    await realm.teardown();
-    await superuserPool.end();
+    await teardownIntegrationTest({ superuserPool, realm, app, workspaceId, token });
   });
 
   it("rejects a request with no token", async () => {
