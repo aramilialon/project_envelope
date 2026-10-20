@@ -49,9 +49,16 @@ export function sumCents(values: readonly Cents[]): Cents {
   return total;
 }
 
+const currencyDecimalsCache = new Map<CurrencyCode, number>();
+
 /** Number of decimals of a currency: 2 for EUR, 0 for JPY, 3 for KWD. */
 export function currencyDecimals(currency: CurrencyCode): number {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  const cached = currencyDecimalsCache.get(currency);
+  if (cached !== undefined) return cached;
+  const decimals =
+    new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  currencyDecimalsCache.set(currency, decimals);
+  return decimals;
 }
 
 interface Separators {

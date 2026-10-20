@@ -9,6 +9,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Changed
 
 - `infra`: CI now runs `packages/core`/`apps/web`'s unit tests and `packages/i18n`'s catalog check in their own job with no services, in parallel with `apps/api`'s integration/smoke job — the former no longer wait on PostgreSQL and Keycloak to start (`#429`).
+- `@envelope/core`: `currencyDecimals` now caches the `Intl.NumberFormat` lookup it needs per currency instead of re-resolving it on every call, matching `formatMoney`/`parseAmount` (`#430`).
 
 ### Added
 
