@@ -5,8 +5,13 @@
 # Stop:    docker compose down         (data stays in the volume)
 # Reset:   docker compose down -v      (WARNING: also deletes the data)
 #
-# Passwords come from the .env file (a copy of .env.example). Ports are bound
-# to 127.0.0.1 only: the services cannot be reached from other computers.
+# Passwords come from the .env file (a copy of .env.example). Postgres stays bound to
+# 127.0.0.1 only — nothing but the API, running on this same host, ever needs to reach it
+# directly. Keycloak is bound to every interface instead, reachable from other devices on
+# the same network: its own sign-in pages are what a browser elsewhere needs to reach, same
+# as this machine's own. Its admin console stays reachable too (Keycloak has no clean way to
+# split the two on one port) — a known, accepted tradeoff for a private, trusted network,
+# until #176-#182 (milestone 0.7.0) move every administrative task into the app itself.
 
 name: envelope
 
@@ -43,7 +48,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in the .env file}
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
