@@ -1,4 +1,6 @@
 /** Targets (`apps/api` calls them "goals") and quick assign (#55). */
+import { apiFetch, authHeaders } from "../apiFetch.ts";
+
 const API_URL: string = import.meta.env.VITE_API_URL;
 
 export type GoalKind = "monthly" | "by_date" | "repeating" | "balance";
@@ -30,11 +32,7 @@ export interface GoalProgress {
   readonly progress: number;
 }
 
-function authHeaders(accessToken: string): HeadersInit {
-  return { Authorization: `Bearer ${accessToken}` };
-}
-
-/** Undefined when this category has no target set, rather than throwing. */
+/** Undefined when this category has no target set, rather than throwing — the one call here that cannot go through `apiFetch`, which would throw before this gets the chance to look at a 404. */
 export async function getGoal(
   accessToken: string,
   workspaceId: string,
@@ -59,25 +57,12 @@ export async function upsertGoal(
   categoryId: string,
   input: GoalInput,
 ): Promise<GoalRecord> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/categories/${categoryId}/goal`, {
-    method: "PUT",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    throw new Error(`PUT /workspaces/${workspaceId}/categories/${categoryId}/goal failed: ${response.status}`);
-  }
+  const response = await apiFetch(accessToken, "PUT", `/workspaces/${workspaceId}/categories/${categoryId}/goal`, input);
   return (await response.json()) as GoalRecord;
 }
 
 export async function deleteGoal(accessToken: string, workspaceId: string, categoryId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/categories/${categoryId}/goal`, {
-    method: "DELETE",
-    headers: authHeaders(accessToken),
-  });
-  if (!response.ok) {
-    throw new Error(`DELETE /workspaces/${workspaceId}/categories/${categoryId}/goal failed: ${response.status}`);
-  }
+  await apiFetch(accessToken, "DELETE", `/workspaces/${workspaceId}/categories/${categoryId}/goal`);
 }
 
 export type QuickAssignMode = "fund_targets" | "cover_overspending" | "cover_card_debt" | "repeat_assigned" | "repeat_spent";
@@ -90,12 +75,5 @@ export async function runQuickAssign(
   scope: QuickAssignScope,
   mode: QuickAssignMode,
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/quick-assign`, {
-    method: "POST",
-    headers: { ...authHeaders(accessToken), "Content-Type": "application/json" },
-    body: JSON.stringify({ month, scope, mode }),
-  });
-  if (!response.ok) {
-    throw new Error(`POST /workspaces/${workspaceId}/quick-assign failed: ${response.status}`);
-  }
+  await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/quick-assign`, { month, scope, mode });
 }
