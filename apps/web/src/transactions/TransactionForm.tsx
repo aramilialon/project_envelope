@@ -5,7 +5,6 @@ import { useAuth } from "react-oidc-context";
 
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
-import { today } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createTransaction, createTransfer, deleteTransaction, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
 import { totalOf } from "./transactionAmount.ts";
@@ -24,6 +23,8 @@ interface Props {
   readonly accounts: readonly Account[];
   readonly categories: readonly Category[];
   readonly currency: string;
+  /** "Today" in the workspace's own time zone (#326), never the browser's — a new transaction's default date. */
+  readonly today: string;
   /** Absent creates a new transaction; given, edits that one. */
   readonly transaction?: Transaction;
   onClose(): void;
@@ -51,14 +52,14 @@ function centsToInput(cents: number, locale: string): string {
  * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
  * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
  */
-export default function TransactionForm({ workspaceId, accountId, accounts, categories, currency, transaction, onClose, onSaved }: Props) {
+export default function TransactionForm({ workspaceId, accountId, accounts, categories, currency, today, transaction, onClose, onSaved }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const isEditing = transaction !== undefined;
   const isTransferLeg = transaction !== undefined && transaction.transferId !== null;
 
   const [kind, setKind] = useState<Kind>(kindOf(transaction));
-  const [date, setDate] = useState(transaction?.budgetDate ?? today());
+  const [date, setDate] = useState(transaction?.budgetDate ?? today);
   const [amountStr, setAmountStr] = useState(transaction ? centsToInput(Math.abs(totalOf(transaction)), intl.locale) : "");
   const [payee, setPayee] = useState(transaction?.payee ?? "");
   const [memo, setMemo] = useState(transaction?.memo ?? "");

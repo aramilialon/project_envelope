@@ -40,6 +40,7 @@ function renderForm(overrides: Partial<Parameters<typeof TransactionForm>[0]> = 
       accounts={[CHECKING, SAVINGS]}
       categories={[GROCERIES, RESTAURANTS]}
       currency="EUR"
+      today="2026-09-01"
       onClose={onClose}
       onSaved={onSaved}
       {...overrides}
