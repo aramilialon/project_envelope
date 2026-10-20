@@ -48,6 +48,19 @@ REALM="envelope"
 CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 : "${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env)}"
 
+# Set to this machine's own LAN address (e.g. "10.0.0.11") to let another device on the same
+# network sign in too, added to the client's redirectUris/webOrigins alongside the usual
+# localhost/127.0.0.1 ones. Leave unset for a single-machine setup. Re-running this script
+# with a new value updates an already-existing client's own redirectUris/webOrigins to match
+# (everything else about an existing client is left alone).
+LAN_ORIGIN="${LAN_ORIGIN:-}"
+REDIRECT_URIS='["http://localhost:*", "http://127.0.0.1:*"]'
+WEB_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173"]'
+if [[ -n "$LAN_ORIGIN" ]]; then
+  REDIRECT_URIS=$(jq -c --arg o "http://$LAN_ORIGIN:*" '. + [$o]' <<<"$REDIRECT_URIS")
+  WEB_ORIGINS=$(jq -c --arg o "http://$LAN_ORIGIN:5173" '. + [$o]' <<<"$WEB_ORIGINS")
+fi
+
 # method path [extra curl args...]
 kc() {
   local method=$1 path=$2
@@ -81,7 +94,11 @@ fi
 
 CLIENT_INTERNAL_ID=$(kc GET "/admin/realms/$REALM/clients?clientId=$CLIENT_ID" -f | jq -r '.[0].id // empty')
 if [[ -n "$CLIENT_INTERNAL_ID" ]]; then
-  echo "== Client \"$CLIENT_ID\" already exists, skipping creation"
+  echo "== Client \"$CLIENT_ID\" already exists, updating redirectUris/webOrigins"
+  EXISTING=$(kc GET "/admin/realms/$REALM/clients/$CLIENT_INTERNAL_ID" -f)
+  UPDATED=$(jq --argjson redirectUris "$REDIRECT_URIS" --argjson webOrigins "$WEB_ORIGINS" \
+    '.redirectUris = $redirectUris | .webOrigins = $webOrigins' <<<"$EXISTING")
+  kc PUT "/admin/realms/$REALM/clients/$CLIENT_INTERNAL_ID" -f -H "Content-Type: application/json" -d "$UPDATED" -o /dev/null
 else
   echo "== Creating client \"$CLIENT_ID\""
   # Public (no secret) with PKCE: the web app is a browser-side SPA, not a
@@ -95,15 +112,15 @@ else
   # browser blocks the code-for-tokens exchange outright (#308, found after #49
   # shipped with only mocked tests). List the known dev origins explicitly
   # instead, and add to this list if the web app ever runs on another one.
-  CLIENT_JSON=$(jq -n --arg clientId "$CLIENT_ID" '{
+  CLIENT_JSON=$(jq -n --arg clientId "$CLIENT_ID" --argjson redirectUris "$REDIRECT_URIS" --argjson webOrigins "$WEB_ORIGINS" '{
     clientId: $clientId,
     enabled: true,
     publicClient: true,
     standardFlowEnabled: true,
     directAccessGrantsEnabled: false,
     serviceAccountsEnabled: false,
-    redirectUris: ["http://localhost:*", "http://127.0.0.1:*"],
-    webOrigins: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    redirectUris: $redirectUris,
+    webOrigins: $webOrigins,
     attributes: {
       "pkce.code.challenge.method": "S256",
       # "+": same as the redirect URIs above — fine here, since the post-logout
