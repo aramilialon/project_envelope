@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 
 import { listAccounts, type Account } from "../accounts/api.ts";
 import { listCategories, type Category } from "../categories/api.ts";
 import { getBudgetMonthEvents, type MonthEvent } from "../budget/api.ts";
+import { useFetchState, type FetchState } from "../useFetchState.ts";
 import { listTransactionsForAccount, type Transaction } from "./api.ts";
 
-export type AccountRegisterState =
-  | { status: "loading" }
-  | { status: "error" }
-  | {
-      status: "ok";
-      account: Account;
-      accounts: readonly Account[];
-      categories: readonly Category[];
-      transactions: readonly Transaction[];
-      /** This account's own events for `month` (recorded, pending and not-yet-recorded scheduled items) — the timeline, the "Record" to-do items and the projected balance are all fed from this one fetch (`#337`). */
-      events: readonly MonthEvent[];
-    };
+export type AccountRegisterState = FetchState<{
+  account: Account;
+  accounts: readonly Account[];
+  categories: readonly Category[];
+  transactions: readonly Transaction[];
+  /** This account's own events for `month` (recorded, pending and not-yet-recorded scheduled items) — the timeline, the "Record" to-do items and the projected balance are all fed from this one fetch (`#337`). */
+  events: readonly MonthEvent[];
+}>;
 
 /**
  * Fetches everything an account register (#54, #337) needs: this account's own transactions,
@@ -30,42 +26,25 @@ export type AccountRegisterState =
 export function useAccountRegister(workspaceId: string, accountId: string, month: string): AccountRegisterState & { refetch(): void } {
   const auth = useAuth();
   const accessToken = auth.user?.access_token;
-  const [state, setState] = useState<AccountRegisterState>({ status: "loading" });
-  const [generation, setGeneration] = useState(0);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-    let cancelled = false;
-    Promise.all([
-      listAccounts(accessToken, workspaceId),
-      listCategories(accessToken, workspaceId),
-      listTransactionsForAccount(accessToken, workspaceId, accountId),
-      getBudgetMonthEvents(accessToken, workspaceId, month, accountId),
-    ])
-      .then(([accounts, categories, transactions, events]) => {
-        if (cancelled) {
-          return;
-        }
+  return useFetchState(
+    () => {
+      if (!accessToken) {
+        return undefined;
+      }
+      return Promise.all([
+        listAccounts(accessToken, workspaceId),
+        listCategories(accessToken, workspaceId),
+        listTransactionsForAccount(accessToken, workspaceId, accountId),
+        getBudgetMonthEvents(accessToken, workspaceId, month, accountId),
+      ]).then(([accounts, categories, transactions, events]) => {
         const account = accounts.find((a) => a.id === accountId);
         if (!account) {
-          setState({ status: "error" });
-          return;
+          throw new Error(`useAccountRegister: account ${accountId} not found in workspace ${workspaceId}`);
         }
-        setState({ status: "ok", account, accounts, categories, transactions, events });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setState({ status: "error" });
-        }
+        return { account, accounts, categories, transactions, events };
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, workspaceId, accountId, month, generation]);
-
-  const refetch = useCallback(() => setGeneration((g) => g + 1), []);
-
-  return { ...state, refetch };
+    },
+    [accessToken, workspaceId, accountId, month],
+  );
 }
