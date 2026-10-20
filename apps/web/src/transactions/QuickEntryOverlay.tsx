@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 
 import { listAccounts, type Account } from "../accounts/api.ts";
 import { useBudgetMonth } from "../budget/useBudgetMonth.ts";
+import { today } from "../format.ts";
 import { currentMonthIn } from "../workspaceDate.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { createTransaction } from "./api.ts";
@@ -23,11 +24,6 @@ interface Saved {
   readonly accountName: string;
   readonly categoryName: string;
   readonly available: number;
-}
-
-function today(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function decimalSeparator(locale: string): string {

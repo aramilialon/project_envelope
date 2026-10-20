@@ -19,6 +19,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: a transaction's splits and a scheduled transaction's splits now share their validation, insertion and loading through a new `transactions/splits.ts`, instead of each carrying its own near-identical copy (a scheduled split's own extra rules — always positive, never a payment category — stay where they were). Both kinds of split insert now write every row of a batch in one statement instead of one `INSERT` per row (`#437`).
 - `apps/api`: the `[membershipPreHandler, requireWriteAccess]` array every write route composed by hand is now one shared `withWriteAccess` helper (`#438`).
 - `apps/api`: reordering category groups or categories, and completing a reconciliation, now update every affected row in one statement instead of one `UPDATE` per row (`#439`).
+- `apps/web`: `shortDate`, `plainAmount` and `today` — each copied identically into several screens — are now one shared `format.ts`; `MoveMoneyForm.tsx`'s own local `monthLabel` is now the one `monthEvents.ts` already exports (`#440`).
 
 ### Added
 

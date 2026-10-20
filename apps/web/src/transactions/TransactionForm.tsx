@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
+import { today } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createTransaction, createTransfer, deleteTransaction, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
 import { totalOf } from "./transactionAmount.ts";
@@ -27,11 +28,6 @@ interface Props {
   readonly transaction?: Transaction;
   onClose(): void;
   onSaved(): void;
-}
-
-function today(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 function kindOf(transaction: Transaction | undefined): Kind {

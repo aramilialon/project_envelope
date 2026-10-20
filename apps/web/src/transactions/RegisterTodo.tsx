@@ -1,6 +1,7 @@
 import { useIntl } from "react-intl";
 
 import "../budget/Todo.css";
+import { shortDate } from "../format.ts";
 import type { RegisterTodoItem } from "./registerTodo.ts";
 
 interface Props {
@@ -11,11 +12,6 @@ interface Props {
   readonly limit?: number;
   onRecord(scheduledTransactionId: string): void;
   onMark(transactionId: string): void;
-}
-
-function shortDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
 /**

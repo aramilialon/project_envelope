@@ -1,4 +1,4 @@
-import { computeProjectedBalance, computeTimeline, currencyDecimals, formatMoney } from "@envelope/core";
+import { computeProjectedBalance, computeTimeline, formatMoney } from "@envelope/core";
 import { useContext, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -8,6 +8,7 @@ import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
 import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
 import Timeline from "../budget/Timeline.tsx";
+import { plainAmount, shortDate } from "../format.ts";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
@@ -35,22 +36,10 @@ function rowLabel(transaction: Transaction, categories: Parameters<typeof catego
   return categoryLabel(transaction.splits[0]?.categoryId ?? null, categories, unassignedLabel);
 }
 
-/** "11 Oct" — never the raw "YYYY-MM-DD" the API returns. */
-function shortDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
-
 /** A day-group header on the phone layout: "Friday, 9 October". */
 function longDay(iso: string, locale: string): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
   return new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
-
-/** A plain formatted number, no currency symbol — the desktop table's own Outflow/Inflow/Balance cells, whose column header already says what they are. */
-function plainAmount(cents: number, locale: string, currency: string): string {
-  const decimals = currencyDecimals(currency);
-  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(cents / 10 ** decimals);
 }
 
 function StatusIcon({ status }: { readonly status: TransactionStatus }) {

@@ -1,10 +1,12 @@
-import { amountNeededToCover, currencyDecimals, formatMoney, parseAmount } from "@envelope/core";
+import { amountNeededToCover, formatMoney, parseAmount } from "@envelope/core";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createAssignments } from "./api.ts";
+import { monthLabel } from "./monthEvents.ts";
 import type { BudgetGroup, BudgetGroupCategory } from "./useBudgetMonth.ts";
 import "./MoveMoneyForm.css";
 
@@ -36,11 +38,6 @@ interface Props {
   onChanged(): void;
 }
 
-function plainAmount(cents: number, locale: string, currency: string): string {
-  const decimals = currencyDecimals(currency);
-  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(cents / 10 ** decimals);
-}
-
 function shiftMonth(month: string, delta: number): string {
   const year = Number(month.slice(0, 4));
   const monthNumber = Number(month.slice(5, 7)) + delta;
@@ -48,11 +45,6 @@ function shiftMonth(month: string, delta: number): string {
   const wrappedYear = year + Math.floor(zeroBased / 12);
   const wrappedMonth = ((zeroBased % 12) + 12) % 12;
   return `${wrappedYear}-${String(wrappedMonth + 1).padStart(2, "0")}`;
-}
-
-function monthLabel(month: string, locale: string): string {
-  const date = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
-  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "long" }).format(date);
 }
 
 function flatten(groups: readonly BudgetGroup[]): Map<string, BudgetGroupCategory & { readonly groupName: string }> {

@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import { shortDate } from "../format.ts";
 import { updateTransaction } from "../transactions/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
@@ -11,11 +12,6 @@ import { reconcileAccount, type CandidateTransaction, type ReconciliationRecord 
 import { computeTally, findSuggestion } from "./reconciliationTally.ts";
 import { useReconciliation } from "./useReconciliation.ts";
 import "./ReconciliationScreen.css";
-
-function shortDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
 
 /**
  * The reconciliation screen (#60, design.md "Import and reconciliation"), reached from the

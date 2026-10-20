@@ -1,5 +1,6 @@
 import type { TodoItem } from "@envelope/core";
 import { useIntl } from "react-intl";
+import { shortDate } from "../format.ts";
 import "./Todo.css";
 
 interface Props {
@@ -27,11 +28,6 @@ function dotClass(kind: TodoItem["kind"]): string {
   if (kind === "overassigned" || kind === "cashOverspending") return "dot r";
   if (kind === "cardOverspending" || kind === "reservationShortfall" || kind === "cardDebtUncovered") return "dot w";
   return "dot";
-}
-
-function shortDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
 interface Sentence {
