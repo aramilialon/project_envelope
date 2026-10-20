@@ -6,6 +6,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Changed
+
+- `infra`: CI now runs `packages/core`/`apps/web`'s unit tests and `packages/i18n`'s catalog check in their own job with no services, in parallel with `apps/api`'s integration/smoke job — the former no longer wait on PostgreSQL and Keycloak to start (`#429`).
+
 ### Added
 
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
