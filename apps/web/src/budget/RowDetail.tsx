@@ -1,8 +1,9 @@
-import { currencyDecimals, parseAmount } from "@envelope/core";
+import { parseAmount } from "@envelope/core";
 import { useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { plainAmount } from "../format.ts";
 import { createAssignments } from "./api.ts";
 import DetailFrame from "./DetailFrame.tsx";
 import "./RowDetail.css";
@@ -23,12 +24,6 @@ interface Props {
   readonly fullScreen?: boolean;
   /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own edit controls. */
   readonly readOnly?: boolean;
-}
-
-/** A plain, locale-formatted number, no currency symbol — the field's own displayed value, same convention `AccountRegisterScreen.tsx`'s own `plainAmount` uses for an editable/tabular amount. */
-function plainAmount(cents: number, locale: string, currency: string): string {
-  const decimals = currencyDecimals(currency);
-  return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(cents / 10 ** decimals);
 }
 
 /**

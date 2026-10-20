@@ -25,6 +25,7 @@ import {
   type ColumnRole,
 } from "./mapping.ts";
 import { useImportSetup } from "./useImportSetup.ts";
+import { shortDate } from "../format.ts";
 import "./ImportScreen.css";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
@@ -49,11 +50,6 @@ function decisionFromSelection(stagedTransactionId: string, selection: string, t
     };
   }
   return { stagedTransactionId, kind: "category", categoryId: selection };
-}
-
-function shortDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
 
 /**
