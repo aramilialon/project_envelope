@@ -14,6 +14,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: the CSV and QIF importers now share one `parseDecimalAmount` helper and one `swapDayMonth` helper, instead of each carrying its own near-identical copy (`#432`).
 - `@envelope/core`: `nextMonth`/`previousMonth` are replaced by one `shiftMonth(month, delta)`, which also shifts by more than one month in a single step; `apps/web`/`apps/api`'s own call sites updated (`#433`).
 - `apps/api`: staging a parsed import now inserts every row in one statement instead of one `INSERT` per row (`#434`).
+- `apps/api`: `createAssignmentBatch` and `reverseRows` now write every row of a batch in one statement instead of one `INSERT` per row; `reverseRows` keeps its exact double-delivery race safety (`#43`) via `ON CONFLICT (reverses) DO NOTHING` instead of a per-row try/catch (`#435`).
 
 ### Added
 

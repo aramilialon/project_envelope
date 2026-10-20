@@ -100,38 +100,29 @@ export async function createAssignmentBatch(
     validateEntry(entry);
   }
 
-  const batchId = randomUUID();
-  const records: AssignmentEntryRecord[] = [];
-  for (const entry of input.entries) {
-    const { rows } = await db.query<AssignmentEntryRow>(
-      `INSERT INTO assignment_ledger
-         (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author)
-       VALUES ($1, $2, ($3 || '-01')::date, $4, $5, $6, $7)
-       RETURNING ${ENTRY_COLUMNS}`,
-      [
-        batchId,
-        input.workspaceId,
-        entry.month,
-        entry.sourceCategoryId,
-        entry.destinationCategoryId,
-        entry.amountCents,
-        input.author,
-      ],
-    );
-    const row = rows[0];
-    if (!row) {
-      throw new Error("createAssignmentBatch: INSERT ... RETURNING produced no row");
-    }
-    records.push(toEntryRecord(row));
+  if (input.entries.length === 0) {
+    return [];
   }
-  return records;
-}
 
-/** Postgres's own code for a unique-constraint violation. */
-const UNIQUE_VIOLATION = "23505";
+  const batchId = randomUUID();
+  const columnsPerRow = 7;
+  const values: unknown[] = [];
+  const placeholders = input.entries.map((entry, index) => {
+    values.push(batchId, input.workspaceId, entry.month, entry.sourceCategoryId, entry.destinationCategoryId, entry.amountCents, input.author);
+    const base = index * columnsPerRow;
+    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+  });
 
-function isUniqueViolation(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === UNIQUE_VIOLATION;
+  // A single multi-row INSERT ... RETURNING always returns its rows in the same order as
+  // the VALUES list that produced them, so `rows[i]` is `input.entries[i]`'s own ledger row.
+  const { rows } = await db.query<AssignmentEntryRow>(
+    `INSERT INTO assignment_ledger
+       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author)
+     VALUES ${placeholders.join(", ")}
+     RETURNING ${ENTRY_COLUMNS}`,
+    values,
+  );
+  return rows.map(toEntryRecord);
 }
 
 /**
@@ -157,29 +148,31 @@ export async function reverseRows(
   author: string,
   rows: readonly AssignmentEntryRow[],
 ): Promise<AssignmentEntryRecord[]> {
-  const batchId = randomUUID();
-  const records: AssignmentEntryRecord[] = [];
-  for (const row of rows) {
-    try {
-      const { rows: inserted } = await db.query<AssignmentEntryRow>(
-        `INSERT INTO assignment_ledger
-           (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses)
-         VALUES ($1, $2, ($3 || '-01')::date, $4, $5, $6, $7, $8)
-         RETURNING ${ENTRY_COLUMNS}`,
-        [batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id],
-      );
-      const reversed = inserted[0];
-      if (!reversed) {
-        throw new Error("reverseRows: INSERT ... RETURNING produced no row");
-      }
-      records.push(toEntryRecord(reversed));
-    } catch (error) {
-      if (!isUniqueViolation(error)) {
-        throw error;
-      }
-    }
+  if (rows.length === 0) {
+    return [];
   }
-  return records;
+
+  const batchId = randomUUID();
+  const columnsPerRow = 8;
+  const values: unknown[] = [];
+  const placeholders = rows.map((row, index) => {
+    values.push(batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id);
+    const base = index * columnsPerRow;
+    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+  });
+
+  // ON CONFLICT (reverses) DO NOTHING keeps the same race safety the old per-row try/catch
+  // gave: a row already reversed by a concurrent device (#43) is silently skipped, the rest of
+  // the batch still reverses, and RETURNING reports only the rows actually inserted.
+  const { rows: inserted } = await db.query<AssignmentEntryRow>(
+    `INSERT INTO assignment_ledger
+       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses)
+     VALUES ${placeholders.join(", ")}
+     ON CONFLICT (reverses) DO NOTHING
+     RETURNING ${ENTRY_COLUMNS}`,
+    values,
+  );
+  return inserted.map(toEntryRecord);
 }
 
 /** Rows of `batchId` (or a single row) that do not already have a reverser. */
