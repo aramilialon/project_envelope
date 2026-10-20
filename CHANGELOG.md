@@ -18,6 +18,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: `createWorkspace`, `registerDeviceToken`, `removeDeviceToken` and `listWorkspacesForUser` now share one `withUserScopedTransaction` helper for the open-client/BEGIN/set_config/COMMIT-or-ROLLBACK/release pattern each repeated on its own (`#436`).
 - `apps/api`: a transaction's splits and a scheduled transaction's splits now share their validation, insertion and loading through a new `transactions/splits.ts`, instead of each carrying its own near-identical copy (a scheduled split's own extra rules — always positive, never a payment category — stay where they were). Both kinds of split insert now write every row of a batch in one statement instead of one `INSERT` per row (`#437`).
 - `apps/api`: the `[membershipPreHandler, requireWriteAccess]` array every write route composed by hand is now one shared `withWriteAccess` helper (`#438`).
+- `apps/api`: reordering category groups or categories, and completing a reconciliation, now update every affected row in one statement instead of one `UPDATE` per row (`#439`).
 
 ### Added
 

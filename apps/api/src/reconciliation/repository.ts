@@ -224,10 +224,10 @@ async function complete(
   }
   const reconciliation = toReconciliationRecord(row);
 
-  for (const transactionId of tickedTransactionIds) {
-    await db.query("UPDATE transactions SET status = 'reconciled', reconciliation_id = $1 WHERE id = $2 AND workspace_id = $3", [
+  if (tickedTransactionIds.length > 0) {
+    await db.query("UPDATE transactions SET status = 'reconciled', reconciliation_id = $1 WHERE id = ANY($2) AND workspace_id = $3", [
       reconciliation.id,
-      transactionId,
+      tickedTransactionIds,
       workspaceId,
     ]);
   }
