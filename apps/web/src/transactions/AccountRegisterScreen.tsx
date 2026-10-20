@@ -8,6 +8,7 @@ import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
 import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
 import Timeline from "../budget/Timeline.tsx";
+import type { Category } from "../categories/api.ts";
 import { plainAmount, shortDate } from "../format.ts";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import SideSheet from "../layout/SideSheet.tsx";
@@ -16,7 +17,7 @@ import { unlockReconciliation } from "../reconciliation/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
-import { categoryLabel } from "./categoryLabel.ts";
+import { buildCategoryNameById, categoryLabel } from "./categoryLabel.ts";
 import RegisterTodo from "./RegisterTodo.tsx";
 import type { RegisterTodoItem } from "./registerTodo.ts";
 import { totalOf } from "./transactionAmount.ts";
@@ -28,6 +29,7 @@ type Filter = "all" | "pending" | "cleared" | "reconciled";
 
 /** A stable reference so `withBalance`'s own `useMemo` does not see a "new" array on every render while `state` is not yet `"ok"`. */
 const EMPTY_TRANSACTIONS: readonly Transaction[] = [];
+const EMPTY_CATEGORIES: readonly Category[] = [];
 
 interface TransactionWithBalance {
   readonly transaction: Transaction;
@@ -45,14 +47,14 @@ function withRunningBalance(transactions: readonly Transaction[]): TransactionWi
     .toReversed();
 }
 
-function rowLabel(transaction: Transaction, categories: Parameters<typeof categoryLabel>[1], unassignedLabel: string, splitLabel: string, transferLabel: string): string {
+function rowLabel(transaction: Transaction, categoryNameById: Parameters<typeof categoryLabel>[1], unassignedLabel: string, splitLabel: string, transferLabel: string): string {
   if (transaction.transferId !== null) {
     return transferLabel;
   }
   if (transaction.splits.length > 1) {
     return splitLabel;
   }
-  return categoryLabel(transaction.splits[0]?.categoryId ?? null, categories, unassignedLabel);
+  return categoryLabel(transaction.splits[0]?.categoryId ?? null, categoryNameById, unassignedLabel);
 }
 
 /** A day-group header on the phone layout: "Friday, 9 October". */
@@ -162,6 +164,10 @@ export default function AccountRegisterScreen() {
   // keystroke in the search box or a filter change — only when the transactions themselves do.
   const transactionsForBalance = state.status === "ok" ? state.transactions : EMPTY_TRANSACTIONS;
   const withBalance = useMemo(() => withRunningBalance(transactionsForBalance), [transactionsForBalance]);
+  // Same reasoning: a category-id-to-name Map built once, instead of an O(n) `.find()` per split
+  // on every row, for every keystroke in the search box.
+  const categoriesForLookup = state.status === "ok" ? state.categories : EMPTY_CATEGORIES;
+  const categoryNameById = useMemo(() => buildCategoryNameById(categoriesForLookup), [categoriesForLookup]);
 
   if (state.status === "loading") {
     return <p role="status">{intl.formatMessage({ id: "register.loading", defaultMessage: "Loading this account…" })}</p>;
@@ -198,8 +204,8 @@ export default function AccountRegisterScreen() {
     const haystack = [
       t.payee ?? "",
       t.memo ?? "",
-      rowLabel(t, categories, unassignedLabel, splitLabel, transferLabel),
-      ...t.splits.map((s) => categoryLabel(s.categoryId, categories, unassignedLabel)),
+      rowLabel(t, categoryNameById, unassignedLabel, splitLabel, transferLabel),
+      ...t.splits.map((s) => categoryLabel(s.categoryId, categoryNameById, unassignedLabel)),
     ]
       .join(" ")
       .toLowerCase();
@@ -422,7 +428,7 @@ export default function AccountRegisterScreen() {
               {rows.map(({ transaction }) => {
                 const amount = totalOf(transaction);
                 const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-                const subtitle = rowLabel(transaction, categories, unassignedLabel, splitLabel, transferLabel) + (transaction.memo ? ` · ${transaction.memo}` : "");
+                const subtitle = rowLabel(transaction, categoryNameById, unassignedLabel, splitLabel, transferLabel) + (transaction.memo ? ` · ${transaction.memo}` : "");
                 return (
                   <div key={transaction.id} className="ph-tx">
                     <button type="button" className="open" onClick={() => setOpen({ transaction })}>
@@ -490,7 +496,7 @@ export default function AccountRegisterScreen() {
                   </td>
                   <td>
                     <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {rowLabel(transaction, categories, unassignedLabel, splitLabel, transferLabel)}
+                      {rowLabel(transaction, categoryNameById, unassignedLabel, splitLabel, transferLabel)}
                     </button>
                   </td>
                   <td className="n">{amount < 0 ? plain(-amount) : ""}</td>
