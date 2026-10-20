@@ -327,6 +327,7 @@
   cursor: default;
 }
 
+/* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. */
 @media (max-width: 600px) {
   .register-screen .acc-bal .big {
     font-size: 30px;
