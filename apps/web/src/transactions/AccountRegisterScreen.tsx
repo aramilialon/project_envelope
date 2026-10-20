@@ -1,5 +1,5 @@
 import { computeProjectedBalance, computeTimeline, formatMoney } from "@envelope/core";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
@@ -25,6 +25,25 @@ import { useAccountRegister } from "./useAccountRegister.ts";
 import "./AccountRegisterScreen.css";
 
 type Filter = "all" | "pending" | "cleared" | "reconciled";
+
+/** A stable reference so `withBalance`'s own `useMemo` does not see a "new" array on every render while `state` is not yet `"ok"`. */
+const EMPTY_TRANSACTIONS: readonly Transaction[] = [];
+
+interface TransactionWithBalance {
+  readonly transaction: Transaction;
+  readonly balance: number;
+}
+
+/** The running balance after each transaction, oldest first then reversed — newest on top, matching the register's own reading order. */
+function withRunningBalance(transactions: readonly Transaction[]): TransactionWithBalance[] {
+  const chronological = [...transactions].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+  return chronological
+    .reduce<TransactionWithBalance[]>((rows, t) => {
+      const previousBalance = rows.length > 0 ? rows[rows.length - 1]!.balance : 0;
+      return [...rows, { transaction: t, balance: previousBalance + totalOf(t) }];
+    }, [])
+    .toReversed();
+}
 
 function rowLabel(transaction: Transaction, categories: Parameters<typeof categoryLabel>[1], unassignedLabel: string, splitLabel: string, transferLabel: string): string {
   if (transaction.transferId !== null) {
@@ -139,6 +158,11 @@ export default function AccountRegisterScreen() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
 
+  // Computed before the early returns below (Rules of Hooks), so it never recomputes on a
+  // keystroke in the search box or a filter change — only when the transactions themselves do.
+  const transactionsForBalance = state.status === "ok" ? state.transactions : EMPTY_TRANSACTIONS;
+  const withBalance = useMemo(() => withRunningBalance(transactionsForBalance), [transactionsForBalance]);
+
   if (state.status === "loading") {
     return <p role="status">{intl.formatMessage({ id: "register.loading", defaultMessage: "Loading this account…" })}</p>;
   }
@@ -155,20 +179,12 @@ export default function AccountRegisterScreen() {
   const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" });
   const transferLabel = intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" });
 
-  const chronological = [...transactions].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
-  const withBalance = chronological
-    .reduce<{ transaction: Transaction; balance: number }[]>((rows, t) => {
-      const previousBalance = rows.length > 0 ? rows[rows.length - 1]!.balance : 0;
-      return [...rows, { transaction: t, balance: previousBalance + totalOf(t) }];
-    }, [])
-    .toReversed();
-
   const counts = { all: transactions.length, pending: 0, cleared: 0, reconciled: 0 };
   for (const t of transactions) {
     counts[t.status]++;
   }
   const total = withBalance.length > 0 ? withBalance[0]!.balance : 0;
-  const pendingTotal = chronological.filter((t) => t.status === "pending").reduce((sum, t) => sum + totalOf(t), 0);
+  const pendingTotal = transactions.filter((t) => t.status === "pending").reduce((sum, t) => sum + totalOf(t), 0);
 
   function matchesFilter(status: TransactionStatus): boolean {
     return filter === "all" || filter === status;
