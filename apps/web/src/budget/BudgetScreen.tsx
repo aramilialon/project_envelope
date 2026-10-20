@@ -22,6 +22,7 @@ import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useTargets } from "../targets/useTargets.ts";
+import { canWrite as hasWriteAccess } from "../workspaces/canWrite.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
@@ -219,7 +220,7 @@ export default function BudgetScreen() {
   // is its own independent fetch from the budget month, so one can resolve well before the
   // other) — a brief flash of hidden actions for an owner/editor is the safer default than ever
   // showing one a read-only member could click before the real role arrives.
-  const canWrite = currentWorkspace?.role === "owner" || currentWorkspace?.role === "editor";
+  const canWrite = hasWriteAccess(currentWorkspace?.role);
 
   const secondRow = useBandSecondRow(
     state.status === "ok" ? (

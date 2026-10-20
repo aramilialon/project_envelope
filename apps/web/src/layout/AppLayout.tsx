@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
 
 import NotificationsToggle from "../notifications/NotificationsToggle.tsx";
 import QuickEntryOverlay from "../transactions/QuickEntryOverlay.tsx";
+import { canWrite as hasWriteAccess } from "../workspaces/canWrite.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import WorkspaceSwitcher from "../workspaces/WorkspaceSwitcher.tsx";
 import { BandSecondRowSlotContext } from "./bandSecondRowSlot.ts";
@@ -42,7 +43,7 @@ export default function AppLayout() {
   const isPhone = usePhoneWidth();
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
-  const canWrite = currentWorkspace?.role === "owner" || currentWorkspace?.role === "editor";
+  const canWrite = hasWriteAccess(currentWorkspace?.role);
   const [secondRowSlot, setSecondRowSlot] = useState<HTMLDivElement | null>(null);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [budgetDataVersion, setBudgetDataVersion] = useState(0);
