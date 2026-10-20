@@ -3,7 +3,7 @@
  * content, sends it to every one of a user's registered devices, resuming only from unconfirmed
  * deliveries — a device already marked `sent` for this job is never re-delivered.
  */
-import type { DbClient, DbPool } from "../db/pool.ts";
+import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 import type { PushDriver, PushPayload } from "./driver.ts";
 
 export type DevicePlatform = "ios" | "android" | "web";
@@ -79,35 +79,17 @@ export async function sendPushToUser(
  * table's own `(user_id, platform, token)` uniqueness instead of erroring on a repeat.
  */
 export async function registerDeviceToken(pool: DbPool, userId: string, platform: DevicePlatform, token: string): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+  await withUserScopedTransaction(pool, userId, async (client) => {
     await client.query(
       "INSERT INTO device_tokens (user_id, platform, token) VALUES ($1, $2, $3) ON CONFLICT (user_id, platform, token) DO NOTHING",
       [userId, platform, token],
     );
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 /** Opting back out (`#61`): removing a row a failed push would eventually clean up anyway (`invalid_token`, above), just without waiting for one. */
 export async function removeDeviceToken(pool: DbPool, userId: string, platform: DevicePlatform, token: string): Promise<void> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+  await withUserScopedTransaction(pool, userId, async (client) => {
     await client.query("DELETE FROM device_tokens WHERE user_id = $1 AND platform = $2 AND token = $3", [userId, platform, token]);
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
