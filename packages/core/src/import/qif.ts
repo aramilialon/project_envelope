@@ -17,8 +17,9 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import { assertCents, type Cents } from "../money.ts";
+import type { Cents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
+import { parseDecimalAmount, swapDayMonth } from "./parsing.ts";
 import type { ImportRow } from "./row.ts";
 
 export type QifDateFormat = "DD/MM/YYYY" | "MM/DD/YYYY";
@@ -92,7 +93,7 @@ function parseQifDate(text: string, format: QifDateFormat): LocalDate {
     throw new ValidationError("invalid_date", `not a valid QIF date: "${text}"`, { value: text });
   }
   const [, first, second, yearRaw] = match as unknown as [string, string, string, string];
-  const [day, month] = format === "DD/MM/YYYY" ? [first, second] : [second, first];
+  const { day, month } = swapDayMonth(first, second, format === "DD/MM/YYYY");
   const year = yearRaw.length === 2 ? `20${yearRaw}` : yearRaw;
   const date = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   assertDate(date);
@@ -115,16 +116,7 @@ function detectDecimalSeparator(amounts: readonly string[], hint: QifDecimalSepa
 }
 
 function parseQifAmount(text: string, decimalSeparator: QifDecimalSeparator): Cents {
-  const trimmed = text.trim();
-  const groupSeparator = decimalSeparator === "." ? "," : ".";
-  const withoutGroups = trimmed.split(groupSeparator).join("");
-  const normalized = decimalSeparator === "," ? withoutGroups.replace(",", ".") : withoutGroups;
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
-    throw new ValidationError("invalid_amount_format", `not a valid QIF amount: "${text}"`, { text });
-  }
-  const cents = Math.round(Number(normalized) * 100);
-  assertCents(cents);
-  return cents;
+  return parseDecimalAmount(text, decimalSeparator, "not a valid QIF amount");
 }
 
 /**

@@ -11,8 +11,8 @@
 
 import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
-import { assertCents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
+import { parseDecimalAmount, swapDayMonth } from "./parsing.ts";
 import type { ImportRow } from "./row.ts";
 
 export type CsvDateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
@@ -86,7 +86,7 @@ function parseCsvDate(text: string, format: CsvDateFormat): LocalDate {
       throw new ValidationError("invalid_date", `not a valid ${format} date: "${text}"`, { value: text });
     }
     const [, first, second, year] = match as unknown as [string, string, string, string];
-    const [month, day] = format === "DD/MM/YYYY" ? [second, first] : [first, second];
+    const { day, month } = swapDayMonth(first, second, format === "DD/MM/YYYY");
     date = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   }
   assertDate(date);
@@ -94,16 +94,7 @@ function parseCsvDate(text: string, format: CsvDateFormat): LocalDate {
 }
 
 function parseCsvAmount(text: string, decimalSeparator: DecimalSeparator): Cents {
-  const trimmed = text.trim();
-  const groupSeparator = decimalSeparator === "." ? "," : ".";
-  const withoutGroups = trimmed.split(groupSeparator).join("");
-  const normalized = decimalSeparator === "," ? withoutGroups.replace(",", ".") : withoutGroups;
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) {
-    throw new ValidationError("invalid_amount_format", `not a valid amount: "${text}"`, { text });
-  }
-  const cents = Math.round(Number(normalized) * 100);
-  assertCents(cents);
-  return cents;
+  return parseDecimalAmount(text, decimalSeparator);
 }
 
 function field(columns: readonly string[], index: number): string {
