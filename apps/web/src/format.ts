@@ -11,9 +11,3 @@ export function plainAmount(cents: number, locale: string, currency: string): st
   const decimals = currencyDecimals(currency);
   return new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(cents / 10 ** decimals);
 }
-
-/** `YYYY-MM-DD`, in the browser's own local time zone. */
-export function today(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-}
