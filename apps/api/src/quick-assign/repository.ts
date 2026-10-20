@@ -1,4 +1,4 @@
-import { computeTarget, previousMonth } from "@envelope/core";
+import { computeTarget, shiftMonth } from "@envelope/core";
 
 import { createAssignmentBatch, listAssignmentTotals, type AssignmentEntryRecord } from "../assignments/repository.ts";
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
@@ -44,7 +44,7 @@ async function desiredAmounts(
         .filter((c) => c.uncovered > 0)
         .map((c) => ({ categoryId: c.categoryId, amountCents: c.uncovered }));
     case "repeat_assigned": {
-      const priorMonth = previousMonth(month);
+      const priorMonth = shiftMonth(month, -1);
       const totals = await listAssignmentTotals(db, workspaceId);
       return budgetMonth.categories
         .map((c): Desired => {
@@ -54,7 +54,7 @@ async function desiredAmounts(
         .filter((d) => d.amountCents > 0);
     }
     case "repeat_spent": {
-      const priorMonth = previousMonth(month);
+      const priorMonth = shiftMonth(month, -1);
       const priorBudgetMonth = await getBudgetMonth(db, workspaceId, priorMonth);
       return budgetMonth.categories
         .map((c): Desired => {

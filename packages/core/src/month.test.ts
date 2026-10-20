@@ -2,17 +2,26 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { advanceDate, assertDate, assertMonth, compareMonths, monthOf, monthRange, nextMonth, previousMonth } from "./month.ts";
+import { advanceDate, assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth } from "./month.ts";
 
 describe("months", () => {
-  it("compute the next month, across the end of the year", () => {
-    assert.equal(nextMonth("2026-09"), "2026-10");
-    assert.equal(nextMonth("2026-12"), "2027-01");
+  it("shifts forward, across the end of the year", () => {
+    assert.equal(shiftMonth("2026-09", 1), "2026-10");
+    assert.equal(shiftMonth("2026-12", 1), "2027-01");
   });
 
-  it("compute the previous month, across the start of the year", () => {
-    assert.equal(previousMonth("2026-09"), "2026-08");
-    assert.equal(previousMonth("2027-01"), "2026-12");
+  it("shifts backward, across the start of the year", () => {
+    assert.equal(shiftMonth("2026-09", -1), "2026-08");
+    assert.equal(shiftMonth("2027-01", -1), "2026-12");
+  });
+
+  it("shifts by more than one month, wrapping as many years as needed", () => {
+    assert.equal(shiftMonth("2026-09", 5), "2027-02");
+    assert.equal(shiftMonth("2026-09", -11), "2025-10");
+  });
+
+  it("returns the same month for a zero shift", () => {
+    assert.equal(shiftMonth("2026-09", 0), "2026-09");
   });
 
   it("compare in chronological order", () => {

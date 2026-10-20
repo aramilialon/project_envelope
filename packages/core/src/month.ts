@@ -20,26 +20,15 @@ export function assertMonth(value: string): void {
   }
 }
 
-/** Returns the following month: "2026-12" becomes "2027-01". */
-export function nextMonth(month: Month): Month {
+/** Shifts a month by `delta` months, wrapping the year: `shiftMonth("2026-12", 1)` is "2027-01". */
+export function shiftMonth(month: Month, delta: number): Month {
   assertMonth(month);
   const year = Number(month.slice(0, 4));
   const monthNumber = Number(month.slice(5, 7));
-  if (monthNumber === 12) {
-    return `${year + 1}-01`;
-  }
-  return `${year}-${String(monthNumber + 1).padStart(2, "0")}`;
-}
-
-/** Returns the preceding month: "2027-01" becomes "2026-12". */
-export function previousMonth(month: Month): Month {
-  assertMonth(month);
-  const year = Number(month.slice(0, 4));
-  const monthNumber = Number(month.slice(5, 7));
-  if (monthNumber === 1) {
-    return `${year - 1}-12`;
-  }
-  return `${year}-${String(monthNumber - 1).padStart(2, "0")}`;
+  const totalMonths = year * 12 + (monthNumber - 1) + delta;
+  const newYear = Math.floor(totalMonths / 12);
+  const newMonth = ((totalMonths % 12) + 12) % 12;
+  return `${String(newYear).padStart(4, "0")}-${String(newMonth + 1).padStart(2, "0")}`;
 }
 
 /** Negative if a comes before b, zero if equal, positive if after. */
@@ -87,7 +76,7 @@ export function daysBetween(from: LocalDate, to: LocalDate): number {
 /** Every month from `from` to `to`, both included. Empty if `from` is after `to`. */
 export function monthRange(from: Month, to: Month): Month[] {
   const months: Month[] = [];
-  for (let current = from; compareMonths(current, to) <= 0; current = nextMonth(current)) {
+  for (let current = from; compareMonths(current, to) <= 0; current = shiftMonth(current, 1)) {
     months.push(current);
   }
   return months;

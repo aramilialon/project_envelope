@@ -12,6 +12,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `@envelope/core`: `currencyDecimals` now caches the `Intl.NumberFormat` lookup it needs per currency instead of re-resolving it on every call, matching `formatMoney`/`parseAmount` (`#430`).
 - `@envelope/core`: `detectDuplicates` now groups existing transactions by external id and by amount before matching, instead of scanning all of them per incoming row, so a large re-import against a long account history no longer runs in O(incoming × existing) (`#431`).
 - `@envelope/core`: the CSV and QIF importers now share one `parseDecimalAmount` helper and one `swapDayMonth` helper, instead of each carrying its own near-identical copy (`#432`).
+- `@envelope/core`: `nextMonth`/`previousMonth` are replaced by one `shiftMonth(month, delta)`, which also shifts by more than one month in a single step; `apps/web`/`apps/api`'s own call sites updated (`#433`).
 
 ### Added
 
