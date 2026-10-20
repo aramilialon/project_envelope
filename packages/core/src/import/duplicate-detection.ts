@@ -46,9 +46,11 @@ export function detectDuplicates(
 ): DuplicateMatch[] {
   const claimed = new Set<string>();
   const matches: DuplicateMatch[] = [];
+  const byExternalId = groupByExternalId(existing);
+  const byAmount = groupByAmount(existing);
 
   incoming.forEach((row, incomingIndex) => {
-    const match = matchByExternalId(row, existing, claimed) ?? matchByAmountAndDate(row, existing, claimed);
+    const match = matchByExternalId(row, byExternalId, claimed) ?? matchByAmountAndDate(row, byAmount, claimed);
     if (match) {
       claimed.add(match.id);
       matches.push({ incomingIndex, existingId: match.id });
@@ -58,25 +60,47 @@ export function detectDuplicates(
   return matches;
 }
 
+/** Groups by the field each matcher narrows on first, so each incoming row only scans its own bucket. */
+function groupByExternalId(existing: readonly ExistingTransaction[]): Map<string, ExistingTransaction[]> {
+  const map = new Map<string, ExistingTransaction[]>();
+  for (const candidate of existing) {
+    if (candidate.externalId === undefined) continue;
+    const bucket = map.get(candidate.externalId);
+    if (bucket) bucket.push(candidate);
+    else map.set(candidate.externalId, [candidate]);
+  }
+  return map;
+}
+
+function groupByAmount(existing: readonly ExistingTransaction[]): Map<Cents, ExistingTransaction[]> {
+  const map = new Map<Cents, ExistingTransaction[]>();
+  for (const candidate of existing) {
+    const bucket = map.get(candidate.amount);
+    if (bucket) bucket.push(candidate);
+    else map.set(candidate.amount, [candidate]);
+  }
+  return map;
+}
+
 function matchByExternalId(
   row: ImportedTransaction,
-  existing: readonly ExistingTransaction[],
+  byExternalId: ReadonlyMap<string, readonly ExistingTransaction[]>,
   claimed: ReadonlySet<string>,
 ): ExistingTransaction | undefined {
   if (row.externalId === undefined) {
     return undefined;
   }
-  return existing.find((e) => !claimed.has(e.id) && e.externalId === row.externalId);
+  return byExternalId.get(row.externalId)?.find((e) => !claimed.has(e.id));
 }
 
 function matchByAmountAndDate(
   row: ImportedTransaction,
-  existing: readonly ExistingTransaction[],
+  byAmount: ReadonlyMap<Cents, readonly ExistingTransaction[]>,
   claimed: ReadonlySet<string>,
 ): ExistingTransaction | undefined {
   let best: { candidate: ExistingTransaction; distance: number } | undefined;
-  for (const candidate of existing) {
-    if (claimed.has(candidate.id) || candidate.amount !== row.amount) {
+  for (const candidate of byAmount.get(row.amount) ?? []) {
+    if (claimed.has(candidate.id)) {
       continue;
     }
     const distance = Math.abs(daysBetween(candidate.date, row.date));
