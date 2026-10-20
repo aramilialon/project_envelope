@@ -173,6 +173,7 @@
   padding: 22px 30px 30px;
 }
 
+/* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. */
 @media (max-width: 600px) {
   .app-layout .band {
     padding: 14px 16px 18px;

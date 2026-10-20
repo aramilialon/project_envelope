@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 
-/** The same breakpoint the rest of the app's own CSS media queries use. */
-const PHONE_MAX_WIDTH = 600;
+/**
+ * The phone breakpoint, in px. The one canonical value for it: every `@media (max-width: ...)`
+ * in `AppLayout.css`, `AccountRegisterScreen.css` and `BudgetScreen.css` must match it exactly,
+ * and says so in its own comment — a CSS media query cannot read a JS (or even a CSS custom
+ * property) value, so there is no way to make those four actually share one value at the
+ * language level, only to keep them pointed at each other.
+ */
+export const PHONE_MAX_WIDTH = 600;
 
 /**
  * True below the phone breakpoint — for the rare screen whose phone layout is not just the same

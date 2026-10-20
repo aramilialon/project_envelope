@@ -243,6 +243,7 @@
   vertical-align: -1px;
 }
 
+/* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. */
 @media (max-width: 600px) {
   .budget-screen .brow {
     grid-template-columns: 1fr auto;
