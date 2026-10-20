@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
@@ -50,7 +50,7 @@ function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonl
 
 export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, queue?: QueueDriver): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = [preHandler, requireWriteAccess];
+  const writePreHandler = withWriteAccess(preHandler);
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
 
   app.post(base, { preHandler: writePreHandler }, async (request, reply) => {

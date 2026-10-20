@@ -97,6 +97,18 @@ export async function requireWriteAccess(request: FastifyRequest, reply: Fastify
 }
 
 /**
+ * The preHandler pair almost every write route needs: the workspace membership check (already
+ * created per route file, since it closes over that file's own `pool`), chained with
+ * `requireWriteAccess`. Exists only so each write route file does not compose the same
+ * two-element array by hand.
+ */
+export function withWriteAccess(
+  membershipPreHandler: ReturnType<typeof createWorkspaceMembershipPreHandler>,
+): [typeof membershipPreHandler, typeof requireWriteAccess] {
+  return [membershipPreHandler, requireWriteAccess];
+}
+
+/**
  * Chained after `createWorkspaceMembershipPreHandler` on an endpoint restricted to the
  * workspace's own owner (`#394`: deleting it outright) — design.md, "Settings": "Changing
  * workspace settings needs the owner role, except categories, which editors can manage."

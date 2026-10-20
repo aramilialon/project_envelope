@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 
-import { createWorkspaceMembershipPreHandler, requireWriteAccess } from "../auth/workspace-membership.ts";
+import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import {
   archiveCategory,
   archiveCategoryGroup,
@@ -29,7 +29,7 @@ function stringArrayField(body: Record<string, unknown>, field: string): string[
 
 export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = [preHandler, requireWriteAccess];
+  const writePreHandler = withWriteAccess(preHandler);
 
   app.post("/workspaces/:workspaceId/category-groups", { preHandler: writePreHandler }, async (request, reply) => {
     const name = stringField((request.body ?? {}) as Record<string, unknown>, "name");
