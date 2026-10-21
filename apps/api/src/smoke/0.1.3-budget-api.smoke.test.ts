@@ -58,6 +58,8 @@ interface Recorded {
   readonly accountId: string;
   readonly amountCents: number;
   readonly month: string;
+  /** Income counts toward the budget's "unassigned" through the latest month with any real data, not merely through the one being viewed (`@envelope/core`, `#488`); a transfer or ordinary spending does not get that same wider horizon. */
+  readonly isIncome: boolean;
 }
 
 describe("smoke: 0.1.3 Budget API, against the real process", () => {
@@ -157,9 +159,13 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
     const day = (month: string) => `${month}-${String(amount(27)).padStart(2, "0")}`;
 
     const recorded: Recorded[] = [];
-    const record = (accountId: string, amountCents: number, month: string): void => {
-      recorded.push({ accountId, amountCents, month });
+    const record = (accountId: string, amountCents: number, month: string, isIncome = false): void => {
+      recorded.push({ accountId, amountCents, month, isIncome });
     };
+    // Assignments/quick assign never touch an account's own balance, so `recorded` above never
+    // sees their month — tracked separately only to compute `asOf` below the same way
+    // `computeBudgetMonth` does internally.
+    const assignedMonths: string[] = [];
 
     const QUICK_ASSIGN_MODES = ["fund_targets", "cover_overspending", "cover_card_debt", "repeat_assigned", "repeat_spent"];
 
@@ -174,7 +180,7 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
             occurredAt: day(month),
             splits: [{ categoryId: null, amountCents: cents }],
           });
-          record(account, cents, month);
+          record(account, cents, month, true);
           break;
         }
         case 1: {
@@ -211,12 +217,14 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
           await api("POST", "/assignments", {
             entries: [{ month, sourceCategoryId: source, destinationCategoryId: destination, amountCents: amount(60_000) }],
           });
+          assignedMonths.push(month);
           break;
         }
         default:
           // quick assign, any mode: also only ever moves money between unassigned and
           // categories via the ledger, never touching an account's own balance directly.
           await api("POST", "/quick-assign", { month, scope: { kind: "all" }, mode: pick(QUICK_ASSIGN_MODES) });
+          assignedMonths.push(month);
       }
     }
 
@@ -234,8 +242,13 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
         [...budgetMonth.categories, ...budgetMonth.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
         budgetMonth.assignedInFuture +
         budgetMonth.creditOverspending;
+      // `unassigned` counts income through the latest month with any real data ("asOf", #488),
+      // not merely through the one being viewed — everything else above stays scoped to `month`,
+      // so only the income side of the cash balance needs that same wider horizon.
+      const asOf = [month, ...recorded.map((r) => r.month), ...assignedMonths].reduce((latest, m) => (m > latest ? m : latest), month);
       const cashBalance = recorded
-        .filter((r) => (r.accountId === checkingId || r.accountId === walletId) && r.month <= month)
+        .filter((r) => r.accountId === checkingId || r.accountId === walletId)
+        .filter((r) => r.month <= (r.isIncome ? asOf : month))
         .reduce((sum, r) => sum + r.amountCents, 0);
 
       assert.equal(budgeted, cashBalance, `invariant violated for month ${month}`);
