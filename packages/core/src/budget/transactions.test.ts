@@ -264,8 +264,21 @@ describe("budget invariant with accounts and credit cards", () => {
         result.assignedInFuture +
         result.creditOverspending +
         result.reserved;
+      // `unassigned` counts income through the latest month with any real data ("asOf", #488),
+      // not merely through the requested month — everything else above stays scoped to `month`
+      // exactly as before, so only the income side of the real cash balance needs the same
+      // wider horizon; ordinary activity still only counts through `month` itself.
+      const asOf = [
+        month,
+        ...aggregated.income.map((i) => i.month),
+        ...input.assignments.map((a) => a.month),
+        ...aggregated.activity.map((a) => a.month),
+        ...aggregated.cardPayments.map((p) => p.month),
+        ...aggregated.cardTransfers.map((t) => t.month),
+      ].reduce((latest, m) => (m > latest ? m : latest), month);
       const cashBalance = transactions
-        .filter((t) => (t.accountId === "checking" || t.accountId === "wallet") && t.date.slice(0, 7) <= month)
+        .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
+        .filter((t) => t.date.slice(0, 7) <= (t.categoryId === UNASSIGNED ? asOf : month))
         .reduce((sum, t) => sum + t.amount, 0);
 
       assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);

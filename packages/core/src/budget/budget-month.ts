@@ -10,7 +10,13 @@
  *
  * Rules:
  * 1. Only money that has already come in can be assigned: income dated in
- *    future months does not count.
+ *    future months does not count. "Future" means later than the latest month
+ *    with any real data at all (income, assignment, activity, card payment or
+ *    transfer) — not later than whichever month is being requested. Browsing
+ *    back to an earlier month must not pretend income that has already
+ *    genuinely arrived (in a later month, by the data itself) has not: that
+ *    would blame the earlier month for an assignment that later month's own
+ *    income, not the earlier month's, actually funded (#488).
  * 2. A category's positive available balance rolls over to the next month.
  * 3. Money assigned to future months is already assigned: it reduces
  *    unassigned money immediately.
@@ -520,8 +526,10 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     hasStartingBalanceBy,
   };
 
-  // 2. Find the first month with data: the computation starts there.
+  // 2. Find the first month with data (the computation starts there) and the latest one (rule 1:
+  // "has already come in" means by then, not merely by the requested month).
   let firstMonth = month;
+  let asOf = month;
   for (const item of [
     ...input.income,
     ...input.assignments,
@@ -530,6 +538,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     ...(input.cardTransfers ?? []),
   ]) {
     if (compareMonths(item.month, firstMonth) < 0) firstMonth = item.month;
+    if (compareMonths(item.month, asOf) > 0) asOf = item.month;
   }
 
   // 3. Walk the months before the requested one, closing each of them.
@@ -553,9 +562,14 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   const current = computeMonth(input, month, carried, { ...data, reservedBy });
 
   // 5. Unassigned = income so far − everything assigned (future too) − past cash overspending.
+  // "So far" means through `asOf` (rule 1), not merely through the requested month: otherwise
+  // browsing back to an earlier month would ignore income that, by the data itself, has already
+  // genuinely arrived later, and wrongly blame that earlier month for an assignment it never had
+  // any claim to (#488). `cashOverspentTotal` deliberately stays scoped to the requested month
+  // alone — a later month's own unresolved overspending is a separate concern.
   let incomeSoFar = 0;
   for (const item of input.income) {
-    if (compareMonths(item.month, month) <= 0) incomeSoFar += item.amount;
+    if (compareMonths(item.month, asOf) <= 0) incomeSoFar += item.amount;
   }
   let assignedTotal = 0;
   let assignedInFuture = 0;
