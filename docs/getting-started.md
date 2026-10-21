@@ -167,12 +167,29 @@ ssh -L 8080:127.0.0.1:8080 dev@envelope-dev
 
 Leave that session open and browse to [http://localhost:8080](http://localhost:8080) on the laptop. Sign in as `admin` with the password set in `.env`. Keycloak takes about a minute to start the first time.
 
-**Letting another device on your own network sign in too** (a family member's own phone or laptop, for example — not the SSH-tunnel setup above, an alternative to it): Keycloak's own sign-in pages need to be reachable from that device directly, which also means its admin console becomes reachable from your network too (Keycloak has no clean way to serve one without the other on a single port) — accept that trade-off only on a network you actually trust, and pick a real admin password, never the `.env.example` placeholder. Drop `infra/docker-compose.yml`'s own `127.0.0.1:` prefix on Keycloak's own `ports:` entry (Postgres stays bound to `127.0.0.1`: only the API, on this same machine, ever talks to it directly), `docker compose up -d` to apply it, then re-run `bootstrap.sh` with this machine's own LAN address:
+**Letting another device on your own network sign in too** (a family member's own phone or laptop, for example — not the SSH-tunnel setup above, an alternative to it): the web app, the API and Keycloak's own sign-in pages all need to be reachable from that device directly, but only over real HTTPS — the sign-in flow needs the browser's Web Crypto API, which refuses to run outside a secure context, and a bare LAN IP over plain HTTP does not qualify (only `localhost`/`127.0.0.1` get that exception). [mkcert](https://github.com/FiloSottile/mkcert) (a locally-trusted CA) and [Caddy](https://caddyserver.com/) (TLS termination, `infra/Caddyfile`) provide that, set up once:
+
+```bash
+$ sudo apt install mkcert caddy
+$ mkcert -install                                      # trusts a local CA, for this machine's own apps and browsers
+$ mkdir -p ~/.local/share/mkcert/certs && cd ~/.local/share/mkcert/certs
+$ mkcert -cert-file lan.pem -key-file lan-key.pem <this machine's own LAN address, e.g. 10.0.0.11> localhost 127.0.0.1 ::1
+$ sudo install -d -o caddy -g caddy -m 750 /etc/caddy/certs
+$ sudo install -o caddy -g caddy -m 640 lan.pem lan-key.pem /etc/caddy/certs/
+$ sudo cp ~/envelope/infra/Caddyfile /etc/caddy/Caddyfile   # edit the LAN address in it first if it isn't 10.0.0.11
+$ sudo systemctl reload caddy
+```
+
+Caddy is now the only process reachable from your network: the web app at `https://<that address>/`, the API at `https://<that address>:3443`, Keycloak (sign-in pages and its own admin console alike) at `https://<that address>:8443`. `infra/docker-compose.yml`'s own Keycloak `ports:` entry and `apps/api`'s own `HOST` stay on `127.0.0.1` either way — nothing but Caddy is ever exposed directly; `docker compose up -d keycloak` once, after pulling this change, applies the `KC_PROXY_HEADERS` setting that makes Keycloak trust Caddy's own `X-Forwarded-Proto`/`-Host` and so build `https://` URLs instead of `http://` for the connection it actually sees. Re-run `bootstrap.sh` with this machine's own LAN address:
 
 ```bash
 LAN_ORIGIN=<this machine's own LAN address, e.g. 10.0.0.11> \
   KEYCLOAK_ADMIN_PASSWORD=<password set above> ../scripts/keycloak/bootstrap.sh
 ```
+
+Every other device that will sign in needs the mkcert CA trusted too, or its browser refuses the certificate outright: copy the root CA (`mkcert -CAROOT` prints its path, typically `rootCA.pem` there) to that device and install it as a trusted root — each OS/browser has its own way; mkcert's own README covers the common ones. There is no way around this for a CA that is not publicly trusted; it is the price of real TLS without a public domain name.
+
+Node does not consult that same system trust store either: start `apps/api` (section 9) with `NODE_EXTRA_CA_CERTS=<CAROOT>/rootCA.pem` (`mkcert -CAROOT` prints `<CAROOT>`) in its own environment, or its JWKS fetch against Keycloak's now-`https://` issuer fails and every sign-in is rejected with "Unauthorized: fetch failed".
 
 Sections 9 and 10 below cover pointing the API and the web app at that same address instead of `127.0.0.1` — every service, your own browser included, has to agree on the exact same hostname (Keycloak embeds whatever hostname a request used into the token's own `issuer`, and the API checks that string exactly), so this is an either/or with the SSH tunnel above, not an addition to it.
 
@@ -204,7 +221,7 @@ $ pnpm --filter @envelope/api dev
 
 Obtaining and configuring these (and, later, APNs/FCM) for a real self-hosted deployment is its own guide: [self-hosting push notifications](how-to/self-host-push-notifications.md).
 
-The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` must match the realm and client the previous section's `bootstrap.sh` created (its own defaults, `envelope`/`envelope-api`, already do) — the web app's own sign-in (`#49`, next section) is a real token from this Keycloak, verified against it on every request. Letting another device on your own network reach the API directly (section 8's own alternative to the SSH tunnel) needs `HOST=0.0.0.0`, `KEYCLOAK_ISSUER` and `WEB_ORIGIN` all changed from `127.0.0.1`/`localhost` to this machine's own LAN address instead.
+The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` must match the realm and client the previous section's `bootstrap.sh` created (its own defaults, `envelope`/`envelope-api`, already do) — the web app's own sign-in (`#49`, next section) is a real token from this Keycloak, verified against it on every request. Letting another device on your own network reach the API directly (section 8's own alternative to the SSH tunnel) needs `KEYCLOAK_ISSUER` and `WEB_ORIGIN` changed to `https://<that address>:8443/realms/envelope` and `https://<that address>` respectively — `HOST` stays `127.0.0.1`: Caddy (section 8) is what the network actually reaches.
 
 Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm and their own `envelope_app` login through the admin API (no manual setup needed for tests specifically):
 
@@ -237,7 +254,7 @@ ssh -L 5173:127.0.0.1:5173 -L 3000:127.0.0.1:3000 -L 8080:127.0.0.1:8080 dev@env
 
 Keep that session open and browse to `http://localhost:5173` on the laptop, same as from the VM itself.
 
-Letting another device sign in directly over the network instead (section 8's own alternative) needs `VITE_API_URL` and `VITE_KEYCLOAK_ISSUER` in this app's own `.env` changed from `127.0.0.1` to this machine's own LAN address too, then that other device browses straight to `http://<that address>:5173` — no tunnel, no `localhost`, on any of the devices involved, your own included.
+Letting another device sign in directly over the network instead (section 8's own alternative) needs `VITE_API_URL` and `VITE_KEYCLOAK_ISSUER` in this app's own `.env` changed to `https://<that address>:3443` and `https://<that address>:8443/realms/envelope`, then that other device browses straight to `https://<that address>/` — no tunnel, no `localhost`, on any of the devices involved, your own included, and the mkcert CA (section 8) installed there first or the browser refuses the certificate.
 
 See [`apps/web/README.md`](../apps/web/README.md) for the rest.
 

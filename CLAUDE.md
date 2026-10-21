@@ -23,7 +23,8 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `packages/core` | Pure domain logic, no dependencies: money, months and dates, budget month, credit cards, transaction aggregation |
 | `packages/i18n` | Translation catalogs (ADR 0004, ADR 0009): `locales/en.json` (generated from the web app's own `defaultMessage`s), `locales/it.json` (hand-translated, CI-checked for completeness against it) |
 | `apps/` | `api`, `web` (Vite + React PWA shell so far), then `mobile` |
-| `infra/docker-compose.yml` | PostgreSQL and Keycloak for development; PostgreSQL always bound to 127.0.0.1, Keycloak optionally reachable on the LAN too (docs/getting-started.md, "PostgreSQL and Keycloak") |
+| `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, both always bound to 127.0.0.1 |
+| `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |
 | `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, Git hooks, and a demo data seed (`scripts/README.md`) |

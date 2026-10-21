@@ -53,12 +53,17 @@ CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 # localhost/127.0.0.1 ones. Leave unset for a single-machine setup. Re-running this script
 # with a new value updates an already-existing client's own redirectUris/webOrigins to match
 # (everything else about an existing client is left alone).
+#
+# Always "https://", on no explicit port: infra/Caddyfile (#483) fronts the web app on the
+# default HTTPS port, the only origin a sign-in redirect ever comes back to. A trailing "*"
+# (no leading ":") is a glob over the whole rest of the URL, so it still matches if the web
+# app is ever reached on a non-default port too.
 LAN_ORIGIN="${LAN_ORIGIN:-}"
 REDIRECT_URIS='["http://localhost:*", "http://127.0.0.1:*"]'
 WEB_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173"]'
 if [[ -n "$LAN_ORIGIN" ]]; then
-  REDIRECT_URIS=$(jq -c --arg o "http://$LAN_ORIGIN:*" '. + [$o]' <<<"$REDIRECT_URIS")
-  WEB_ORIGINS=$(jq -c --arg o "http://$LAN_ORIGIN:5173" '. + [$o]' <<<"$WEB_ORIGINS")
+  REDIRECT_URIS=$(jq -c --arg o "https://$LAN_ORIGIN*" '. + [$o]' <<<"$REDIRECT_URIS")
+  WEB_ORIGINS=$(jq -c --arg o "https://$LAN_ORIGIN" '. + [$o]' <<<"$WEB_ORIGINS")
 fi
 
 # method path [extra curl args...]

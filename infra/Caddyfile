@@ -1,0 +1,31 @@
+# Local TLS termination for LAN access (#483). The sign-in flow needs the browser's Web
+# Crypto API (PKCE), which only runs in a secure context: HTTPS, or the special
+# localhost/127.0.0.1 exception. A bare LAN IP over plain HTTP does not qualify, so Caddy
+# fronts the web app, the API and Keycloak with TLS and is the only one of the three bound
+# to every interface — the other three stay on 127.0.0.1 (infra/docker-compose.yml,
+# apps/api/.env.example), reachable only through here.
+#
+# The certificate comes from mkcert, a locally-trusted CA rather than a publicly trusted
+# one: every device that will sign in needs that CA installed once first (docs/getting-started.md,
+# "Letting another device on your own network sign in too").
+{
+	auto_https off
+}
+
+# The web app itself, on the default HTTPS port so the address bar stays plain https://10.0.0.11/.
+10.0.0.11:443, localhost:443, 127.0.0.1:443 {
+	tls /etc/caddy/certs/lan.pem /etc/caddy/certs/lan-key.pem
+	reverse_proxy 127.0.0.1:5173
+}
+
+# apps/api, never typed by hand: the web app's own fetch() calls are the only client.
+10.0.0.11:3443, localhost:3443, 127.0.0.1:3443 {
+	tls /etc/caddy/certs/lan.pem /etc/caddy/certs/lan-key.pem
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Keycloak: its sign-in pages and its own admin console.
+10.0.0.11:8443, localhost:8443, 127.0.0.1:8443 {
+	tls /etc/caddy/certs/lan.pem /etc/caddy/certs/lan-key.pem
+	reverse_proxy 127.0.0.1:8080
+}
