@@ -1,0 +1,310 @@
+<!doctype html>
+<!--
+  Interactive mockup for #412: a dismissible left-side panel, toggled by a button in the band,
+  that always offers every account and its balance, and lets you switch which account's own
+  register the main content shows — without first navigating to the dedicated Accounts screen.
+  Deliberately NOT a persistent sidebar (#323's own decision stays in force): closed by default,
+  takes no space at all when hidden, and never assumes it is open in any other mockup's own layout.
+  Reference for docs/design.md once agreed. Open it in a browser; no build step, no dependencies
+  except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself self-hosts).
+  UI copy is the Italian translation; English stays the source language of the app.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - accounts panel mockup (#412)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Figtree:wght@400..700&display=swap">
+<style>
+html,body{margin:0}
+:root{
+  --desk:#E4ECF5; --paper:#FFFFFF; --paper-2:#F2F6FB;
+  --ink:#13263A; --ink-2:#3E5267; --muted:#627589;
+  --rule:#D2DDE9; --rule-soft:#E8EEF5; --rule-strong:#13263A;
+  --pen:#1E5A92; --pen-ink:#FFFFFF; --pen-soft:#DCE8F5;
+  --band:#173B60; --band-ink:#FFFFFF; --band-2:#24507D; --band-muted:#B4C8DD;
+  --bar:#79AADB; --spent:#CBD6E1;
+  --amber:#DE9F2F; --amber-ink:#2E2104;
+  --red:#C2412D; --red-ink:#FFFFFF; --red-text:#AE3826;
+  --hatch:#DE9F2F; --hatch-bg:#FCF0D6; --hatch-ink:#3B2A07;
+  --warn:#8A5A04;
+  --font:'Figtree','Helvetica Neue',Arial,sans-serif;
+  --display:'Bricolage Grotesque','Figtree','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+    --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+    --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+    --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+    --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+    --bar:#4277AC; --spent:#383D45;
+    --amber:#D19A35; --amber-ink:#1F1602;
+    --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+    --hatch:#D19A35; --hatch-bg:#3A2E14; --hatch-ink:#F7E3B5;
+    --warn:#ECBA6A;
+  }
+}
+*{box-sizing:border-box}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+[hidden]{display:none!important}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.strip p{margin:0;color:var(--muted);max-width:76ch}
+.strip b{color:var(--ink);font-weight:600}
+.scroller{overflow-x:auto;border-radius:16px}
+
+/* Desktop shell: band + however many of the two side panels are open (left accounts, right tools) */
+.desk{min-width:1180px;display:grid;grid-template-rows:auto 1fr;background:var(--paper);transition:grid-template-columns .15s ease}
+.band{grid-column:1 / -1;display:flex;flex-direction:column;gap:18px;padding:14px 30px 22px;background:var(--band);color:var(--band-ink)}
+.bt{display:flex;align-items:center;gap:14px}
+.panel-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border:0;border-radius:8px;background:transparent;color:var(--band-muted)}
+.panel-toggle:hover,.panel-toggle[aria-pressed="true"]{background:var(--band-2);color:var(--band-ink)}
+.brand{font-family:var(--display);font-size:21px;font-weight:700;letter-spacing:-.3px;margin-right:8px}
+.tnav{display:flex;gap:4px}
+.tnav button{min-height:34px;padding:0 14px;border:0;border-radius:999px;background:transparent;color:var(--band-muted)}
+.tnav button[aria-current]{background:var(--band-2);color:var(--band-ink);font-weight:600}
+.bt .ws{margin-left:auto;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--band-ink)}
+.bt .me{border:0;background:transparent;color:var(--band-muted)}
+.main{grid-row:2;display:flex;flex-direction:column;min-width:0;padding:22px 30px 30px}
+.btn{min-height:38px;padding:0 16px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+
+/* The new left panel — note: NOT `.insp` (that one stays right-side, month-wide tools only).
+   Closed by default, zero width/space when hidden; `#412`'s own point is that this never assumes
+   it is open, unlike a persistent sidebar would. */
+.accl{grid-row:2;display:flex;flex-direction:column;gap:0;border-right:1px solid var(--rule);background:var(--paper-2);overflow-y:auto}
+.accl-head{padding:20px 20px 14px}
+.accl-head .where{font-size:13px;color:var(--muted)}
+.accl-head h4{margin:2px 0 0;font-family:var(--display);font-stretch:92%;letter-spacing:-.3px;font-size:22px;font-weight:700}
+.accl-head .big{display:block;margin-top:2px;font-family:var(--display);font-stretch:88%;font-size:28px;font-weight:700;line-height:1}
+.accl-close{position:absolute;top:14px;right:14px;font-size:13px}
+.accl-sec{padding:4px 20px 14px}
+.accl-sec h5{margin:0 0 4px;padding-bottom:6px;border-bottom:1px solid var(--rule);font-size:13px;font-weight:600;color:var(--muted)}
+.acc-row{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:9px 0;border:0;border-bottom:1px solid var(--rule-soft);background:transparent;text-align:left}
+.acc-row:last-child{border-bottom:0}
+.acc-row:hover b{text-decoration:underline;text-underline-offset:3px}
+.acc-row[aria-current="true"]{background:var(--pen-soft);margin:0 -10px;padding:9px 10px;border-radius:8px}
+.acc-row .cn{display:flex;flex-direction:column;gap:2px;min-width:0}
+.acc-row b{font-weight:600}
+.acc-row small{color:var(--muted);font-size:12px}
+.acc-row .n{font-weight:600;white-space:nowrap}
+.acc-row .n.neg{color:var(--red-text)}
+.accl-foot{margin-top:auto;padding:14px 20px;border-top:1px solid var(--rule)}
+
+/* Budget placeholder content (just enough to feel like a real page behind the panel) */
+.over{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:22px;align-items:start}
+.time,.todo{border-radius:14px;background:var(--desk);padding:16px 18px;min-height:120px}
+.time h5,.todo h5{margin:0 0 6px;font-family:var(--display);font-size:17px;font-weight:700}
+.t-note{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+.bgr{display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding:6px 12px 6px 6px;border-radius:10px;background:var(--paper-2)}
+.bgr .gname{font-family:var(--display);font-size:16px;font-weight:700}
+.bgr .gsum{font-weight:600;color:var(--ink-2)}
+.brow{display:grid;grid-template-columns:270px minmax(0,1fr) 150px;align-items:center;gap:18px;width:100%;min-height:52px;padding:8px 12px}
+.brow .cn b{font-weight:600}
+.spent{font-size:12.5px;color:var(--muted)}
+.bar{position:relative;display:block;height:14px}
+.bar .tr{position:absolute;left:0;top:0;bottom:0;width:82%;border-radius:7px;background:var(--bar);overflow:hidden}
+.bar .sp{position:absolute;left:0;top:0;bottom:0;background:var(--spent)}
+.r{text-align:right}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;min-width:96px;padding:3px 10px;font-weight:600;border-radius:7px}
+
+/* Account register placeholder content, shown instead of the budget month once a panel row is picked */
+.acc-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.acc-head h3{margin:0;font-size:40px;line-height:1;font-weight:700;font-stretch:72%;letter-spacing:-.6px;font-family:var(--display)}
+.acc-head .sub{margin-top:8px;color:var(--muted)}
+.acc-bal{display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right}
+.acc-bal small{font-size:13px;color:var(--muted)}
+.acc-bal .big{font-family:var(--display);font-stretch:88%;font-size:46px;line-height:1;font-weight:700;letter-spacing:-.8px}
+.acc-facts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 20px;color:var(--muted);font-size:13px}
+.acc-facts b{color:var(--ink);font-weight:600}
+.reg-row{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:14px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--rule-soft)}
+.reg-row small{color:var(--muted)}
+.reg-list{margin-top:22px;border-top:1px solid var(--rule)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, mockup for <b>#412</b>: a dismissible left panel (click the panel icon, top left) listing every account and its balance, open on top of whichever screen you are already on. Click an account row to switch the main content to that account's own register, without leaving the panel or losing your place. This is not a persistent sidebar — closed by default, and takes no layout space at all until opened.</p>
+  </div>
+
+  <div class="scroller">
+    <div class="desk" id="desk">
+      <header class="band">
+        <div class="bt">
+          <button type="button" class="panel-toggle" id="panel-toggle" aria-pressed="false" aria-expanded="false" aria-controls="accl" aria-label="Mostra i conti">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
+          </button>
+          <span class="brand">envelope</span>
+          <nav class="tnav" aria-label="Main (mockup)"><button type="button" id="nav-budget" aria-current="page">Budget</button><button type="button" id="nav-accounts">Conti</button><button type="button">Portafoglio</button></nav>
+          <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <button type="button" class="me">Giorgio</button>
+        </div>
+      </header>
+
+      <aside class="accl" id="accl" aria-label="Conti" hidden>
+        <div class="accl-head" style="position:relative">
+          <button type="button" class="plain accl-close" id="accl-close">× Chiudi</button>
+          <div class="where">Conti</div>
+          <h4>Patrimonio netto</h4>
+          <span class="big n" id="accl-net"></span>
+        </div>
+        <div class="accl-sec">
+          <h5>In budget</h5>
+          <div id="accl-onbudget"></div>
+        </div>
+        <div class="accl-sec">
+          <h5>Carte di credito</h5>
+          <div id="accl-cards"></div>
+        </div>
+        <div class="accl-sec">
+          <h5>Fuori budget</h5>
+          <div id="accl-offbudget"></div>
+        </div>
+        <div class="accl-foot">
+          <a class="plain" href="#" id="accl-full">Vai alla schermata Conti →</a>
+        </div>
+      </aside>
+
+      <div class="main" id="main"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  function f(c) { return nf.format(c / 100).replace('-', '−'); }
+
+  // Sample data — the same household as docs/ux/mockups/budget-month.html.
+  var ACCOUNTS = [
+    { id: 'cc', name: 'Conto corrente', type: 'checking', onBudget: true, bal: 341258 },
+    { id: 'risp', name: 'Conto risparmio', type: 'savings', onBudget: true, bal: 800000 },
+    { id: 'cont', name: 'Contanti', type: 'cash', onBudget: true, bal: 8540 },
+    { id: 'broker', name: 'Broker ETF', type: 'savings', onBudget: false, bal: 2150000 },
+    { id: 'visa', name: 'Visa', type: 'credit_card', onBudget: true, card: true, bal: -64230 },
+    { id: 'mc', name: 'Mastercard', type: 'credit_card', onBudget: true, card: true, bal: -120000 }
+  ];
+  var REGISTERS = {
+    cc: [['24 set', 'Supermercato', -8740], ['19 set', 'Mercato rionale', -2350], ['17 set', 'Supermercato', -11205], ['16 set', 'Fornitore energia', -9640]],
+    risp: [['1 set', 'Trasferimento da Conto corrente', 50000]],
+    cont: [['10 set', 'Panificio', -1480]],
+    broker: [['5 set', 'Versamento dal conto corrente', 50000]],
+    visa: [['21 set', 'Trattoria', -6400], ['14 set', 'Pizzeria', -4250], ['12 set', 'Distributore', -8830]],
+    mc: [['25 set', 'Saldo iniziale', -120000]]
+  };
+
+  var state = { panelOpen: false, view: 'budget' };
+
+  function netWorth() {
+    return ACCOUNTS.filter(function (a) { return !a.card; }).reduce(function (s, a) { return s + a.bal; }, 0)
+      + ACCOUNTS.filter(function (a) { return a.card; }).reduce(function (s, a) { return s + a.bal; }, 0);
+  }
+
+  function accountRow(a) {
+    var current = state.view === a.id;
+    return '<button type="button" class="acc-row" data-acc="' + a.id + '"' + (current ? ' aria-current="true"' : '') + '>' +
+      '<span class="cn"><b>' + a.name + '</b>' + (a.onBudget === false ? '<small>fuori budget</small>' : '') + '</span>' +
+      '<span class="n' + (a.bal < 0 ? ' neg' : '') + '">' + f(a.bal) + '</span></button>';
+  }
+
+  function renderPanel() {
+    document.getElementById('accl-net').textContent = f(netWorth());
+    document.getElementById('accl-onbudget').innerHTML = ACCOUNTS.filter(function (a) { return a.onBudget && !a.card; }).map(accountRow).join('');
+    document.getElementById('accl-cards').innerHTML = ACCOUNTS.filter(function (a) { return a.card; }).map(accountRow).join('');
+    document.getElementById('accl-offbudget').innerHTML = ACCOUNTS.filter(function (a) { return !a.onBudget; }).map(accountRow).join('');
+  }
+
+  function renderBudgetPlaceholder() {
+    return '' +
+      '<div class="over">' +
+        '<div class="time"><h5>Settembre, giorno per giorno</h5><p class="t-note">(la timeline vera resta invariata — qui solo per contesto)</p></div>' +
+        '<div class="todo"><h5>Da fare</h5><p class="t-note">Niente da sistemare questo mese.</p></div>' +
+      '</div>' +
+      '<div class="bgr"><span class="gname">Casa e bollette</span><span class="gsum n">' + f(21850) + '</span></div>' +
+      '<div class="brow"><span class="cn"><b>Rata del mutuo</b><span class="spent">850,00 € spesi di 850,00 €</span></span><span class="bar"><span class="tr"><span class="sp" style="width:100%"></span></span></span><span class="r"><span class="amt-cell zero n">0,00 €</span></span></div>' +
+      '<div class="brow"><span class="cn"><b>Luce e gas</b><span class="spent">96,40 € spesi di 120,00 €</span></span><span class="bar"><span class="tr"><span class="sp" style="width:80%"></span></span></span><span class="r"><span class="amt-cell n">35,60 €</span></span></div>';
+  }
+
+  function renderRegisterPlaceholder(a) {
+    var rows = (REGISTERS[a.id] || []).map(function (r) {
+      return '<div class="reg-row"><small>' + r[0] + '</small><span>' + r[1] + '</span><span class="n' + (r[2] < 0 ? ' neg' : '') + '" style="color:' + (r[2] < 0 ? 'var(--red-text)' : 'inherit') + '">' + f(r[2]) + '</span></div>';
+    }).join('');
+    return '' +
+      '<div class="acc-head"><div><h3>' + a.name + '</h3><p class="sub">' + (a.onBudget ? 'Conto in budget' : 'Conto fuori budget') + (a.card ? ' · carta di credito' : '') + '</p></div>' +
+        '<div class="acc-bal"><small>Saldo</small><span class="big n' + (a.bal < 0 ? ' neg' : '') + '">' + f(a.bal) + '</span>' +
+        '<div class="acc-facts"><span>Verificato <b class="n">' + f(a.bal) + '</b></span></div></div></div>' +
+      '<div class="reg-list">' + (rows || '<p style="color:var(--muted);padding:14px 0">Nessuna transazione d’esempio.</p>') + '</div>';
+  }
+
+  function renderMain() {
+    var el = document.getElementById('main');
+    if (state.view === 'budget') {
+      document.getElementById('nav-budget').setAttribute('aria-current', 'page');
+      document.getElementById('nav-accounts').removeAttribute('aria-current');
+      el.innerHTML = renderBudgetPlaceholder();
+    } else {
+      document.getElementById('nav-budget').removeAttribute('aria-current');
+      var a = ACCOUNTS.filter(function (x) { return x.id === state.view; })[0];
+      el.innerHTML = renderRegisterPlaceholder(a);
+    }
+  }
+
+  function applyPanelState() {
+    var desk = document.getElementById('desk');
+    var accl = document.getElementById('accl');
+    var toggle = document.getElementById('panel-toggle');
+    accl.hidden = !state.panelOpen;
+    toggle.setAttribute('aria-pressed', String(state.panelOpen));
+    toggle.setAttribute('aria-expanded', String(state.panelOpen));
+    toggle.setAttribute('aria-label', state.panelOpen ? 'Nascondi i conti' : 'Mostra i conti');
+    desk.style.gridTemplateColumns = state.panelOpen ? '300px minmax(0,1fr)' : 'minmax(0,1fr)';
+  }
+
+  document.getElementById('panel-toggle').addEventListener('click', function () {
+    state.panelOpen = !state.panelOpen;
+    applyPanelState();
+    if (state.panelOpen) renderPanel();
+  });
+  document.getElementById('accl-close').addEventListener('click', function () {
+    state.panelOpen = false;
+    applyPanelState();
+  });
+  document.getElementById('accl').addEventListener('click', function (event) {
+    var row = event.target.closest('[data-acc]');
+    if (!row) return;
+    state.view = row.getAttribute('data-acc');
+    renderMain();
+    renderPanel();
+  });
+  document.getElementById('nav-budget').addEventListener('click', function () {
+    state.view = 'budget';
+    renderMain();
+    if (state.panelOpen) renderPanel();
+  });
+  document.getElementById('nav-accounts').addEventListener('click', function () {
+    alert('Nel mockup reale porterebbe alla schermata Conti dedicata, invariata da #323 — questo pannello è un accesso rapido in più, non la sostituisce.');
+  });
+  document.getElementById('accl-full').addEventListener('click', function (event) {
+    event.preventDefault();
+    document.getElementById('nav-accounts').click();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && state.panelOpen) {
+      state.panelOpen = false;
+      applyPanelState();
+    }
+  });
+
+  applyPanelState();
+  renderMain();
+})();
+</script>
+</body>
+</html>
