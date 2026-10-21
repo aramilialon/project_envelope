@@ -18,6 +18,13 @@
 	reverse_proxy 127.0.0.1:5173
 }
 
+# Plain http://, out of habit or a typed bookmark, redirects straight to https:// instead of
+# hitting a closed port (#486) — only for the web app's own address, the one a person actually
+# types; the API and Keycloak above are never typed by hand.
+10.0.0.11:80, localhost:80, 127.0.0.1:80 {
+	redir https://{host}{uri} permanent
+}
+
 # apps/api, never typed by hand: the web app's own fetch() calls are the only client.
 10.0.0.11:3443, localhost:3443, 127.0.0.1:3443 {
 	tls /etc/caddy/certs/lan.pem /etc/caddy/certs/lan-key.pem
