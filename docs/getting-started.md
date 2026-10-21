@@ -232,6 +232,8 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
   pnpm --filter @envelope/api test
 ```
 
+Even against `envelope_test`, this resets `envelope_app`'s and `envelope_queue`'s own passwords on the whole Postgres instance to a fixed test-only value: roles are cluster-wide, not per-database (the test helpers grant themselves a login through the very same role object a live dev server also depends on). If a dev server started from this section stops reaching the database right after running the tests, that is why — `scripts/dev/reset-role-passwords.sh` sets both passwords back to whatever this `.env` already has, no arguments needed.
+
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
 
 ## 10. The web app (`apps/web`)
