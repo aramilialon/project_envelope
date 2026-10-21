@@ -5,13 +5,11 @@
 # Stop:    docker compose down         (data stays in the volume)
 # Reset:   docker compose down -v      (WARNING: also deletes the data)
 #
-# Passwords come from the .env file (a copy of .env.example). Postgres stays bound to
-# 127.0.0.1 only — nothing but the API, running on this same host, ever needs to reach it
-# directly. Keycloak is bound to every interface instead, reachable from other devices on
-# the same network: its own sign-in pages are what a browser elsewhere needs to reach, same
-# as this machine's own. Its admin console stays reachable too (Keycloak has no clean way to
-# split the two on one port) — a known, accepted tradeoff for a private, trusted network,
-# until #176-#182 (milestone 0.7.0) move every administrative task into the app itself.
+# Passwords come from the .env file (a copy of .env.example). Postgres and Keycloak both
+# stay bound to 127.0.0.1 only: infra/Caddyfile (#483) is the one process bound to every
+# interface, terminating real TLS before a device elsewhere on the network reaches either
+# Keycloak's sign-in pages or its own admin console (docs/getting-started.md, "Letting
+# another device on your own network sign in too").
 
 name: envelope
 
@@ -41,6 +39,10 @@ services:
     # start-dev: development mode (HTTP, local cache). Production uses "start" with HTTPS.
     command: start-dev
     environment:
+      # Trust X-Forwarded-Proto/-Host from infra/Caddyfile (#483): otherwise Keycloak embeds
+      # its own, plain-HTTP view of the connection into every issuer/redirect URL it builds,
+      # not the real https:// one a browser outside this machine actually used.
+      KC_PROXY_HEADERS: xforwarded
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: envelope
@@ -48,7 +50,7 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD in the .env file}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
