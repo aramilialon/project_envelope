@@ -147,7 +147,7 @@ describe("computeBudgetMonth", () => {
     assert.equal(september.assignedInFuture, 90000);
   });
 
-  it("income dated in future months cannot be assigned yet", () => {
+  it("unassigned reflects income that has arrived by the latest month with any data, not just by the month being viewed (#488)", () => {
     const input: BudgetInput = {
       ...EMPTY,
       income: [
@@ -156,8 +156,36 @@ describe("computeBudgetMonth", () => {
       ],
     };
 
-    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 100000);
+    // September is not a frozen snapshot of itself: October's income has genuinely already
+    // arrived by the time anyone looks, whichever month's screen happens to be open.
+    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 300000);
     assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 300000);
+  });
+
+  it("income dated later than any real data cannot be assigned yet", () => {
+    const input: BudgetInput = {
+      ...EMPTY,
+      income: [{ month: "2026-09", amount: 100000 }],
+    };
+
+    // Nothing in the data reaches November, so querying it sees no more than September already had.
+    assert.equal(computeBudgetMonth(input, "2026-11").unassigned, 100000);
+  });
+
+  it("a future month's own income funding its own assignment does not create a false deficit in an earlier month (#488)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["mortgage"],
+      income: [
+        { month: "2026-09", amount: 10000 }, // a small September income, unrelated
+        { month: "2026-10", amount: 1680200 }, // October's own loan disbursement
+      ],
+      assignments: [{ categoryId: "mortgage", month: "2026-10", amount: 1680200 }],
+      activity: [],
+    };
+
+    // Browsing back to September must not be blamed for an assignment only October's own,
+    // later-arriving income actually funded.
+    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 10000);
   });
 
   it("assigning more than is available takes unassigned money below zero", () => {
@@ -274,7 +302,8 @@ function randomGenerator(seed: number): () => number {
 describe("budget invariant", () => {
   // Whatever happens, the books must balance:
   //   unassigned money + available of the month + assigned in future
-  //   = income so far + activity so far (that is, the account balance)
+  //   = income so far (as of the latest month with any data, #488) + activity so far (the
+  //   requested month's own, that is, the account balance up to it)
   it("balances on 500 random budgets", () => {
     const random = randomGenerator(42);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
@@ -302,7 +331,11 @@ describe("budget invariant", () => {
       const result = computeBudgetMonth(input, month);
 
       const availableTotal = result.categories.reduce((sum, c) => sum + c.available, 0);
-      const incomeSoFar = input.income.filter((i) => i.month <= month).reduce((sum, i) => sum + i.amount, 0);
+      const asOf = [month, ...input.income.map((i) => i.month), ...input.assignments.map((a) => a.month), ...input.activity.map((a) => a.month)].reduce(
+        (latest, m) => (m > latest ? m : latest),
+        month,
+      );
+      const incomeSoFar = input.income.filter((i) => i.month <= asOf).reduce((sum, i) => sum + i.amount, 0);
       const activitySoFar = input.activity.filter((a) => a.month <= month).reduce((sum, a) => sum + a.amount, 0);
 
       assert.equal(
