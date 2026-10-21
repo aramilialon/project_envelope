@@ -39,6 +39,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`/`apps/web`: a transaction can now be deleted outright — both legs together for a transfer — the same way its own edit form already lets you change it; a reconciled transaction refuses deletion the same way it already refuses an edit (`#403`).
 - `apps/api`/`apps/web`: a signed-in user can now create their own first workspace (zero-membership state, and "+ New workspace" in the switcher), and an owner can delete one outright (type its own name to confirm) — until now the only way either happened was a developer's own raw SQL (`#394`).
 - `infra`: `infra/Caddyfile` fronts the web app, the API and Keycloak with real TLS (a local CA via mkcert), so another device on the household's own network can actually sign in — plain HTTP over a LAN IP cannot run the Web Crypto API the sign-in flow needs. Keycloak and the API both revert to listening on `127.0.0.1` only, reachable through Caddy alone (`#483`).
+- `infra`: plain `http://` on the web app's own address now redirects straight to `https://`, instead of hitting a closed port (`#486`).
 
 ### Fixed
 

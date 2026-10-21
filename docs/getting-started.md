@@ -180,7 +180,7 @@ $ sudo cp ~/envelope/infra/Caddyfile /etc/caddy/Caddyfile   # edit the LAN addre
 $ sudo systemctl reload caddy
 ```
 
-Caddy is now the only process reachable from your network: the web app at `https://<that address>/`, the API at `https://<that address>:3443`, Keycloak (sign-in pages and its own admin console alike) at `https://<that address>:8443`. `infra/docker-compose.yml`'s own Keycloak `ports:` entry and `apps/api`'s own `HOST` stay on `127.0.0.1` either way — nothing but Caddy is ever exposed directly; `docker compose up -d keycloak` once, after pulling this change, applies the `KC_PROXY_HEADERS` setting that makes Keycloak trust Caddy's own `X-Forwarded-Proto`/`-Host` and so build `https://` URLs instead of `http://` for the connection it actually sees. Re-run `bootstrap.sh` with this machine's own LAN address:
+Caddy is now the only process reachable from your network: the web app at `https://<that address>/` (plain `http://` on it redirects straight there), the API at `https://<that address>:3443`, Keycloak (sign-in pages and its own admin console alike) at `https://<that address>:8443`. `infra/docker-compose.yml`'s own Keycloak `ports:` entry and `apps/api`'s own `HOST` stay on `127.0.0.1` either way — nothing but Caddy is ever exposed directly; `docker compose up -d keycloak` once, after pulling this change, applies the `KC_PROXY_HEADERS` setting that makes Keycloak trust Caddy's own `X-Forwarded-Proto`/`-Host` and so build `https://` URLs instead of `http://` for the connection it actually sees. Re-run `bootstrap.sh` with this machine's own LAN address:
 
 ```bash
 LAN_ORIGIN=<this machine's own LAN address, e.g. 10.0.0.11> \
