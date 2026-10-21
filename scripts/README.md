@@ -1,9 +1,10 @@
 # scripts
 
 Development scripts. Git hooks and GitHub setup are plain bash (`git-hooks/`, `github/`); the
-Keycloak realm bootstrap is bash too (`keycloak/bootstrap.sh`, see the root
-[`docs/getting-started.md`](../docs/getting-started.md)). `@envelope/scripts` (this package) is
-the one part with real dependencies — currently the demo data seed.
+Keycloak realm bootstrap (`keycloak/bootstrap.sh`) and the Postgres role password reset
+(`dev/reset-role-passwords.sh`, see the root [`docs/getting-started.md`](../docs/getting-started.md),
+section 9) are bash too. `@envelope/scripts` (this package) is the one part with real
+dependencies — currently the demo data seed.
 
 ## Demo data seed
 
