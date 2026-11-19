@@ -6,7 +6,7 @@ import { createTestUser } from "./keycloak-test-user.ts";
 /**
  * Drives a real headless Chromium through the budget month screen (#53): the real
  * `GET /workspaces/:workspaceId/budget-months/:month` endpoint, round-tripped for a brand new,
- * empty workspace (ready to assign at zero, no categories yet) and across month navigation.
+ * empty workspace (nothing unassigned yet, no categories yet) and across month navigation.
  * Needs `apps/api` and Keycloak already running; see `e2e/README.md`.
  */
 test.describe("budget month (#53)", () => {
@@ -20,7 +20,7 @@ test.describe("budget month (#53)", () => {
     await page.waitForURL("/");
   }
 
-  test("shows ready to assign at zero for a brand new workspace, and navigates between months", async ({ page }) => {
+  test("shows unassigned money at zero for a brand new workspace, and navigates between months", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
     try {
@@ -88,7 +88,7 @@ test.describe("budget month (#53)", () => {
 
       await expect(page.getByText("€10.00 to spend")).toBeVisible();
 
-      await page.getByRole("button", { name: /Groceries/ }).click();
+      await page.getByRole("button", { name: /^Groceries/ }).click();
       await page.getByRole("button", { name: "Move money" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await expect(page.getByLabel("To")).toHaveValue(/.+/);
@@ -135,8 +135,11 @@ test.describe("budget month (#53)", () => {
       await page.getByText("Groceries").waitFor();
 
       // Tapping a category opens its own detail full screen — the list itself is gone, replaced
-      // by the detail, not covered by an overlay — with a back link to return to it.
-      await page.getByRole("button", { name: /Groceries/ }).click();
+      // by the detail, not covered by an overlay — with a back link to return to it. The row's
+      // own name *starts* with the category's (#382): a bare /Groceries/ also matches the
+      // categories screen's own "Move Groceries up/down" buttons, still on screen for a moment
+      // right after the tab bar's navigation.
+      await page.getByRole("button", { name: /^Groceries/ }).click();
       await expect(page.getByLabel("Assigned this month")).toBeVisible();
       const back = page.getByRole("button", { name: /Budget/ });
       await expect(back).toBeVisible();
