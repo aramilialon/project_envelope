@@ -9,9 +9,15 @@ export type AccountBalances = Readonly<Record<string, number>>;
 /**
  * Each open account's own balance (#333): the same sum the register computes for its own total,
  * one fetch per account run in parallel. There is no bulk endpoint, and no reason for one yet —
- * a household's own account count is small.
+ * a household's own account count is small. A change of `refreshKey` reads them all again (the
+ * accounts panel's own case, `#412`: it stays open across screens and recorded transactions).
  */
-export function useAccountBalances(workspaceId: string, accessToken: string | undefined, accounts: readonly Account[]): AccountBalances {
+export function useAccountBalances(
+  workspaceId: string,
+  accessToken: string | undefined,
+  accounts: readonly Account[],
+  refreshKey = "",
+): AccountBalances {
   const [balances, setBalances] = useState<AccountBalances>({});
   const accountIds = accounts.map((a) => a.id).join(",");
 
@@ -39,7 +45,7 @@ export function useAccountBalances(workspaceId: string, accessToken: string | un
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, accessToken, accountIds]);
+  }, [workspaceId, accessToken, accountIds, refreshKey]);
 
   return balances;
 }

@@ -92,7 +92,9 @@ created on first run and left alone afterward; sign in as it with the password i
 `screenshot-demo.ts` regenerates the reference screenshots from the already-seeded "Demo"
 workspace: light and dark, at 1440px, 390px and 360px, for the budget month (this month and the
 previous one, `#326` — the previous month's own full spread of transactions, above, is what makes
-its timeline worth looking at), the accounts list and the account register, named after
+its timeline worth looking at), the accounts list and the account register (plus the accounts
+panel, `#412`, open over that register — light and dark at 1440px only, since it has no phone
+layout), named after
 `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a size
 suffix, since those were only ever one size). Needs `apps/web` running too (not just `apps/api`),
 since unlike the seed script's own plain-`fetch` handshake, this drives the real sign-in form

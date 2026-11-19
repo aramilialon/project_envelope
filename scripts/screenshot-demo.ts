@@ -5,7 +5,8 @@ import { assertSafeToRun, requireEnv } from "./lib/env.ts";
 /**
  * Regenerates the reference screenshots from the already-seeded "Demo" workspace (`seed-demo.ts`
  * must have run first): the budget month (this month and the previous one, #326), the accounts
- * list and the account register, light and dark, at 1440px/390px/360px, named after
+ * list and the account register, light and dark, at 1440px/390px/360px (plus the accounts panel,
+ * #412, open over that register: desktop only, so 1440px alone), named after
  * `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a
  * size suffix, since those were only ever one size). Saved **outside** the repository, for manual
  * review — `#323`'s own real-app screenshots followed the same rule; see `scripts/README.md` for
@@ -125,7 +126,9 @@ async function main(): Promise<void> {
     await shootSixWays(page, outDir, "budget-month-previous", overflowChecks, contrastChecks);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("link", { name: "Accounts" }).click();
+    // The band's own navigation, not the phone tab bar's: just back from 360px, that one can still
+    // be mounted a tick behind the resize, and its "Accounts" link would match too.
+    await page.getByRole("navigation", { name: "Main", exact: true }).getByRole("link", { name: "Accounts" }).click();
     await page.getByRole("heading", { name: "Accounts" }).waitFor();
     await shootSixWays(page, outDir, "accounts", overflowChecks, contrastChecks);
 
@@ -133,6 +136,18 @@ async function main(): Promise<void> {
     await page.waitForURL(/\/accounts\/.+/);
     await page.getByRole("heading", { name: "Checking" }).waitFor();
     await shootSixWays(page, outDir, "account-register", overflowChecks, contrastChecks, ".ph-tx .what b");
+
+    // The accounts panel (#412), open over the register it just switched to: desktop only, like
+    // its own mockup (it has no toggle below 600px), so light and dark at 1440px and nothing else.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Show accounts" }).click();
+    await page.getByRole("heading", { name: "Net worth" }).waitFor();
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(300);
+    for (const scheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await page.screenshot({ path: `${outDir}/accounts-panel-${scheme}-1440.png` });
+    }
 
     console.log("Screenshots written to", outDir);
     console.log("\nAnti-overflow check (document.documentElement.scrollWidth <= clientWidth):");

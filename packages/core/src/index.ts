@@ -65,3 +65,5 @@ export { amountNeededToCover, computeTodos, reservationShortfall } from "./prese
 export { computeProjectedBalance } from "./presentation/projectedBalance.ts";
 export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetProblemKind } from "./presentation/budgetProblems.ts";
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
+export type { AccountsPanelGroups, PanelAccount } from "./presentation/accountsPanel.ts";
+export { groupAccountsForPanel } from "./presentation/accountsPanel.ts";

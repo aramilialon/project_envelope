@@ -1,0 +1,137 @@
+/* The accounts panel (#412, docs/ux/mockups/accounts-panel.html's own `.accl`): a left column
+   beside the main content, never over it, and only while open — nothing here reserves space
+   when it is closed. */
+.accl {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 300px;
+  width: 300px;
+  border-right: 1px solid var(--rule);
+  background: var(--paper-2);
+  overflow-y: auto;
+}
+
+.accl-head {
+  position: relative;
+  padding: 20px 20px 14px;
+}
+
+.accl-head .where {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.accl-head h2 {
+  margin: 2px 0 0;
+  font-family: var(--display);
+  font-stretch: 92%;
+  letter-spacing: -0.3px;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.accl-head .big {
+  display: block;
+  min-height: 28px;
+  margin-top: 2px;
+  font-family: var(--display);
+  font-stretch: 88%;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.accl-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 13px;
+}
+
+.accl-note {
+  margin: 0;
+  padding: 4px 20px 14px;
+  color: var(--muted);
+}
+
+.accl-sec {
+  padding: 4px 20px 14px;
+}
+
+.accl-sec h3 {
+  margin: 0 0 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.acc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.acc-row:last-child {
+  border-bottom: 0;
+}
+
+.acc-row:hover b {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.acc-row[aria-current="true"] {
+  width: calc(100% + 20px);
+  margin: 0 -10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--pen-soft);
+}
+
+.acc-row .cn {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.acc-row b {
+  font-weight: 600;
+}
+
+.acc-row small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.acc-row .n {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.acc-row .n.neg {
+  color: var(--red-text);
+}
+
+.accl-foot {
+  margin-top: auto;
+  padding: 14px 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.accl-foot a {
+  text-decoration: none;
+}

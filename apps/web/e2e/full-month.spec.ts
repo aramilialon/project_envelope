@@ -220,7 +220,7 @@ test.describe("a full budget month (#63)", () => {
       await page.getByRole("button", { name: "+ New scheduled transaction" }).click();
       await page.getByLabel("Payee").fill("Gym membership");
       await page.getByLabel("Category", { exact: true }).selectOption({ label: "Everyday · Groceries" });
-      await page.getByLabel("Account").selectOption({ label: "Checking" });
+      await page.getByLabel("Account", { exact: true }).selectOption({ label: "Checking" });
       await page.getByLabel("Amount").fill("15.00");
       await page.getByLabel("Next date").fill(yesterday);
       await page.getByRole("button", { name: "Save" }).click();
