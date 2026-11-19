@@ -1,0 +1,313 @@
+<!doctype html>
+<!--
+  Interactive mockup for #397, a proposal: adding and renaming categories and groups straight from
+  the budget month, without a detour to Workspace settings mid-budgeting. Workspace settings →
+  Categories stays the full management view (reorder, archive); the budget month only gets the two
+  things a dogfooding pass (#65) kept reaching for while assigning money: "add one here" and "fix
+  its name". Everything else on the budget month is unchanged and only sketched here for context
+  (docs/ux/mockups/budget-month.html is the reference for it).
+  Open it in a browser; no build step, no dependencies except the Bricolage Grotesque and Figtree
+  fonts from Google Fonts (the app itself self-hosts). UI copy is the Italian translation; English
+  stays the source language of the app.
+-->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>envelope - categories on the budget month mockup (#397)</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Figtree:wght@400..700&display=swap">
+<style>
+html,body{margin:0}
+:root{
+  --desk:#E4ECF5; --paper:#FFFFFF; --paper-2:#F2F6FB;
+  --ink:#13263A; --ink-2:#3E5267; --muted:#627589;
+  --rule:#D2DDE9; --rule-soft:#E8EEF5; --rule-strong:#13263A;
+  --pen:#1E5A92; --pen-ink:#FFFFFF; --pen-soft:#DCE8F5;
+  --band:#173B60; --band-ink:#FFFFFF; --band-2:#24507D; --band-muted:#B4C8DD;
+  --bar:#79AADB; --spent:#CBD6E1;
+  --red:#C2412D; --red-ink:#FFFFFF; --red-text:#AE3826;
+  --font:'Figtree','Helvetica Neue',Arial,sans-serif;
+  --display:'Bricolage Grotesque','Figtree','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --desk:#121417; --paper:#1A1D21; --paper-2:#20242A;
+    --ink:#E8ECF1; --ink-2:#BDC4CD; --muted:#8B939E;
+    --rule:#2D3137; --rule-soft:#23272C; --rule-strong:#BDC4CD;
+    --pen:#8DBCEB; --pen-ink:#0A1A2B; --pen-soft:#1F3048;
+    --band:#1D4570; --band-ink:#F2F6FA; --band-2:#2B5888; --band-muted:#B0C6DD;
+    --bar:#4277AC; --spent:#383D45;
+    --red:#D9553F; --red-ink:#FFFFFF; --red-text:#F29C8C;
+  }
+}
+*{box-sizing:border-box}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px}
+.n{font-variant-numeric:tabular-nums lining-nums}
+[hidden]{display:none!important}
+body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;padding-inline:16px;padding-block:20px 56px}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.strip p{margin:0;color:var(--muted);max-width:80ch}
+.strip b{color:var(--ink);font-weight:600}
+.switches{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;color:var(--muted);font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:10px;overflow:hidden;background:var(--paper)}
+.seg button{min-height:32px;padding:0 12px;border:0;background:transparent;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--pen-soft);color:var(--ink);font-weight:600}
+
+/* Shell: the band and the main content (budget-month.html is the reference for both) */
+.frame{margin:0 auto;width:100%;border-radius:16px;overflow:hidden;background:var(--paper)}
+.frame.phone{max-width:390px}
+.band{display:flex;align-items:center;gap:14px;padding:14px 30px;background:var(--band);color:var(--band-ink)}
+.phone .band{padding:14px 16px}
+.brand{font-family:var(--display);font-size:21px;font-weight:700;letter-spacing:-.3px}
+.band .ws{margin-left:auto;color:var(--band-ink)}
+.main{padding:22px 30px 30px}
+.phone .main{padding:18px 16px 24px}
+.btn{min-height:38px;padding:0 16px;border:1px solid var(--rule);border-radius:10px;background:var(--paper);font-weight:500;white-space:nowrap}
+.btn.primary{border-color:var(--pen);background:var(--pen);color:var(--pen-ink);font-weight:600}
+.plain{padding:0;border:0;background:transparent;color:var(--pen);font-weight:600;text-align:left}
+.note{margin:0 0 10px;color:var(--muted);font-size:13px}
+
+/* Groups and bars, as on the budget month */
+.bgr{position:relative;display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px;padding:6px 12px 6px 6px;border-radius:10px;background:var(--paper-2)}
+.bgr .gh{display:flex;align-items:center;gap:2px;min-width:0}
+.bgr .chev{display:inline-flex;align-items:center;justify-content:center;width:30px;min-height:32px;padding:0;border:0;background:transparent}
+.bgr .gname{min-height:32px;padding:0 6px;border:0;border-radius:6px;background:transparent;font-family:var(--display);font-size:16px;font-weight:700;text-align:left}
+.bgr .gsum{font-weight:600;color:var(--ink-2)}
+.brow{display:grid;grid-template-columns:270px minmax(0,1fr) 150px;align-items:center;gap:18px;width:100%;min-height:52px;padding:8px 12px;border:0;border-radius:12px;background:transparent;text-align:left}
+.brow:hover{background:var(--paper-2)}
+.brow[aria-expanded="true"]{background:var(--pen-soft)}
+.phone .brow{grid-template-columns:minmax(0,1fr) auto;gap:6px 12px}
+.phone .brow .bar{grid-column:1 / -1;grid-row:2}
+.cn{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn b{font-weight:600}
+.spent{font-size:12.5px;color:var(--muted)}
+.bar{position:relative;display:block;height:14px}
+.bar .tr{position:absolute;left:0;top:0;bottom:0;width:82%;border-radius:7px;background:var(--bar);overflow:hidden}
+.bar .tr.empty{background:var(--rule-soft)}
+.bar .sp{position:absolute;left:0;top:0;bottom:0;background:var(--spent)}
+.r{text-align:right}
+.amt-cell{display:inline-flex;align-items:center;justify-content:flex-end;min-width:96px;padding:3px 10px;font-weight:600;border-radius:7px}
+.amt-cell.zero{color:var(--muted);font-weight:500}
+
+/* New in #397: the group's own "⋯" menu — one quiet button per group row, not three icons */
+.gmenu-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.gmenu-btn:hover,.gmenu-btn[aria-expanded="true"]{background:var(--rule-soft);color:var(--ink)}
+.phone .gmenu-btn{width:44px;height:44px}
+.gmenu{position:absolute;top:calc(100% + 4px);left:36px;z-index:5;min-width:230px;padding:6px;border:1px solid var(--rule);border-radius:12px;background:var(--paper);box-shadow:0 8px 24px rgba(19,38,58,.12)}
+.gmenu button{display:block;width:100%;min-height:36px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left}
+.gmenu button:hover,.gmenu button:focus-visible{background:var(--paper-2)}
+.gmenu hr{margin:6px 4px;border:0;border-top:1px solid var(--rule-soft)}
+.gmenu .quiet{color:var(--muted)}
+
+/* New in #397: the inline name field, for a new category, a new group, or a rename */
+.inline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;background:var(--pen-soft)}
+.inline label{font-size:12.5px;color:var(--muted);flex-basis:100%}
+.inline input{flex:1 1 220px;min-height:38px;padding:0 12px;border:1px solid var(--rule);border-radius:10px;background:var(--paper)}
+.inline .err{flex-basis:100%;margin:0;color:var(--red-text);font-size:12.5px}
+.add-group{margin-top:18px}
+
+/* The category's own row detail, reduced to its header — the rest is budget-month.html's */
+.det{margin:0 0 10px;padding:16px 18px;border-radius:14px;background:var(--desk)}
+.det-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.det-h h4{margin:0;font-family:var(--display);font-size:20px;font-weight:700}
+.det .rest{margin:8px 0 0;color:var(--muted);font-size:12.5px}
+.toast{margin-top:14px;padding:10px 14px;border-radius:10px;background:var(--paper-2);color:var(--ink-2);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="strip">
+    <p><b>envelope</b>, proposal for <b>#397</b>: add and rename categories and groups from the budget month itself. Each group row gets one quiet <b>⋯</b> menu (add a category to it, rename it, or go to Workspace settings to reorder or archive); <b>+ Aggiungi un gruppo</b> sits below the last group; a category's own row detail gets <b>Rinomina</b>. Names are typed inline, in place, never in a side sheet. Workspace settings → Categories stays the full management view. Only an owner or an editor sees any of it.</p>
+  </div>
+  <div class="switches">
+    <span>Larghezza</span>
+    <span class="seg"><button type="button" data-w="desk" aria-pressed="true">Desktop</button><button type="button" data-w="phone" aria-pressed="false">Telefono</button></span>
+    <span>Ruolo</span>
+    <span class="seg"><button type="button" data-r="editor" aria-pressed="true">Proprietario o chi può modificare</button><button type="button" data-r="reader" aria-pressed="false">Sola lettura</button></span>
+  </div>
+
+  <div class="frame" id="frame">
+    <header class="band"><span class="brand">envelope</span><span class="ws">Famiglia</span></header>
+    <div class="main" id="main"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  function f(c) { return nf.format(c / 100); }
+  function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  // Sample data — the same household as budget-month.html, trimmed to two groups.
+  var GROUPS = [
+    { id: 'g1', name: 'Casa e bollette', cats: [
+      { id: 'c1', name: 'Rata del mutuo', spent: 85000, given: 85000 },
+      { id: 'c2', name: 'Luce e gas', spent: 9640, given: 12000 }
+    ] },
+    { id: 'g2', name: 'Spese di tutti i giorni', cats: [
+      { id: 'c3', name: 'Spesa', spent: 64215, given: 60000 },
+      { id: 'c4', name: 'Trasporti', spent: 3200, given: 8000 }
+    ] }
+  ];
+
+  // editing: null | { kind: 'cat', group } | { kind: 'group' } | { kind: 'renameGroup', group } | { kind: 'renameCat', cat }
+  var S = { width: 'desk', role: 'editor', menu: null, open: null, editing: null, error: null, toast: null };
+  var nextId = 10;
+
+  function canWrite() { return S.role === 'editor'; }
+
+  function nameTaken(list, name, exceptId) {
+    var n = name.trim().toLowerCase();
+    return list.some(function (x) { return x.id !== exceptId && x.name.trim().toLowerCase() === n; });
+  }
+
+  function field(label, value, submit) {
+    return '<form class="inline" data-form="1">' +
+      '<label for="nm">' + label + '</label>' +
+      '<input id="nm" autocomplete="off" value="' + esc(value) + '">' +
+      '<button type="submit" class="btn primary">' + submit + '</button>' +
+      '<button type="button" class="btn" data-cancel="1">Annulla</button>' +
+      (S.error ? '<p class="err" role="alert">' + S.error + '</p>' : '') +
+      '</form>';
+  }
+
+  function catRow(c) {
+    var avail = c.given - c.spent;
+    var open = S.open === c.id;
+    var html = '<button type="button" class="brow" data-open="' + c.id + '" aria-expanded="' + open + '">' +
+      '<span class="cn"><b>' + esc(c.name) + '</b><span class="spent">' + (c.given === 0 && c.spent === 0 ? 'Niente assegnato' : f(c.spent) + ' spesi di ' + f(c.given)) + '</span></span>' +
+      '<span class="bar"><span class="tr' + (c.given === 0 ? ' empty' : '') + '">' + (c.given ? '<span class="sp" style="width:' + Math.min(100, Math.round(c.spent / c.given * 100)) + '%"></span>' : '') + '</span></span>' +
+      '<span class="r"><span class="amt-cell n' + (avail === 0 ? ' zero' : '') + '">' + f(avail) + '</span></span></button>';
+    if (open) {
+      var renaming = S.editing && S.editing.kind === 'renameCat' && S.editing.cat === c.id;
+      html += '<div class="det">' + (renaming ? field('Nuovo nome della categoria', c.name, 'Salva') :
+        '<div class="det-h"><h4>' + esc(c.name) + '</h4>' + (canWrite() ? '<button type="button" class="plain" data-rename-cat="' + c.id + '">Rinomina</button>' : '') + '</div>') +
+        '<p class="rest">(il resto del dettaglio — assegnato, obiettivo, transazioni — resta quello di budget-month.html)</p></div>';
+    }
+    return html;
+  }
+
+  function groupBlock(g) {
+    var sum = g.cats.reduce(function (s, c) { return s + c.given - c.spent; }, 0);
+    var renaming = S.editing && S.editing.kind === 'renameGroup' && S.editing.group === g.id;
+    var html = renaming ? '<div style="margin-top:18px">' + field('Nuovo nome del gruppo', g.name, 'Salva') + '</div>' :
+      '<div class="bgr"><span class="gh">' +
+        '<button type="button" class="chev" aria-label="Comprimi ' + esc(g.name) + '" aria-expanded="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>' +
+        '<span class="gname">' + esc(g.name) + '</span>' +
+        (canWrite() ? '<button type="button" class="gmenu-btn" data-menu="' + g.id + '" aria-haspopup="menu" aria-expanded="' + (S.menu === g.id) + '" aria-label="Azioni per ' + esc(g.name) + '">⋯</button>' : '') +
+      '</span><span class="gsum n">' + f(sum) + '</span>' +
+      (S.menu === g.id ? '<div class="gmenu" role="menu" aria-label="Azioni per ' + esc(g.name) + '">' +
+        '<button type="button" role="menuitem" data-add-cat="' + g.id + '">Aggiungi una categoria</button>' +
+        '<button type="button" role="menuitem" data-rename-group="' + g.id + '">Rinomina il gruppo</button>' +
+        '<hr><button type="button" role="menuitem" class="quiet" data-settings="1">Riordina o archivia… (Impostazioni del workspace)</button>' +
+      '</div>' : '') + '</div>';
+    html += g.cats.map(catRow).join('');
+    if (S.editing && S.editing.kind === 'cat' && S.editing.group === g.id) {
+      html += field('Nome della nuova categoria in «' + esc(g.name) + '»', '', 'Aggiungi');
+    }
+    return html;
+  }
+
+  function render() {
+    var frame = document.getElementById('frame');
+    frame.className = 'frame' + (S.width === 'phone' ? ' phone' : '');
+    var html = '<p class="note">(timeline, «Da fare», barra degli strumenti: invariati, vedi budget-month.html)</p>';
+    html += GROUPS.map(groupBlock).join('');
+    if (canWrite()) {
+      html += S.editing && S.editing.kind === 'group' ? '<div class="add-group">' + field('Nome del nuovo gruppo', '', 'Aggiungi') + '</div>' :
+        '<div class="add-group"><button type="button" class="plain" data-add-group="1">+ Aggiungi un gruppo</button></div>';
+    }
+    if (S.toast) {
+      html += '<div class="toast" role="status">' + S.toast + '</div>';
+    }
+    document.getElementById('main').innerHTML = html;
+    var input = document.getElementById('nm');
+    if (input) { input.focus(); input.select(); }
+  }
+
+  function startEditing(editing) { S.editing = editing; S.menu = null; S.error = null; S.toast = null; render(); }
+  function stopEditing() { S.editing = null; S.error = null; render(); }
+
+  function submit(value) {
+    var name = value.trim();
+    var e = S.editing;
+    if (!name) { S.error = 'Scrivi un nome.'; render(); return; }
+    if (e.kind === 'cat') {
+      var g = GROUPS.filter(function (x) { return x.id === e.group; })[0];
+      if (nameTaken(g.cats, name)) { S.error = 'C’è già una categoria con questo nome in questo gruppo.'; render(); return; }
+      g.cats.push({ id: 'n' + (nextId++), name: name, spent: 0, given: 0 });
+      // Stays open for the next one: adding two or three in a row is the common case.
+      S.error = null; S.toast = '«' + esc(name) + '» aggiunta a «' + esc(g.name) + '».';
+      render();
+      return;
+    }
+    if (e.kind === 'group') {
+      if (nameTaken(GROUPS, name)) { S.error = 'C’è già un gruppo con questo nome.'; render(); return; }
+      var ng = { id: 'n' + (nextId++), name: name, cats: [] };
+      GROUPS.push(ng);
+      // A new group is empty: go straight on to its first category.
+      S.editing = { kind: 'cat', group: ng.id }; S.error = null; S.toast = 'Gruppo «' + esc(name) + '» aggiunto: ora la sua prima categoria.';
+      render();
+      return;
+    }
+    if (e.kind === 'renameGroup') {
+      if (nameTaken(GROUPS, name, e.group)) { S.error = 'C’è già un gruppo con questo nome.'; render(); return; }
+      GROUPS.forEach(function (x) { if (x.id === e.group) x.name = name; });
+    }
+    if (e.kind === 'renameCat') {
+      GROUPS.forEach(function (x) {
+        if (x.cats.some(function (c) { return c.id === e.cat; })) {
+          if (nameTaken(x.cats, name, e.cat)) { S.error = 'C’è già una categoria con questo nome in questo gruppo.'; }
+          else x.cats.forEach(function (c) { if (c.id === e.cat) c.name = name; });
+        }
+      });
+      if (S.error) { render(); return; }
+    }
+    S.toast = 'Rinominato in «' + esc(name) + '».';
+    stopEditing();
+  }
+
+  document.getElementById('main').addEventListener('click', function (ev) {
+    var t = ev.target.closest('button');
+    if (!t) return;
+    if (t.dataset.menu) { S.menu = S.menu === t.dataset.menu ? null : t.dataset.menu; render(); return; }
+    if (t.dataset.addCat) { startEditing({ kind: 'cat', group: t.dataset.addCat }); return; }
+    if (t.dataset.renameGroup) { startEditing({ kind: 'renameGroup', group: t.dataset.renameGroup }); return; }
+    if (t.dataset.renameCat) { startEditing({ kind: 'renameCat', cat: t.dataset.renameCat }); return; }
+    if (t.dataset.addGroup) { startEditing({ kind: 'group' }); return; }
+    if (t.dataset.cancel) { stopEditing(); return; }
+    if (t.dataset.settings) { alert('Porta a Impostazioni del workspace → Categorie, invariata: lì si riordina e si archivia.'); S.menu = null; render(); return; }
+    if (t.dataset.open) { S.open = S.open === t.dataset.open ? null : t.dataset.open; S.editing = null; S.menu = null; render(); return; }
+  });
+  document.getElementById('main').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    submit(document.getElementById('nm').value);
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    if (S.menu) { S.menu = null; render(); return; }
+    if (S.editing) { stopEditing(); }
+  });
+  document.querySelectorAll('[data-w]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      S.width = b.dataset.w;
+      document.querySelectorAll('[data-w]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      render();
+    });
+  });
+  document.querySelectorAll('[data-r]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      S.role = b.dataset.r; S.menu = null; S.editing = null; S.error = null;
+      document.querySelectorAll('[data-r]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      render();
+    });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
