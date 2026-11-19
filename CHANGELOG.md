@@ -6,6 +6,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-11-19
+
 ### Changed
 
 - `apps/web`: `BudgetScreen.tsx`'s own `shiftMonth` (±1 only) and `MoveMoneyForm.tsx`'s own (any delta) each duplicated the other — kept the general one, now exported from `monthEvents.ts` and used by both (`#456`).
