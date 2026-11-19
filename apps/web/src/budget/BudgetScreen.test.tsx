@@ -407,7 +407,9 @@ describe("BudgetScreen (#53, #324)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Cover Groceries/ }));
 
-    expect(await screen.findByText("Groceries")).toBeInTheDocument();
+    // The row again, and its own detail under it, headed by the same name (#397).
+    expect(await screen.findByRole("button", { name: /^Groceries/ })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Groceries" })).toBeInTheDocument();
     expect(await screen.findByLabelText("Assigned this month")).toBeInTheDocument();
   });
 
@@ -800,6 +802,115 @@ describe("BudgetScreen (#53, #324)", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Close this message" }));
       expect(screen.queryByText("Groceries is negative by €5.00.")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("adding and renaming categories and groups from here (#397)", () => {
+    function mockCategoryWrites() {
+      return {
+        createCategory: vi.spyOn(categoriesApi, "createCategory").mockResolvedValue({ id: "c-new", workspaceId: "ws-1", groupId: "g1", name: "Pharmacy", sortOrder: 2, archived: false }),
+        createCategoryGroup: vi.spyOn(categoriesApi, "createCategoryGroup").mockResolvedValue({ id: "g-new", workspaceId: "ws-1", name: "Health", sortOrder: 3, archived: false }),
+        renameCategory: vi.spyOn(categoriesApi, "renameCategory").mockResolvedValue({ id: "c1", workspaceId: "ws-1", groupId: "g1", name: "Food", sortOrder: 1, archived: false }),
+        renameCategoryGroup: vi.spyOn(categoriesApi, "renameCategoryGroup").mockResolvedValue({ ...HOME, name: "House" }),
+      };
+    }
+
+    it("adds a category to a group from its own menu, the field staying open for the next one", async () => {
+      const writes = mockCategoryWrites();
+      const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+      await screen.findByText("Groceries");
+      const fetchesBefore = getBudgetMonth.mock.calls.length;
+
+      fireEvent.click(screen.getByRole("button", { name: "Actions for Home" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Add a category" }));
+      const input = screen.getByLabelText("Name of the new category in Home");
+      fireEvent.change(input, { target: { value: "Pharmacy" } });
+      fireEvent.submit(input.closest("form")!);
+
+      await waitFor(() => expect(writes.createCategory).toHaveBeenCalledWith("t", "ws-1", "g1", "Pharmacy"));
+      await waitFor(() => expect(getBudgetMonth.mock.calls.length).toBeGreaterThan(fetchesBefore));
+      expect(screen.getByLabelText("Name of the new category in Home")).toHaveValue("");
+    });
+
+    it("renames a group in place of its own row", async () => {
+      const writes = mockCategoryWrites();
+      renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      fireEvent.click(screen.getByRole("button", { name: "Actions for Home" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Rename group" }));
+      const input = screen.getByLabelText("New name for the group");
+      expect(input).toHaveValue("Home");
+      fireEvent.change(input, { target: { value: "House" } });
+      fireEvent.submit(input.closest("form")!);
+
+      await waitFor(() => expect(writes.renameCategoryGroup).toHaveBeenCalledWith("t", "ws-1", "g1", "House"));
+      await waitFor(() => expect(screen.queryByLabelText("New name for the group")).not.toBeInTheDocument());
+    });
+
+    it("adds a group below the last one, then goes straight on to its first category", async () => {
+      const writes = mockCategoryWrites();
+      renderScreen(budgetMonth({ categories: [category({})] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add a group" }));
+      const groupInput = screen.getByLabelText("Name of the new group");
+      fireEvent.change(groupInput, { target: { value: "Health" } });
+      fireEvent.submit(groupInput.closest("form")!);
+
+      await waitFor(() => expect(writes.createCategoryGroup).toHaveBeenCalledWith("t", "ws-1", "Health"));
+      const categoryInput = await screen.findByLabelText("Name of the new category in Health");
+      expect(screen.getByText("Health")).toBeInTheDocument();
+      fireEvent.change(categoryInput, { target: { value: "Pharmacy" } });
+      fireEvent.submit(categoryInput.closest("form")!);
+      await waitFor(() => expect(writes.createCategory).toHaveBeenCalledWith("t", "ws-1", "g-new", "Pharmacy"));
+    });
+
+    it("offers '+ Add a group' even before any category exists", async () => {
+      renderScreen(budgetMonth({ categories: [] }), []);
+
+      expect(await screen.findByRole("button", { name: "+ Add a group" })).toBeInTheDocument();
+    });
+
+    it("renames a category from its own row detail", async () => {
+      const writes = mockCategoryWrites();
+      renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries" })] }), [HOME]);
+      await screen.findByText("Groceries");
+
+      fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+      fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
+      const input = screen.getByLabelText("New name for the category");
+      fireEvent.change(input, { target: { value: "Food" } });
+      fireEvent.submit(input.closest("form")!);
+
+      await waitFor(() => expect(writes.renameCategory).toHaveBeenCalledWith("t", "ws-1", "c1", "Food"));
+      await waitFor(() => expect(screen.queryByLabelText("New name for the category")).not.toBeInTheDocument());
+    });
+
+    it("never offers renaming a card's payment category, nor adding to or renaming its group", async () => {
+      renderScreen(
+        budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", groupId: "g1" })] }),
+        [{ ...HOME, name: "Credit card payments" }],
+      );
+      await screen.findByText("Visa payment");
+
+      fireEvent.click(screen.getByRole("button", { name: "Actions for Credit card payments" }));
+      expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Reorder or archive… (Workspace settings)"]);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Visa payment/ }));
+      await screen.findByRole("region", { name: /Visa payment/ });
+      expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
+    });
+
+    it("shows a read_only member none of it", async () => {
+      renderScreen(budgetMonth({ categories: [category({})] }), [HOME], [], new Map(), undefined, [], "read_only");
+      await screen.findByText("Groceries");
+
+      expect(screen.queryByRole("button", { name: "Actions for Home" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "+ Add a group" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+      await screen.findByLabelText("Assigned this month");
+      expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
     });
   });
 });

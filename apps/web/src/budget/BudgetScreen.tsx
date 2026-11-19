@@ -14,8 +14,11 @@ import {
 } from "@envelope/core";
 import { useContext, useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
-import { useParams } from "react-router-dom";
+import { useAuth } from "react-oidc-context";
+import { useNavigate, useParams } from "react-router-dom";
 
+import { createCategory, createCategoryGroup, renameCategory, renameCategoryGroup } from "../categories/api.ts";
+import CategoryNameField from "../categories/CategoryNameField.tsx";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
 import { useBandSecondRow } from "../layout/useBandSecondRow.tsx";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
@@ -28,6 +31,7 @@ import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent, ScheduledTransaction } from "./api.ts";
+import GroupMenu from "./GroupMenu.tsx";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import { daysInMonth, monthAbbrev, monthLabel, shiftMonth, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
@@ -42,6 +46,13 @@ import { useScheduledTransactions } from "./useScheduledTransactions.ts";
 import "./BudgetScreen.css";
 
 type Panel = "quickAssign" | "targets" | "scheduled" | null;
+
+/**
+ * Which inline name field is open on the budget month (#397): a new category at the end of a
+ * group, a group's own rename (in place of its row), or a new group below the last one. Only one
+ * at a time; a category's own rename lives in its row detail instead (`RowDetail`'s own field).
+ */
+type NameEditing = { readonly kind: "addCategory"; readonly groupId: string } | { readonly kind: "renameGroup"; readonly groupId: string } | { readonly kind: "addGroup" } | null;
 type Status = "credit" | "cash" | "short" | "pos" | "zero";
 
 function barFor(category: BudgetGroupCategory): BarGeometry {
@@ -158,6 +169,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
+  const [nameEditing, setNameEditing] = useState<NameEditing>(null);
+  // A group just added from here (#397) has no category yet, and the budget month only lists
+  // groups that do: kept on screen, with its first category's field open, until it has one.
+  const [pendingGroup, setPendingGroup] = useState<{ readonly id: string; readonly name: string } | null>(null);
+  const auth = useAuth();
+  const navigate = useNavigate();
   const state = useBudgetMonth(workspaceId, month);
   const eventsState = useBudgetMonthEvents(workspaceId, month);
   const targetsState = useTargets(workspaceId, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
@@ -326,6 +343,63 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
 
   /** Same content either way (design.md, "Budget month on the phone") — `fullScreen` only swaps the chrome around it (`DetailFrame.tsx`). */
+  // Adding and renaming categories and groups from here (#397, `budget-categories.html`); reordering
+  // and archiving stay in Workspace settings → Categories (`manageCategories`). Each save refetches
+  // the budget month, which lists the categories and groups themselves too.
+  function requireAccessToken(): string {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken) {
+      throw new Error("not signed in");
+    }
+    return accessToken;
+  }
+
+  async function addCategory(groupId: string, name: string) {
+    await createCategory(requireAccessToken(), workspaceId, groupId, name);
+    refetchAndCheckProblems();
+  }
+
+  async function addGroup(name: string) {
+    const group = await createCategoryGroup(requireAccessToken(), workspaceId, name);
+    // Straight on to its first category: an empty group has nothing to show on the budget month.
+    setPendingGroup({ id: group.id, name: group.name });
+    setNameEditing({ kind: "addCategory", groupId: group.id });
+  }
+
+  async function renameGroup(groupId: string, name: string) {
+    await renameCategoryGroup(requireAccessToken(), workspaceId, groupId, name);
+    setNameEditing(null);
+    refetchAndCheckProblems();
+  }
+
+  async function renameOneCategory(categoryId: string, name: string) {
+    await renameCategory(requireAccessToken(), workspaceId, categoryId, name);
+    refetchAndCheckProblems();
+  }
+
+  function closeNameEditing() {
+    setNameEditing(null);
+    setPendingGroup(null);
+  }
+
+  function manageCategories() {
+    navigate(`/${workspaceId}/settings/categories`);
+  }
+
+  function addCategoryField(groupId: string, groupName: string) {
+    return (
+      <CategoryNameField
+        key={`add-${groupId}`}
+        kind="category"
+        label={intl.formatMessage({ id: "budget.categories.newCategoryIn", defaultMessage: "Name of the new category in {group}" }, { group: groupName })}
+        submitLabel={intl.formatMessage({ id: "common.action.add", defaultMessage: "Add" })}
+        stayOpen
+        onSubmit={(name) => addCategory(groupId, name)}
+        onCancel={closeNameEditing}
+      />
+    );
+  }
+
   function renderDetail(category: BudgetGroupCategory, fullScreen: boolean) {
     return category.isPaymentCategory ? (
       <PaymentCategoryDetail
@@ -347,6 +421,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         month={month}
         categoryId={category.categoryId}
         categoryName={category.name}
+        onRename={(name) => renameOneCategory(category.categoryId, name)}
         assigned={category.assigned}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
@@ -478,8 +553,21 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               {groups.map((group) => {
                 const isCollapsed = collapsed[group.id] ?? false;
                 const overspentCount = groupOverspentCount(group);
+                const isPaymentGroup = group.categories.some((c) => c.isPaymentCategory);
                 return (
                   <div key={group.id}>
+                    {nameEditing?.kind === "renameGroup" && nameEditing.groupId === group.id ? (
+                      <div className="bgr-edit">
+                        <CategoryNameField
+                          kind="group"
+                          label={intl.formatMessage({ id: "budget.categories.renameGroup", defaultMessage: "New name for the group" })}
+                          submitLabel={intl.formatMessage({ id: "common.action.save", defaultMessage: "Save" })}
+                          initialValue={group.name}
+                          onSubmit={(name) => renameGroup(group.id, name)}
+                          onCancel={closeNameEditing}
+                        />
+                      </div>
+                    ) : (
                     <div className="bgr">
                       <button
                         type="button"
@@ -500,8 +588,25 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                         <span className="gname">{group.name}</span>
                         {overspentCount > 0 && <span className="count over n">{overspentCount}</span>}
                       </button>
+                      {canWrite && (
+                        <GroupMenu
+                          groupName={group.name}
+                          isPaymentGroup={isPaymentGroup}
+                          onAddCategory={() => {
+                            setCollapsed((c) => ({ ...c, [group.id]: false }));
+                            setPendingGroup(null);
+                            setNameEditing({ kind: "addCategory", groupId: group.id });
+                          }}
+                          onRename={() => {
+                            setPendingGroup(null);
+                            setNameEditing({ kind: "renameGroup", groupId: group.id });
+                          }}
+                          onManage={manageCategories}
+                        />
+                      )}
                       <span className="n gsum">{money(groupAvailable(group))}</span>
                     </div>
+                    )}
                     {!isCollapsed &&
                       group.categories.map((category) => {
                         const bar = barFor(category);
@@ -556,11 +661,49 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                           </div>
                         );
                       })}
+                    {!isCollapsed && nameEditing?.kind === "addCategory" && nameEditing.groupId === group.id && addCategoryField(group.id, group.name)}
                   </div>
                 );
               })}
             </div>
           )}
+
+          {canWrite && pendingGroup !== null && !groups.some((g) => g.id === pendingGroup.id) && (
+            <div className="bars">
+              <div className="bgr">
+                <span className="gh">
+                  <span className="gname">{pendingGroup.name}</span>
+                </span>
+              </div>
+              {nameEditing?.kind === "addCategory" && nameEditing.groupId === pendingGroup.id && addCategoryField(pendingGroup.id, pendingGroup.name)}
+            </div>
+          )}
+
+          {canWrite &&
+            (nameEditing?.kind === "addGroup" ? (
+              <div className="add-group">
+                <CategoryNameField
+                  kind="group"
+                  label={intl.formatMessage({ id: "budget.categories.newGroup", defaultMessage: "Name of the new group" })}
+                  submitLabel={intl.formatMessage({ id: "common.action.add", defaultMessage: "Add" })}
+                  onSubmit={addGroup}
+                  onCancel={closeNameEditing}
+                />
+              </div>
+            ) : (
+              <div className="add-group">
+                <button
+                  type="button"
+                  className="plain"
+                  onClick={() => {
+                    setPendingGroup(null);
+                    setNameEditing({ kind: "addGroup" });
+                  }}
+                >
+                  {intl.formatMessage({ id: "budget.categories.addGroup", defaultMessage: "+ Add a group" })}
+                </button>
+              </div>
+            ))}
         </>
       )}
 

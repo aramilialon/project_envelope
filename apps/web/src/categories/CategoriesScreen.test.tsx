@@ -183,4 +183,17 @@ describe("CategoriesScreen (#52)", () => {
 
     await waitFor(() => expect(createCategory).toHaveBeenCalledWith("t", "ws-1", "g1", "Transport"));
   });
+
+  it("says so when the API refuses a name already used in the group, keeping the form open (#397)", async () => {
+    vi.spyOn(categoriesApi, "createCategory").mockRejectedValue(new categoriesApi.CategoryConflictError("name_taken"));
+    renderScreen([HOME], []);
+    await screen.findByText("Home");
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add a category" }));
+    fireEvent.change(screen.getByLabelText("Category name"), { target: { value: "Rent" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Another category in this group already has this name.");
+    expect(screen.getByLabelText("Category name")).toHaveValue("Rent");
+  });
 });

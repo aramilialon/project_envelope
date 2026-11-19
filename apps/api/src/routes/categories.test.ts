@@ -105,4 +105,150 @@ describe("categories routes", () => {
       [second.id, first.id],
     );
   });
+
+  describe("renaming, and names already in use (#397)", () => {
+    const auth = () => ({ authorization: `Bearer ${token}` });
+
+    async function createGroup(name: string) {
+      return app.fastify.inject({ method: "POST", url: `/workspaces/${workspaceId}/category-groups`, headers: auth(), payload: { name } });
+    }
+
+    async function createCategory(name: string, groupId: string) {
+      return app.fastify.inject({ method: "POST", url: `/workspaces/${workspaceId}/categories`, headers: auth(), payload: { name, groupId } });
+    }
+
+    it("renames a group and a category, trimming the new name", async () => {
+      const group = (await createGroup("Bills")).json();
+      const category = (await createCategory("Power", group.id)).json();
+
+      const renamedGroup = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${group.id}`,
+        headers: auth(),
+        payload: { name: "  Home bills " },
+      });
+      assert.equal(renamedGroup.statusCode, 200);
+      assert.equal(renamedGroup.json().name, "Home bills");
+
+      const renamedCategory = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${category.id}`,
+        headers: auth(),
+        payload: { name: "Power and gas" },
+      });
+      assert.equal(renamedCategory.statusCode, 200);
+      assert.equal(renamedCategory.json().name, "Power and gas");
+      assert.equal(renamedCategory.json().groupId, group.id);
+
+      // Keeping its own name, just in another case, is not a clash with itself.
+      const sameName = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${category.id}`,
+        headers: auth(),
+        payload: { name: "power and gas" },
+      });
+      assert.equal(sameName.statusCode, 200);
+    });
+
+    it("refuses an empty name and an unknown id", async () => {
+      const group = (await createGroup("Empty names")).json();
+      const empty = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${group.id}`,
+        headers: auth(),
+        payload: { name: "   " },
+      });
+      assert.equal(empty.statusCode, 400);
+
+      const unknownGroup = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${randomUUID()}`,
+        headers: auth(),
+        payload: { name: "Anything" },
+      });
+      assert.equal(unknownGroup.statusCode, 404);
+
+      const unknownCategory = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${randomUUID()}`,
+        headers: auth(),
+        payload: { name: "Anything" },
+      });
+      assert.equal(unknownCategory.statusCode, 404);
+    });
+
+    it("refuses a second category or group with the same name, whatever its case, as name_taken", async () => {
+      const group = (await createGroup("Everyday")).json();
+      await createCategory("Groceries", group.id);
+
+      const duplicateCategory = await createCategory(" groceries", group.id);
+      assert.equal(duplicateCategory.statusCode, 409);
+      assert.equal(duplicateCategory.json().code, "name_taken");
+
+      const duplicateGroup = await createGroup("EVERYDAY");
+      assert.equal(duplicateGroup.statusCode, 409);
+      assert.equal(duplicateGroup.json().code, "name_taken");
+
+      const other = (await createCategory("Bakery", group.id)).json();
+      const renamedOntoAnother = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${other.id}`,
+        headers: auth(),
+        payload: { name: "Groceries" },
+      });
+      assert.equal(renamedOntoAnother.statusCode, 409);
+      assert.equal(renamedOntoAnother.json().code, "name_taken");
+    });
+
+    it("allows the same category name in another group, and reusing an archived one's name", async () => {
+      const first = (await createGroup("Holidays")).json();
+      const second = (await createGroup("Gifts")).json();
+      const archived = (await createCategory("Travel", first.id)).json();
+      assert.equal((await createCategory("Travel", second.id)).statusCode, 201);
+
+      await app.fastify.inject({ method: "PATCH", url: `/workspaces/${workspaceId}/categories/${archived.id}/archive`, headers: auth() });
+      assert.equal((await createCategory("Travel", first.id)).statusCode, 201);
+    });
+
+    it("never renames a card's own payment category, nor the shared credit card payments group, nor another group onto its name", async () => {
+      const card = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: auth(),
+        payload: { name: "Rename card", type: "credit_card", currency: "EUR" },
+      });
+      assert.equal(card.statusCode, 201);
+      const paymentCategoryId = card.json().paymentCategoryId as string;
+      const categories = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/categories`, headers: auth() });
+      const paymentGroupId = categories.json().categories.find((c: { id: string }) => c.id === paymentCategoryId).groupId as string;
+
+      const category = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${paymentCategoryId}`,
+        headers: auth(),
+        payload: { name: "Something else" },
+      });
+      assert.equal(category.statusCode, 409);
+      assert.equal(category.json().code, "payment_category");
+
+      const group = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${paymentGroupId}`,
+        headers: auth(),
+        payload: { name: "Cards" },
+      });
+      assert.equal(group.statusCode, 409);
+      assert.equal(group.json().code, "payment_group");
+
+      const other = (await createGroup("Not the cards")).json();
+      const ontoPaymentGroup = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${other.id}`,
+        headers: auth(),
+        payload: { name: "credit card payments" },
+      });
+      assert.equal(ontoPaymentGroup.statusCode, 409);
+      assert.equal(ontoPaymentGroup.json().code, "payment_group");
+    });
+  });
 });

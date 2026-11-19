@@ -39,7 +39,8 @@ interface AccountRow {
 
 const ACCOUNT_COLUMNS = "id, workspace_id, name, type, currency, on_budget, payment_category_id, closed_at, created_at";
 
-const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
+/** The shared group every card's payment category lives in, found by this exact name (`findOrCreatePaymentCategoryGroup`). */
+export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
 
 /**
  * Creates an account, and — for an on-budget credit card — its payment

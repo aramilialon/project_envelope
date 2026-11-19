@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import CategoryNameField from "../categories/CategoryNameField.tsx";
 import { plainAmount } from "../format.ts";
 import { createAssignments } from "./api.ts";
 import DetailFrame from "./DetailFrame.tsx";
@@ -24,6 +25,8 @@ interface Props {
   readonly fullScreen?: boolean;
   /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own edit controls. */
   readonly readOnly?: boolean;
+  /** Renames the category (#397); its "Rename" only shows when given, and never for a read-only member. */
+  onRename?(name: string): Promise<void>;
 }
 
 /**
@@ -33,11 +36,13 @@ interface Props {
  * (Enter, or clicking away) commits the difference as one assignment entry through the existing
  * `POST /assignments` — no new endpoint. The rest of the mockup's own three-column detail (the
  * target meter, the scheduled list, the ledger, quick assign, the assignment and transaction
- * history) is later issues' own job, layered onto this same row.
+ * history) is later issues' own job, layered onto this same row. Its name heads it, with
+ * "Rename" next to it (#397) opening the same inline field the budget month's own group menu uses.
  */
-export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen, readOnly }: Props) {
+export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen, readOnly, onRename }: Props) {
   const intl = useIntl();
   const auth = useAuth();
+  const [renaming, setRenaming] = useState(false);
   const [value, setValue] = useState(() => plainAmount(assigned, intl.locale, currency));
   const cancelingRef = useRef(false);
   const committingRef = useRef(false);
@@ -90,6 +95,28 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
       fullScreen={fullScreen ?? false}
       onClose={onClose}
     >
+      {renaming && onRename ? (
+        <CategoryNameField
+          kind="category"
+          label={intl.formatMessage({ id: "budget.categories.renameCategory", defaultMessage: "New name for the category" })}
+          submitLabel={intl.formatMessage({ id: "common.action.save", defaultMessage: "Save" })}
+          initialValue={categoryName}
+          onSubmit={async (name) => {
+            await onRename(name);
+            setRenaming(false);
+          }}
+          onCancel={() => setRenaming(false)}
+        />
+      ) : (
+        <div className="det-h">
+          <h3>{categoryName}</h3>
+          {!readOnly && onRename && (
+            <button type="button" className="plain" onClick={() => setRenaming(true)}>
+              {intl.formatMessage({ id: "budget.row.rename", defaultMessage: "Rename" })}
+            </button>
+          )}
+        </div>
+      )}
       <div className="sec">
         <div className="qa asg-l">
           <label htmlFor={`asg-${categoryId}`}>{intl.formatMessage({ id: "budget.row.assigned", defaultMessage: "Assigned this month" })}</label>
