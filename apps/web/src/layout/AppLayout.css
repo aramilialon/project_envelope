@@ -167,10 +167,37 @@
   font-weight: 600;
 }
 
+/* The main content, plus the accounts panel beside it while open (#412). */
+.app-layout .app-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .app-layout .main {
   flex: 1;
   min-width: 0;
   padding: 22px 30px 30px;
+}
+
+/* The accounts panel's own toggle (#412, accounts-panel.html's `.panel-toggle`). */
+.app-layout .panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--band-muted);
+  cursor: pointer;
+}
+
+.app-layout .panel-toggle:hover,
+.app-layout .panel-toggle[aria-pressed="true"] {
+  background: var(--band-2);
+  color: var(--band-ink);
 }
 
 /* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. */
@@ -189,7 +216,7 @@
 
   /* The tab bar's own height plus the safe-area inset, so the last bit of scrollable content
      never sits underneath it (`#331`). */
-  .app-layout .main:has(~ .tabbar) {
+  .app-layout:has(> .tabbar) .main {
     padding-bottom: calc(24px + 76px + env(safe-area-inset-bottom, 0px));
   }
 }

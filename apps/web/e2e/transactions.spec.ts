@@ -136,7 +136,7 @@ test.describe("account register (#54)", () => {
       await page.getByLabel("Payee").fill("Internet provider");
       // { exact: true }: "Use it as this category's target" also matches "Category" otherwise.
       await page.getByLabel("Category", { exact: true }).selectOption({ label: "Everyday · Internet and phone" });
-      await page.getByLabel("Account").selectOption({ label: "Checking" });
+      await page.getByLabel("Account", { exact: true }).selectOption({ label: "Checking" });
       await page.getByLabel("Amount").fill("45.00");
       await page.getByLabel("Next date").fill(yesterday);
       await page.getByRole("button", { name: "Save" }).click();

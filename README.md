@@ -41,8 +41,10 @@
 | [![An account register: the balance, the account's month as a timeline of days next to a to-do list, and the transactions with their cleared, pending and reconciled marks](docs/ux/screenshots/account-register.png)](docs/ux/screenshots/account-register.png) | [![Reconciliation: the statement balance, the difference and a clue that points to the pending transaction that explains it](docs/ux/screenshots/reconciliation.png)](docs/ux/screenshots/reconciliation.png) |
 | **Portfolio** ([mockup](docs/ux/mockups/portfolio.html)) | **On the phone** |
 | [![A portfolio with its value against contributions over twelve months, the allocation bars against targets and thresholds, and the positions](docs/ux/screenshots/portfolio.png)](docs/ux/screenshots/portfolio.png) | [![Three phone screens: the budget month, an account register and a portfolio with a small chart](docs/ux/screenshots/phones.png)](docs/ux/screenshots/phones.png) |
+| **Accounts panel** ([mockup](docs/ux/mockups/accounts-panel.html)) | |
+| [![The accounts panel open beside an account register: the net worth at its head, then on-budget accounts, credit cards and off-budget accounts with their balances, the account on screen highlighted](docs/ux/screenshots/accounts-panel.png)](docs/ux/screenshots/accounts-panel.png) | |
 
-"Choose a workspace" is the one screenshot here from the real running app, not a mockup: no dedicated full-page mockup exists yet for it (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher), and it is still in English — the Italian catalog is `#62`'s own job.
+"Choose a workspace" and "Accounts panel" are the screenshots here from the real running app, not a mockup. "Choose a workspace" has no dedicated full-page mockup yet (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher); the accounts panel shot shows it as built, over the demo workspace (`scripts/README.md`, "Reference screenshots"). Both are in English, while the mockups show the Italian translation.
 
 ## Principles
 

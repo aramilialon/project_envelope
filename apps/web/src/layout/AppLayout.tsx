@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
-import { NavLink, Outlet, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useMatch, useNavigate, useParams } from "react-router-dom";
 
+import AccountsPanel from "../accounts/AccountsPanel.tsx";
 import NotificationsToggle from "../notifications/NotificationsToggle.tsx";
 import QuickEntryOverlay from "../transactions/QuickEntryOverlay.tsx";
 import { canWrite as hasWriteAccess } from "../workspaces/canWrite.ts";
@@ -34,6 +35,13 @@ import "./AppLayout.css";
  * already uses (`#61`), since recording an expense is a write. "More" goes to the one
  * workspace-settings destination that exists so far, the same place the band's own switcher menu
  * sends it.
+ *
+ * The toggle at the band's far left, before the wordmark, opens the accounts panel (`#412`,
+ * `AccountsPanel.tsx`): a dismissible detour to any account's own register from wherever you
+ * already are, closed by default and taking no space until opened — `#323`'s own decision (no
+ * persistent sidebar) stays in force. Its open/closed state lives here, so it survives the
+ * navigation its own rows trigger. Desktop only: `docs/ux/mockups/accounts-panel.html` draws no
+ * phone layout, and the tab bar's own "Accounts" is one tap away there already.
  */
 export default function AppLayout() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
@@ -47,11 +55,33 @@ export default function AppLayout() {
   const [secondRowSlot, setSecondRowSlot] = useState<HTMLDivElement | null>(null);
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const [budgetDataVersion, setBudgetDataVersion] = useState(0);
+  const [accountsPanelOpen, setAccountsPanelOpen] = useState(false);
+  const closeAccountsPanel = useCallback(() => setAccountsPanelOpen(false), []);
+  const location = useLocation();
+  const registerMatch = useMatch("/:workspaceId/accounts/:accountId/*");
+  const showAccountsPanel = accountsPanelOpen && !isPhone && workspaceId !== undefined;
 
   return (
     <div className="app-layout">
       <header className="band">
         <div className="bt">
+          {!isPhone && (
+            <button
+              type="button"
+              className="panel-toggle"
+              aria-pressed={showAccountsPanel}
+              aria-expanded={showAccountsPanel}
+              aria-controls="accounts-panel"
+              aria-label={
+                showAccountsPanel
+                  ? intl.formatMessage({ id: "layout.accountsPanel.hide", defaultMessage: "Hide accounts" })
+                  : intl.formatMessage({ id: "layout.accountsPanel.show", defaultMessage: "Show accounts" })
+              }
+              onClick={() => setAccountsPanelOpen((open) => !open)}
+            >
+              <PanelIcon />
+            </button>
+          )}
           <span className="brand" aria-hidden="true">
             envelope
           </span>
@@ -72,12 +102,23 @@ export default function AppLayout() {
         </div>
         <div className="bm" ref={setSecondRowSlot} />
       </header>
-      <div className="main">
-        <BandSecondRowSlotContext.Provider value={secondRowSlot}>
-          <BudgetDataVersionContext.Provider value={budgetDataVersion}>
-            <Outlet />
-          </BudgetDataVersionContext.Provider>
-        </BandSecondRowSlotContext.Provider>
+      <div className="app-body">
+        {showAccountsPanel && (
+          <AccountsPanel
+            workspaceId={workspaceId}
+            currency={currentWorkspace?.baseCurrency ?? "EUR"}
+            currentAccountId={registerMatch?.params.accountId}
+            refreshKey={`${location.pathname}|${budgetDataVersion}`}
+            onClose={closeAccountsPanel}
+          />
+        )}
+        <div className="main">
+          <BandSecondRowSlotContext.Provider value={secondRowSlot}>
+            <BudgetDataVersionContext.Provider value={budgetDataVersion}>
+              <Outlet />
+            </BudgetDataVersionContext.Provider>
+          </BandSecondRowSlotContext.Provider>
+        </div>
       </div>
       {isPhone && (
         <nav className="tabbar" aria-label={intl.formatMessage({ id: "layout.tabbar.label", defaultMessage: "Main, phone" })}>
@@ -113,6 +154,15 @@ export default function AppLayout() {
         />
       )}
     </div>
+  );
+}
+
+function PanelIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16" />
+    </svg>
   );
 }
 

@@ -32,6 +32,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ### Added
 
+- `apps/web`: an accounts panel (`#412`, `docs/ux/mockups/accounts-panel.html`). A toggle at the band's far left, before the wordmark, opens a dismissible left panel on any screen: the workspace's net worth at its head (every open account, on and off budget, cards included), then on-budget accounts, credit cards and off-budget accounts with their balances. A row switches the main content to that account's register without closing the panel, and a link at its foot goes to the full Accounts screen. Closed by default and taking no space until opened, so it is not the persistent sidebar `#323` removed; Escape or its own "Close" dismisses it. Desktop only, like its mockup: on a phone the tab bar's own "Accounts" is one tap away. The grouping and net worth come from `@envelope/core`'s new `groupAccountsForPanel`.
 - Docs: the domain guide (`docs/domain-guide.md`) — the rules of envelope budgeting and portfolio rebalancing, with numeric examples (`#64`).
 - `apps/web`: a brand new workspace's own Categories screen (Workspace settings → Categories), with no groups yet, now explains that a group comes first and holds its own categories, instead of showing only a bare "+ Add a group" button with no context (`#401`).
 - `apps/web`: the "Add account" form explains each account type with a short hint under its own label (`#402`).
