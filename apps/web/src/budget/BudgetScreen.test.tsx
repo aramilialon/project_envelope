@@ -481,11 +481,17 @@ describe("BudgetScreen (#53, #324)", () => {
     // 23:30 UTC on 30 September is already 01:30 on 1 October in Rome (CEST, UTC+2) — a new month there, not here.
     vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"));
     useAuth.mockReturnValue({ user: { access_token: "t" } });
-    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-    ]);
+    // The workspace list answers only when the test says so, after everything else (#381): the
+    // ordering CI once hit by chance, when a first guess in the browser's own zone (UTC there)
+    // fetched and painted September before the workspace's own zone ever arrived.
+    let resolveWorkspaces: (workspaces: workspacesApi.Workspace[]) => void = () => {};
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(
+      new Promise((resolve) => {
+        resolveWorkspaces = resolve;
+      }),
+    );
     vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([HOME]);
-    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(budgetMonth({ categories: [category({})] }));
+    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockClear().mockResolvedValue(budgetMonth({ categories: [category({})] }));
     vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
     vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
 
@@ -497,8 +503,12 @@ describe("BudgetScreen (#53, #324)", () => {
       </MemoryRouter>,
     );
 
+    expect(await screen.findByText("Loading your budget…")).toBeInTheDocument();
+    expect(getBudgetMonth).not.toHaveBeenCalled();
+
+    resolveWorkspaces([{ id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" }]);
     await screen.findByText("Groceries");
-    expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10");
+    expect(getBudgetMonth.mock.calls).toEqual([["t", "ws-1", "2026-10"]]);
   });
 
   it("opens the 'Assign' form from the band's unassigned-money box (#328)", async () => {
