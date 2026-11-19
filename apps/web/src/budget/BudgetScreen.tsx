@@ -23,6 +23,7 @@ import QuickAssignPanel from "../targets/QuickAssignPanel.tsx";
 import TargetsPanel from "../targets/TargetsPanel.tsx";
 import { useTargets } from "../targets/useTargets.ts";
 import { canWrite as hasWriteAccess } from "../workspaces/canWrite.ts";
+import type { Workspace } from "../workspaces/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
@@ -125,30 +126,43 @@ export default function BudgetScreen() {
   const { workspaceId } = useParams<{ workspaceId: string }>();
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
+
+  // The month to open on is "this month" in the *workspace's* own time zone (#381), so nothing is
+  // fetched or drawn until that time zone is known: a first guess in the browser's own zone used
+  // to fetch (and, if it answered first, paint) the wrong month whenever the two disagreed — a
+  // different zone, or simply past midnight in one but not yet in the other. Only when the
+  // workspace list itself fails, or does not contain this workspace, is the browser's zone the
+  // best guess left, rather than staying on "Loading" forever.
+  const timeZone =
+    currentWorkspace?.timeZone ?? (workspaces.status === "loading" ? undefined : Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (timeZone === undefined) {
+    return <p role="status">{intl.formatMessage({ id: "budget.loading", defaultMessage: "Loading your budget…" })}</p>;
+  }
+  return <BudgetMonthScreen workspaceId={workspaceId!} currentWorkspace={currentWorkspace} initialMonth={currentMonthIn(timeZone)} />;
+}
+
+interface BudgetMonthScreenProps {
+  readonly workspaceId: string;
+  readonly currentWorkspace: Workspace | undefined;
+  /** "This month" in the workspace's own time zone, read once on mount — later navigation is the user's own. */
+  readonly initialMonth: string;
+}
+
+function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: BudgetMonthScreenProps) {
+  const intl = useIntl();
   const timeZone = currentWorkspace?.timeZone;
   const isPhone = usePhoneWidth();
-
-  // The initial month is a best guess in the *browser's* own time zone (the workspace's is not
-  // known yet, before `workspaces` itself resolves) — corrected once, below, the moment it is, so
-  // a workspace in a markedly different time zone never gets stuck showing the wrong month.
-  // Done during render (React's own "adjusting state when a prop changes" pattern), not an
-  // effect, so the correction takes effect before the wrong month's own data ever paints.
-  const [month, setMonth] = useState(() => currentMonthIn(Intl.DateTimeFormat().resolvedOptions().timeZone));
-  const [appliedWorkspaceMonth, setAppliedWorkspaceMonth] = useState(false);
-  if (timeZone !== undefined && !appliedWorkspaceMonth) {
-    setAppliedWorkspaceMonth(true);
-    setMonth(currentMonthIn(timeZone));
-  }
+  const [month, setMonth] = useState(initialMonth);
 
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
-  const state = useBudgetMonth(workspaceId!, month);
-  const eventsState = useBudgetMonthEvents(workspaceId!, month);
-  const targetsState = useTargets(workspaceId!, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
-  const scheduledState = useScheduledTransactions(workspaceId!);
-  const daysOfBufferState = useDaysOfBuffer(workspaceId!);
+  const state = useBudgetMonth(workspaceId, month);
+  const eventsState = useBudgetMonthEvents(workspaceId, month);
+  const targetsState = useTargets(workspaceId, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
+  const scheduledState = useScheduledTransactions(workspaceId);
+  const daysOfBufferState = useDaysOfBuffer(workspaceId);
 
   // The instant alert design.md's own "Notifications" section asks for ("the alert appears
   // immediately, computed locally by the shared core, even offline") — not a server round trip,
@@ -329,7 +343,7 @@ export default function BudgetScreen() {
       />
     ) : (
       <RowDetail
-        workspaceId={workspaceId!}
+        workspaceId={workspaceId}
         month={month}
         categoryId={category.categoryId}
         categoryName={category.name}
@@ -589,7 +603,7 @@ export default function BudgetScreen() {
 
       {panel === "targets" && (
         <TargetsPanel
-          workspaceId={workspaceId!}
+          workspaceId={workspaceId}
           month={month}
           categories={state.budgetMonth.categories}
           currency={currency ?? "EUR"}
@@ -599,7 +613,7 @@ export default function BudgetScreen() {
       )}
       {panel === "quickAssign" && (
         <QuickAssignPanel
-          workspaceId={workspaceId!}
+          workspaceId={workspaceId}
           month={month}
           groups={groups}
           onClose={() => setPanel(null)}
@@ -611,7 +625,7 @@ export default function BudgetScreen() {
       )}
       {panel === "scheduled" && (
         <ScheduledPanel
-          workspaceId={workspaceId!}
+          workspaceId={workspaceId}
           month={month}
           groups={groups}
           currency={currency ?? "EUR"}
@@ -622,7 +636,7 @@ export default function BudgetScreen() {
       )}
       {moveMoney && (
         <MoveMoneyForm
-          workspaceId={workspaceId!}
+          workspaceId={workspaceId}
           month={month}
           unassignedCents={state.budgetMonth.unassigned}
           assignedInFutureCents={state.budgetMonth.assignedInFuture}
