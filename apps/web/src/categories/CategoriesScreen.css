@@ -101,9 +101,18 @@
 
 .categories-screen .inline-add {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 0;
+}
+
+/* A name the API refused (#397), on its own line under the field. */
+.categories-screen .inline-add .err {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--red-text);
+  font-size: 12.5px;
 }
 
 .categories-screen .inline-add input {

@@ -289,3 +289,25 @@
   color: var(--muted);
   font-weight: 500;
 }
+
+/* Adding and renaming categories and groups in place (#397, docs/ux/mockups/budget-categories.html). */
+.budget-screen .bgr-edit {
+  margin-top: 18px;
+}
+
+.budget-screen .bars > div > .name-field {
+  margin-top: 4px;
+}
+
+.budget-screen .add-group {
+  margin-top: 18px;
+}
+
+/* The group's own "⋯" menu sits right after its name; its available sum keeps the far right. */
+.budget-screen .bgr .gmenu + .gsum {
+  margin-left: auto;
+}
+
+.budget-screen .bgr .gh + .gmenu {
+  margin-left: 2px;
+}

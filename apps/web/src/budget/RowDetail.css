@@ -130,3 +130,25 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* The category's own name and "Rename" (#397), across every column above the rest. */
+.inl-c > .det-h,
+.inl-c > .name-field {
+  column-span: all;
+  margin-bottom: 12px;
+}
+
+.det-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  padding-right: 70px;
+}
+
+.det-h h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 700;
+}

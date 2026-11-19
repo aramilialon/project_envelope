@@ -155,4 +155,61 @@ test.describe("budget month (#53)", () => {
       await user.teardown();
     }
   });
+
+  test("adds and renames groups and categories right from the budget month (#397)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      // A brand new workspace: a group first, then straight on to its first category.
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Name of the new group").fill("Everyday");
+      await page.getByLabel("Name of the new group").press("Enter");
+      const newCategory = page.getByLabel("Name of the new category in Everyday");
+      await newCategory.fill("Groceries");
+      await newCategory.press("Enter");
+      await expect(page.getByRole("button", { name: /^Groceries/ })).toBeVisible();
+
+      // The field stays open for the next one; a name already in the group is refused.
+      await newCategory.fill("groceries");
+      await newCategory.press("Enter");
+      await expect(page.getByRole("alert")).toHaveText("Another category in this group already has this name.");
+      await newCategory.fill("Pharmacy");
+      await newCategory.press("Enter");
+      await expect(page.getByRole("button", { name: /^Pharmacy/ })).toBeVisible();
+      await newCategory.press("Escape");
+      await expect(newCategory).not.toBeVisible();
+
+      await page.getByRole("button", { name: "Actions for Everyday" }).click();
+      await page.getByRole("menuitem", { name: "Rename group" }).click();
+      await page.getByLabel("New name for the group").fill("Day to day");
+      await page.getByLabel("New name for the group").press("Enter");
+      await expect(page.getByRole("button", { name: "Close Day to day" })).toBeVisible();
+
+      await page.getByRole("button", { name: /^Pharmacy/ }).click();
+      await page.getByRole("button", { name: "Rename" }).click();
+      await page.getByLabel("New name for the category").fill("Health");
+      await page.getByLabel("New name for the category").press("Enter");
+      await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
+
+      // Reordering and archiving stay in Workspace settings, one menu item away.
+      await page.getByRole("button", { name: "Actions for Day to day" }).click();
+      await page.getByRole("menuitem", { name: /Reorder or archive/ }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await expect(page.locator(".categories-screen").getByText("Health", { exact: true })).toBeVisible();
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
 });

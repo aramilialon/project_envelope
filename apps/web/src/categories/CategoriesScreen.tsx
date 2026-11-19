@@ -5,6 +5,7 @@ import { useParams } from "react-router-dom";
 
 import {
   archiveCategory,
+  CategoryConflictError,
   createCategory,
   createCategoryGroup,
   reorderCategories,
@@ -60,6 +61,17 @@ export default function CategoriesScreen() {
   const [addingCategoryTo, setAddingCategoryTo] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [busy, setBusy] = useState(false);
+  // Why the API refused the name just typed (#397: a duplicate within its group, or among groups).
+  const [nameError, setNameError] = useState<string | null>(null);
+
+  function nameErrorFor(caught: unknown, kind: "category" | "group"): string {
+    if (caught instanceof CategoryConflictError && caught.code === "name_taken") {
+      return kind === "category"
+        ? intl.formatMessage({ id: "categoryName.taken.category", defaultMessage: "Another category in this group already has this name." })
+        : intl.formatMessage({ id: "categoryName.taken.group", defaultMessage: "Another group already has this name." });
+    }
+    return intl.formatMessage({ id: "categoryName.error", defaultMessage: "We could not save this name." });
+  }
 
   if (state.status === "loading") {
     return (
@@ -140,7 +152,10 @@ export default function CategoriesScreen() {
       await createCategoryGroup(accessToken, workspaceId!, name);
       setNewGroupName("");
       setAddingGroup(false);
+      setNameError(null);
       refetch();
+    } catch (caught) {
+      setNameError(nameErrorFor(caught, "group"));
     } finally {
       setBusy(false);
     }
@@ -157,7 +172,10 @@ export default function CategoriesScreen() {
       await createCategory(accessToken, workspaceId!, groupId, name);
       setNewCategoryName("");
       setAddingCategoryTo(null);
+      setNameError(null);
       refetch();
+    } catch (caught) {
+      setNameError(nameErrorFor(caught, "category"));
     } finally {
       setBusy(false);
     }
@@ -290,10 +308,16 @@ export default function CategoriesScreen() {
                   onClick={() => {
                     setAddingCategoryTo(null);
                     setNewCategoryName("");
+                    setNameError(null);
                   }}
                 >
                   {intl.formatMessage({ id: "common.action.cancel", defaultMessage: "Cancel" })}
                 </button>
+                {nameError && (
+                  <p className="err" role="alert">
+                    {nameError}
+                  </p>
+                )}
               </form>
             ) : (
               <button
@@ -302,6 +326,7 @@ export default function CategoriesScreen() {
                 onClick={() => {
                   setAddingCategoryTo(group.id);
                   setNewCategoryName("");
+                  setNameError(null);
                 }}
               >
                 {intl.formatMessage({ id: "categories.category.add", defaultMessage: "+ Add a category" })}
@@ -333,13 +358,26 @@ export default function CategoriesScreen() {
             onClick={() => {
               setAddingGroup(false);
               setNewGroupName("");
+              setNameError(null);
             }}
           >
             {intl.formatMessage({ id: "common.action.cancel", defaultMessage: "Cancel" })}
           </button>
+          {nameError && (
+            <p className="err" role="alert">
+              {nameError}
+            </p>
+          )}
         </form>
       ) : (
-        <button type="button" className="plain" onClick={() => setAddingGroup(true)}>
+        <button
+          type="button"
+          className="plain"
+          onClick={() => {
+            setAddingGroup(true);
+            setNameError(null);
+          }}
+        >
           {intl.formatMessage({ id: "categories.group.add", defaultMessage: "+ Add a group" })}
         </button>
       )}

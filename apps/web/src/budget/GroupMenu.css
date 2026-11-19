@@ -1,0 +1,75 @@
+/* A group row's own "⋯" menu (#397, docs/ux/mockups/budget-categories.html's `.gmenu-btn`/`.gmenu`). */
+.gmenu {
+  position: relative;
+  display: inline-flex;
+}
+
+.gmenu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gmenu-btn:hover,
+.gmenu-btn[aria-expanded="true"] {
+  background: var(--rule-soft);
+  color: var(--ink);
+}
+
+.gmenu-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 5;
+  min-width: 230px;
+  padding: 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.gmenu-pop button {
+  display: block;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gmenu-pop button:hover,
+.gmenu-pop button:focus-visible {
+  background: var(--paper-2);
+}
+
+.gmenu-pop button.quiet {
+  color: var(--muted);
+}
+
+.gmenu-pop hr {
+  margin: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+/* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. */
+@media (max-width: 600px) {
+  .gmenu-btn {
+    width: 44px;
+    height: 44px;
+  }
+}

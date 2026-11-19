@@ -185,6 +185,87 @@ function sameIds(a: readonly string[], b: readonly string[]): boolean {
   return sortedA.every((id, i) => id === sortedB[i]);
 }
 
+/**
+ * Whether another non-archived group of this workspace already has `name`, compared without case
+ * or surrounding spaces (#397: a second "Home" next to the first is never what anyone meant; an
+ * archived one no longer shows anywhere, so it does not block reusing its name).
+ */
+export async function isCategoryGroupNameTaken(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  name: string,
+  exceptGroupId?: string,
+): Promise<boolean> {
+  const { rows } = await db.query(
+    `SELECT 1 FROM category_groups
+     WHERE workspace_id = $1 AND NOT archived AND lower(btrim(name)) = lower(btrim($2)) AND ($3::uuid IS NULL OR id <> $3)
+     LIMIT 1`,
+    [workspaceId, name, exceptGroupId ?? null],
+  );
+  return rows.length > 0;
+}
+
+/** Whether another non-archived category of the same group already has `name` (see `isCategoryGroupNameTaken`). */
+export async function isCategoryNameTaken(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  groupId: string,
+  name: string,
+  exceptCategoryId?: string,
+): Promise<boolean> {
+  const { rows } = await db.query(
+    `SELECT 1 FROM categories
+     WHERE workspace_id = $1 AND group_id = $2 AND NOT archived AND lower(btrim(name)) = lower(btrim($3))
+       AND ($4::uuid IS NULL OR id <> $4)
+     LIMIT 1`,
+    [workspaceId, groupId, name, exceptCategoryId ?? null],
+  );
+  return rows.length > 0;
+}
+
+export async function getCategory(db: DbPool | DbClient, workspaceId: string, categoryId: string): Promise<CategoryRecord | undefined> {
+  const { rows } = await db.query<CategoryRow>(
+    `SELECT ${CATEGORY_COLUMNS} FROM categories WHERE id = $1 AND workspace_id = $2`,
+    [categoryId, workspaceId],
+  );
+  return rows[0] ? toCategoryRecord(rows[0]) : undefined;
+}
+
+/** Whether `categoryId` is a credit card's own payment category, whose name follows its card's (#397: never renamed on its own). */
+export async function isPaymentCategory(db: DbPool | DbClient, workspaceId: string, categoryId: string): Promise<boolean> {
+  const { rows } = await db.query("SELECT 1 FROM accounts WHERE workspace_id = $1 AND payment_category_id = $2 LIMIT 1", [
+    workspaceId,
+    categoryId,
+  ]);
+  return rows.length > 0;
+}
+
+export async function renameCategoryGroup(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  groupId: string,
+  name: string,
+): Promise<CategoryGroupRecord | undefined> {
+  const { rows } = await db.query<CategoryGroupRow>(
+    `UPDATE category_groups SET name = $3 WHERE id = $1 AND workspace_id = $2 RETURNING ${GROUP_COLUMNS}`,
+    [groupId, workspaceId, name],
+  );
+  return rows[0] ? toGroupRecord(rows[0]) : undefined;
+}
+
+export async function renameCategory(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  categoryId: string,
+  name: string,
+): Promise<CategoryRecord | undefined> {
+  const { rows } = await db.query<CategoryRow>(
+    `UPDATE categories SET name = $3 WHERE id = $1 AND workspace_id = $2 RETURNING ${CATEGORY_COLUMNS}`,
+    [categoryId, workspaceId, name],
+  );
+  return rows[0] ? toCategoryRecord(rows[0]) : undefined;
+}
+
 function toGroupRecord(row: CategoryGroupRow): CategoryGroupRecord {
   return {
     id: row.id,
