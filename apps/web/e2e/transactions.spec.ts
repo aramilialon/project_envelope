@@ -229,7 +229,10 @@ test.describe("account register (#54)", () => {
       await page.getByRole("button", { name: "Grocery store", exact: true }).click();
       await page.getByRole("button", { name: "Delete" }).click();
       await expect(page.getByRole("dialog")).not.toBeVisible();
-      await expect(page.getByText("Grocery store")).not.toBeVisible();
+      // Both the row and its own "Mark Grocery store" to-do item stay on the page until the
+      // register's refetch lands (#494): a count of zero is retried until then, and proves both
+      // are gone — `not.toBeVisible()` would fail outright on strict mode while two still match.
+      await expect(page.getByText("Grocery store")).toHaveCount(0);
     } finally {
       await workspace?.teardown();
       await user.teardown();
