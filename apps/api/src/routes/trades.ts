@@ -97,7 +97,8 @@ function legField(body: Record<string, unknown>, field: "from" | "to"): Transfer
     throw new BadRequest(`${field} must be an object`);
   }
   const leg = raw as Record<string, unknown>;
-  const amounts = amountFields(leg, field === "to" ? ["feesCents", "costBasisCents"] : ["feesCents", "costBasisCents"]);
+  // costBasisCents is accepted on either leg so the core can name it when it is misplaced.
+  const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
   const id = uuidField(leg, "id", false);
   return {
     accountId: uuidField(leg, "accountId", true)!,

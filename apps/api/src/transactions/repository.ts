@@ -219,9 +219,10 @@ export interface CreateTradeCashLegInput {
 }
 
 /**
- * Writes a trade's cash leg (ADR 0012): one transaction on the trade's account, `cleared` (the
- * trade comes from the broker's statement), with one split and no category, linked to the trade
- * through `trade_id`. The caller writes it in the same database transaction as the trade.
+ * Writes a trade's cash leg (ADR 0012): one transaction on the trade's account, `pending` like any
+ * new transaction (the user clears it once it appears on the broker's statement, after
+ * settlement), with one split and no category, linked to the trade through `trade_id`. The caller
+ * writes it in the same database transaction as the trade.
  */
 export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTradeCashLegInput): Promise<string> {
   assertCents(input.amountCents);
@@ -231,7 +232,7 @@ export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTra
     occurredAt: input.tradeDate,
     payee: null,
     memo: null,
-    status: "cleared",
+    status: "pending",
     externalId: null,
     tradeId: input.tradeId,
   });

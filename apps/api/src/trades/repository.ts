@@ -23,7 +23,6 @@ import {
   checkTradeRegime,
   computePositions,
   PRICE_FACTOR_ONE,
-  regimeAt,
   TAX_REGIME_COUNTRY,
   toPriceFactor,
   tradeCashCents,
@@ -627,6 +626,32 @@ async function checkReferences(
   return accounts;
 }
 
+/** The same ISO 8601 shape `@envelope/core` accepts for a trade's time: `Z` or an offset. */
+const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+/**
+ * A trade's time only orders trades within its trade date, so it must fall on that date in the
+ * workspace's time zone.
+ *
+ * @throws ValidationError "invalid_trade" (details: field "occurredAt") otherwise, or when it is not
+ *   an ISO 8601 timestamp with `Z` or an offset.
+ */
+function checkOccurredOnTradeDate(row: NewTradeRow, timeZone: string): void {
+  if (row.occurredAt === null) {
+    return;
+  }
+  const ms = TIMESTAMP_PATTERN.test(row.occurredAt) ? Date.parse(row.occurredAt) : Number.NaN;
+  const localDate = Number.isFinite(ms)
+    ? new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms))
+    : null;
+  if (localDate !== row.tradeDate) {
+    throw new ValidationError("invalid_trade", `occurredAt ${row.occurredAt} is not on the trade date ${row.tradeDate}`, {
+      tradeId: row.id,
+      field: "occurredAt",
+    });
+  }
+}
+
 /**
  * The tax regime rules (#508), only in a workspace whose tax country has them (`IT`): every
  * brokerage account there needs a regime history (`tax_regime_required`; its first period also
@@ -636,14 +661,12 @@ async function checkReferences(
 async function checkRegimes(
   db: DbClient,
   workspaceId: string,
+  taxCountry: string | null,
   rows: readonly NewTradeRow[],
   accounts: ReadonlyMap<string, AccountRef>,
   instrument: InstrumentRef | undefined,
 ): Promise<void> {
-  const { rows: workspace } = await db.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [
-    workspaceId,
-  ]);
-  if (workspace[0]?.tax_country !== TAX_REGIME_COUNTRY) {
+  if (taxCountry !== TAX_REGIME_COUNTRY) {
     return;
   }
   for (const accountId of new Set(rows.map((row) => row.accountId))) {
@@ -655,7 +678,8 @@ async function checkRegimes(
     }
     for (const row of rows.filter((candidate) => candidate.accountId === accountId)) {
       checkTradeRegime(row, {
-        regime: regimeAt(history, row.tradeDate)!,
+        history,
+        date: row.tradeDate,
         domesticWithholdingAgent: accounts.get(accountId)!.domesticWithholdingAgent,
         instrumentType: instrument?.type ?? null,
       });
@@ -746,7 +770,15 @@ export async function createTrades(
   for (const row of rows) {
     checkTradeEntry(row, instrument?.type ?? null);
   }
-  await checkRegimes(db, workspaceId, rows, accounts, instrument);
+  const { rows: workspaceRows } = await db.query<{ tax_country: string | null; time_zone: string }>(
+    "SELECT tax_country, time_zone FROM workspaces WHERE id = $1",
+    [workspaceId],
+  );
+  const workspace = workspaceRows[0]!;
+  for (const row of rows) {
+    checkOccurredOnTradeDate(row, workspace.time_zone);
+  }
+  await checkRegimes(db, workspaceId, workspace.tax_country, rows, accounts, instrument);
 
   // The rows as the replay sees them once written: created now (the transaction's timestamp, the
   // same `now()` the created_at column defaults to), in the account's currency.

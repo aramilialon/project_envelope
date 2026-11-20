@@ -49,8 +49,10 @@ CREATE TABLE trades (
   memo text CHECK (char_length(memo) <= 500),
   created_at timestamptz NOT NULL DEFAULT now(),
 
-  -- For the composite foreign keys pointing here (the other leg of a transfer, a cash leg).
+  -- For the composite foreign keys pointing here: the other leg of a transfer, and a cash leg, which
+  -- must also sit on its trade's account.
   CONSTRAINT trades_workspace_id_id_key UNIQUE (workspace_id, id),
+  CONSTRAINT trades_workspace_id_id_account_id_key UNIQUE (workspace_id, id, account_id),
   CONSTRAINT trades_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE,
   -- A portfolio with trades cannot be deleted: the portfolios route answers 409
@@ -101,14 +103,16 @@ CREATE TABLE trades (
     AND transfer_trade_id IS NULL
   )),
   CONSTRAINT trades_fee_check CHECK (type <> 'fee' OR (
-    quantity_e8 = 0 AND price_e6 = 0 AND gross_cents = 0
+    fees_cents > 0 AND quantity_e8 = 0 AND price_e6 = 0 AND gross_cents = 0
     AND transaction_tax_cents = 0 AND accrued_interest_cents = 0 AND withholding_foreign_cents = 0
     AND withholding_domestic_cents = 0 AND gain_tax_cents = 0
     AND tax_kind IS NULL AND cost_basis_cents IS NULL AND split_from IS NULL AND split_to IS NULL
     AND transfer_trade_id IS NULL
   )),
+  -- A tax's amount is its gross: positive, or for a gain tax adjustment any amount but zero (the
+  -- sign rule above).
   CONSTRAINT trades_tax_check CHECK (type <> 'tax' OR (
-    tax_kind IS NOT NULL AND quantity_e8 = 0 AND price_e6 = 0 AND fees_cents = 0
+    tax_kind IS NOT NULL AND gross_cents <> 0 AND quantity_e8 = 0 AND price_e6 = 0 AND fees_cents = 0
     AND transaction_tax_cents = 0 AND accrued_interest_cents = 0 AND withholding_foreign_cents = 0
     AND withholding_domestic_cents = 0 AND gain_tax_cents = 0
     AND cost_basis_cents IS NULL AND split_from IS NULL AND split_to IS NULL
@@ -146,13 +150,13 @@ CREATE POLICY workspace_isolation ON trades
   USING (workspace_id = app_workspace_id())
   WITH CHECK (workspace_id = app_workspace_id());
 
--- UPDATE and DELETE are for editing and deleting a trade (#509).
-GRANT SELECT, INSERT, UPDATE, DELETE ON trades TO envelope_app;
+-- Create and list only: editing and deleting a trade (#509) will grant UPDATE and DELETE.
+GRANT SELECT, INSERT ON trades TO envelope_app;
 
--- The cash leg (ADR 0012): the one transaction a cash-moving trade owns, on the same account, with
--- one split and no category. Its amount, account and date are derived from the trade; deleting the
--- trade deletes it.
+-- The cash leg (ADR 0012): the one transaction a cash-moving trade owns, with one split and no
+-- category. Its amount, account and date are derived from the trade; deleting the trade deletes it.
+-- The key includes account_id, so the leg can only sit on its trade's own account.
 ALTER TABLE transactions ADD COLUMN trade_id uuid;
-ALTER TABLE transactions ADD CONSTRAINT transactions_trade_id_fkey FOREIGN KEY (workspace_id, trade_id)
-  REFERENCES trades (workspace_id, id) MATCH SIMPLE ON DELETE CASCADE;
+ALTER TABLE transactions ADD CONSTRAINT transactions_trade_id_fkey FOREIGN KEY (workspace_id, trade_id, account_id)
+  REFERENCES trades (workspace_id, id, account_id) MATCH SIMPLE ON DELETE CASCADE;
 CREATE UNIQUE INDEX transactions_trade_id_key ON transactions (trade_id) WHERE trade_id IS NOT NULL;
