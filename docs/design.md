@@ -111,7 +111,7 @@ The user records every instrument they own and every transaction. The app derive
 | Feature | What it does | Phase |
 | --- | --- | --- |
 | Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade is assigned to exactly one portfolio at entry (never left unassigned, and an account is never treated as if it were a portfolio), so an account's positions are split logically across its portfolios | MVP |
-| Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
+| Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class. Private instruments, with no ISIN and no ticker (real estate, a company pension fund), are not supported yet: they are planned as instruments scoped to one workspace in milestone 0.2.1 (#505) | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
 | Positions | Quantity, average cost (weighted, per account and instrument, [ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)), current value, unrealized and realized gains or losses | MVP |
 | Historical prices | Daily closing price stored; monthly view for each instrument and for the portfolio | MVP |
@@ -272,7 +272,7 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | AssignmentEntry | batch (device-generated, shared by every entry of one user action), month, source category (null = unassigned), destination category (null = unassigned), amount, author, reverses (another entry, optional) | Append-only ledger, never a mutable total: assigning is null→category, unassigning is category→null, moving money is one entry from A to B; quick assign is one entry per category, sharing a batch, undone together. A category's assigned amount in a month is incoming minus outgoing entries. Undo is new entries with `reverses` set, never an edit ([ADR 0008](adr/0008-assignment-ledger.md)) |
 | Scheduled | account, category, payee, amount, next due date, every N days/months/years | Reserves money ahead of being recorded (see "Scheduled transactions") |
 | Goal | category, type, amount, due date | |
-| Instrument | ISIN, ticker, exchange, type, currency, asset class | Shared across users; private data kept separate |
+| Instrument | ISIN, ticker, exchange, name, type, currency, asset class, price factor | Shared across users; private data kept separate. The type keeps apart what tax rules treat differently, since a shared row is never updated: stock, fund (ETFs included), ETC/ETN, government bond (government, white-listed-state or supranational issuer), other bond, certificate, cash, other. One row per listing: the same ISIN can trade on several exchanges, in different currencies. Identified by an ISIN or by a ticker on an exchange; append-only for users. The price factor turns a price into an amount (amount = quantity × price × factor), stored scaled by 10^6 as an integer: 0.01 for a bond quoted in percent of nominal or a price in pence |
 | Price | instrument, date, close, source | Daily time series |
 | FxRate | currency pair, date, rate | Historical rates for multi-currency |
 | Portfolio | name, purpose, allocation | Linked to accounts through its trades: a portfolio can span several accounts and an account can hold several portfolios |
@@ -589,7 +589,7 @@ Work starts from the domain core and the web app for a single workspace, already
 | --- | --- | --- |
 | 0. Foundations | Monorepo, CI, database, Keycloak, workspaces, domain core with tests | Sign-up, sign-in with 2FA, green CI |
 | 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, days of buffer, CSV/OFX/QIF/CAMT.053 import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
-| 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing | The dashboard reproduces the results of an existing spreadsheet-based tracker |
+| 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing; private instruments scoped to one workspace (no ISIN and no ticker) follow the shared catalog in milestone 0.2.1 (#505) | The dashboard reproduces the results of an existing spreadsheet-based tracker |
 | 3. Mobile and offline | Expo app, local database, sync, quick entry, notifications | One week of use on two devices without loss or duplicates |
 | 4. Public open-source beta | Docker, documentation | A self-hosted install works in under 10 minutes |
 | 5. Hosted version (optional) | End-to-end encryption module, subscriptions, licensed market data, managed backups, external security test, legal and GDPR review | Security test passed and legal documents ready |
