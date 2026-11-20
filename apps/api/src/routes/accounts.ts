@@ -13,6 +13,7 @@ import { addTaxRegime, listTaxRegimes, replaceTaxRegimes, setWithholdingAgent } 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
+import { isUuid } from "../ids.ts";
 
 export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
@@ -189,15 +190,13 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
   });
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
  * The route's `accountId`, or undefined after answering 404: a value that is not a UUID names no
- * account, and would otherwise reach PostgreSQL as an invalid uuid and fail with a 500.
+ * account. The global `rejectMalformedIdParams` already answers so; this keeps the type narrow.
  */
 async function accountIdOr404(params: unknown, reply: FastifyReply): Promise<string | undefined> {
   const { accountId } = params as { accountId?: unknown };
-  if (typeof accountId === "string" && UUID_PATTERN.test(accountId)) {
+  if (isUuid(accountId)) {
     return accountId;
   }
   await reply.code(404).send({ error: "account not found" });

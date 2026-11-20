@@ -4,6 +4,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong } from "../errors.ts";
+import { isUuid } from "../ids.ts";
 import {
   createPortfolio,
   deletePortfolio,
@@ -23,8 +24,6 @@ import { isPortfolioHasTradesViolation, portfolioHasTrades } from "../trades/rep
  * #397); `portfolio_has_trades` (a portfolio with trades cannot be deleted, #77).
  */
 type PortfolioConflict = "name_taken" | "portfolio_has_trades";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** An optional free-text purpose: a string (blank meaning none) or `null`; `undefined` when absent, `false` when invalid. */
 function purposeField(body: Record<string, unknown>): string | null | undefined | false {
@@ -68,7 +67,7 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
 
   app.get(`${base}/:portfolioId`, { preHandler }, async (request, reply) => {
     const { portfolioId } = request.params as { portfolioId: string };
-    const portfolio = UUID_PATTERN.test(portfolioId) ? await getPortfolio(request.db!, request.workspace!.id, portfolioId) : undefined;
+    const portfolio = isUuid(portfolioId) ? await getPortfolio(request.db!, request.workspace!.id, portfolioId) : undefined;
     if (!portfolio) {
       await sendNotFound(reply);
       return;
@@ -126,7 +125,7 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
       return;
     }
 
-    const existing = UUID_PATTERN.test(portfolioId) ? await getPortfolio(request.db!, request.workspace!.id, portfolioId) : undefined;
+    const existing = isUuid(portfolioId) ? await getPortfolio(request.db!, request.workspace!.id, portfolioId) : undefined;
     if (!existing) {
       await sendNotFound(reply);
       return;
@@ -160,7 +159,7 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
   // request files under it in between.
   app.delete(`${base}/:portfolioId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { portfolioId } = request.params as { portfolioId: string };
-    if (!UUID_PATTERN.test(portfolioId)) {
+    if (!isUuid(portfolioId)) {
       await sendNotFound(reply);
       return;
     }
