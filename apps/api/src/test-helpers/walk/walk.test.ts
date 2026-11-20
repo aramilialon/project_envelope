@@ -92,7 +92,7 @@ describe("random walk through the API (#80, ADR 0013)", () => {
   });
 
   after(async () => {
-    await server?.stop();
+    await stopRealServer();
     await app.close();
     await realm.teardown();
     await superuserPool.end();
@@ -120,6 +120,24 @@ describe("random walk through the API (#80, ADR 0013)", () => {
     return { ...env, driver: await startRealServer() };
   }
 
+  /**
+   * Stops the real server and drops the `budget-recompute` jobs its writes queued for workspaces
+   * the walk has since deleted. The server works through them one at a time, so a walk leaves a
+   * backlog behind; the next test file that starts a worker on that queue in this database would
+   * have to get through it first, and a test waiting a few seconds for its own job would time out
+   * (#80: `transactions/repository.test.ts` did).
+   */
+  async function stopRealServer(): Promise<void> {
+    if (!server) return;
+    await server.stop();
+    server = undefined;
+    await superuserPool.query(
+      `DELETE FROM pgboss.job j
+       WHERE j.name = 'budget-recompute' AND j.state IN ('created', 'retry', 'active')
+         AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id::text = j.data->>'workspaceId')`,
+    );
+  }
+
   async function walkEnvironment(): Promise<WalkEnvironment> {
     return process.env.WALK_DRIVER === "fetch" ? fetchEnvironment() : env;
   }
@@ -127,11 +145,15 @@ describe("random walk through the API (#80, ADR 0013)", () => {
   if (onDemand) {
     it(replay ? `replays ${process.env.WALK_REPLAY}` : `walks seed ${seed} for ${steps ?? CI_STEPS} steps`, { timeout: Infinity }, async () => {
       const chosen = await walkEnvironment();
-      const result = await runWalk(chosen, {
-        ...(replay ? { seed: replay.seed, steps: replay.ops.length, replay } : { seed: seed!, steps: steps ?? CI_STEPS }),
-        ...(logDir ? { logDir } : {}),
-      });
-      report(result, chosen.driver.name);
+      try {
+        const result = await runWalk(chosen, {
+          ...(replay ? { seed: replay.seed, steps: replay.ops.length, replay } : { seed: seed!, steps: steps ?? CI_STEPS }),
+          ...(logDir ? { logDir } : {}),
+        });
+        report(result, chosen.driver.name);
+      } finally {
+        await stopRealServer();
+      }
     });
     return;
   }
@@ -144,6 +166,10 @@ describe("random walk through the API (#80, ADR 0013)", () => {
 
   it(`keeps every invariant through the real process, seed ${CI_SEEDS[0]}, ${FETCH_STEPS} steps (fetch)`, async () => {
     const fetchEnv = await fetchEnvironment();
-    report(await runWalk(fetchEnv, { seed: CI_SEEDS[0]!, steps: FETCH_STEPS, ...(logDir ? { logDir } : {}) }), "fetch");
+    try {
+      report(await runWalk(fetchEnv, { seed: CI_SEEDS[0]!, steps: FETCH_STEPS, ...(logDir ? { logDir } : {}) }), "fetch");
+    } finally {
+      await stopRealServer();
+    }
   });
 });
