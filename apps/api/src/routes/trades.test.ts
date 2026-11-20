@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { after, before, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 
@@ -41,17 +41,11 @@ describe("trades routes (#77)", () => {
   let app: App;
   let workspaceId: string;
   let token: string;
-  let tokenAt = 0;
   let userId: string;
   const otherWorkspaceIds: string[] = [];
   const instrumentIds: string[] = [];
 
-  /** A fresh token whenever the last one may be close to its 3-second lifespan. */
   async function auth(): Promise<Record<string, string>> {
-    if (Date.now() - tokenAt > 1500) {
-      token = await realm.getUserToken();
-      tokenAt = Date.now();
-    }
     return { authorization: `Bearer ${token}` };
   }
 
@@ -149,9 +143,13 @@ describe("trades routes (#77)", () => {
 
   before(async () => {
     ({ superuserPool, realm, app, workspaceId, token } = await setupIntegrationTest());
-    tokenAt = Date.now();
     const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
     userId = rows[0]!.id;
+  });
+
+  // A fresh token for every test: the test realm's tokens live 3 seconds.
+  beforeEach(async () => {
+    token = await realm.getUserToken();
   });
 
   after(async () => {
@@ -192,7 +190,7 @@ describe("trades routes (#77)", () => {
     const leg = await legOf(buy);
     assert.deepEqual(leg, {
       account_id: broker,
-      status: "cleared",
+      status: "pending",
       trade_id: buy.id,
       local_date: "2026-03-02 00:00",
       amount_cents: String(-(87_123 + 500 + 120)),
@@ -260,6 +258,104 @@ describe("trades routes (#77)", () => {
     // Backdated before the sale of 8: that later sale would then sell more than the portfolio held.
     const later = await rejected({ ...base, type: "sell", portfolioId: growth, tradeDate: "2026-02-01", quantityE8: units(5) }, "insufficient_quantity");
     assert.equal(later.date, "2026-03-01");
+  });
+
+  it("serializes concurrent trades of one instrument, so two sales cannot together oversell", async () => {
+    const etf = await instrument();
+    const broker = await account();
+    const growth = await portfolio();
+    const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+    await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10) });
+
+    const sale = { ...base, type: "sell", tradeDate: "2026-02-10", quantityE8: units(6) };
+    const responses = await Promise.all([post(sale), post(sale)]);
+    assert.deepEqual(responses.map((response) => response.statusCode).sort(), [201, 400]);
+    const refused = responses.find((response) => response.statusCode === 400)!;
+    assert.equal(refused.json().error, "insufficient_quantity");
+
+    const { rows } = await superuserPool.query<{ held: string }>(
+      "SELECT sum(CASE WHEN type = 'sell' THEN -quantity_e8 ELSE quantity_e8 END) AS held FROM trades WHERE account_id = $1",
+      [broker],
+    );
+    assert.equal(Number(rows[0]!.held), units(4));
+  });
+
+  it("orders a trade with no time as midnight UTC of its date, before a timed one", async () => {
+    const etf = await instrument();
+    const base = { accountId: await account(), portfolioId: await portfolio(), instrumentId: etf, priceE6: price(10), quantityE8: units(1) };
+    await created({ ...base, type: "buy", tradeDate: "2026-01-10", occurredAt: "2026-01-10T10:00:00+01:00" });
+    // Untimed, the sale replays before the 10:00 buy of the same day: nothing is held yet.
+    await rejected({ ...base, type: "sell", tradeDate: "2026-01-10" }, "insufficient_quantity");
+  });
+
+  it("refuses a time that is not on the trade date in the workspace's time zone", async () => {
+    const base = { type: "fee", accountId: await account(), portfolioId: await portfolio(), feesCents: 100, tradeDate: "2026-01-10" };
+    // 23:30 UTC on the 9th is 00:30 on the 10th in Rome: on the date.
+    await created({ ...base, occurredAt: "2026-01-09T23:30:00Z" });
+    const details = await rejected({ ...base, occurredAt: "2026-01-10T23:30:00Z" }, "invalid_trade");
+    assert.equal(details.field, "occurredAt");
+  });
+
+  it("refuses a fee or a tax of zero", async () => {
+    const base = { accountId: await account(), portfolioId: await portfolio(), tradeDate: "2026-01-10" };
+    assert.equal((await rejected({ ...base, type: "fee" }, "invalid_trade")).field, "feesCents");
+    assert.equal((await rejected({ ...base, type: "tax", taxKind: "stamp_duty", grossCents: 0 }, "invalid_trade")).field, "grossCents");
+    assert.equal((await rejected({ ...base, type: "tax", taxKind: "gain_tax_adjustment", grossCents: 0 }, "invalid_trade")).field, "grossCents");
+  });
+
+  it("records a bond sale with accrued interest and its domestic withholding, and refuses a withholding above the interest", async () => {
+    const bond = await instrument("bond", "EUR", 10_000);
+    const base = { accountId: await account(), portfolioId: await portfolio(), instrumentId: bond };
+    await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10_000), priceE6: price(98) });
+    const [sale] = await created({
+      ...base,
+      type: "sell",
+      tradeDate: "2026-06-10",
+      quantityE8: units(10_000),
+      priceE6: price(100),
+      accruedInterestCents: 4_000,
+      withholdingDomesticCents: 500,
+      feesCents: 500,
+    });
+    assert.equal(sale!.grossCents, 1_000_000);
+    assert.equal(sale!.cashCents, 1_000_000 + 4_000 - 500 - 500);
+    assert.equal((await legOf(sale!))?.amount_cents, String(1_003_000));
+
+    const details = await rejected(
+      { ...base, type: "buy", tradeDate: "2026-07-01", quantityE8: units(1_000), priceE6: price(99), accruedInterestCents: 100, withholdingDomesticCents: 101 },
+      "withholding_exceeds_gross",
+    );
+    assert.deepEqual(details, { field: "withholdingDomesticCents", withheld: 101, gross: 100 });
+  });
+
+  it("answers 409 for a leg id another workspace already uses, leaving nothing behind", async () => {
+    const etf = await instrument();
+    const elsewhere = await addWorkspace("owner");
+    const foreignAccount = await account("brokerage", "EUR", elsewhere);
+    const foreignPortfolio = await portfolio(elsewhere);
+    const [foreign] = await created(
+      { type: "buy", accountId: foreignAccount, portfolioId: foreignPortfolio, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(1) },
+      elsewhere,
+    );
+
+    const broker = await account();
+    const growth = await portfolio();
+    await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(5), priceE6: price(1) });
+    const before = await countTrades();
+    const { rows: legsBefore } = await superuserPool.query("SELECT id FROM transactions WHERE workspace_id = $1", [workspaceId]);
+    const response = await post({
+      type: "transfer",
+      instrumentId: etf,
+      tradeDate: "2026-02-01",
+      quantityE8: units(1),
+      from: { accountId: broker, portfolioId: growth, feesCents: 300 },
+      to: { id: foreign!.id, accountId: await account(), portfolioId: growth },
+    });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().code, "id_taken");
+    assert.equal(await countTrades(), before);
+    const { rows: legsAfter } = await superuserPool.query("SELECT id FROM transactions WHERE workspace_id = $1", [workspaceId]);
+    assert.equal(legsAfter.length, legsBefore.length);
   });
 
   it("refuses a sale in another account even though the workspace holds the instrument", async () => {
@@ -811,14 +907,40 @@ describe("trades routes (#77)", () => {
       await rejected(await sell(foreign, etf, "2026-02-01", { gainTaxCents: 100 }), "tax_kind_not_allowed_in_regime", italian);
     });
 
-    it("refuses a domestic withholding unless the broker is a domestic withholding agent", async () => {
+    it("accepts a dividend's domestic withholding at a foreign broker: it was taken upstream", async () => {
+      const foreign = await regimeAccount([["2026-01-01", "self_declared"]], false);
+      // An Italian share's dividend: €100 gross, €26 withheld in Italy, €74 paid in.
+      const [dividend] = await created(
+        { type: "dividend", accountId: foreign, portfolioId: growth, instrumentId: stock, tradeDate: "2026-03-01", grossCents: 10_000, withholdingDomesticCents: 2_600 },
+        italian,
+      );
+      assert.equal(dividend!.cashCents, 7_400);
+    });
+
+    it("refuses the domestic withholding on a bond trade's accrued interest unless the broker is a domestic withholding agent", async () => {
+      const bond = await instrument("government_bond", "EUR", 10_000);
       const agent = await regimeAccount([["2026-01-01", "self_declared"]], true);
       const foreign = await regimeAccount([["2026-01-01", "self_declared"]], false);
-      const dividend = { type: "dividend", portfolioId: growth, instrumentId: stock, tradeDate: "2026-03-01", grossCents: 1_000, withholdingDomesticCents: 260 };
-      await created({ type: "buy", accountId: agent, portfolioId: growth, instrumentId: stock, tradeDate: "2026-01-02", quantityE8: units(1), priceE6: price(1) }, italian);
-      await created({ ...dividend, accountId: agent }, italian);
-      const details = await rejected({ ...dividend, accountId: foreign }, "domestic_withholding_requires_agent", italian);
+      const buy = { type: "buy", portfolioId: growth, instrumentId: bond, tradeDate: "2026-03-01", quantityE8: units(1_000), priceE6: price(99), accruedInterestCents: 300, withholdingDomesticCents: 37 };
+      await created({ ...buy, accountId: agent }, italian);
+      const details = await rejected({ ...buy, accountId: foreign }, "domestic_withholding_requires_agent", italian);
       assert.deepEqual(details, { field: "withholdingDomesticCents" });
+    });
+
+    it("allows a gain tax adjustment when an earlier regime allowed gain tax", async () => {
+      // An administered sale in December, self-declared from 1 January, a refund in February.
+      const broker = await regimeAccount([["2025-03-10", "administered"], ["2026-01-01", "self_declared"]], true);
+      await created(await sell(broker, stock, "2025-12-15", { gainTaxCents: 300 }), italian);
+      const [refund] = await created(
+        { type: "tax", taxKind: "gain_tax_adjustment", accountId: broker, portfolioId: growth, instrumentId: stock, tradeDate: "2026-02-10", grossCents: 300 },
+        italian,
+      );
+      assert.equal(refund!.cashCents, 300);
+      // Only ever self-declared: an adjustment must name a fund.
+      const selfDeclared = await regimeAccount([["2026-01-01", "self_declared"]], true);
+      const adjustment = { type: "tax", taxKind: "gain_tax_adjustment", accountId: selfDeclared, portfolioId: growth, tradeDate: "2026-02-10", grossCents: 300 };
+      await rejected({ ...adjustment, instrumentId: stock }, "tax_kind_not_allowed_in_regime", italian);
+      await created({ ...adjustment, instrumentId: etf }, italian);
     });
 
     it("checks nothing outside an IT workspace", async () => {

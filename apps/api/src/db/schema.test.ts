@@ -960,14 +960,20 @@ describe("apps/api/migrations, applied to a real database", () => {
       });
     }
 
-    it("only shows and changes the selected workspace's trades", async () => {
+    it("only shows the selected workspace's trades, and inserts only into it", async () => {
       await asWorkspaceA(async (client) => {
         const visible = await client.query("SELECT id FROM trades");
         assert.deepEqual(visible.rows, [{ id: workspaceA.tradeId }]);
-        assert.equal((await client.query("UPDATE trades SET memo = 'x' WHERE id = $1", [workspaceB.tradeId])).rowCount, 0);
-        assert.equal((await client.query("DELETE FROM trades WHERE id = $1", [workspaceB.tradeId])).rowCount, 0);
         await assert.rejects(() => insertTrade(client, { workspace_id: workspaceB.workspaceId, account_id: workspaceB.accountId, portfolio_id: workspaceB.portfolioId }), /row-level security/);
       });
+    });
+
+    it("gives envelope_app no UPDATE or DELETE on trades yet (#509 grants them)", async () => {
+      for (const sql of ["UPDATE trades SET memo = 'x' WHERE id = $1", "DELETE FROM trades WHERE id = $1"]) {
+        await asWorkspaceA(async (client) => {
+          await assert.rejects(() => client.query(sql, [workspaceA.tradeId]), /permission denied/);
+        });
+      }
     });
 
     it("does not let a trade or a cash leg reference another workspace's rows", async () => {
@@ -1016,6 +1022,9 @@ describe("apps/api/migrations, applied to a real database", () => {
         [{ type: "split", quantity_e8: 0, price_e6: 0, gross_cents: 0, split_from: 1 }, "trades_split_check"],
         [{ type: "transfer", price_e6: 0, gross_cents: 0 }, "trades_transfer_check"],
         [{ type: "transfer", price_e6: 0, gross_cents: 0, cost_basis_cents: 5, transfer_trade_id: workspaceA.tradeId }, "trades_transfer_check"],
+        [{ type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_fee_check"],
+        [{ type: "tax", tax_kind: "stamp_duty", quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_tax_check"],
+        [{ type: "tax", tax_kind: "gain_tax_adjustment", quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_tax_check"],
         [{ fees_cents: -1 }, "trades_amounts_not_negative_check"],
         [{ gross_cents: -1 }, "trades_amounts_not_negative_check"],
         [{ type: "tax", tax_kind: "other", quantity_e8: 0, price_e6: 0, gross_cents: -1 }, "trades_amounts_not_negative_check"],
@@ -1059,14 +1068,37 @@ describe("apps/api/migrations, applied to a real database", () => {
       });
 
       await asWorkspaceA(async (client) => {
+        // A cash leg sits on its trade's own account.
+        const otherAccount = await client.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Other broker', 'brokerage', 'EUR', false) RETURNING id",
+          [workspaceA.workspaceId],
+        );
+        await rejectsWith(
+          () =>
+            client.query("INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'pending', $3)", [
+              workspaceA.workspaceId,
+              otherAccount.rows[0]!.id,
+              workspaceA.tradeId,
+            ]),
+          "23503",
+          "transactions_trade_id_fkey",
+        );
+      });
+
+      await asWorkspaceA(async (client) => {
         const tradeId = await insertTrade(client, { type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0, fees_cents: 100 });
         const leg = await client.query<{ id: string }>(
           "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'cleared', $3) RETURNING id",
           [workspaceA.workspaceId, workspaceA.accountId, tradeId],
         );
+        // envelope_app may not delete a trade yet (#509): the owner does, here.
+        await client.query("RESET ROLE");
         await client.query("DELETE FROM trades WHERE id = $1", [tradeId]);
         const left = await client.query("SELECT 1 FROM transactions WHERE id = $1", [leg.rows[0]!.id]);
         assert.equal(left.rowCount, 0);
+      });
+
+      await asWorkspaceA(async (client) => {
         await rejectsWith(() => client.query("DELETE FROM portfolios WHERE id = $1", [workspaceA.portfolioId]), "23503", "trades_portfolio_id_fkey");
       });
 
