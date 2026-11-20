@@ -1,10 +1,11 @@
 /**
  * The tax regime a brokerage account is under, over time (#508).
  *
- * An account keeps a history of regimes rather than a single value, so a later change never
- * reinterprets trades already recorded: a trade uses the regime in force on its own date. The
- * first entry may start on any date, and also covers every date before it; every later one
- * starts on 1 January, the only day a change takes effect. No two entries share a date.
+ * An account keeps a history of regimes rather than a single value: a trade uses the regime in
+ * force on its own date, so a change from a later 1 January does not alter trades dated before
+ * it; recording or correcting the history re-reads the trades it covers. The first entry may
+ * start on any date, and also covers every date before it; every later one starts on 1 January,
+ * the only day a change takes effect. No two entries share a date.
  *
  * Only the rules about the history live here. What each regime means for taxes is computed
  * elsewhere, later (design.md, "Portfolio module").

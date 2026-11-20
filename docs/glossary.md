@@ -23,10 +23,11 @@
 | Nominal | A bond's face value, the amount repaid at maturity; it is the bond's quantity, so 10 bonds of €1,000 are a quantity of 10,000 | `quantity_e8` | Valore nominale |
 | Tax country | A workspace's country for tax purposes (ISO 3166-1 alpha-2); in `IT`, every brokerage account records its tax regime | `taxCountry`, `tax_country` | Paese fiscale |
 | Tax regime | How a brokerage account's gains are taxed, kept as a history of periods (a change starts on 1 January): self-declared, administered or managed | `TaxRegime`, `account_tax_regimes` | Regime fiscale |
-| Self-declared regime | The investor reports gains and losses in their own tax return; the broker settles no tax on gains | `self_declared` | Dichiarativo |
+| Self-declared regime | The broker does not settle the tax on capital gains from securities; the investor reports them in their annual return | `self_declared` | Dichiarativo |
 | Administered regime | The broker, an Italian withholding agent, withholds the tax on each realized gain and tracks losses within the account | `administered` | Amministrato |
-| Managed regime | A manager runs the account under a mandate and applies the tax to the mandate's result | `managed` | Gestito |
-| Withholding agent | A broker that withholds Italian tax at source on the investor's behalf; decides which withholdings appear in a self-declared account | `domesticWithholdingAgent` | Sostituto d'imposta |
+| Managed regime | A manager, an Italian intermediary, runs the account under a mandate and applies the tax to the result the mandate accrued over the year, realized or not | `managed` | Gestito |
+| Withholding agent | A broker that withholds Italian tax at source on the investor's behalf (on income from funds and ETFs, dividends and coupons); fixed per account, required for an administered or managed one | `domesticWithholdingAgent` | Sostituto d'imposta |
+| Dossier | One securities account at a broker, under one tax regime; one account in the app. A broker can hold several | — | Dossier titoli |
 
 ## Technical
 
