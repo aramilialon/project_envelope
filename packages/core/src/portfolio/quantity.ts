@@ -5,8 +5,10 @@
  * scaled by a fixed power of ten instead of the currency's minor unit:
  *
  * - a `Quantity` is a number of units × 10^8: 1.5 shares is 150000000;
- * - a `Price` is the price of one unit in the instrument's currency × 10^6:
- *   €87.123456 is 87123456;
+ * - a `Price` is the price as quoted for one unit × 10^6: €87.123456 is
+ *   87123456. It is in the instrument's currency when the price factor is 1;
+ *   otherwise the amount per unit is price × price factor (a bond quoted in
+ *   percent of nominal, a share quoted in pence);
  * - a `PriceFactor` is × 10^6 as well: 1 (1000000) for most instruments, 0.01
  *   (10000) for bonds quoted in percent of nominal and for instruments quoted
  *   in hundredths of their currency.
@@ -33,7 +35,11 @@ import { assertCents, currencyDecimals, localeSeparators, matchLocaleDecimal } f
 /** A number of units of an instrument × 10^8. Positive or negative, like an amount. */
 export type Quantity = number & { readonly __brand: "Quantity" };
 
-/** The price of one unit in the instrument's currency × 10^6. Never negative. */
+/**
+ * The price as quoted for one unit × 10^6. In the instrument's currency when
+ * the price factor is 1; otherwise the amount per unit is price × price factor.
+ * Never negative.
+ */
 export type Price = number & { readonly __brand: "Price" };
 
 /** The factor between quantity × price and the amount, × 10^6. Always positive. */
@@ -152,7 +158,7 @@ export function parseQuantity(text: string, options: { locale: Locale }): Quanti
       locale: options.locale,
     });
   }
-  return toQuantity(bigintToNumber(scaled));
+  return quantityFromBigint(scaled);
 }
 
 /**
@@ -170,7 +176,7 @@ export function parsePrice(text: string, options: { locale: Locale }): Price {
       locale: options.locale,
     });
   }
-  return toPrice(bigintToNumber(scaled));
+  return priceFromBigint(scaled);
 }
 
 // --- Formatting -------------------------------------------------------------
@@ -262,8 +268,10 @@ export function formatQuantity(quantity: Quantity, options: { locale: Locale }):
 /**
  * Formats a price for display in the user's locale, with as many decimals as
  * it has (at most 6). With a currency it is shown as an amount in that
- * currency, with at least the currency's own decimals; without one (a bond's
- * price in percent of nominal) as a plain number.
+ * currency, with at least the currency's own decimals; without one as a plain
+ * number. Pass the currency only when the instrument's price factor is 1: any
+ * other price (a bond in percent of nominal, a share in pence) is not an
+ * amount in the instrument's currency and is shown without it.
  *
  * @example formatPrice(87123456, { locale: "en-US", currency: "EUR" }) // "€87.123456"
  * @example formatPrice(87500000, { locale: "en-US", currency: "EUR" }) // "€87.50"
@@ -300,15 +308,42 @@ function divideHalfEven(n: bigint, d: bigint): bigint {
   return quotient;
 }
 
-/** A BigInt result as a number, or NaN if it is beyond the safe range (the callers' asserts reject NaN). */
-function bigintToNumber(value: bigint): number {
+/** A BigInt result as a number, or null if it is beyond the safe range. */
+function safeNumber(value: bigint): number | null {
   const asNumber = Number(value);
-  return Number.isSafeInteger(asNumber) && BigInt(asNumber) === value ? asNumber : Number.NaN;
+  return Number.isSafeInteger(asNumber) && BigInt(asNumber) === value ? asNumber : null;
 }
 
-function toCents(value: bigint, label: string): Cents {
-  const cents = bigintToNumber(value);
-  assertCents(cents, label);
+function quantityFromBigint(value: bigint, label = "quantity"): Quantity {
+  const quantity = safeNumber(value);
+  if (quantity === null) {
+    throw new ValidationError("invalid_quantity", `${label} is beyond the safe range of units × 10^8: ${value}`, {
+      label,
+      value: value.toString(),
+    });
+  }
+  return toQuantity(quantity, label);
+}
+
+function priceFromBigint(value: bigint, label = "price"): Price {
+  const price = safeNumber(value);
+  if (price === null) {
+    throw new ValidationError("invalid_price", `${label} is beyond the safe range of price × 10^6: ${value}`, {
+      label,
+      value: value.toString(),
+    });
+  }
+  return toPrice(price, label);
+}
+
+function centsFromBigint(value: bigint, label: string): Cents {
+  const cents = safeNumber(value);
+  if (cents === null) {
+    throw new ValidationError("invalid_amount", `${label} is beyond the safe range of minor units: ${value}`, {
+      label,
+      value: value.toString(),
+    });
+  }
   return cents;
 }
 
@@ -326,13 +361,15 @@ export function amountOf(quantity: Quantity, price: Price, priceFactor: PriceFac
   assertPriceFactor(priceFactor);
   const minorScale = 10n ** BigInt(currencyDecimals(currency));
   const numerator = BigInt(quantity) * BigInt(price) * BigInt(priceFactor) * minorScale;
-  return toCents(divideHalfAwayFromZero(numerator, QUANTITY_SCALE * PRICE_SCALE * PRICE_FACTOR_SCALE), "amount");
+  return centsFromBigint(divideHalfAwayFromZero(numerator, QUANTITY_SCALE * PRICE_SCALE * PRICE_FACTOR_SCALE), "amount");
 }
 
 /**
  * How many units `amount` buys at `price`: rounded toward zero to 8 decimals,
  * then down to a multiple of `step` (for example `ONE_UNIT` when fractional
- * units are off), so the order never spends more than `amount`.
+ * units are off), so `amountOf` the result never exceeds `amount`. The amount
+ * passed must already be net of fees; a broker that rounds its own charge up
+ * can still charge one minor unit more.
  *
  * @example quantityFor(10000, 87_123_456, PRICE_FACTOR_ONE, "EUR") // 114779652 (€100 at €87.123456)
  * @throws ValidationError "invalid_price" if the price is zero, "invalid_quantity_step" if the step is not positive.
@@ -365,7 +402,7 @@ export function quantityFor(
     const bigStep = BigInt(step);
     quantity = (quantity / bigStep) * bigStep; // toward zero
   }
-  return toQuantity(bigintToNumber(quantity));
+  return quantityFromBigint(quantity);
 }
 
 /**
@@ -393,14 +430,17 @@ export function priceFrom(amount: Cents, quantity: Quantity, priceFactor: PriceF
     numerator = -numerator;
     denominator = -denominator;
   }
-  return toPrice(bigintToNumber(divideHalfEven(numerator, denominator)));
+  return priceFromBigint(divideHalfEven(numerator, denominator));
 }
 
 /**
  * The part of a position's `cost` that leaves it when `sold` of its `held`
  * units are sold: cost × sold ÷ held, rounded half away from zero. Selling
  * every unit returns the whole cost, so whatever was rounded on earlier sales
- * is never left behind.
+ * is never left behind. The result depends on how sales are split (a cost of
+ * 101 on 4 units: selling 1 then 1 removes 25 + 25, selling 2 at once removes
+ * 51), so positions are rebuilt by replaying trades in one fixed order
+ * (ADR 0011).
  *
  * @example proportionalCost(100000, 100_000_000, 300_000_000) // 33333 (a third of €1,000)
  * @throws ValidationError "invalid_sale_quantity" unless 0 ≤ sold ≤ held and held > 0.
@@ -411,10 +451,10 @@ export function proportionalCost(cost: Cents, sold: Quantity, held: Quantity): C
   assertQuantity(held, "held");
   if (held <= 0 || sold < 0 || sold > held) {
     throw new ValidationError("invalid_sale_quantity", `cannot sell ${sold} of ${held} units × 10^8`, {
-      sold,
-      held,
+      sold: String(sold),
+      held: String(held),
     });
   }
   if (sold === held) return cost;
-  return toCents(divideHalfAwayFromZero(BigInt(cost) * BigInt(sold), BigInt(held)), "cost");
+  return centsFromBigint(divideHalfAwayFromZero(BigInt(cost) * BigInt(sold), BigInt(held)), "cost");
 }

@@ -113,7 +113,7 @@ The user records every instrument they own and every transaction. The app derive
 | Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade is assigned to exactly one portfolio at entry (never left unassigned, and an account is never treated as if it were a portfolio), so an account's positions are split logically across its portfolios | MVP |
 | Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
-| Positions | Quantity, average cost, current value, unrealized and realized gains or losses | MVP |
+| Positions | Quantity, average cost (weighted, per account and instrument, [ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)), current value, unrealized and realized gains or losses | MVP |
 | Historical prices | Daily closing price stored; monthly view for each instrument and for the portfolio | MVP |
 | Monthly performance | Month-by-month table and chart: value, net contributions, gain, return | MVP |
 | Manual prices | For instruments without automatic quotes (some government bonds, funds, real estate) | MVP |

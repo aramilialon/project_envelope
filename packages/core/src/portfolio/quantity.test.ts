@@ -127,7 +127,8 @@ describe("formatQuantity and formatPrice", () => {
 
   it("show a price in its currency with at least the currency's decimals", () => {
     assert.equal(formatPrice(87_123_456 as Price, { locale: "en-US", currency: "EUR" }), "€87.123456");
-    assert.equal(formatPrice(87_500_000 as Price, { locale: "it-IT", currency: "EUR" }), "87,50 €");
+    // Intl puts a non-breaking space (\u00a0) before the € sign in Italian.
+    assert.equal(formatPrice(87_500_000 as Price, { locale: "it-IT", currency: "EUR" }), "87,50\u00a0€");
     assert.equal(formatPrice(1_234_000_000 as Price, { locale: "en-US", currency: "JPY" }), "¥1,234");
     assert.equal(formatPrice(1_234_500_000 as Price, { locale: "en-US", currency: "JPY" }), "¥1,234.5");
   });
@@ -163,7 +164,18 @@ describe("amountOf", () => {
     assert.equal(amountOf(units(90_000_000), price(1_000_000), PRICE_FACTOR_ONE, "EUR"), 9_000_000_000_000_000);
     assert.throws(
       () => amountOf(units(90_000_000), price(1_001_000), PRICE_FACTOR_ONE, "EUR"),
-      (e) => isValidationError(e, "invalid_amount"),
+      (e) =>
+        isValidationError(e, "invalid_amount") &&
+        // The overflowing value itself, as a string: never "NaN".
+        e.details["value"] === "9009000000000000",
+    );
+  });
+
+  it("returns exactly the largest safe amount", () => {
+    // 2^53 − 1 = 6361 × 69431 × 20394401: 14,160.03655831 units at €6,361,000,000.
+    assert.equal(
+      amountOf(toQuantity(1_416_003_655_831), toPrice(6_361_000_000_000_000), PRICE_FACTOR_ONE, "EUR"),
+      Number.MAX_SAFE_INTEGER,
     );
   });
 
@@ -215,12 +227,20 @@ describe("quantityFor", () => {
     assert.equal(quantityFor(3704, price(1234.5), PRICE_FACTOR_ONE, "JPY"), 300_040_502);
   });
 
-  it("never spends more than the amount", () => {
+  it("never spends more than the amount, whatever the price factor and the currency", () => {
     const prices = [price(0.01), price(0.333333), price(3), price(87.123456), price(1234.5), price(999_999.999999)];
-    for (const p of prices) {
-      for (const amount of [1, 99, 10_000, 12_345_678]) {
-        const quantity = quantityFor(amount, p, PRICE_FACTOR_ONE, "EUR");
-        assert.ok(amountOf(quantity, p, PRICE_FACTOR_ONE, "EUR") <= amount, `${amount} at ${p}`);
+    const cases = [
+      [PRICE_FACTOR_ONE, "EUR"],
+      [PRICE_FACTOR_HUNDREDTH, "EUR"],
+      [PRICE_FACTOR_HUNDREDTH, "GBP"],
+      [PRICE_FACTOR_ONE, "JPY"],
+    ] as const;
+    for (const [factor, currency] of cases) {
+      for (const p of prices) {
+        for (const amount of [1, 99, 10_000, 123_457]) {
+          const quantity = quantityFor(amount, p, factor, currency);
+          assert.ok(amountOf(quantity, p, factor, currency) <= amount, `${amount} at ${p} × ${factor} in ${currency}`);
+        }
       }
     }
   });
@@ -231,6 +251,13 @@ describe("quantityFor", () => {
       () => quantityFor(10_000, price(1), PRICE_FACTOR_ONE, "EUR", 0 as Quantity),
       (e) => isValidationError(e, "invalid_quantity_step"),
     );
+    for (const step of [-ONE_UNIT, 0.5, Number.NaN]) {
+      assert.throws(
+        () => quantityFor(10_000, price(1), PRICE_FACTOR_ONE, "EUR", step as Quantity),
+        (e) => isValidationError(e, "invalid_quantity_step"),
+        `step ${step}`,
+      );
+    }
     assert.throws(
       () => quantityFor(10_000_000_000, price(0.000001), PRICE_FACTOR_ONE, "EUR"),
       (e) => isValidationError(e, "invalid_quantity"),
@@ -259,9 +286,35 @@ describe("priceFrom", () => {
     assert.equal(priceFrom(-100_000, units(-3), PRICE_FACTOR_ONE, "EUR"), 333_333_333);
   });
 
-  it("rejects a quantity of zero and a negative result", () => {
+  it("rejects a quantity of zero, a negative result and a price beyond the safe range", () => {
     assert.throws(() => priceFrom(100, 0 as Quantity, PRICE_FACTOR_ONE, "EUR"), (e) => isValidationError(e, "invalid_quantity"));
     assert.throws(() => priceFrom(-100, units(1), PRICE_FACTOR_ONE, "EUR"), (e) => isValidationError(e, "invalid_price"));
+    // €10,000 for 0.00000001 units is €10^12 per unit.
+    assert.throws(
+      () => priceFrom(1_000_000, 1 as Quantity, PRICE_FACTOR_ONE, "EUR"),
+      (e) => isValidationError(e, "invalid_price") && e.details["value"] === "1000000000000000000",
+    );
+  });
+
+  // The derived price is rounded to 6 decimals; while quantity × price factor stays below
+  // 10,000 units that rounding moves the amount by less than half a minor unit, so the
+  // broker's amount comes back exactly. This is what lets an import with no price store
+  // the derived one as the trade's quoted price.
+  it("gives back the amount it was derived from, for shares and for bonds", () => {
+    const cases = [
+      [PRICE_FACTOR_ONE, "EUR", [units(0.12345678), units(1), units(1.14779652), units(3), units(7), units(9999)]],
+      [PRICE_FACTOR_ONE, "JPY", [units(0.5), units(3), units(9999)]],
+      [PRICE_FACTOR_HUNDREDTH, "EUR", [units(1000), units(10_000), units(50_000), units(999_900)]],
+      [PRICE_FACTOR_HUNDREDTH, "GBP", [units(1), units(100), units(12_345.678)]],
+    ] as const;
+    for (const [factor, currency, quantities] of cases) {
+      for (const quantity of quantities) {
+        for (const amount of [1, 7, 10_000, 333_333, 987_654, 123_456_789]) {
+          const derived = priceFrom(amount, quantity, factor, currency);
+          assert.equal(amountOf(quantity, derived, factor, currency), amount, `${amount} for ${quantity} × ${factor} in ${currency}`);
+        }
+      }
+    }
   });
 });
 
@@ -279,6 +332,33 @@ describe("proportionalCost", () => {
     assert.deepEqual(removed, [33_333, 33_334, 33_333]);
     assert.equal(removed.reduce((a, b) => a + b, 0), 100_000);
     assert.equal(cost, 0);
+  });
+
+  it("conserves the cost exactly over a long, uneven sequence of sales", () => {
+    let cost = 1_000_003;
+    let held = toQuantity(1_234_567_890_123); // 12,345.67890123 units
+    const sales = [1, 333_333_333, 98_765_432_101, 7, 500_000_000_000, 123_456_789];
+    const removed: number[] = [];
+    for (const sold of [...sales, held - sales.reduce((a, b) => a + b, 0)]) {
+      const part = proportionalCost(cost, toQuantity(sold), held);
+      assert.ok(part >= 0 && part <= cost, `${part} of ${cost}`);
+      removed.push(part);
+      cost -= part;
+      held = toQuantity(held - sold);
+    }
+    assert.equal(held, 0);
+    assert.equal(cost, 0);
+    assert.equal(removed.reduce((a, b) => a + b, 0), 1_000_003);
+  });
+
+  // Documented, not a bug: rounding each sale makes the result depend on how the units are
+  // split across sales. Positions are therefore rebuilt by replaying trades in one fixed
+  // order (ADR 0011), so the same trades always give the same cost.
+  it("depends on how a sale is split: 101 on 4 units removes 25 + 25 or 51", () => {
+    const first = proportionalCost(101, units(1), units(4));
+    const second = proportionalCost(101 - first, units(1), units(3));
+    assert.deepEqual([first, second], [25, 25]);
+    assert.equal(proportionalCost(101, units(2), units(4)), 51);
   });
 
   it("rounds half away from zero", () => {
