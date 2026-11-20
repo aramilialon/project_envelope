@@ -25,11 +25,13 @@ interface TradeBody {
   readonly tradeDate: string;
   readonly quantityE8: number;
   readonly grossCents: number;
+  readonly feesCents: number;
   readonly costBasisCents: number | null;
   readonly splitFrom: number | null;
   readonly splitTo: number | null;
   readonly transferTradeId: string | null;
   readonly memo: string | null;
+  readonly createdAt: string;
   readonly cashCents: number;
   readonly cashTransactionId: string | null;
   readonly locked: boolean;
@@ -524,6 +526,24 @@ describe("trades routes (#77)", () => {
     assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "memo", max: MAX_FREE_TEXT_LENGTH } });
   });
 
+  it("refuses a create body with a field it does not know, at the top level or in a transfer leg", async () => {
+    const etf = await instrument();
+    const broker = await account();
+    const growth = await portfolio();
+    await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(5), priceE6: price(10) });
+    const before = await countTrades();
+    for (const payload of [
+      { type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 100, fee: 100 },
+      { type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(10), quantity: 1 },
+      { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: growth, fees: 1 } },
+    ]) {
+      const response = await post(payload);
+      assert.equal(response.statusCode, 400, JSON.stringify(payload));
+      assert.match(response.json().error, /^invalid trade: .* is not a field of this request$/);
+    }
+    assert.equal(await countTrades(), before);
+  });
+
   describe("transfers", () => {
     it("moves units between two portfolios of one account: two linked legs, no cash", async () => {
       const etf = await instrument();
@@ -742,7 +762,7 @@ describe("trades routes (#77)", () => {
     assert.equal(removed.statusCode, 409);
     assert.equal(removed.json().code, "trade_owned_transaction");
 
-    // A reconciled leg locks its trade (editing and deleting trades are #509).
+    // A reconciled leg locks its trade (#509 refuses editing and deleting it).
     await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [fee!.cashTransactionId]);
     const [locked] = (await list(`?accountId=${broker}`)).json().trades as TradeBody[];
     assert.equal(locked!.locked, true);
@@ -944,6 +964,520 @@ describe("trades routes (#77)", () => {
       const base = { accountId: broker, portfolioId: await portfolio(), instrumentId: stock, priceE6: price(100), quantityE8: units(1) };
       await created({ ...base, type: "buy", tradeDate: "2026-01-02" });
       await created({ ...base, type: "sell", tradeDate: "2026-02-02", gainTaxCents: 100 });
+    });
+  });
+
+  describe("editing and deleting (#509)", () => {
+    async function patch(tradeId: string, payload: Record<string, unknown>, ws = workspaceId) {
+      return app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}/trades/${tradeId}`, headers: await auth(), payload });
+    }
+
+    async function remove(tradeId: string, ws = workspaceId) {
+      return app.fastify.inject({ method: "DELETE", url: `/workspaces/${ws}/trades/${tradeId}`, headers: await auth() });
+    }
+
+    async function edited(tradeId: string, payload: Record<string, unknown>, ws = workspaceId): Promise<TradeBody[]> {
+      const response = await patch(tradeId, payload, ws);
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json().trades;
+    }
+
+    /** The trades of the workspace, as stored, and their cash legs: what a refused request must leave untouched. */
+    async function snapshot(ws = workspaceId) {
+      const { rows } = await superuserPool.query(
+        `SELECT t.*, c.id AS leg_id, c.account_id AS leg_account, c.occurred_at AS leg_date,
+                (SELECT sum(amount_cents) FROM splits WHERE transaction_id = c.id) AS leg_amount
+         FROM trades t LEFT JOIN transactions c ON c.trade_id = t.id
+         WHERE t.workspace_id = $1 ORDER BY t.id`,
+        [ws],
+      );
+      return rows;
+    }
+
+    async function refusedEdit(tradeId: string, payload: Record<string, unknown>, code: string, ws = workspaceId): Promise<Record<string, unknown>> {
+      const before = await snapshot(ws);
+      const response = await patch(tradeId, payload, ws);
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(response.json().error, code, response.body);
+      assert.deepEqual(await snapshot(ws), before);
+      return response.json().details;
+    }
+
+    async function refusedDelete(tradeId: string, code: string, ws = workspaceId): Promise<Record<string, unknown>> {
+      const before = await snapshot(ws);
+      const response = await remove(tradeId, ws);
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(response.json().error, code, response.body);
+      assert.deepEqual(await snapshot(ws), before);
+      return response.json().details;
+    }
+
+    async function balanceOf(accountId: string): Promise<number> {
+      const { rows } = await superuserPool.query<{ balance: string | null }>(
+        "SELECT sum(s.amount_cents) AS balance FROM splits s JOIN transactions t ON t.id = s.transaction_id WHERE t.account_id = $1",
+        [accountId],
+      );
+      return Number(rows[0]!.balance ?? 0);
+    }
+
+    async function legCount(tradeId: string): Promise<number> {
+      const { rows } = await superuserPool.query<{ count: string }>("SELECT count(*) FROM transactions WHERE trade_id = $1", [tradeId]);
+      return Number(rows[0]!.count);
+    }
+
+    it("rewrites a buy and its cash leg in place, keeping the leg's id, memo and payee", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const [buy] = await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-03-02", quantityE8: units(10), priceE6: price(100), feesCents: 500 });
+      await superuserPool.query("UPDATE transactions SET memo = 'Plan', payee = 'Broker', status = 'cleared' WHERE id = $1", [buy!.cashTransactionId]);
+
+      const [after] = await edited(buy!.id, { feesCents: 700, tradeDate: "2026-03-03", memo: "Corrected" });
+      assert.equal(after!.id, buy!.id);
+      assert.equal(after!.feesCents, 700);
+      assert.equal(after!.grossCents, 100_000);
+      assert.equal(after!.cashCents, -100_700);
+      assert.equal(after!.memo, "Corrected");
+      assert.equal(after!.createdAt, buy!.createdAt);
+      assert.equal(after!.cashTransactionId, buy!.cashTransactionId);
+      const leg = await legOf(after!);
+      assert.equal(leg!.amount_cents, "-100700");
+      assert.equal(leg!.local_date, "2026-03-03 00:00");
+      assert.equal(leg!.account_id, broker);
+      // Its amount and date changed: no longer what was ticked against the statement.
+      assert.equal(leg!.status, "pending");
+      const { rows } = await superuserPool.query<{ memo: string; payee: string }>("SELECT memo, payee FROM transactions WHERE id = $1", [after!.cashTransactionId]);
+      assert.deepEqual({ ...rows[0] }, { memo: "Plan", payee: "Broker" });
+
+      const { rows: audit } = await superuserPool.query<{ before: { trades: TradeBody[] }; after: { trades: TradeBody[] } }>(
+        "SELECT before, after FROM audit_log WHERE workspace_id = $1 AND action = 'trade.update' ORDER BY created_at DESC LIMIT 1",
+        [workspaceId],
+      );
+      assert.equal(audit[0]!.before.trades[0]!.feesCents, 500);
+      assert.equal(audit[0]!.after.trades[0]!.feesCents, 700);
+
+      // occurredAt and memo can be cleared.
+      const [cleared] = await edited(buy!.id, { memo: null, occurredAt: null });
+      assert.equal(cleared!.memo, null);
+    });
+
+    it("sends a cleared cash leg back to pending when its amount, account or date changes, and only then", async () => {
+      const etf = await instrument();
+      const [broker, other] = [await account(), await account()];
+      const growth = await portfolio();
+      const [dividend] = await created({ type: "dividend", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-04-01", grossCents: 1_000 });
+      const clear = () => superuserPool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [dividend!.cashTransactionId]);
+      const statusAfter = async (payload: Record<string, unknown>) => {
+        await clear();
+        await edited(dividend!.id, payload);
+        return (await legOf(dividend!))!.status;
+      };
+
+      // The leg unchanged: the memo, the time, the portfolio, or a gross that nets to the same cash.
+      assert.equal(await statusAfter({ memo: "Q1 dividend" }), "cleared");
+      assert.equal(await statusAfter({ occurredAt: "2026-04-01T09:00:00+02:00" }), "cleared");
+      assert.equal(await statusAfter({ portfolioId: await portfolio() }), "cleared");
+      assert.equal(await statusAfter({ grossCents: 1_100, feesCents: 100 }), "cleared");
+
+      // The leg changed: its amount, its account, its date.
+      assert.equal(await statusAfter({ grossCents: 1_200 }), "pending");
+      assert.equal(await statusAfter({ accountId: other }), "pending");
+      assert.equal(await statusAfter({ tradeDate: "2026-04-02", occurredAt: null }), "pending");
+
+      // A pending leg stays pending either way.
+      await superuserPool.query("UPDATE transactions SET status = 'pending' WHERE id = $1", [dividend!.cashTransactionId]);
+      await edited(dividend!.id, { memo: "still pending" });
+      assert.equal((await legOf(dividend!))!.status, "pending");
+    });
+
+    it("computes the gross again when the quantity or the price changes without one, and keeps one given", async () => {
+      const etf = await instrument();
+      const base = { type: "buy", accountId: await account(), portfolioId: await portfolio(), instrumentId: etf, tradeDate: "2026-03-02" };
+      const [buy] = await created({ ...base, quantityE8: units(10), priceE6: price(100), grossCents: 100_003 });
+      assert.equal((await edited(buy!.id, { memo: "unchanged gross" }))[0]!.grossCents, 100_003);
+      assert.equal((await edited(buy!.id, { quantityE8: units(5) }))[0]!.grossCents, 50_000);
+      const [given] = await edited(buy!.id, { priceE6: price(90), grossCents: 45_001 });
+      assert.equal(given!.grossCents, 45_001);
+      assert.equal(given!.cashCents, -45_001);
+    });
+
+    it("creates the cash leg when an amount becomes non-zero, and deletes it when it becomes zero", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const [from, to] = [await portfolio(), await portfolio()];
+      await created({ type: "buy", accountId: broker, portfolioId: from, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) });
+      const legs = await created({ type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(4), from: { accountId: broker, portfolioId: from }, to: { accountId: broker, portfolioId: to } });
+      const outgoing = legs.find((leg) => leg.quantityE8 < 0)!;
+      assert.equal(outgoing.cashTransactionId, null);
+      const balance = await balanceOf(broker);
+
+      // 0 → an amount: the leg is created.
+      const withFees = await edited(outgoing.id, { from: { feesCents: 300 } });
+      const paying = withFees.find((leg) => leg.id === outgoing.id)!;
+      assert.equal(paying.cashCents, -300);
+      assert.ok(paying.cashTransactionId);
+      assert.deepEqual(await legOf(paying), {
+        account_id: broker,
+        status: "pending",
+        trade_id: outgoing.id,
+        local_date: "2026-02-01 00:00",
+        amount_cents: "-300",
+        category_id: null,
+        split_count: "1",
+      });
+      assert.equal(await balanceOf(broker), balance - 300);
+
+      // An amount → 0: the leg is deleted.
+      const free = await edited(outgoing.id, { from: { feesCents: 0 } });
+      assert.equal(free.find((leg) => leg.id === outgoing.id)!.cashTransactionId, null);
+      assert.equal(await legCount(outgoing.id), 0);
+      assert.equal(await balanceOf(broker), balance);
+    });
+
+    it("moves the cash leg with a trade moved to another account", async () => {
+      const etf = await instrument();
+      const [first, second] = [await account(), await account()];
+      const growth = await portfolio();
+      const [dividend] = await created({ type: "dividend", accountId: first, portfolioId: growth, instrumentId: etf, tradeDate: "2026-04-01", grossCents: 1_000, withholdingForeignCents: 150 });
+      const [moved] = await edited(dividend!.id, { accountId: second, grossCents: 1_200 });
+      assert.equal(moved!.accountId, second);
+      assert.equal(moved!.cashTransactionId, dividend!.cashTransactionId);
+      assert.equal((await legOf(moved!))!.account_id, second);
+      assert.equal(await balanceOf(first), 0);
+      assert.equal(await balanceOf(second), 1_050);
+
+      // A move the account cannot take is refused: not a brokerage account, or another workspace's.
+      await refusedEdit(dividend!.id, { accountId: await account("checking") }, "account_not_brokerage");
+      const foreign = await account("brokerage", "EUR", await addWorkspace("owner"));
+      await refusedEdit(dividend!.id, { accountId: foreign }, "unknown_account");
+      await refusedEdit(dividend!.id, { portfolioId: await portfolio(await addWorkspace("owner")) }, "unknown_portfolio");
+    });
+
+    it("refuses an edit that would make a holding negative at any date: a backdated sale, a smaller buy, a buy moved away", async () => {
+      const etf = await instrument();
+      const [broker, other] = [await account(), await account()];
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+      const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10) });
+      const [sale] = await created({ ...base, type: "sell", tradeDate: "2026-03-10", quantityE8: units(8) });
+
+      const backdated = await refusedEdit(sale!.id, { tradeDate: "2026-01-05" }, "insufficient_quantity");
+      assert.equal(backdated.date, "2026-01-05");
+      const smaller = await refusedEdit(buy!.id, { quantityE8: units(5) }, "insufficient_quantity");
+      assert.deepEqual([smaller.date, smaller.available, smaller.requested], ["2026-03-10", units(5), units(8)]);
+      await refusedEdit(buy!.id, { accountId: other }, "insufficient_quantity");
+      await refusedEdit(buy!.id, { portfolioId: await portfolio() }, "insufficient_quantity");
+      await refusedEdit(buy!.id, { instrumentId: await instrument() }, "insufficient_quantity");
+      await refusedEdit(buy!.id, { instrumentId: await instrument("fund", "USD") }, "currency_mismatch");
+      await refusedEdit(buy!.id, { instrumentId: randomUUID() }, "unknown_instrument");
+
+      // The same edits pass once the sale is gone with them.
+      assert.equal((await remove(sale!.id)).statusCode, 204);
+      const [moved] = await edited(buy!.id, { accountId: other, quantityE8: units(5) });
+      assert.equal(moved!.accountId, other);
+    });
+
+    it("refuses deleting a buy a later sale depends on, and deletes a trade with its cash leg", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+      const [old] = await created({ ...base, type: "buy", tradeDate: "2025-06-10", quantityE8: units(5) });
+      await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(5) });
+      await created({ ...base, type: "sell", tradeDate: "2026-02-10", quantityE8: units(8) });
+
+      const details = await refusedDelete(old!.id, "insufficient_quantity");
+      assert.deepEqual([details.portfolioId, details.date, details.available, details.requested], [growth, "2026-02-10", units(5), units(8)]);
+
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-03-01", feesCents: 250 });
+      const response = await remove(fee!.id);
+      assert.equal(response.statusCode, 204);
+      assert.equal(await legCount(fee!.id), 0);
+      const { rows } = await superuserPool.query("SELECT 1 FROM transactions WHERE id = $1", [fee!.cashTransactionId]);
+      assert.equal(rows.length, 0);
+      const { rows: audit } = await superuserPool.query<{ before: { trades: TradeBody[] }; after: unknown }>(
+        "SELECT before, after FROM audit_log WHERE workspace_id = $1 AND action = 'trade.delete' ORDER BY created_at DESC LIMIT 1",
+        [workspaceId],
+      );
+      assert.equal(audit[0]!.before.trades[0]!.id, fee!.id);
+      assert.equal(audit[0]!.after, null);
+      assert.equal((await remove(fee!.id)).statusCode, 404);
+    });
+
+    it("edits and deletes both legs of a transfer together, through either leg", async () => {
+      const etf = await instrument();
+      const [source, target] = [await account(), await account()];
+      const growth = await portfolio();
+      await created({ type: "buy", accountId: source, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) });
+      const legs = await created({ type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(5), from: { accountId: source, portfolioId: growth, feesCents: 900 }, to: { accountId: target, portfolioId: growth } });
+      const outgoing = legs.find((leg) => leg.quantityE8 < 0)!;
+      const incoming = legs.find((leg) => leg.quantityE8 > 0)!;
+
+      const both = await edited(incoming.id, { quantityE8: units(6), tradeDate: "2026-02-02", to: { feesCents: 100 } });
+      assert.deepEqual(both.map((leg) => [leg.id, leg.quantityE8, leg.tradeDate, leg.cashCents]).sort(), [
+        [outgoing.id, -units(6), "2026-02-02", -900],
+        [incoming.id, units(6), "2026-02-02", -100],
+      ].sort());
+      assert.equal((await legOf(both.find((leg) => leg.id === outgoing.id)!))!.local_date, "2026-02-02 00:00");
+      assert.equal((await legOf(both.find((leg) => leg.id === incoming.id)!))!.account_id, target);
+
+      await refusedEdit(outgoing.id, { quantityE8: units(11) }, "insufficient_quantity");
+      assert.equal((await refusedEdit(outgoing.id, { to: { accountId: source } }, "invalid_trade")).field, "to");
+      assert.equal((await refusedEdit(outgoing.id, { accountId: target }, "invalid_trade")).field, "accountId");
+
+      // The units moved are sold from the target: deleting the transfer would leave that sale short.
+      const [sale] = await created({ type: "sell", accountId: target, portfolioId: growth, instrumentId: etf, tradeDate: "2026-03-01", quantityE8: units(6), priceE6: price(100) });
+      await refusedDelete(outgoing.id, "insufficient_quantity");
+      assert.equal((await remove(sale!.id)).statusCode, 204);
+      assert.equal((await remove(outgoing.id)).statusCode, 204);
+      const { rows } = await superuserPool.query("SELECT 1 FROM trades WHERE id = ANY($1)", [[outgoing.id, incoming.id]]);
+      assert.equal(rows.length, 0);
+      assert.equal(await legCount(outgoing.id), 0);
+      assert.equal(await legCount(incoming.id), 0);
+    });
+
+    it("edits and deletes every row of a split together", async () => {
+      const etf = await instrument();
+      const [first, second] = [await account(), await account()];
+      const [growth, income] = [await portfolio(), await portfolio()];
+      const buy = { type: "buy", instrumentId: etf, priceE6: price(100) };
+      await created({ ...buy, accountId: first, portfolioId: growth, tradeDate: "2026-01-10", quantityE8: units(10) });
+      await created({ ...buy, accountId: second, portfolioId: income, tradeDate: "2026-03-10", quantityE8: units(4) });
+      const split = await created({ type: "split", instrumentId: etf, tradeDate: "2026-04-01", splitFrom: 1, splitTo: 2 });
+      assert.equal(split.length, 2);
+
+      const ratio = await edited(split[1]!.id, { splitTo: 3, memo: "1:3" });
+      assert.deepEqual(ratio.map((row) => [row.id, row.splitTo, row.memo]).sort(), split.map((row) => [row.id, 3, "1:3"]).sort());
+
+      // Moved before the second holding began: it covers the first holding only, keeping its row.
+      const earlier = await edited(split[0]!.id, { tradeDate: "2026-02-01" });
+      const kept = split.find((row) => row.accountId === first)!;
+      assert.deepEqual(earlier.map((row) => [row.id, row.accountId, row.tradeDate]), [[kept.id, first, "2026-02-01"]]);
+      const { rows: left } = await superuserPool.query("SELECT 1 FROM trades WHERE type = 'split' AND instrument_id = $1", [etf]);
+      assert.equal(left.length, 1);
+
+      // 10 units are 30 after the split; a sale of 25 needs it.
+      const [sale] = await created({ ...buy, type: "sell", accountId: first, portfolioId: growth, tradeDate: "2026-05-01", quantityE8: units(25) });
+      await refusedDelete(kept.id, "insufficient_quantity");
+      await refusedEdit(kept.id, { splitTo: 2 }, "insufficient_quantity");
+      assert.equal((await refusedEdit(kept.id, { accountId: second }, "invalid_trade")).field, "accountId");
+      assert.equal((await remove(sale!.id)).statusCode, 204);
+      assert.equal((await remove(kept.id)).statusCode, 204);
+      const { rows: none } = await superuserPool.query("SELECT 1 FROM trades WHERE type = 'split' AND instrument_id = $1", [etf]);
+      assert.equal(none.length, 0);
+    });
+
+    it("refuses to edit or delete a trade whose cash leg is reconciled, or the other leg of its transfer", async () => {
+      const etf = await instrument();
+      const [source, target] = [await account(), await account()];
+      const growth = await portfolio();
+      const [fee] = await created({ type: "fee", accountId: source, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 700 });
+      await created({ type: "buy", accountId: source, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) });
+      const legs = await created({ type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(5), from: { accountId: source, portfolioId: growth, feesCents: 900 }, to: { accountId: target, portfolioId: growth } });
+      const outgoing = legs.find((leg) => leg.quantityE8 < 0)!;
+      const incoming = legs.find((leg) => leg.quantityE8 > 0)!;
+      await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = ANY($1)", [[fee!.cashTransactionId, outgoing.cashTransactionId]]);
+
+      const before = await snapshot();
+      for (const response of [await patch(fee!.id, { feesCents: 800 }), await remove(fee!.id), await patch(incoming.id, { memo: "x" }), await remove(incoming.id)]) {
+        assert.equal(response.statusCode, 409, response.body);
+        assert.equal(response.json().code, "reconciled");
+      }
+      assert.deepEqual(await snapshot(), before);
+
+      // Unlocked, the same edit goes through.
+      await superuserPool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [fee!.cashTransactionId]);
+      assert.equal((await edited(fee!.id, { feesCents: 800 }))[0]!.cashCents, -800);
+    });
+
+    it("runs the entry checks and the regime checks on the edited trade", async () => {
+      const etf = await instrument();
+      const stock = await instrument("stock");
+      const base = { accountId: await account(), portfolioId: await portfolio(), priceE6: price(10), quantityE8: units(1) };
+      const [buy] = await created({ ...base, type: "buy", instrumentId: etf, tradeDate: "2026-01-10" });
+      assert.equal((await refusedEdit(buy!.id, { feesCents: -1 }, "negative_amount_not_allowed")).field, "feesCents");
+      await refusedEdit(buy!.id, { accruedInterestCents: 10 }, "accrued_interest_not_allowed");
+      assert.equal((await refusedEdit(buy!.id, { gainTaxCents: 10 }, "invalid_trade")).field, "gainTaxCents");
+      assert.equal((await refusedEdit(buy!.id, { type: "sell", memo: "now a sale" }, "invalid_trade")).field, "type");
+      assert.equal((await refusedEdit(buy!.id, { instrumentId: null }, "invalid_trade")).field, "instrumentId");
+      assert.equal((await refusedEdit(buy!.id, { occurredAt: "2026-01-11T10:00:00+01:00" }, "invalid_trade")).field, "occurredAt");
+      assert.equal((await edited(buy!.id, { type: "buy", instrumentId: stock }))[0]!.instrumentId, stock);
+
+      const italian = await addWorkspace("owner", "IT");
+      const managed = await account("brokerage", "EUR", italian, true);
+      await superuserPool.query("INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2026-01-01', 'managed')", [italian, managed]);
+      const growth = await portfolio(italian);
+      const trade = { accountId: managed, portfolioId: growth, instrumentId: etf, priceE6: price(10), quantityE8: units(1) };
+      await created({ ...trade, type: "buy", tradeDate: "2026-01-10" }, italian);
+      const [sale] = await created({ ...trade, type: "sell", tradeDate: "2026-02-10" }, italian);
+      const details = await refusedEdit(sale!.id, { gainTaxCents: 100 }, "tax_kind_not_allowed_in_regime", italian);
+      assert.deepEqual(details, { regime: "managed", field: "gainTaxCents" });
+    });
+
+    it("refuses a body that cannot be read as an edit", async () => {
+      const [fee] = await created({ type: "fee", accountId: await account(), portfolioId: await portfolio(), tradeDate: "2026-01-10", feesCents: 100 });
+      for (const payload of [{ id: randomUUID() }, { feesCents: "1" }, { colour: "red" }, { accountId: "nope" }, { from: { id: randomUUID() } }, { taxKind: "vat" }]) {
+        const response = await patch(fee!.id, payload);
+        assert.equal(response.statusCode, 400, JSON.stringify(payload));
+        assert.match(response.json().error, /^invalid trade: /);
+      }
+      const long = await patch(fee!.id, { memo: "x".repeat(MAX_FREE_TEXT_LENGTH + 1) });
+      assert.equal(long.statusCode, 400);
+      assert.equal(long.json().error, "text_too_long");
+    });
+
+    it("lets owners and editors edit and delete, not read_only members", async () => {
+      const broker = await account();
+      const growth = await portfolio();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 100 });
+      try {
+        await setRole("read_only");
+        assert.equal((await patch(fee!.id, { feesCents: 200 })).statusCode, 403);
+        assert.equal((await remove(fee!.id)).statusCode, 403);
+        await setRole("editor");
+        assert.equal((await patch(fee!.id, { feesCents: 200 })).statusCode, 200);
+        assert.equal((await remove(fee!.id)).statusCode, 204);
+      } finally {
+        await setRole("owner");
+      }
+    });
+
+    it("answers 404 for another workspace's trade, an unknown id and a malformed one", async () => {
+      const other = await addWorkspace("owner");
+      const [foreign] = await created({ type: "fee", accountId: await account("brokerage", "EUR", other), portfolioId: await portfolio(other), tradeDate: "2026-01-10", feesCents: 100 }, other);
+      for (const id of [foreign!.id, randomUUID(), "not-a-uuid"]) {
+        const edit = await patch(id, { feesCents: 200 });
+        assert.equal(edit.statusCode, 404, edit.body);
+        assert.equal(edit.json().error, "trade not found");
+        assert.equal((await remove(id)).statusCode, 404);
+      }
+      const { rows } = await superuserPool.query<{ fees_cents: string }>("SELECT fees_cents FROM trades WHERE id = $1", [foreign!.id]);
+      assert.equal(rows[0]!.fees_cents, "100");
+    });
+
+    it("serializes an edit racing a sale, so together they cannot oversell", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+      for (let round = 0; round < 5; round++) {
+        const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10) });
+        const responses = await Promise.all([
+          patch(buy!.id, { quantityE8: units(4) }),
+          post({ ...base, type: "sell", tradeDate: "2026-02-10", quantityE8: units(7) }),
+        ]);
+        const statuses = responses.map((response) => response.statusCode);
+        assert.equal(statuses.filter((status) => status === 400).length, 1, statuses.join());
+        assert.equal(responses.find((response) => response.statusCode === 400)!.json().error, "insufficient_quantity");
+
+        const { rows } = await superuserPool.query<{ held: string }>(
+          "SELECT sum(CASE WHEN type = 'sell' THEN -quantity_e8 ELSE quantity_e8 END) AS held FROM trades WHERE account_id = $1",
+          [broker],
+        );
+        assert.ok(Number(rows[0]!.held) >= 0);
+        // Back to an empty holding for the next round.
+        await superuserPool.query("DELETE FROM trades WHERE account_id = $1", [broker]);
+      }
+    });
+
+    it("clears the instrument of a fee and of a tax, keeping the trade's cash leg", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-05-01", feesCents: 250 });
+      const [tax] = await created({ type: "tax", taxKind: "other", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-05-01", grossCents: 340 });
+      for (const [trade, cash] of [[fee!, -250], [tax!, -340]] as const) {
+        const [cleared] = await edited(trade.id, { instrumentId: null });
+        assert.equal(cleared!.instrumentId, null);
+        assert.equal(cleared!.cashCents, cash);
+        assert.equal(cleared!.cashTransactionId, trade.cashTransactionId);
+        const leg = await legOf(cleared!);
+        assert.deepEqual([leg!.account_id, leg!.amount_cents, leg!.local_date], [broker, String(cash), "2026-05-01 00:00"]);
+        const { rows } = await superuserPool.query<{ instrument_id: string | null }>("SELECT instrument_id FROM trades WHERE id = $1", [trade.id]);
+        assert.equal(rows[0]!.instrument_id, null);
+        // And back onto the instrument.
+        assert.equal((await edited(trade.id, { instrumentId: etf }))[0]!.instrumentId, etf);
+      }
+    });
+
+    it("locks one history whatever the case of the workspace id, so an upper-case request cannot oversell", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+      for (let round = 0; round < 5; round++) {
+        const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10) });
+        const sale = { ...base, type: "sell", tradeDate: "2026-02-10", quantityE8: units(6) };
+        const responses = await Promise.all([post(sale, workspaceId.toUpperCase()), post(sale, workspaceId)]);
+        assert.deepEqual(responses.map((response) => response.statusCode).sort(), [201, 400]);
+        // An edit through the upper-case id races a sale through the lower-case one.
+        await superuserPool.query("DELETE FROM trades WHERE account_id = $1 AND type = 'sell'", [broker]);
+        const raced = await Promise.all([patch(buy!.id, { quantityE8: units(4) }, workspaceId.toUpperCase()), post({ ...sale, quantityE8: units(7) })]);
+        assert.equal(raced.filter((response) => response.statusCode === 400).length, 1, raced.map((response) => response.statusCode).join());
+        await superuserPool.query("DELETE FROM trades WHERE account_id = $1", [broker]);
+      }
+    });
+
+    it("answers 409 concurrent_change when another request moved the trade to another instrument while it waited", async () => {
+      const [first, second] = [await instrument(), await instrument()];
+      const broker = await account();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), instrumentId: first, tradeDate: "2026-05-01", feesCents: 100 });
+
+      // Hold the first instrument's history lock, as a concurrent request would.
+      const holder = await superuserPool.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`trades:${workspaceId}:${first}`]);
+        const pending = patch(fee!.id, { memo: "waiting" });
+        // Once the edit waits on that lock, the trade moves to the second instrument and commits.
+        for (let attempt = 0; ; attempt++) {
+          const { rows } = await superuserPool.query(
+            `SELECT 1 FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+               AND query LIKE '%pg_advisory_xact_lock%'`,
+          );
+          if (rows.length > 0) break;
+          assert.ok(attempt < 200, "the edit never waited on the lock");
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        await superuserPool.query("UPDATE trades SET instrument_id = $1 WHERE id = $2", [second, fee!.id]);
+        await holder.query("COMMIT");
+        const response = await pending;
+        assert.equal(response.statusCode, 409, response.body);
+        assert.equal(response.json().code, "concurrent_change");
+      } finally {
+        holder.release();
+      }
+      // Nothing was written; a retry goes through.
+      const { rows } = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM trades WHERE id = $1", [fee!.id]);
+      assert.equal(rows[0]!.memo, null);
+      assert.equal((await edited(fee!.id, { memo: "retried" }))[0]!.memo, "retried");
+    });
+
+    it("refuses a body that is not a JSON object, and an edit that changes nothing, writing no audit entry", async () => {
+      const broker = await account();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), tradeDate: "2026-05-01", feesCents: 100 });
+      const json = { "content-type": "application/json" };
+      for (const raw of ["[]", '"a fee"', "123", "null"]) {
+        for (const [method, url] of [
+          ["POST", `/workspaces/${workspaceId}/trades`],
+          ["PATCH", `/workspaces/${workspaceId}/trades/${fee!.id}`],
+        ] as const) {
+          const response = await app.fastify.inject({ method, url, headers: { ...(await auth()), ...json }, payload: raw });
+          assert.equal(response.statusCode, 400, `${method} ${raw}: ${response.body}`);
+          assert.equal(response.json().error, "invalid trade: the body must be a JSON object", `${method} ${raw}`);
+        }
+      }
+
+      const audits = async () =>
+        Number((await superuserPool.query<{ count: string }>("SELECT count(*) FROM audit_log WHERE workspace_id = $1 AND action = 'trade.update'", [workspaceId])).rows[0]!.count);
+      const before = await audits();
+      for (const payload of [{}, { type: "fee" }, { from: null, to: null }]) {
+        const response = await patch(fee!.id, payload);
+        assert.equal(response.statusCode, 400, JSON.stringify(payload));
+        assert.equal(response.json().error, "invalid trade: nothing to change");
+      }
+      assert.equal(await audits(), before);
     });
   });
 });

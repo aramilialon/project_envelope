@@ -6,8 +6,9 @@ import type { Hlc } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import { createTrades, type TradeEntryInput, type TradeRecord } from "../trades/repository.ts";
 import { createTransaction } from "../transactions/repository.ts";
-import { applyIncomingChange, type IncomingChange } from "./apply.ts";
+import { afterApply, applyIncomingChange, beforeApply, type IncomingChange, isLocked } from "./apply.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -432,6 +433,147 @@ describe("applyIncomingChange (#43)", () => {
         assert.equal(await memoOf(transactionId), "first", "the losing request must not apply its value");
         assert.deepEqual(await changeLogRows(change.id), [{ workspace_id: workspaceId, value: "first", outcome: "applied" }]);
       });
+    });
+  });
+
+  describe("trades and their cash legs (ADR 0012, #509)", () => {
+    let brokerage: string;
+    let otherBrokerage: string;
+    let portfolioId: string;
+    let instrumentId: string;
+
+    async function brokerageAccount(name: string): Promise<string> {
+      const { rows } = await pool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, $2, 'brokerage', 'EUR', false) RETURNING id",
+        [workspaceId, name],
+      );
+      return rows[0]!.id;
+    }
+
+    /** `createTrades` in a transaction of its own, as a request would run it. */
+    async function trades(input: TradeEntryInput): Promise<TradeRecord[]> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const records = await createTrades(client, workspaceId, null, input);
+        await client.query("COMMIT");
+        return records;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    }
+
+    async function legOf(tradeId: string) {
+      const { rows } = await pool.query<{ id: string; account_id: string; date: string; amount_cents: string }>(
+        `SELECT t.id, t.account_id, to_char(t.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') AS date,
+                (SELECT sum(amount_cents) FROM splits WHERE transaction_id = t.id) AS amount_cents
+         FROM transactions t WHERE t.trade_id = $1`,
+        [tradeId],
+      );
+      return rows[0];
+    }
+
+    before(async () => {
+      brokerage = await brokerageAccount("Broker");
+      otherBrokerage = await brokerageAccount("Other broker");
+      const portfolio = await pool.query<{ id: string }>("INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Growth') RETURNING id", [
+        workspaceId,
+      ]);
+      portfolioId = portfolio.rows[0]!.id;
+      const instrument = await pool.query<{ id: string }>(
+        `INSERT INTO instruments (ticker, exchange, name, type, currency) VALUES ($1, 'XMIL', 'Sync test', 'fund', 'EUR') RETURNING id`,
+        [`S${randomUUID().slice(0, 8).toUpperCase()}`],
+      );
+      instrumentId = instrument.rows[0]!.id;
+    });
+
+    after(async () => {
+      // The trades go first: the instrument cannot go while they reference it.
+      await pool.query("DELETE FROM trades WHERE workspace_id = $1", [workspaceId]);
+      await pool.query("DELETE FROM instruments WHERE id = $1", [instrumentId]);
+    });
+
+    it("locks a field of a trade whose cash leg is reconciled, or whose transfer's other leg's is", async () => {
+      const [fee] = await trades({ kind: "single", type: "fee", accountId: brokerage, portfolioId, instrumentId: null, tradeDate: "2026-01-10", feesCents: 700 });
+      assert.equal(await isLocked(pool, workspaceId, "trades.fees_cents", fee!.id), false);
+      await reconcile(fee!.cashTransactionId!);
+      assert.equal(await isLocked(pool, workspaceId, "trades.fees_cents", fee!.id), true);
+
+      await trades({ kind: "single", type: "buy", accountId: brokerage, portfolioId, instrumentId, tradeDate: "2026-01-10", quantityE8: 10e8, priceE6: 1e6 });
+      const legs = await trades({
+        kind: "transfer",
+        instrumentId,
+        tradeDate: "2026-02-01",
+        quantityE8: 5e8,
+        from: { accountId: brokerage, portfolioId, feesCents: 900 },
+        to: { accountId: otherBrokerage, portfolioId },
+      });
+      const outgoing = legs.find((leg) => leg.quantityE8 < 0)!;
+      const incoming = legs.find((leg) => leg.quantityE8 > 0)!;
+      assert.equal(incoming.cashTransactionId, null);
+      assert.equal(await isLocked(pool, workspaceId, "trades.quantity_e8", incoming.id), false);
+      await reconcile(outgoing.cashTransactionId!);
+      assert.equal(await isLocked(pool, workspaceId, "trades.quantity_e8", outgoing.id), true);
+      assert.equal(await isLocked(pool, workspaceId, "trades.quantity_e8", incoming.id), true);
+
+      assert.equal(await isLocked(pool, workspaceId, "trades.memo", "not-a-uuid"), false);
+      assert.equal(await isLocked(pool, workspaceId, "trades.memo", randomUUID()), false);
+    });
+
+    it("re-derives the cash leg's amount, account and date after an applied change to the trade", async () => {
+      const [fee] = await trades({ kind: "single", type: "fee", accountId: brokerage, portfolioId, instrumentId: null, tradeDate: "2026-03-10", feesCents: 700 });
+      // What a wired trades.* applier would do: change the trade's own columns, nothing else.
+      await pool.query("UPDATE trades SET fees_cents = 900, trade_date = '2026-03-12', account_id = $2 WHERE id = $1", [fee!.id, otherBrokerage]);
+      await afterApply(pool, workspaceId, "trades.fees_cents", fee!.id);
+      assert.deepEqual({ ...(await legOf(fee!.id)) }, { id: fee!.cashTransactionId, account_id: otherBrokerage, date: "2026-03-12 00:00", amount_cents: "-900" });
+
+      // A trade that starts moving cash gets a leg; one that stops loses it.
+      const [transferOut] = await trades({ kind: "transfer", instrumentId, tradeDate: "2026-03-20", quantityE8: 1e8, from: { accountId: brokerage, portfolioId } });
+      assert.equal(await legOf(transferOut!.id), undefined);
+      await pool.query("UPDATE trades SET fees_cents = 300 WHERE id = $1", [transferOut!.id]);
+      await afterApply(pool, workspaceId, "trades.fees_cents", transferOut!.id);
+      assert.equal((await legOf(transferOut!.id))?.amount_cents, "-300");
+      await pool.query("UPDATE trades SET fees_cents = 0 WHERE id = $1", [transferOut!.id]);
+      await afterApply(pool, workspaceId, "trades.fees_cents", transferOut!.id);
+      assert.equal(await legOf(transferOut!.id), undefined);
+    });
+
+    it("sends a cleared leg back to pending only when the applied change moves its amount, account or date", async () => {
+      const [fee] = await trades({ kind: "single", type: "fee", accountId: brokerage, portfolioId, instrumentId: null, tradeDate: "2026-05-10", feesCents: 700 });
+      const statusOf = async () =>
+        (await pool.query<{ status: string }>("SELECT status FROM transactions WHERE id = $1", [fee!.cashTransactionId])).rows[0]!.status;
+      const clear = () => pool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [fee!.cashTransactionId]);
+
+      // A change that leaves the leg as it is (the trade's memo).
+      await clear();
+      let before = await beforeApply(pool, workspaceId, "trades.memo", fee!.id);
+      await pool.query("UPDATE trades SET memo = 'custody' WHERE id = $1", [fee!.id]);
+      await afterApply(pool, workspaceId, "trades.memo", fee!.id, before);
+      assert.equal(await statusOf(), "cleared");
+
+      // A move to another account: the leg has followed through the foreign key already, so only
+      // what beforeApply read tells it moved.
+      before = await beforeApply(pool, workspaceId, "trades.account_id", fee!.id);
+      assert.deepEqual(before, { tradeAccountId: brokerage });
+      await pool.query("UPDATE trades SET account_id = $2 WHERE id = $1", [fee!.id, otherBrokerage]);
+      await afterApply(pool, workspaceId, "trades.account_id", fee!.id, before);
+      assert.equal(await statusOf(), "pending");
+
+      // An amount change.
+      await clear();
+      before = await beforeApply(pool, workspaceId, "trades.fees_cents", fee!.id);
+      await pool.query("UPDATE trades SET fees_cents = 800 WHERE id = $1", [fee!.id]);
+      await afterApply(pool, workspaceId, "trades.fees_cents", fee!.id, before);
+      assert.equal(await statusOf(), "pending");
+    });
+
+    it("has no trade field wired yet: a change to one is unsupported", async () => {
+      const [fee] = await trades({ kind: "single", type: "fee", accountId: brokerage, portfolioId, instrumentId: null, tradeDate: "2026-04-10", feesCents: 700 });
+      const outcome = await applyIncomingChange(pool, workspaceId, { id: randomUUID(), entityId: fee!.id, fieldName: "trades.fees_cents", hlc: hlc(1000), value: 1 });
+      assert.equal(outcome, "unsupported_field");
     });
   });
 });

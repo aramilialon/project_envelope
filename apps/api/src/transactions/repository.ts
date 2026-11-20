@@ -241,6 +241,68 @@ export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTra
   return id;
 }
 
+export interface RewriteTradeCashLegInput extends CreateTradeCashLegInput {
+  /**
+   * The account the trade was on before the change, when the caller knows it: the leg itself has
+   * already followed the trade there (`ON UPDATE CASCADE`), so only this tells a move apart.
+   */
+  readonly previousAccountId?: string;
+}
+
+/**
+ * Brings a trade's cash leg in line with the trade as it now stands (ADR 0012, #509): creates it
+ * when the trade moves cash and has none, deletes it when the trade no longer moves any, and
+ * otherwise rewrites its amount (its one split), account and date, keeping its id, payee and memo.
+ * A `cleared` leg whose amount, account or date changes goes back to `pending`: it no longer
+ * matches what was ticked against the statement. A leg left unchanged keeps its status. The date
+ * is midnight of the trade date in the workspace's time zone as it is now: after a time zone
+ * change, the next rewrite dates the leg again, which counts as a change. The
+ * account already follows the trade through the foreign key's `ON UPDATE CASCADE` (migration
+ * 0031), so the caller passes the account the leg was on before (`previousAccountId`); it is
+ * written here too so the leg is right whatever the caller did first. The caller has already
+ * refused a reconciled leg, and writes this in the same database transaction as the trade.
+ *
+ * @returns the leg's id, or null when the trade moves no cash.
+ */
+export async function rewriteTradeCashLeg(db: DbPool | DbClient, input: RewriteTradeCashLegInput): Promise<string | null> {
+  assertCents(input.amountCents);
+  const { rows } = await db.query<{ id: string; account_id: string; unchanged_date: boolean; amount_cents: string; status: string }>(
+    `SELECT t.id, t.account_id, t.status,
+            t.occurred_at = $3::date::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $1) AS unchanged_date,
+            (SELECT sum(amount_cents) FROM splits WHERE transaction_id = t.id) AS amount_cents
+     FROM transactions t WHERE t.workspace_id = $1 AND t.trade_id = $2`,
+    [input.workspaceId, input.tradeId, input.tradeDate],
+  );
+  const leg = rows[0];
+  const existing = leg?.id;
+  if (input.amountCents === 0) {
+    if (existing !== undefined) {
+      await db.query("DELETE FROM transactions WHERE id = $1 AND workspace_id = $2", [existing, input.workspaceId]);
+    }
+    return null;
+  }
+  if (leg === undefined || existing === undefined) {
+    return await createTradeCashLeg(db, input);
+  }
+  const changed =
+    (input.previousAccountId ?? leg.account_id) !== input.accountId || !leg.unchanged_date || Number(leg.amount_cents) !== input.amountCents;
+  const status = changed && leg.status === "cleared" ? "pending" : leg.status;
+  await db.query(
+    `UPDATE transactions
+     SET account_id = $3,
+         occurred_at = $4::date::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $2),
+         status = $5
+     WHERE id = $1 AND workspace_id = $2`,
+    [existing, input.workspaceId, input.accountId, input.tradeDate, status],
+  );
+  await db.query("UPDATE splits SET amount_cents = $1 WHERE transaction_id = $2 AND workspace_id = $3", [
+    input.amountCents,
+    existing,
+    input.workspaceId,
+  ]);
+  return existing;
+}
+
 export interface CreateTransferInput {
   readonly workspaceId: string;
   readonly sourceAccountId: string;

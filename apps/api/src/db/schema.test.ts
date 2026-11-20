@@ -968,12 +968,67 @@ describe("apps/api/migrations, applied to a real database", () => {
       });
     });
 
-    it("gives envelope_app no UPDATE or DELETE on trades yet (#509 grants them)", async () => {
-      for (const sql of ["UPDATE trades SET memo = 'x' WHERE id = $1", "DELETE FROM trades WHERE id = $1"]) {
+    it("lets envelope_app update and delete its own workspace's trades only (#509)", async () => {
+      await asWorkspaceA(async (client) => {
+        const own = await client.query("UPDATE trades SET memo = 'x' WHERE id = $1", [workspaceA.tradeId]);
+        assert.equal(own.rowCount, 1);
+        const other = await client.query("UPDATE trades SET memo = 'x' WHERE id = $1", [workspaceB.tradeId]);
+        assert.equal(other.rowCount, 0);
+        const otherDeleted = await client.query("DELETE FROM trades WHERE id = $1", [workspaceB.tradeId]);
+        assert.equal(otherDeleted.rowCount, 0);
+      });
+      await asWorkspaceA(async (client) => {
+        const deleted = await client.query("DELETE FROM trades WHERE id = $1", [workspaceA.tradeId]);
+        assert.equal(deleted.rowCount, 1);
+      });
+    });
+
+    it("lets envelope_app update only the columns an edit writes, never a trade's id, workspace, type, link or creation time (#509)", async () => {
+      for (const [column, value] of [
+        ["id", randomUUID()],
+        ["workspace_id", workspaceB.workspaceId],
+        ["type", "sell"],
+        ["transfer_trade_id", workspaceA.tradeId],
+        ["created_at", "2020-01-01T00:00:00Z"],
+      ] as const) {
         await asWorkspaceA(async (client) => {
-          await assert.rejects(() => client.query(sql, [workspaceA.tradeId]), /permission denied/);
+          await assert.rejects(
+            () => client.query(`UPDATE trades SET ${column} = $1 WHERE id = $2`, [value, workspaceA.tradeId]),
+            /permission denied/,
+            column,
+          );
         });
       }
+      // The control: a column an edit writes.
+      await asWorkspaceA(async (client) => {
+        const updated = await client.query("UPDATE trades SET fees_cents = 10, memo = 'edited' WHERE id = $1", [workspaceA.tradeId]);
+        assert.equal(updated.rowCount, 1);
+      });
+    });
+
+    it("moves a cash leg with its trade to another account, as envelope_app (#509)", async () => {
+      const otherAccountId = (
+        await pool.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Second broker', 'brokerage', 'EUR', false) RETURNING id",
+          [workspaceA.workspaceId],
+        )
+      ).rows[0]!.id;
+      await asWorkspaceA(async (client) => {
+        const tradeId = await insertTrade(client, { type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0, fees_cents: 100 });
+        const leg = await client.query<{ id: string }>(
+          "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'pending', $3) RETURNING id",
+          [workspaceA.workspaceId, workspaceA.accountId, tradeId],
+        );
+        await client.query("UPDATE trades SET account_id = $1 WHERE id = $2", [otherAccountId, tradeId]);
+        const moved = await client.query<{ account_id: string }>("SELECT account_id FROM transactions WHERE id = $1", [leg.rows[0]!.id]);
+        assert.equal(moved.rows[0]!.account_id, otherAccountId);
+        // The leg still cannot leave its trade's account on its own.
+        await rejectsWith(
+          () => client.query("UPDATE transactions SET account_id = $1 WHERE id = $2", [workspaceA.accountId, leg.rows[0]!.id]),
+          "23503",
+          "transactions_trade_id_fkey",
+        );
+      });
     });
 
     it("does not let a trade or a cash leg reference another workspace's rows", async () => {
@@ -1091,8 +1146,7 @@ describe("apps/api/migrations, applied to a real database", () => {
           "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'cleared', $3) RETURNING id",
           [workspaceA.workspaceId, workspaceA.accountId, tradeId],
         );
-        // envelope_app may not delete a trade yet (#509): the owner does, here.
-        await client.query("RESET ROLE");
+        // Deleting the trade, as envelope_app (#509), takes its leg with it.
         await client.query("DELETE FROM trades WHERE id = $1", [tradeId]);
         const left = await client.query("SELECT 1 FROM transactions WHERE id = $1", [leg.rows[0]!.id]);
         assert.equal(left.rowCount, 0);

@@ -6,16 +6,21 @@ import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
 import {
   createTrades,
+  deleteTrade,
   listTrades,
   TAX_KINDS,
   TRADE_TYPES,
+  ConcurrentTradeChangeError,
   TradeIdTakenError,
+  updateTrade,
   type SingleTradeInput,
   type TaxKind,
   type TradeAmountsInput,
   type TradeEntryInput,
+  type TradePatchInput,
   type TradeType,
   type TransferLegInput,
+  type TransferLegPatch,
 } from "../trades/repository.ts";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,6 +40,26 @@ const AMOUNT_FIELDS = [
   "splitFrom",
   "splitTo",
 ] as const;
+
+/**
+ * Every field a create request may carry, whatever its type (which of them a type takes is checked
+ * further on); anything else is a plain 400, so a misspelt field is never silently dropped.
+ */
+const CREATE_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "type",
+  "accountId",
+  "portfolioId",
+  "instrumentId",
+  "tradeDate",
+  "occurredAt",
+  "memo",
+  "taxKind",
+  "from",
+  "to",
+  ...AMOUNT_FIELDS,
+]);
+const CREATE_LEG_KEYS: ReadonlySet<string> = new Set(["id", "accountId", "portfolioId", "feesCents", "costBasisCents"]);
 
 /** A request body that cannot be read as a trade: answered with a plain 400, like other routes. */
 class BadRequest extends Error {}
@@ -97,6 +122,7 @@ function legField(body: Record<string, unknown>, field: "from" | "to"): Transfer
     throw new BadRequest(`${field} must be an object`);
   }
   const leg = raw as Record<string, unknown>;
+  rejectUnknownKeys(leg, CREATE_LEG_KEYS, `${field}.`);
   // costBasisCents is accepted on either leg so the core can name it when it is misplaced.
   const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
   const id = uuidField(leg, "id", false);
@@ -111,6 +137,7 @@ function legField(body: Record<string, unknown>, field: "from" | "to"): Transfer
 
 /** Reads a create request: one trade, a transfer (its legs in `from` and `to`) or a split. */
 function parseEntry(body: Record<string, unknown>): TradeEntryInput {
+  rejectUnknownKeys(body, CREATE_KEYS, "");
   const type = body.type;
   if (typeof type !== "string" || !TRADE_TYPES.includes(type as TradeType)) {
     throw new BadRequest(`type must be one of ${TRADE_TYPES.join(", ")}`);
@@ -166,14 +193,125 @@ function parseEntry(body: Record<string, unknown>): TradeEntryInput {
   return entry;
 }
 
+/** The fields an edit may carry; which of them a trade's type takes is the repository's to say. */
+const PATCH_KEYS: ReadonlySet<string> = new Set([
+  "type",
+  "accountId",
+  "portfolioId",
+  "instrumentId",
+  "tradeDate",
+  "occurredAt",
+  "memo",
+  "taxKind",
+  "from",
+  "to",
+  ...AMOUNT_FIELDS,
+]);
+const LEG_PATCH_KEYS: ReadonlySet<string> = new Set(["accountId", "portfolioId", "feesCents", "costBasisCents"]);
+
+function rejectUnknownKeys(body: Record<string, unknown>, known: ReadonlySet<string>, where: string): void {
+  for (const key of Object.keys(body)) {
+    if (!known.has(key)) {
+      throw new BadRequest(`${where}${key} is not a field of this request`);
+    }
+  }
+}
+
+/** A field an edit may clear: absent is undefined, `null` is null. */
+function clearable<T>(body: Record<string, unknown>, field: string, read: (body: Record<string, unknown>, field: string, required: boolean) => T | undefined): T | null | undefined {
+  return body[field] === null ? null : read(body, field, false);
+}
+
+function legPatchField(body: Record<string, unknown>, field: "from" | "to"): TransferLegPatch | undefined {
+  const raw = body[field];
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new BadRequest(`${field} must be an object`);
+  }
+  const leg = raw as Record<string, unknown>;
+  rejectUnknownKeys(leg, LEG_PATCH_KEYS, `${field}.`);
+  const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
+  const accountId = uuidField(leg, "accountId", false);
+  const portfolioId = uuidField(leg, "portfolioId", false);
+  return {
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(portfolioId === undefined ? {} : { portfolioId }),
+    ...(amounts.feesCents === undefined ? {} : { feesCents: amounts.feesCents }),
+    ...(amounts.costBasisCents === undefined ? {} : { costBasisCents: amounts.costBasisCents }),
+  };
+}
+
+/** Reads an edit: any field of a create request but `id`; `null` clears `occurredAt`, `memo` and `instrumentId`. */
+function parsePatch(body: Record<string, unknown>): TradePatchInput {
+  rejectUnknownKeys(body, PATCH_KEYS, "");
+  const type = stringField(body, "type", false);
+  const taxKind = stringField(body, "taxKind", false);
+  if (taxKind !== undefined && !TAX_KINDS.includes(taxKind as TaxKind)) {
+    throw new BadRequest(`taxKind must be one of ${TAX_KINDS.join(", ")}`);
+  }
+  const accountId = uuidField(body, "accountId", false);
+  const portfolioId = uuidField(body, "portfolioId", false);
+  const instrumentId = clearable(body, "instrumentId", uuidField);
+  const tradeDate = stringField(body, "tradeDate", false);
+  const occurredAt = clearable(body, "occurredAt", stringField);
+  const memo = clearable(body, "memo", stringField);
+  const from = legPatchField(body, "from");
+  const to = legPatchField(body, "to");
+  const patch: TradePatchInput = {
+    ...amountFields(body, AMOUNT_FIELDS),
+    ...(type === undefined ? {} : { type }),
+    ...(taxKind === undefined ? {} : { taxKind: taxKind as TaxKind }),
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(portfolioId === undefined ? {} : { portfolioId }),
+    ...(instrumentId === undefined ? {} : { instrumentId }),
+    ...(tradeDate === undefined ? {} : { tradeDate }),
+    ...(occurredAt === undefined ? {} : { occurredAt }),
+    ...(memo === undefined ? {} : { memo }),
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to }),
+  };
+  // An edit that changes nothing (`{}`, `type` alone, or only `null` legs) is refused, so it
+  // writes no audit log entry.
+  if (Object.keys(patch).every((key) => key === "type")) {
+    throw new BadRequest("nothing to change");
+  }
+  return patch;
+}
+
+/**
+ * The request body as an object of fields.
+ *
+ * @throws BadRequest for anything but a plain JSON object: a missing body, an array, a string,
+ *   a number, `null`.
+ */
+function bodyObject(body: unknown): Record<string, unknown> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new BadRequest("the body must be a JSON object");
+  }
+  return body as Record<string, unknown>;
+}
+
+async function sendConcurrentChange(reply: FastifyReply): Promise<void> {
+  await reply.code(409).send({ error: "the trade changed while this request ran; retry it", code: "concurrent_change" });
+}
+
+async function sendReconciled(reply: FastifyReply, action: "edited" | "deleted"): Promise<void> {
+  await reply.code(409).send({ error: `a trade whose cash leg is reconciled cannot be ${action}; unlock it first`, code: "reconciled" });
+}
+
 async function sendBadRequest(reply: FastifyReply, error: BadRequest): Promise<void> {
   await reply.code(400).send({ error: `invalid trade: ${error.message}` });
 }
 
 /**
- * Trades (#77; ADR 0012): `GET` lists the workspace's trades in the replay order, `POST` records
- * one trade, a transfer of securities (both legs) or a split (every row it stands for). Owners and
- * editors write; `read_only` members read.
+ * Trades (#77, #509; ADR 0012): `GET` lists the workspace's trades in the replay order, `POST`
+ * records one trade, a transfer of securities (both legs) or a split (every row it stands for),
+ * `PATCH .../:tradeId` edits one and `DELETE .../:tradeId` deletes one, each with the rows that go
+ * with it and their cash legs. An edit of a buy or a sell that changes `quantityE8`, `priceE6` or
+ * `instrumentId` without `grossCents` computes the gross again from them, as a create does: the
+ * broker's own figure must be sent again with the edit to keep it. An edit that changes a cash
+ * leg's amount, account or date sends a cleared leg back to pending. Owners and editors write;
+ * `read_only` members read.
  */
 export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
@@ -202,10 +340,9 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
   });
 
   app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
     let entry: TradeEntryInput;
     try {
-      entry = parseEntry(body);
+      entry = parseEntry(bodyObject(request.body));
     } catch (error) {
       if (error instanceof BadRequest) {
         await sendBadRequest(reply, error);
@@ -223,6 +360,70 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
     } catch (error) {
       if (error instanceof TradeIdTakenError) {
         await reply.code(409).send({ error: "a trade with this id already exists", code: "id_taken", details: { tradeId: error.tradeId } });
+        return;
+      }
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.patch(`${base}/:tradeId`, { preHandler: writePreHandler }, async (request, reply) => {
+    const { tradeId } = request.params as { tradeId: string };
+    let patch: TradePatchInput;
+    try {
+      patch = parsePatch(bodyObject(request.body));
+    } catch (error) {
+      if (error instanceof BadRequest) {
+        await sendBadRequest(reply, error);
+        return;
+      }
+      throw error;
+    }
+    if (await sendIfTextTooLong(reply, [["memo", patch.memo, MAX_FREE_TEXT_LENGTH]])) {
+      return;
+    }
+
+    try {
+      const result = await updateTrade(request.db!, request.workspace!.id, request.userId ?? null, tradeId, patch);
+      if (result === "not_found") {
+        await reply.code(404).send({ error: "trade not found" });
+        return;
+      }
+      if (result === "reconciled") {
+        await sendReconciled(reply, "edited");
+        return;
+      }
+      return { trades: result };
+    } catch (error) {
+      if (error instanceof ConcurrentTradeChangeError) {
+        await sendConcurrentChange(reply);
+        return;
+      }
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  app.delete(`${base}/:tradeId`, { preHandler: writePreHandler }, async (request, reply) => {
+    const { tradeId } = request.params as { tradeId: string };
+    try {
+      const result = await deleteTrade(request.db!, request.workspace!.id, request.userId ?? null, tradeId);
+      if (result === "not_found") {
+        await reply.code(404).send({ error: "trade not found" });
+        return;
+      }
+      if (result === "reconciled") {
+        await sendReconciled(reply, "deleted");
+        return;
+      }
+      await reply.code(204).send();
+    } catch (error) {
+      if (error instanceof ConcurrentTradeChangeError) {
+        await sendConcurrentChange(reply);
         return;
       }
       if (await sendIfValidationError(reply, error)) {
