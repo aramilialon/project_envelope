@@ -96,6 +96,8 @@ const ANY: Prediction = { kind: "any" };
 /** The transactions API's reconciled lock answers a bare 409 without a `code`. */
 const RECONCILED_TRANSACTION: Prediction = { kind: "refuse", status: 409 };
 const TRADE_OWNED: Prediction = { kind: "refuse", status: 409, code: "trade_owned_transaction" };
+/** Income on an on-budget credit card, which `@envelope/core` does not model yet (#548). */
+const CARD_INCOME: Prediction = { kind: "refuse", status: 400, code: "card_income_not_supported" };
 
 /**
  * The codes an `any` refusal may carry: the rules the walk does not predict but can run into
@@ -117,19 +119,10 @@ export const REFUSAL_ALLOWLIST: ReadonlySet<string> = new Set([
 /**
  * Operations left out because of a bug the walk found in the API and that is not fixed yet. Each
  * entry names its finding; delete the entry with the fix, and the walk covers the case again.
- * `WALK_INCLUDE_EXCLUDED=1` puts them all back, to reproduce or check a fix.
+ * `WALK_INCLUDE_EXCLUDED=1` puts them all back, to reproduce or check a fix. None today: the
+ * walk's first two findings (#547, #548) are fixed, and their logs are in `regressions/`.
  */
-export const EXCLUSIONS: Readonly<Record<string, string>> = {
-  "transfer-leg-amount":
-    "EXCLUDED, random walk finding 1 (#547): PATCH .../transactions/:id with new splits on one leg of a " +
-    "transfer is accepted and changes that leg only, so the two legs stop cancelling out and money appears in or " +
-    "disappears from the accounts while the budget does not move (the budget invariant breaks).",
-  "card-income":
-    "EXCLUDED, random walk finding 2 (#548): POST .../transactions with an uncategorized split (income) " +
-    "on an on-budget credit card is accepted, and from then on every GET .../budget-months/:month of the workspace " +
-    "answers 400 unsupported_transaction until it is deleted. Income on a card is a known limitation of the core " +
-    "(packages/core/README.md), but the API should refuse the write instead of accepting one that breaks every read.",
-};
+export const EXCLUSIONS: Readonly<Record<string, string>> = {};
 
 function excluded(name: string): boolean {
   return process.env.WALK_INCLUDE_EXCLUDED !== "1" && name in EXCLUSIONS;
@@ -293,7 +286,8 @@ function acceptTransaction(model: WorkspaceModel, p: TransactionParams, body: un
 
 const income: OperationSpec<TransactionParams> = {
   generate(model, { random, progress }) {
-    const accounts = [...model.budgetCashAccounts(), ...(excluded("card-income") ? [] : model.cards())];
+    // Cards too: income on an on-budget card must be refused, and leave nothing behind (#548).
+    const accounts = [...model.budgetCashAccounts(), ...model.cards()];
     if (accounts.length === 0) return undefined;
     const p = payee(random);
     return {
@@ -304,7 +298,10 @@ const income: OperationSpec<TransactionParams> = {
     };
   },
   request: transactionRequest,
-  predict: () => ACCEPT,
+  predict(model, p) {
+    const account = model.account(p.account);
+    return account.type === "credit_card" && account.onBudget ? CARD_INCOME : ACCEPT;
+  },
   accept: acceptTransaction,
 };
 
@@ -457,7 +454,8 @@ const editTransaction: OperationSpec<EditTransactionParams> = {
     if (candidates.length === 0) return undefined;
     const entity = random.pick(candidates);
     const singleSplit = entity.record.splits.length === 1;
-    const amountEditable = singleSplit && (entity.record.transferId === null || !excluded("transfer-leg-amount"));
+    // A transfer leg's new amount keeps its sign, so the other leg follows it (#547).
+    const amountEditable = singleSplit;
     const change = random.weighted<EditTransactionParams["change"]>([
       ["memo", 3],
       ["payee", 2],
@@ -482,10 +480,19 @@ const editTransaction: OperationSpec<EditTransactionParams> = {
         : { [p.change]: p.value };
     return { method: "PATCH", path: ws(model, `/accounts/${entity.record.accountId}/transactions/${entity.record.id}`), body };
   },
-  predict: (model, p) => (model.transaction(p.tx).record.status === "reconciled" ? RECONCILED_TRANSACTION : ACCEPT),
+  predict(model, p) {
+    const entity = model.transaction(p.tx);
+    if (entity.record.status === "reconciled") return RECONCILED_TRANSACTION;
+    // A new amount on a transfer leg moves the other leg too, which a reconciled leg refuses (#547).
+    if (p.change === "amount" && p.value !== transactionAmount(entity.record) && model.transferPartner(entity)?.record.status === "reconciled") {
+      return RECONCILED_TRANSACTION;
+    }
+    return ACCEPT;
+  },
   accept(model, p, body) {
     const entity = model.transaction(p.tx);
     const split = entity.record.splits[0]!;
+    const partner = model.transferPartner(entity);
     echoEdit(
       `the edited transaction (${p.change})`,
       entity.record,
@@ -494,8 +501,19 @@ const editTransaction: OperationSpec<EditTransactionParams> = {
         ? { splits: [{ categoryId: split.categoryId, amountCents: p.value as number, memo: null }] }
         : { [p.change]: p.value },
     );
+    if (p.change === "amount" && partner && p.value !== transactionAmount(entity.record)) {
+      // The other leg gets the opposite amount on its one split (keeping its id, memo and
+      // category), and a cleared other leg goes back to pending (#547). The full comparison of
+      // the touched accounts checks it against the API.
+      const [partnerSplit] = partner.record.splits;
+      partner.record = {
+        ...partner.record,
+        status: partner.record.status === "cleared" ? "pending" : partner.record.status,
+        splits: [{ ...partnerSplit!, amountCents: -(p.value as number) }],
+      };
+    }
     entity.record = body as TransactionJson;
-    return touched({ accounts: accountsTouchedBy(model, [entity, model.transferPartner(entity)]), budget: true });
+    return touched({ accounts: accountsTouchedBy(model, [entity, partner]), budget: true });
   },
 };
 
@@ -1417,8 +1435,8 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     createAccount: 2,
     income: 6,
     spend: 14,
-    // Transfers between budget accounts are weighted up while #547 (one leg edited alone) is open,
-    // so the walk keeps building the pairs that bug lives in.
+    // Transfers between budget accounts are weighted up so the walk keeps building the pairs whose
+    // legs it edits (#547).
     transfer: 6,
     cardPayment: 4,
     offBudgetSavings: 2,
