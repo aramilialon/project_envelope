@@ -92,16 +92,37 @@ created on first run and left alone afterward; sign in as it with the password i
 
 ### Reference screenshots
 
-`screenshot-demo.ts` regenerates the reference screenshots from the already-seeded "Demo"
-workspace: light and dark, at 1440px, 390px and 360px, for the budget month (this month and the
-previous one, `#326` — the previous month's own full spread of transactions, above, is what makes
-its timeline worth looking at), the accounts list and the account register (plus the accounts
-panel, `#412`, open over that register — light and dark at 1440px only, since it has no phone
-layout), named after
-`docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a size
-suffix, since those were only ever one size). Needs `apps/web` running too (not just `apps/api`),
-since unlike the seed script's own plain-`fetch` handshake, this drives the real sign-in form
-through a real (headless) browser to actually render pixels.
+Every screenshot in `docs/ux/screenshots/` exists in both themes, as `<name>-light.png` and
+`<name>-dark.png` (`#587`); a change to a screen that one of them shows refreshes both. They come
+from two sources:
+
+| Screenshot | Source | Size |
+| --- | --- | --- |
+| `sign-in-*`, `workspace-picker-*` | the real app, `screenshot-demo.ts` | 900 x 700 |
+| `budget-month-*`, `account-register-*`, `accounts-panel-*` | the real app, `screenshot-demo.ts` | 1440 x 900 |
+| `reconciliation-*` | the real app, `screenshot-demo.ts` | 1440 x 700 |
+| `portfolio-*` | `docs/ux/mockups/portfolio.html` (no portfolio screen in the app yet), `screenshot-mockups.ts` | 1440 x 900 |
+| `phones-*` | the phone views of the budget month, account register and portfolio mockups, `screenshot-mockups.ts` | 1290 x 861 |
+
+The README also shows two mixed images, made by `screenshot-mockups.ts` from the per-theme ones:
+`phones-mixed.png` (the same three phones, light, dark and light) and `budget-month-split.png`
+(`budget-month-light.png` over `budget-month-dark.png`, cut along a diagonal: light at the top
+left, dark at the bottom right; where the seam runs is `SPLIT_SEAM` in the script, chosen to pass
+through the layout's gutters, so check it whenever the budget month's layout changes).
+
+#### From the real app
+
+`screenshot-demo.ts` drives the real sign-in form and the already-seeded "Demo" workspace through a
+headless browser: light and dark, at 1440px, 390px and 360px, for the budget month (this month and
+the previous one, `#326` — the previous month's own full spread of transactions, above, is what
+makes its timeline worth looking at), the accounts list and the account register; light and dark
+at 1440px only for the accounts panel (`#412`, open over that register; it has no phone layout) and
+the reconciliation screen for that account (with a statement balance that leaves exactly its
+pending transaction as the difference, so the screen shows its clue: typing it locks nothing);
+and light and dark at 900 x 700 for the sign-in screen and, when the demo user belongs to a
+second workspace, the workspace picker. Each file is named `<screen>-<theme>-<width>.png`; the
+committed ones drop the width. Needs `apps/web` running too (not just `apps/api`), since unlike
+the seed script's own plain-`fetch` handshake, this renders real pixels.
 
 At 390px and 360px it also asserts there is no horizontal overflow
 (`document.documentElement.scrollWidth <= clientWidth`, `#333`'s own acceptance criterion, extended
@@ -115,16 +136,52 @@ It also asserts the account register's own phone list keeps its payee text at a 
 unrelated components — the band's own `.who` and this list's own — once left it reading the band's
 muted colour by accident).
 
+Against the shared development stack (`apps/api` and `apps/web`'s dev server running, the demo
+already seeded):
+
 ```bash
 $ cd scripts
 $ pnpm screenshots:demo
 ```
 
-Saved **outside** the repository, in `~/screenshots/` — not committed, for manual review (`#323`'s
-own real-app screenshots followed the same rule). Replacing the committed
-`docs/ux/screenshots/*.png` (currently rendered from the mockups) with these is a separate,
-deliberate step once bars/timeline/phone layout actually exist (`#324`, `#326`, `#331`, `#333`,
-`#337`), not something this command does on its own.
+Preferably, against a disposable environment instead (below), so nothing touches the shared
+database: bring one up, seed the demo into it with the run's own realm, web origin and database,
+then shoot. `KEYCLOAK_REALM` must be `envelope` or a disposable realm, and with a disposable realm
+`seed-demo.ts` refuses a `DATABASE_URL` that is not that same run's database. `--second-workspace`
+adds an empty "Personal" workspace, so the sign-in stops at the workspace picker:
+
+```bash
+$ cd scripts
+$ pnpm explore:up                                  # note the run id and the manifest path
+$ M=<manifest.json>; RUN=<run id>
+$ PW=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(open(os.path.expanduser("~/.config/envelope-explore/postgres-password")).read().strip(), safe=""))')
+$ export API_URL=$(jq -r .api.url $M) WEB_URL=$(jq -r .web.url $M) KEYCLOAK_REALM=envelope-explore-$RUN \
+    DATABASE_URL="postgres://explore_admin:$PW@127.0.0.1:55432/envelope_explore_$RUN" \
+    DEMO_USER_PASSWORD=$(openssl rand -hex 16)
+$ node --env-file-if-exists=.env seed-demo.ts --second-workspace
+$ node --env-file-if-exists=.env screenshot-demo.ts
+$ pnpm explore:down $M
+```
+
+(`KEYCLOAK_ADMIN_PASSWORD` comes from `scripts/.env` as usual; the exported variables win over
+it.) Saved **outside** the repository, in `~/screenshots/`, for review; copy the ones the README
+shows into `docs/ux/screenshots/` under their committed names, then run `screenshot-mockups.ts`
+(below) to rebuild `budget-month-split.png` from them.
+
+#### From the mockups
+
+`screenshot-mockups.ts` opens the mockups with `file://` (no server), picks the theme with
+`prefers-color-scheme`, and writes straight into `docs/ux/screenshots/`: `portfolio-*` (the
+desktop frame, 1440 x 900 from its top-left corner) and `phones-*`. Each phone screen is first
+rendered on its own per theme, with a transparent page around the phone; one plain HTML page then
+places the three side by side on the mockups' own `--desk` token, 30px apart, and is screenshotted
+once, so a different mix of themes is just a different list of renders (`phones-mixed.png` is
+one). The mockups load their fonts from the web, so it needs a network connection.
+
+```bash
+$ cd scripts
+$ pnpm screenshots:mockups
+```
 
 ## Disposable environments
 
@@ -225,7 +282,8 @@ old volume.
 8. writes the final `manifest.json` in the run directory (`<root>/<run>`, by default
    `$TMPDIR/envelope-explore/<run>`).
 
-The workspaces start empty: no seed data is loaded (`seed-demo.ts` targets the shared realm).
+The workspaces start empty: no seed data is loaded. `seed-demo.ts` targets the shared realm by
+default; "Reference screenshots" (above) shows how to seed the demo into an environment instead.
 
 If a step fails, `up` removes the processes, the database and the realm, and keeps the run
 directory with its logs (`sweep` removes it later). **Ctrl-C or SIGTERM** stops the step in
@@ -312,9 +370,10 @@ watch when running several; restarting Keycloak gives the memory back.
 | File | What it does |
 | --- | --- |
 | `seed-demo.ts` | The demo data seed (above) |
-| `screenshot-demo.ts` | Regenerates the reference screenshots from the seeded "Demo" workspace (above) |
+| `screenshot-demo.ts` | Regenerates the real-app reference screenshots from the seeded "Demo" workspace (above) |
+| `screenshot-mockups.ts` | Renders the mockup reference screenshots and the README's mixed images (above) |
 | `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or any given URL that is not local, naming which one (`lib/env.test.ts`) |
-| `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake |
+| `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake; `keycloakTargetFromEnv`: the realm and web origin (`KEYCLOAK_REALM`, `WEB_URL`), refusing a realm that is neither `envelope` nor a disposable one (`lib/keycloak.test.ts`) |
 | `lib/api.ts` | `Api`: a thin authenticated `fetch` wrapper against `apps/api` — no generated client exists yet |
 | `lib/db.ts` | The one step done with direct SQL: backdating a credit card's own "Starting balance" transaction (see above) |
 | `lib/dates.ts` | `todayAt(now, timeZone)`: every date the seed uses, relative to an injected "today" (never read from the clock directly, so it is testable — `lib/dates.test.ts`). The rule it encodes: a *recorded* transaction's date is never after today (`onOrBeforeToday` clamps a fixed day down to today); a scheduled transaction can genuinely be due before or after today (`beforeTodaySameMonth`/`afterTodaySameMonth`, each falling back to the adjacent month at the rare edge — today being the 1st or the month's last day) |

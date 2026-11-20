@@ -2,7 +2,8 @@ import { Api } from "./lib/api.ts";
 import { backdateStartingBalance } from "./lib/db.ts";
 import { monthOffset, todayAt } from "./lib/dates.ts";
 import { assertSafeToRun, requireEnv } from "./lib/env.ts";
-import { ensureDemoUser, signInAsDemoUser } from "./lib/keycloak.ts";
+import { DEFAULT_KEYCLOAK_TARGET, ensureDemoUser, keycloakTargetFromEnv, signInAsDemoUser } from "./lib/keycloak.ts";
+import { databaseName, databaseOf, runOf } from "./explore-env/names.ts";
 
 /**
  * Seeds a "Demo" workspace through the real `apps/api` HTTP API — see `scripts/README.md` for
@@ -13,9 +14,15 @@ import { ensureDemoUser, signInAsDemoUser } from "./lib/keycloak.ts";
  *
  * `--reset` deletes a previously seeded "Demo" workspace first; without it, an existing one makes
  * this exit immediately rather than silently leaving two.
+ *
+ * `--second-workspace` also gives the demo user an empty "Personal" workspace (only if it has none
+ * by that name yet), so that signing in shows the workspace picker — the one screen
+ * `screenshot-demo.ts` needs a second workspace for. Left out by default: with it, every sign-in
+ * as the demo user in a fresh browser stops at the picker first.
  */
 
 const WORKSPACE_NAME = "Demo";
+const SECOND_WORKSPACE_NAME = "Personal";
 const TIME_ZONE = "Europe/Rome";
 const BASE_CURRENCY = "EUR";
 const DEMO_USERNAME = "demo";
@@ -29,6 +36,7 @@ interface CreatedAccount {
 
 async function main(): Promise<void> {
   const reset = process.argv.includes("--reset");
+  const secondWorkspace = process.argv.includes("--second-workspace");
 
   const apiUrl = process.env.API_URL ?? "http://127.0.0.1:3000";
   const keycloakUrl = process.env.KEYCLOAK_URL ?? "http://127.0.0.1:8080";
@@ -37,11 +45,20 @@ async function main(): Promise<void> {
   const demoPassword = requireEnv("DEMO_USER_PASSWORD");
   const databaseUrl = requireEnv("DATABASE_URL");
 
-  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl });
+  const target = keycloakTargetFromEnv();
+
+  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl, WEB_URL: target.redirectUri });
+  if (target.realm !== DEFAULT_KEYCLOAK_TARGET.realm) {
+    // A disposable environment's realm: the direct-SQL step must go to that same run's database.
+    const run = runOf(target.realm);
+    if (!run || databaseOf(databaseUrl) !== databaseName(run)) {
+      throw new Error(`KEYCLOAK_REALM is "${target.realm}", but DATABASE_URL does not name that run's own database`);
+    }
+  }
 
   console.log("== Signing in as the demo user");
-  await ensureDemoUser(keycloakUrl, keycloakAdminPassword, DEMO_USERNAME, demoPassword);
-  const accessToken = await signInAsDemoUser(keycloakUrl, clientId, DEMO_USERNAME, demoPassword);
+  await ensureDemoUser(keycloakUrl, keycloakAdminPassword, DEMO_USERNAME, demoPassword, target);
+  const accessToken = await signInAsDemoUser(keycloakUrl, clientId, DEMO_USERNAME, demoPassword, target);
   const api = new Api(apiUrl, accessToken);
 
   // The user-mapper preHandler creates the local `users` row on the first authenticated
@@ -320,6 +337,11 @@ async function main(): Promise<void> {
 
   console.log("== Verifying the budget invariant");
   await verifyInvariant(api, workspaceId, currentMonth, [checking, savings, cash, visa, mastercard]);
+
+  if (secondWorkspace && !workspaces.some((w) => w.name === SECOND_WORKSPACE_NAME)) {
+    console.log(`== Creating an empty "${SECOND_WORKSPACE_NAME}" workspace (--second-workspace)`);
+    await api.post("/workspaces", { name: SECOND_WORKSPACE_NAME, baseCurrency: BASE_CURRENCY, timeZone: TIME_ZONE });
+  }
 
   console.log(`\nDone. Workspace "${WORKSPACE_NAME}" (${workspaceId}) seeded for ${currentMonth}.`);
   console.log(`Sign in as "${DEMO_USERNAME}" with the password in DEMO_USER_PASSWORD.`);

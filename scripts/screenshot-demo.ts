@@ -1,16 +1,19 @@
 import { chromium } from "@playwright/test";
 
 import { assertSafeToRun, requireEnv } from "./lib/env.ts";
+import { keycloakTargetFromEnv } from "./lib/keycloak.ts";
 
 /**
  * Regenerates the reference screenshots from the already-seeded "Demo" workspace (`seed-demo.ts`
  * must have run first): the budget month (this month and the previous one, #326), the accounts
  * list and the account register, light and dark, at 1440px/390px/360px (plus the accounts panel,
- * #412, open over that register: desktop only, so 1440px alone), named after
- * `docs/ux/screenshots/budget-month-*.png`/`account-register.png`'s existing convention (with a
- * size suffix, since those were only ever one size). Saved **outside** the repository, for manual
- * review — `#323`'s own real-app screenshots followed the same rule; see `scripts/README.md` for
- * why and for the exact command.
+ * #412, open over that register, and the reconciliation screen for that account, with a statement
+ * balance that leaves exactly the pending transaction as the difference: desktop only, so 1440px
+ * alone; and the sign-in screen and, when the demo user has a second workspace —
+ * `seed-demo.ts --second-workspace` — the workspace picker, at 900 x 700, #587), named
+ * `<screen>-<theme>-<width>.png` (the committed copies in `docs/ux/screenshots/` drop the width).
+ * Saved **outside** the repository, for manual review; see `scripts/README.md` for the exact
+ * commands, against the shared stack or a disposable environment (`KEYCLOAK_REALM`, `WEB_URL`).
  *
  * Also asserts there is no horizontal overflow at 390px/360px on any of the four screens (`#333`'s
  * own acceptance criterion, extended to the budget month by `#326`:
@@ -25,7 +28,6 @@ import { assertSafeToRun, requireEnv } from "./lib/env.ts";
  * sign-in form through Playwright instead.
  */
 
-const WEB_URL = "http://localhost:5173";
 const DEMO_USERNAME = "demo";
 const PHONE_WIDTHS = [390, 360] as const;
 
@@ -87,25 +89,46 @@ async function main(): Promise<void> {
   const databaseUrl = requireEnv("DATABASE_URL");
   const demoPassword = requireEnv("DEMO_USER_PASSWORD");
   const outDir = `${requireEnv("HOME")}/screenshots`;
+  // The shared stack's realm and Vite dev server by default; a disposable environment's own
+  // (`KEYCLOAK_REALM`, `WEB_URL`, from its manifest) otherwise — scripts/README.md.
+  const { realm, redirectUri: webUrl } = keycloakTargetFromEnv();
   // This script itself only ever talks to apps/web's own origin (hard-coded, already local) —
   // every one of these is still checked for the same reason seed-demo.ts checks all three it
   // actually uses: one shared, consistent safety contract on the one .env both scripts read.
-  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl });
+  assertSafeToRun({ API_URL: apiUrl, DATABASE_URL: databaseUrl, KEYCLOAK_URL: keycloakUrl, WEB_URL: webUrl });
 
   const overflowChecks: OverflowCheck[] = [];
   const contrastChecks: ContrastCheck[] = [];
   const browser = await chromium.launch();
   try {
-    const context = await browser.newContext({ baseURL: WEB_URL, viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ baseURL: webUrl, viewport: { width: 1440, height: 900 } });
     const page = await context.newPage();
 
+    // The sign-in screen (a centred card), at the size its earlier screenshot had.
+    await page.setViewportSize({ width: 900, height: 700 });
     await page.goto("/");
+    await page.getByRole("button", { name: "Sign in" }).waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    await shootBothThemes(page, outDir, "sign-in", 900);
+    await page.setViewportSize({ width: 1440, height: 900 });
+
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/realms\/envelope\/protocol\/openid-connect\/auth/);
+    await page.waitForURL((url) => url.pathname.startsWith(`/realms/${realm}/protocol/openid-connect/auth`));
     await page.getByLabel("Username or email").fill(DEMO_USERNAME);
     await page.getByLabel("Password", { exact: true }).fill(demoPassword);
     await page.getByRole("button", { name: "Sign In" }).click();
-    await page.waitForURL(/^http:\/\/localhost:5173\/[0-9a-f-]+$/);
+
+    // With more than one workspace (and a fresh browser, which remembers none), "/" stops at the
+    // workspace picker: shoot it, then go on into "Demo".
+    const picker = page.getByText("Choose a workspace to work in.");
+    await picker.or(page.getByText("Unassigned")).first().waitFor();
+    if (await picker.isVisible()) {
+      await page.setViewportSize({ width: 900, height: 700 });
+      await shootBothThemes(page, outDir, "workspace-picker", 900);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.getByRole("button", { name: "Demo", exact: true }).click();
+    }
+    await page.waitForURL((url) => /^\/[0-9a-f-]+$/.test(url.pathname));
 
     await page.getByText("Unassigned").waitFor();
     // The "To do" list's own target-funding entry and the timeline's own events are each a
@@ -137,6 +160,23 @@ async function main(): Promise<void> {
     await page.getByRole("heading", { name: "Checking" }).waitFor();
     await shootSixWays(page, outDir, "account-register", overflowChecks, contrastChecks, ".ph-tx .what b");
 
+    // Reconciliation (#60), for the same account, at the size its earlier screenshot had: a
+    // statement balance of the cleared balance plus the first pending transaction, so the
+    // difference is exactly that transaction and the screen shows its clue. Typing the balance is
+    // all this does: nothing is locked or recorded.
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.getByRole("link", { name: "Reconcile", exact: true }).click();
+    await page.getByRole("heading", { name: "Reconcile with your bank" }).waitFor();
+    await page.waitForLoadState("networkidle");
+    const clearedCents = parseCents(await page.locator(".recon .qa.total .n").innerText());
+    const pendingCents = parseCents(await page.locator(".rlist .sec").nth(1).locator(".n.r").first().innerText());
+    await page.locator("#rec-amt").fill(((clearedCents + pendingCents) / 100).toFixed(2));
+    await page.locator("#rec-amt").blur();
+    await page.waitForTimeout(300);
+    await shootBothThemes(page, outDir, "reconciliation", 1440);
+    await page.locator(".crumb-back").click();
+    await page.getByRole("heading", { name: "Checking" }).waitFor();
+
     // The accounts panel (#412), open over the register it just switched to: desktop only, like
     // its own mockup (it has no toggle below 600px), so light and dark at 1440px and nothing else.
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -144,10 +184,7 @@ async function main(): Promise<void> {
     await page.getByRole("heading", { name: "Net worth" }).waitFor();
     await page.waitForLoadState("networkidle");
     await page.waitForTimeout(300);
-    for (const scheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme: scheme });
-      await page.screenshot({ path: `${outDir}/accounts-panel-${scheme}-1440.png` });
-    }
+    await shootBothThemes(page, outDir, "accounts-panel", 1440);
 
     console.log("Screenshots written to", outDir);
     console.log("\nAnti-overflow check (document.documentElement.scrollWidth <= clientWidth):");
@@ -176,6 +213,24 @@ async function main(): Promise<void> {
   } finally {
     await browser.close();
   }
+}
+
+/** An amount as the app shows it ("€1,234.56", "-€9.99") in cents. */
+function parseCents(text: string): number {
+  const digits = text.replace(/\D/g, "");
+  if (!digits) {
+    throw new Error(`Not an amount: "${text}"`);
+  }
+  return (/[-\u2212]/.test(text) ? -1 : 1) * Number(digits);
+}
+
+/** The page as it is, light then dark, as `<baseName>-<scheme>-<width>.png`; leaves it light. */
+async function shootBothThemes(page: import("@playwright/test").Page, outDir: string, baseName: string, width: number): Promise<void> {
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.screenshot({ path: `${outDir}/${baseName}-${scheme}-${width}.png` });
+  }
+  await page.emulateMedia({ colorScheme: "light" });
 }
 
 /**

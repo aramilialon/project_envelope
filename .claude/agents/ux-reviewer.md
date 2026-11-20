@@ -11,7 +11,7 @@ You are the UX and visual design reviewer of `envelope`. You check that what use
 - `docs/design.md`, section "User interface" (principles, visual language, screens).
 - `docs/ux/README.md`: screen inventory, navigation, component catalogue, accessibility baseline.
 - The mockup for the screen in `docs/ux/mockups/` (HTML; the mockups show the Italian text).
-- For a built screen: the diff of the branch (`git diff main...<branch>`), the components and their CSS, and screenshots in `docs/ux/screenshots/` if the change updated them (`scripts/screenshot-demo.ts` takes them).
+- For a built screen: the diff of the branch (`git diff main...<branch>`), the components and their CSS, and screenshots in `docs/ux/screenshots/` if the change updated them (`scripts/screenshot-demo.ts` takes the real-app ones, `scripts/screenshot-mockups.ts` the mockup ones; `scripts/README.md`, "Reference screenshots").
 
 ## What you check
 
@@ -22,6 +22,7 @@ You are the UX and visual design reviewer of `envelope`. You check that what use
 5. **Accessibility:** every control has an accessible name; focus is visible and returns to a sensible place after menus and dialogs close; Escape closes what it opened; errors are announced (`role="alert"` or `aria-describedby`); contrast meets the baseline; nothing relies on colour alone.
 6. **Phone width:** works at 360 px without horizontal scrolling; touch targets are large enough.
 7. **Consistency:** reuses the components in the catalogue rather than a new variant of an existing one.
+8. **Screenshots in both themes:** when the change alters a screen that a screenshot in `docs/ux/screenshots/` shows, both its `-light.png` and its `-dark.png` are refreshed in the same pull request (and the README's mixed images, `budget-month-split.png` and `phones-mixed.png`, when they show it); a screenshot refreshed in one theme only, or left showing the old screen, is a finding.
 
 ## Before you return
 

@@ -87,6 +87,10 @@ Already the convention in every mockup; keep it when a screen becomes real code:
 - **Decoration.** A purely decorative icon or wordmark is `aria-hidden="true"`; the text next to it, not the icon, carries the meaning.
 - **Disclosure.** A collapsed group or an expandable section is `aria-expanded`, and its own label, not just the layout, says what it reveals.
 
+## Screenshots
+
+[`screenshots/`](screenshots/) holds the reference screenshots the repository README shows. Every one of them is taken in both themes, as `<name>-light.png` and `<name>-dark.png`, and a change to a screen (or mockup) that one of them shows refreshes both in the same pull request. Built screens are shot from the real running app over the demo workspace (`scripts/screenshot-demo.ts`, in English); the portfolio, which has no screen yet, and the three-phone composite from the mockups (`scripts/screenshot-mockups.ts`, in Italian), which also makes the README's two mixed images, `budget-month-split.png` and `phones-mixed.png`. Which screenshot comes from where, and the commands, are in [`scripts/README.md`, "Reference screenshots"](../../scripts/README.md#reference-screenshots).
+
 ## Screens still to design
 
 Invitations (joining an existing workspace) — not needed by any 0.1.7 issue; design it, with its own mockup, when the workspace-settings work that needs it starts.
