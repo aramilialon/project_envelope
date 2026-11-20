@@ -1,4 +1,4 @@
-import { currencyDecimals, formatMoney, parseAmount } from "@envelope/core";
+import { currencyDecimals, formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
 import { useEffect, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -213,7 +213,7 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
           <label className="sr-only" htmlFor="qe-payee">
             {intl.formatMessage({ id: "quickEntry.place", defaultMessage: "Where" })}
           </label>
-          <input id="qe-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} />
+          <input id="qe-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
 
           <h5>{intl.formatMessage({ id: "quickEntry.category", defaultMessage: "Category" })}</h5>
           <div className="chips2">

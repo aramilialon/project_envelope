@@ -53,7 +53,8 @@ export type ValidationErrorCode =
   | "missing_exchange"
   | "invalid_ticker"
   | "invalid_exchange"
-  | "search_query_too_short";
+  | "search_query_too_short"
+  | "text_too_long";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

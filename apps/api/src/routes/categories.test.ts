@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_NAME_LENGTH } from "@envelope/core";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -249,6 +251,85 @@ describe("categories routes", () => {
       });
       assert.equal(ontoPaymentGroup.statusCode, 409);
       assert.equal(ontoPaymentGroup.json().code, "payment_group");
+    });
+  });
+
+  describe("name length limit (#507)", () => {
+    const auth = () => ({ authorization: `Bearer ${token}` });
+    const tooLong = "a".repeat(MAX_NAME_LENGTH + 1);
+    const expected = { error: "text_too_long", details: { field: "name", max: MAX_NAME_LENGTH } };
+
+    it("accepts group and category names at the limit and rejects one character more, on create and rename", async () => {
+      const groupAtLimit = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/category-groups`,
+        headers: auth(),
+        payload: { name: "g".repeat(MAX_NAME_LENGTH) },
+      });
+      assert.equal(groupAtLimit.statusCode, 201);
+      const groupId = groupAtLimit.json().id;
+
+      const groupTooLong = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/category-groups`,
+        headers: auth(),
+        payload: { name: tooLong },
+      });
+      assert.equal(groupTooLong.statusCode, 400);
+      assert.deepEqual(groupTooLong.json(), expected);
+
+      const groupRenameTooLong = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${groupId}`,
+        headers: auth(),
+        payload: { name: tooLong },
+      });
+      assert.equal(groupRenameTooLong.statusCode, 400);
+      assert.deepEqual(groupRenameTooLong.json(), expected);
+
+      const groupRenameAtLimit = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${groupId}`,
+        headers: auth(),
+        payload: { name: "h".repeat(MAX_NAME_LENGTH) },
+      });
+      assert.equal(groupRenameAtLimit.statusCode, 200);
+      assert.equal(groupRenameAtLimit.json().name, "h".repeat(MAX_NAME_LENGTH));
+
+      const categoryAtLimit = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/categories`,
+        headers: auth(),
+        payload: { name: "c".repeat(MAX_NAME_LENGTH), groupId },
+      });
+      assert.equal(categoryAtLimit.statusCode, 201);
+      const categoryId = categoryAtLimit.json().id;
+
+      const categoryTooLong = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/categories`,
+        headers: auth(),
+        payload: { name: tooLong, groupId },
+      });
+      assert.equal(categoryTooLong.statusCode, 400);
+      assert.deepEqual(categoryTooLong.json(), expected);
+
+      const categoryRenameAtLimit = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${categoryId}`,
+        headers: auth(),
+        payload: { name: "d".repeat(MAX_NAME_LENGTH) },
+      });
+      assert.equal(categoryRenameAtLimit.statusCode, 200);
+
+      const categoryRenameTooLong = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/categories/${categoryId}`,
+        headers: auth(),
+        payload: { name: tooLong },
+      });
+      assert.equal(categoryRenameTooLong.statusCode, 400);
+      assert.deepEqual(categoryRenameTooLong.json(), expected);
     });
   });
 });

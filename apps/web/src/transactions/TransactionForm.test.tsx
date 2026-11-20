@@ -1,7 +1,9 @@
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Account } from "../accounts/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import type { Category } from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "./api.ts";
@@ -50,6 +52,13 @@ function renderForm(overrides: Partial<Parameters<typeof TransactionForm>[0]> = 
 }
 
 describe("TransactionForm (#54)", () => {
+  it("caps the payee and the memo at the API's free-text limit (#507)", () => {
+    renderForm();
+
+    expect((screen.getByLabelText("Payee") as HTMLInputElement).maxLength).toBe(MAX_FREE_TEXT_LENGTH);
+    expect((screen.getByLabelText("Memo") as HTMLInputElement).maxLength).toBe(MAX_FREE_TEXT_LENGTH);
+  });
+
   it("creates an outflow with a category", async () => {
     const createTransaction = vi.spyOn(transactionsApi, "createTransaction").mockResolvedValue({} as Transaction);
     const { onSaved } = renderForm();
@@ -253,12 +262,71 @@ describe("TransactionForm (#54)", () => {
 
     await waitFor(() =>
       expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t1", {
-        payee: "Supermarket",
-        status: "cleared",
         splits: [{ categoryId: "cat-groceries", amountCents: -1500 }],
         amountCents: -1500,
       }),
     );
+  });
+
+  describe("only what changed, and text too long (#507)", () => {
+    const longPayee = "p".repeat(600);
+    const imported: Transaction = {
+      id: "t9",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: longPayee,
+      memo: "From the bank",
+      status: "cleared",
+      transferId: null,
+      externalId: "bank-1",
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits: [{ id: "s9", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
+    };
+
+    it("saves a new category for a transaction with a 600-character payee, without re-sending the payee or memo", async () => {
+      const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+      const { onSaved } = renderForm({ transaction: imported });
+
+      fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-restaurants" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => expect(onSaved).toHaveBeenCalled());
+      expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t9", {
+        splits: [{ categoryId: "cat-restaurants", amountCents: -1200 }],
+        amountCents: -1200,
+      });
+    });
+
+    it("sends a changed memo, and nothing at all when nothing changed", async () => {
+      const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+      updateTransaction.mockClear();
+      const first = renderForm({ transaction: imported });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(first.onSaved).toHaveBeenCalled());
+      expect(updateTransaction).not.toHaveBeenCalled();
+      first.unmount();
+
+      const second = renderForm({ transaction: imported });
+      fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Weekly shopping" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(second.onSaved).toHaveBeenCalled());
+      expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t9", { memo: "Weekly shopping" });
+    });
+
+    it("says which field is too long when the API refuses it", async () => {
+      vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(
+        new ApiError("PATCH failed: 400", 400, "text_too_long", { field: "payee", max: MAX_FREE_TEXT_LENGTH }),
+      );
+      const { onSaved } = renderForm({ transaction: imported });
+
+      fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "q".repeat(599) } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText("The payee is too long: it can have up to 500 characters.")).toBeInTheDocument();
+      expect(onSaved).not.toHaveBeenCalled();
+    });
   });
 
   it("edits an existing transfer leg with amount and destination disabled", async () => {

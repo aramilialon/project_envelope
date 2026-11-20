@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -178,5 +180,35 @@ describe("reconciliation routes", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 409);
+  });
+
+  it("accepts an adjustment memo at the free-text limit, and rejects one character more (#507)", async () => {
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        date: "2026-06-30",
+        statementBalanceCents: -100,
+        tickedTransactionIds: [],
+        adjustment: { categoryId: null, memo: "m".repeat(MAX_FREE_TEXT_LENGTH) },
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.json().outcome, "reconciled");
+
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        date: "2026-07-31",
+        statementBalanceCents: -100,
+        tickedTransactionIds: [],
+        adjustment: { categoryId: null, memo: "m".repeat(MAX_FREE_TEXT_LENGTH + 1) },
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "adjustment.memo", max: MAX_FREE_TEXT_LENGTH } });
   });
 });

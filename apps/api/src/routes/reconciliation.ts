@@ -1,9 +1,10 @@
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
 import {
   getReconciliationCandidates,
   reconcileAccount,
@@ -66,6 +67,9 @@ export function registerReconciliationRoutes(app: FastifyInstance, pool: DbPool)
     const adjustment = parseAdjustment(body);
     if (adjustment === "invalid") {
       await reply.code(400).send({ error: "invalid adjustment: categoryId (a string or null) is required" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["adjustment.memo", adjustment?.memo, MAX_FREE_TEXT_LENGTH]])) {
       return;
     }
     if (adjustment && adjustment.categoryId) {

@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -22,6 +23,12 @@ describe("CategoryNameField (#397)", () => {
     expect(input.value).toBe("Groceries");
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe("Groceries".length);
+  });
+
+  it("caps the name at the API's name limit (#507)", () => {
+    const { input } = renderField();
+
+    expect(input.maxLength).toBe(MAX_NAME_LENGTH);
   });
 
   it("saves the trimmed name on Enter", async () => {

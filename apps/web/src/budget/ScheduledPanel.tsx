@@ -1,4 +1,4 @@
-import { formatMoney, monthOf, parseAmount, shiftMonth } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, shiftMonth } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -379,7 +379,7 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTar
       <h5>{intl.formatMessage({ id: "scheduled.new", defaultMessage: "+ New scheduled transaction" })}</h5>
       <div className="field">
         <label htmlFor="sch-payee">{intl.formatMessage({ id: "scheduled.payee", defaultMessage: "Payee" })}</label>
-        <input id="sch-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} />
+        <input id="sch-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
       </div>
       <div className="field">
         <label htmlFor="sch-category">{intl.formatMessage({ id: "scheduled.category", defaultMessage: "Category" })}</label>

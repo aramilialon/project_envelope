@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_NAME_LENGTH } from "@envelope/core";
+
 import { decodeJwt } from "jose";
 
 import { buildApp, type App } from "../app.ts";
@@ -167,5 +169,26 @@ describe("workspaces routes (#394)", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 403);
+  });
+
+  it("accepts a name at the name limit, and rejects one character more (#507)", async () => {
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "w".repeat(MAX_NAME_LENGTH), baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.json().name, "w".repeat(MAX_NAME_LENGTH));
+    createdWorkspaceIds.push(accepted.json().id);
+
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "w".repeat(MAX_NAME_LENGTH + 1), baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "name", max: MAX_NAME_LENGTH } });
   });
 });

@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createScheduledTransaction,
@@ -15,6 +15,7 @@ import {
   type RecurUnit,
   type ScheduledSplitInput,
 } from "../scheduled-transactions/repository.ts";
+import { transactionTextChecks } from "./transactions.ts";
 
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
 
@@ -71,6 +72,9 @@ export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: 
       });
       return;
     }
+    if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
+      return;
+    }
 
     const categories = await listCategories(request.db!, request.workspace!.id);
     const categoryIds = new Set(categories.map((c) => c.id));
@@ -112,6 +116,9 @@ export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: 
     const splits = body.splits === undefined ? undefined : parseScheduledSplits(body);
     if (body.splits !== undefined && !splits) {
       await reply.code(400).send({ error: "splits, when given, must be a non-empty array" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
     const recurUnit = body.recurUnit;

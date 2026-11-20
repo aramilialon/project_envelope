@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import { PAYMENT_CATEGORY_GROUP_NAME } from "../accounts/repository.ts";
@@ -20,6 +21,7 @@ import {
   renameCategoryGroup,
 } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
+import { sendIfTextTooLong } from "../errors.ts";
 
 function stringField(body: Record<string, unknown>, field: string): string {
   const value = body[field];
@@ -56,6 +58,9 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
       await reply.code(400).send({ error: "invalid category group: name is required" });
       return;
     }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
+      return;
+    }
     if (await isCategoryGroupNameTaken(request.db!, request.workspace!.id, name)) {
       await reply.code(409).send({ error: "another category group already has this name", code: "name_taken" satisfies CategoryConflict });
       return;
@@ -69,6 +74,9 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     const name = stringField((request.body ?? {}) as Record<string, unknown>, "name");
     if (!name) {
       await reply.code(400).send({ error: "invalid category group: name is required" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
       return;
     }
     const group = await getCategoryGroup(request.db!, request.workspace!.id, groupId);
@@ -125,6 +133,9 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
       await reply.code(400).send({ error: "invalid category: name and groupId are required" });
       return;
     }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
+      return;
+    }
     const group = await getCategoryGroup(request.db!, request.workspace!.id, groupId);
     if (!group) {
       await reply.code(400).send({ error: "groupId does not name a category group of this workspace" });
@@ -143,6 +154,9 @@ export function registerCategoriesRoutes(app: FastifyInstance, pool: DbPool): vo
     const name = stringField((request.body ?? {}) as Record<string, unknown>, "name");
     if (!name) {
       await reply.code(400).send({ error: "invalid category: name is required" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
       return;
     }
     const category = await getCategory(request.db!, request.workspace!.id, categoryId);

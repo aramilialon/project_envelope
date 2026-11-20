@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -6,7 +6,16 @@ import { useAuth } from "react-oidc-context";
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
-import { createTransaction, createTransfer, deleteTransaction, updateTransaction, type SplitInput, type Transaction } from "./api.ts";
+import { ApiError } from "../apiFetch.ts";
+import {
+  createTransaction,
+  createTransfer,
+  deleteTransaction,
+  updateTransaction,
+  type SplitInput,
+  type Transaction,
+  type UpdateTransactionInput,
+} from "./api.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
@@ -35,6 +44,14 @@ function kindOf(transaction: Transaction | undefined): Kind {
   if (!transaction) return "out";
   if (transaction.transferId !== null) return "transfer";
   return totalOf(transaction) < 0 ? "out" : "in";
+}
+
+/** Whether `splits` are the transaction's own splits, same categories and amounts in the same order. */
+function sameSplits(splits: readonly SplitInput[], original: Transaction): boolean {
+  return (
+    splits.length === original.splits.length &&
+    splits.every((s, i) => s.categoryId === (original.splits[i]!.categoryId ?? null) && s.amountCents === original.splits[i]!.amountCents)
+  );
 }
 
 function centsToInput(cents: number, locale: string): string {
@@ -119,6 +136,52 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   }
 
+  /**
+   * On edit, only the fields the user changed (#507): an imported payee or memo can be longer than
+   * the API accepts from a form, and re-sending it unchanged would make every other edit of that
+   * transaction fail. A cleared field is not sent, as before.
+   */
+  function editedFields(original: Transaction): UpdateTransactionInput {
+    const status = cleared ? "cleared" : "pending";
+    return {
+      ...(payee && payee !== (original.payee ?? "") ? { payee } : {}),
+      ...(memo && memo !== (original.memo ?? "") ? { memo } : {}),
+      ...(status !== original.status ? { status } : {}),
+    };
+  }
+
+  async function saveChanges(original: Transaction, changes: UpdateTransactionInput): Promise<void> {
+    const accessToken = auth.user?.access_token;
+    if (!accessToken || Object.keys(changes).length === 0) {
+      return;
+    }
+    await updateTransaction(accessToken, workspaceId, accountId, original.id, changes);
+  }
+
+  function saveErrorMessage(caught: unknown): string {
+    if (caught instanceof ApiError && caught.code === "text_too_long") {
+      const max = Number(caught.details.max);
+      switch (caught.details.field) {
+        case "payee":
+          return intl.formatMessage(
+            { id: "transactions.form.payeeTooLong", defaultMessage: "The payee is too long: it can have up to {max} characters." },
+            { max },
+          );
+        case "memo":
+          return intl.formatMessage(
+            { id: "transactions.form.memoTooLong", defaultMessage: "The memo is too long: it can have up to {max} characters." },
+            { max },
+          );
+        default:
+          return intl.formatMessage(
+            { id: "transactions.form.textTooLong", defaultMessage: "A text is too long: it can have up to {max} characters." },
+            { max },
+          );
+      }
+    }
+    return intl.formatMessage({ id: "transactions.form.error", defaultMessage: "We could not save this transaction." });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const accessToken = auth.user?.access_token;
@@ -139,11 +202,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     try {
       if (kind === "transfer") {
         if (isEditing) {
-          await updateTransaction(accessToken, workspaceId, accountId, transaction.id, {
-            ...(payee ? { payee } : {}),
-            ...(memo ? { memo } : {}),
-            status: cleared ? "cleared" : "pending",
-          });
+          await saveChanges(transaction, editedFields(transaction));
         } else {
           if (!destinationAccountId) {
             setError(intl.formatMessage({ id: "transactions.form.chooseDestination", defaultMessage: "Choose a destination account." }));
@@ -205,12 +264,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         const amountCents = splits.reduce((sum, s) => sum + s.amountCents, 0);
 
         if (isEditing) {
-          await updateTransaction(accessToken, workspaceId, accountId, transaction.id, {
-            ...(payee ? { payee } : {}),
-            ...(memo ? { memo } : {}),
-            status: cleared ? "cleared" : "pending",
-            splits,
-            amountCents,
+          await saveChanges(transaction, {
+            ...editedFields(transaction),
+            ...(sameSplits(splits, transaction) ? {} : { splits, amountCents }),
           });
         } else {
           await createTransaction(accessToken, workspaceId, accountId, {
@@ -223,8 +279,8 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         }
       }
       onSaved();
-    } catch {
-      setError(intl.formatMessage({ id: "transactions.form.error", defaultMessage: "We could not save this transaction." }));
+    } catch (caught) {
+      setError(saveErrorMessage(caught));
     } finally {
       setSubmitting(false);
     }
@@ -318,7 +374,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
         <div className="field">
           <label htmlFor="tx-payee">{intl.formatMessage({ id: "transactions.form.payee", defaultMessage: "Payee" })}</label>
-          <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} />
+          <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
         {(kind !== "transfer" || needsTransferCategory) && !split && (
@@ -399,7 +455,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
         <div className="field">
           <label htmlFor="tx-memo">{intl.formatMessage({ id: "transactions.form.memo", defaultMessage: "Memo" })}</label>
-          <input id="tx-memo" type="text" value={memo} onChange={(event) => setMemo(event.target.value)} />
+          <input id="tx-memo" type="text" value={memo} onChange={(event) => setMemo(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
         <label className="chk">

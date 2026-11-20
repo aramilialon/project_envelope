@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -60,7 +61,7 @@ export default function CreateWorkspaceForm({ onClose, onCreated }: Props) {
       <form onSubmit={(event) => void handleSubmit(event)}>
         <div className="field">
           <label htmlFor="ws-name">{intl.formatMessage({ id: "workspaces.form.name", defaultMessage: "Name" })}</label>
-          <input id="ws-name" type="text" value={name} onChange={(event) => setName(event.target.value)} required />
+          <input id="ws-name" type="text" value={name} onChange={(event) => setName(event.target.value)} maxLength={MAX_NAME_LENGTH} required />
         </div>
 
         <div className="field">
