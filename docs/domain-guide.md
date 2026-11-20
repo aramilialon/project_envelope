@@ -114,6 +114,32 @@ runs out — never more than it holds.
 Payment categories never have targets of their own: a card's debt is covered by the categories that
 caused it, not by a savings goal on the payment category itself.
 
+### Money moved to an off-budget account
+
+A transfer between two on-budget accounts moves money without spending it: the budget does not
+change. A transfer between an on-budget account and an off-budget one (a brokerage account, a
+savings account kept out of the budget, a mortgage) is different, because the money leaves the
+budget or enters it. Its on-budget leg therefore carries a category, like any spending: a transfer
+without one is refused (`uncategorized_transaction`), and so is an edit that takes the category
+away (#378, #552). The off-budget leg never has one.
+
+This is how an investment is planned: the household gives the monthly amount to an "Investments"
+category, and the transfer to the broker spends it.
+
+**Example.** €40,000.00 of income arrives; €30,000.00 is assigned to "Investments" and €500.00 to
+"Groceries"; €123.45 is spent on groceries. The €30,000.00 transfer from the checking account to
+the brokerage account is spending from "Investments": its available goes from €30,000.00 to 0, and
+unassigned money stays at 40,000.00 − 30,000.00 − 500.00 = €9,500.00, and "Groceries" has
+500.00 − 123.45 = €376.55 available. The checking account holds 40,000.00 − 123.45 − 30,000.00 =
+€9,876.55 = 9,500.00 (unassigned) + 0 ("Investments") + 376.55 ("Groceries"), the invariant
+below. Every buy, sale and fee on the brokerage account afterwards moves cash within that account
+only, and leaves the budget exactly as it was.
+
+Money brought back from an off-budget account goes into the category its on-budget leg names, the
+same way a refund does: €500.00 transferred back from the broker with "Investments" as its category
+puts €500.00 back into that category's available. Today that leg needs a category too; letting
+such money land as unassigned money by default is planned (#598).
+
 ### Days of buffer
 
 The amount-weighted average number of days between a euro arriving and being spent, first in first
@@ -189,9 +215,11 @@ missed case would be worst to find in production.
 ## Portfolios and rebalancing
 
 Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
-are already computed in `packages/core`, the API records trades (#77) and returns positions,
-without prices yet (#79); the rest are the rules the engine will follow once it exists, not a
-description of something already running.
+are already computed in `packages/core`; the API records, edits and deletes trades (#77, #509),
+keeps each brokerage account's tax regime (#508) and returns positions, without prices yet (#79).
+How to do all of that through the API is in the [portfolio API reference](portfolio-api.md). The
+rest of this part (prices, returns, allocation, rebalancing) is the rules the engine will follow
+once it exists, not a description of something already running.
 
 ### Positions and returns
 
@@ -395,8 +423,10 @@ The worked example on the financial transaction tax, followed through the accoun
 | The €20.00 dividend of the next example, paid into the same account (20 − 3 − 4.42 − 2) | +10.58 | 4,943.32 |
 
 The leg's amount, account and date come from the trade; only its memo, payee and cleared status
-are edited on the transaction. The budget never sees any of it: a brokerage account is off budget,
-and the money left the budget once, when it was transferred to the broker.
+are edited on the transaction. The budget never sees any of it: a brokerage account is off budget.
+The money left the budget once, when it was transferred to the broker: that transfer went from an
+on-budget account to an off-budget one, so it carried a category, and it was that category's
+spending (see [Money moved to an off-budget account](#money-moved-to-an-off-budget-account)).
 
 **Dates and clearing.** The leg is dated on the trade date, and starts uncleared like any new
 transaction: the user marks it cleared when it appears on the broker's statement. Cash moves on
@@ -427,9 +457,11 @@ about €75 of accrued discount (taxed at 12.5%) and €35 of capital gain (taxe
 fields of a trade cannot keep apart yet —, spin-offs,
 mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
 in other currencies. Until exchange rates exist, a transfer between two accounts in different
-currencies is refused (`invalid_trade`, field `currency`), because its cost cannot be converted;
-such a move is entered as a transfer out of the app from the first account plus a transfer in from
-outside into the second, carrying the cost converted by the user.
+currencies is refused, because its cost cannot be converted: the API answers `currency_mismatch`,
+since in 0.2.0 the instrument must be in each account's currency, and the core's own replay refuses
+it too (`invalid_trade`, field `currency`). Such a move is entered as a transfer out of the app
+from the first account plus a transfer in from outside into the second, carrying the cost
+converted by the user.
 
 ### Target allocation and thresholds
 
@@ -552,6 +584,73 @@ switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start
 withheld abroad, so €85 is left. At a broker that is an Italian withholding agent, €22.10 is
 withheld on the €85 and €62.90 arrives. At a foreign broker, €85 arrives and is reported in the
 investor's return.
+
+#### What each regime changes in the trades
+
+Since nothing computes a tax yet, the regime decides which taxes a trade may carry: each trade in
+an `IT` workspace is checked against the regime in force on its trade date, and the broker's own
+figures are recorded as they are, never compared with an estimate. 26% is the ordinary rate on
+gains and income from securities; 12.5% applies to government bonds.
+
+| On the trade | Self-declared | Administered | Managed |
+| --- | --- | --- | --- |
+| Gain tax withheld on a sale (`gainTaxCents`) | only on a fund, at a broker that is an Italian withholding agent | yes | no: the manager settles the tax on the year's result |
+| A gain tax adjustment (refund or extra tax) | when a regime in force on or before its date allowed gain tax; under self-declared alone, only on a fund at an Italian withholding agent | the same | the same |
+| Tax on the result of the mandate (`managed_result_tax`) | no | no | yes |
+| Domestic withholding on a bond trade's accrued interest | only at an Italian withholding agent | yes (always one) | yes (always one) |
+| Domestic withholding on a dividend or a coupon | at any broker: it may have been taken before a foreign broker paid it | yes | yes |
+
+A trade the regime does not allow is refused with `tax_kind_not_allowed_in_regime`, naming the
+regime and the field; the withholding on accrued interest at a foreign broker is refused with
+`domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
+takes no trade at all (`tax_regime_required`). The worked examples below follow the tests in
+`packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
+result tax, for one, is not).
+
+**Example: a sale's gain tax in each regime.** An ETF (a fund) is sold at a gain of €173.00, and
+the broker withholds 26% of it, €44.98: 1,300.00 of gross, a €5.00 fee and €44.98 of gain tax put
+€1,250.02 into the account. On an administered account the sale is recorded as it is. On a
+self-declared account at an Italian withholding agent it is too, because such a broker still
+withholds on fund gains; the same sale of a share there, or of the ETF at a foreign broker, is
+refused (`tax_kind_not_allowed_in_regime`, field `gainTaxCents`): no Italian tax is withheld on
+those gains, which go into the investor's return. On an account that has only ever been managed,
+any gain tax on a sale is refused, and so is a gain tax adjustment.
+
+**Example: the regime in force on each date.** An account is administered from 10 May 2024 and
+managed from 1 January 2026. A sale with gain tax dated 31 December 2025 is accepted; the same sale
+dated 1 January 2026 is refused.
+
+**Example: a refund across a change of regime.** An account administered since 10 March 2025
+switches to self-declared from 1 January 2026. A share sold on 15 December 2025 has €3.00 of gain
+tax withheld. On 10 February 2026 the broker refunds it: a tax trade of kind `gain_tax_adjustment`
+with a gross of +€3.00, which puts €3.00 back into the account. It is accepted because a regime in
+force on or before 10 February 2026, the administered one, allowed gain tax; a sale with gain tax
+on that same day is refused, since the regime then is self-declared. On an account that was only
+ever self-declared, an adjustment is accepted only on a fund. On an account managed from
+1 May 2024 and administered from 1 January 2026, a refund dated 1 June 2025 is refused (only the
+managed regime was in force by then) and one dated 1 June 2026 is accepted.
+
+**Example: the tax on a managed account's result.** A managed account whose result for the year is
+€1,000.00 pays €260.00 (26%), recorded on 31 December as a tax of kind `managed_result_tax`: €260.00
+of taxes on gains, not a cost, and €260.00 out of the account. The same tax on an administered
+account is refused (`tax_kind_not_allowed_in_regime`, field `taxKind`).
+
+**Example: a government bond's accrued interest.** A government bond paying a 2% coupon every six
+months, €10,000 nominal, is bought at 98.50, 60 days into a 182-day coupon period, with a €5.00
+fee: the gross is 10,000 × 98.50 × 0.01 = €9,850.00 and the accrued interest paid to the seller
+10,000 × 2% × 60 ÷ 182 = €65.93. An Italian withholding agent credits back 12.5% of that interest,
+€8.24, so €9,850.00 + 5.00 + 65.93 − 8.24 = €9,912.69 leaves the account. Sold later at 99.20 with
+€131.87 of accrued interest and a €5.00 fee, on an administered account: the gain is
+9,920.00 − 5.00 − 9,855.00 = €60.00, taxed at 12.5%, €7.50; 12.5% of the interest, €16.48, is
+withheld; €9,920.00 + 131.87 − 5.00 − 7.50 − 16.48 = €10,022.89 comes in. At a foreign broker,
+which applies no Italian withholding, a domestic withholding on either trade is refused.
+
+**Example: dividends at an Italian and at a foreign broker.** An Italian share pays a €100.00
+dividend with €26.00 withheld in Italy before it is paid: €74.00 arrives, and the trade is accepted
+at a foreign broker too, since the tax was taken upstream. A foreign share's €100.00 dividend with
+€15.00 withheld abroad, €22.10 withheld by an Italian withholding agent (26% of the €85.00 left)
+and a €2.00 fee puts €60.90 into the account. A coupon of €200.00 with 12.5% withheld puts €175.00
+in.
 
 ### What the engine will not do
 
