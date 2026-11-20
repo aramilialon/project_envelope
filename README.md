@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml)
 
-<img alt="The budget month, half in the light theme and half in the dark one, split along a diagonal: a mariner band with the month and unassigned money, the month as a running line of what has moved day by day next to a to-do list, and every category as a bar of what it was given, spent and reserved, with overspending in red and amber" src="docs/ux/screenshots/budget-month-split.png">
+<img alt="The budget month, half in the light theme and half in the dark one, split along a diagonal: a mariner band with the month and unassigned money, the month as a running line of what has moved day by day next to a to-do list, and every category as a bar of what it was given, spent and reserved, with overspending in red or amber" src="docs/ux/screenshots/budget-month-split.png">
 
 > `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. Most screens on this page come from the real running app, in English; the portfolio and the phone screens come from the [interactive mockups](docs/ux/mockups/), which show the Italian translation. Every screenshot exists in a light and a dark version ([docs/ux/screenshots/](docs/ux/screenshots/)); the gallery below shows the one that matches your browser's theme.
 
