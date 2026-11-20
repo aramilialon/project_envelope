@@ -8,7 +8,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { createTrades, type TradeEntryInput, type TradeRecord } from "../trades/repository.ts";
 import { createTransaction } from "../transactions/repository.ts";
-import { afterApply, applyIncomingChange, type IncomingChange, isLocked } from "./apply.ts";
+import { afterApply, applyIncomingChange, beforeApply, type IncomingChange, isLocked } from "./apply.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -539,6 +539,35 @@ describe("applyIncomingChange (#43)", () => {
       await pool.query("UPDATE trades SET fees_cents = 0 WHERE id = $1", [transferOut!.id]);
       await afterApply(pool, workspaceId, "trades.fees_cents", transferOut!.id);
       assert.equal(await legOf(transferOut!.id), undefined);
+    });
+
+    it("sends a cleared leg back to pending only when the applied change moves its amount, account or date", async () => {
+      const [fee] = await trades({ kind: "single", type: "fee", accountId: brokerage, portfolioId, instrumentId: null, tradeDate: "2026-05-10", feesCents: 700 });
+      const statusOf = async () =>
+        (await pool.query<{ status: string }>("SELECT status FROM transactions WHERE id = $1", [fee!.cashTransactionId])).rows[0]!.status;
+      const clear = () => pool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [fee!.cashTransactionId]);
+
+      // A change that leaves the leg as it is (the trade's memo).
+      await clear();
+      let before = await beforeApply(pool, workspaceId, "trades.memo", fee!.id);
+      await pool.query("UPDATE trades SET memo = 'custody' WHERE id = $1", [fee!.id]);
+      await afterApply(pool, workspaceId, "trades.memo", fee!.id, before);
+      assert.equal(await statusOf(), "cleared");
+
+      // A move to another account: the leg has followed through the foreign key already, so only
+      // what beforeApply read tells it moved.
+      before = await beforeApply(pool, workspaceId, "trades.account_id", fee!.id);
+      assert.deepEqual(before, { tradeAccountId: brokerage });
+      await pool.query("UPDATE trades SET account_id = $2 WHERE id = $1", [fee!.id, otherBrokerage]);
+      await afterApply(pool, workspaceId, "trades.account_id", fee!.id, before);
+      assert.equal(await statusOf(), "pending");
+
+      // An amount change.
+      await clear();
+      before = await beforeApply(pool, workspaceId, "trades.fees_cents", fee!.id);
+      await pool.query("UPDATE trades SET fees_cents = 800 WHERE id = $1", [fee!.id]);
+      await afterApply(pool, workspaceId, "trades.fees_cents", fee!.id, before);
+      assert.equal(await statusOf(), "pending");
     });
 
     it("has no trade field wired yet: a change to one is unsupported", async () => {

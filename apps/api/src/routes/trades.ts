@@ -40,6 +40,26 @@ const AMOUNT_FIELDS = [
   "splitTo",
 ] as const;
 
+/**
+ * Every field a create request may carry, whatever its type (which of them a type takes is checked
+ * further on); anything else is a plain 400, so a misspelt field is never silently dropped.
+ */
+const CREATE_KEYS: ReadonlySet<string> = new Set([
+  "id",
+  "type",
+  "accountId",
+  "portfolioId",
+  "instrumentId",
+  "tradeDate",
+  "occurredAt",
+  "memo",
+  "taxKind",
+  "from",
+  "to",
+  ...AMOUNT_FIELDS,
+]);
+const CREATE_LEG_KEYS: ReadonlySet<string> = new Set(["id", "accountId", "portfolioId", "feesCents", "costBasisCents"]);
+
 /** A request body that cannot be read as a trade: answered with a plain 400, like other routes. */
 class BadRequest extends Error {}
 
@@ -101,6 +121,7 @@ function legField(body: Record<string, unknown>, field: "from" | "to"): Transfer
     throw new BadRequest(`${field} must be an object`);
   }
   const leg = raw as Record<string, unknown>;
+  rejectUnknownKeys(leg, CREATE_LEG_KEYS, `${field}.`);
   // costBasisCents is accepted on either leg so the core can name it when it is misplaced.
   const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
   const id = uuidField(leg, "id", false);
@@ -115,6 +136,7 @@ function legField(body: Record<string, unknown>, field: "from" | "to"): Transfer
 
 /** Reads a create request: one trade, a transfer (its legs in `from` and `to`) or a split. */
 function parseEntry(body: Record<string, unknown>): TradeEntryInput {
+  rejectUnknownKeys(body, CREATE_KEYS, "");
   const type = body.type;
   if (typeof type !== "string" || !TRADE_TYPES.includes(type as TradeType)) {
     throw new BadRequest(`type must be one of ${TRADE_TYPES.join(", ")}`);
@@ -189,7 +211,7 @@ const LEG_PATCH_KEYS: ReadonlySet<string> = new Set(["accountId", "portfolioId",
 function rejectUnknownKeys(body: Record<string, unknown>, known: ReadonlySet<string>, where: string): void {
   for (const key of Object.keys(body)) {
     if (!known.has(key)) {
-      throw new BadRequest(`${where}${key} cannot be edited`);
+      throw new BadRequest(`${where}${key} is not a field of this request`);
     }
   }
 }
@@ -261,7 +283,11 @@ async function sendBadRequest(reply: FastifyReply, error: BadRequest): Promise<v
  * Trades (#77, #509; ADR 0012): `GET` lists the workspace's trades in the replay order, `POST`
  * records one trade, a transfer of securities (both legs) or a split (every row it stands for),
  * `PATCH .../:tradeId` edits one and `DELETE .../:tradeId` deletes one, each with the rows that go
- * with it and their cash legs. Owners and editors write; `read_only` members read.
+ * with it and their cash legs. An edit of a buy or a sell that changes `quantityE8`, `priceE6` or
+ * `instrumentId` without `grossCents` computes the gross again from them, as a create does: the
+ * broker's own figure must be sent again with the edit to keep it. An edit that changes a cash
+ * leg's amount, account or date sends a cleared leg back to pending. Owners and editors write;
+ * `read_only` members read.
  */
 export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);

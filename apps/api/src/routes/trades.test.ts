@@ -526,6 +526,24 @@ describe("trades routes (#77)", () => {
     assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "memo", max: MAX_FREE_TEXT_LENGTH } });
   });
 
+  it("refuses a create body with a field it does not know, at the top level or in a transfer leg", async () => {
+    const etf = await instrument();
+    const broker = await account();
+    const growth = await portfolio();
+    await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(5), priceE6: price(10) });
+    const before = await countTrades();
+    for (const payload of [
+      { type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 100, fee: 100 },
+      { type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(10), quantity: 1 },
+      { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: growth, fees: 1 } },
+    ]) {
+      const response = await post(payload);
+      assert.equal(response.statusCode, 400, JSON.stringify(payload));
+      assert.match(response.json().error, /^invalid trade: .* is not a field of this request$/);
+    }
+    assert.equal(await countTrades(), before);
+  });
+
   describe("transfers", () => {
     it("moves units between two portfolios of one account: two linked legs, no cash", async () => {
       const etf = await instrument();
@@ -1007,7 +1025,7 @@ describe("trades routes (#77)", () => {
       return Number(rows[0]!.count);
     }
 
-    it("rewrites a buy and its cash leg in place, keeping the leg's id, memo, payee and status", async () => {
+    it("rewrites a buy and its cash leg in place, keeping the leg's id, memo and payee", async () => {
       const etf = await instrument();
       const broker = await account();
       const growth = await portfolio();
@@ -1026,7 +1044,8 @@ describe("trades routes (#77)", () => {
       assert.equal(leg!.amount_cents, "-100700");
       assert.equal(leg!.local_date, "2026-03-03 00:00");
       assert.equal(leg!.account_id, broker);
-      assert.equal(leg!.status, "cleared");
+      // Its amount and date changed: no longer what was ticked against the statement.
+      assert.equal(leg!.status, "pending");
       const { rows } = await superuserPool.query<{ memo: string; payee: string }>("SELECT memo, payee FROM transactions WHERE id = $1", [after!.cashTransactionId]);
       assert.deepEqual({ ...rows[0] }, { memo: "Plan", payee: "Broker" });
 
@@ -1040,6 +1059,35 @@ describe("trades routes (#77)", () => {
       // occurredAt and memo can be cleared.
       const [cleared] = await edited(buy!.id, { memo: null, occurredAt: null });
       assert.equal(cleared!.memo, null);
+    });
+
+    it("sends a cleared cash leg back to pending when its amount, account or date changes, and only then", async () => {
+      const etf = await instrument();
+      const [broker, other] = [await account(), await account()];
+      const growth = await portfolio();
+      const [dividend] = await created({ type: "dividend", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-04-01", grossCents: 1_000 });
+      const clear = () => superuserPool.query("UPDATE transactions SET status = 'cleared' WHERE id = $1", [dividend!.cashTransactionId]);
+      const statusAfter = async (payload: Record<string, unknown>) => {
+        await clear();
+        await edited(dividend!.id, payload);
+        return (await legOf(dividend!))!.status;
+      };
+
+      // The leg unchanged: the memo, the time, the portfolio, or a gross that nets to the same cash.
+      assert.equal(await statusAfter({ memo: "Q1 dividend" }), "cleared");
+      assert.equal(await statusAfter({ occurredAt: "2026-04-01T09:00:00+02:00" }), "cleared");
+      assert.equal(await statusAfter({ portfolioId: await portfolio() }), "cleared");
+      assert.equal(await statusAfter({ grossCents: 1_100, feesCents: 100 }), "cleared");
+
+      // The leg changed: its amount, its account, its date.
+      assert.equal(await statusAfter({ grossCents: 1_200 }), "pending");
+      assert.equal(await statusAfter({ accountId: other }), "pending");
+      assert.equal(await statusAfter({ tradeDate: "2026-04-02", occurredAt: null }), "pending");
+
+      // A pending leg stays pending either way.
+      await superuserPool.query("UPDATE transactions SET status = 'pending' WHERE id = $1", [dividend!.cashTransactionId]);
+      await edited(dividend!.id, { memo: "still pending" });
+      assert.equal((await legOf(dividend!))!.status, "pending");
     });
 
     it("computes the gross again when the quantity or the price changes without one, and keeps one given", async () => {

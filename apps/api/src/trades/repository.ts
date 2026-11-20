@@ -922,7 +922,8 @@ export interface TransferLegPatch {
  * cannot change:
  * - a buy, sell, dividend, fee or tax takes every field of its create request but `id` and `type`;
  *   on a buy or a sell, a `grossCents` left out while the quantity, the price or the instrument
- *   changes is computed again from them, as on create;
+ *   changes is computed again from them, as on create, so the broker's own figure must be sent
+ *   again with the edit to keep it;
  * - a transfer takes `instrumentId`, `tradeDate`, `occurredAt`, `memo`, `quantityE8` (the units
  *   moved, positive) and `from`/`to` for the legs it has, and edits both legs together;
  * - a split takes `tradeDate`, `occurredAt`, `memo`, `splitFrom` and `splitTo`, and edits every row
@@ -1336,12 +1337,14 @@ export async function updateTrade(
     } else {
       await insertTradeRow(db, workspaceId, row);
     }
+    const previous = group.find((record) => record.id === row.id);
     await rewriteTradeCashLeg(db, {
       workspaceId,
       accountId: row.accountId,
       tradeId: row.id,
       tradeDate: row.tradeDate,
       amountCents: tradeCashCents(row),
+      ...(previous ? { previousAccountId: previous.accountId } : {}),
     });
   }
 
@@ -1389,9 +1392,16 @@ export async function deleteTrade(
 /**
  * Brings a trade's cash leg in line with the trade as stored (ADR 0012): what a synced change to a
  * field of the trade runs once applied (`sync/apply.ts`), since the leg's amount, account and date
- * are never synced themselves. Does nothing when the workspace has no trade with this id.
+ * are never synced themselves. `previousAccountId` is the trade's account before the change, so a
+ * move to another account sends a cleared leg back to pending (`rewriteTradeCashLeg`). Does nothing
+ * when the workspace has no trade with this id.
  */
-export async function rederiveTradeCashLeg(db: DbPool | DbClient, workspaceId: string, tradeId: string): Promise<void> {
+export async function rederiveTradeCashLeg(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  tradeId: string,
+  previousAccountId?: string,
+): Promise<void> {
   const { rows } = await db.query<ListedTradeRow>(
     `SELECT ${TRADE_COLUMNS}, NULL AS cash_transaction_id, NULL AS cash_status
      FROM trades t WHERE t.workspace_id = $1 AND t.id = $2`,
@@ -1408,5 +1418,15 @@ export async function rederiveTradeCashLeg(db: DbPool | DbClient, workspaceId: s
     tradeId: trade.id,
     tradeDate: trade.tradeDate,
     amountCents: trade.cashCents,
+    ...(previousAccountId === undefined ? {} : { previousAccountId }),
   });
+}
+
+/** A trade's account as stored, or undefined: what `rederiveTradeCashLeg` needs from before a change. */
+export async function tradeAccountId(db: DbPool | DbClient, workspaceId: string, tradeId: string): Promise<string | undefined> {
+  const { rows } = await db.query<{ account_id: string }>("SELECT account_id FROM trades WHERE workspace_id = $1 AND id = $2", [
+    workspaceId,
+    tradeId,
+  ]);
+  return rows[0]?.account_id;
 }

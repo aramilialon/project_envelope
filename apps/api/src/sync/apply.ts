@@ -15,7 +15,7 @@ import { compareHlc, MAX_FREE_TEXT_LENGTH, type Hlc } from "@envelope/core";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { workspaceRowExists, type WorkspaceTable } from "../db/workspace-row.ts";
 import { isUuid } from "../ids.ts";
-import { rederiveTradeCashLeg } from "../trades/repository.ts";
+import { rederiveTradeCashLeg, tradeAccountId } from "../trades/repository.ts";
 import { findRecordedChange, getLatestChange, recordChange, type RecordedChange } from "./repository.ts";
 
 export interface IncomingChange {
@@ -146,12 +146,34 @@ function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
  * What an applied change sets in motion beyond its own column. A change to a field of a trade
  * re-derives the trade's cash leg (its amount, account and date; ADR 0012), which are never sync
  * fields themselves. No field of `trades` is wired into `FIELD_APPLIERS` yet, so this runs for
- * none today; it is here so that wiring one cannot leave the leg behind its trade.
+ * none today; it is here so that wiring one cannot leave the leg behind its trade. `before` is what
+ * `beforeApply` read: the trade's account before the change, so a move sends a cleared leg back to
+ * pending.
  */
-export async function afterApply(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<void> {
+export async function afterApply(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  fieldName: string,
+  entityId: string,
+  before: { readonly tradeAccountId?: string } = {},
+): Promise<void> {
   if (fieldName.startsWith("trades.")) {
-    await rederiveTradeCashLeg(db, workspaceId, entityId);
+    await rederiveTradeCashLeg(db, workspaceId, entityId, before.tradeAccountId);
   }
+}
+
+/** What `afterApply` needs to know from before the change is applied. */
+export async function beforeApply(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  fieldName: string,
+  entityId: string,
+): Promise<{ readonly tradeAccountId?: string }> {
+  if (!fieldName.startsWith("trades.") || !isUuid(entityId)) {
+    return {};
+  }
+  const tradeAccount = await tradeAccountId(db, workspaceId, entityId);
+  return tradeAccount === undefined ? {} : { tradeAccountId: tradeAccount };
 }
 
 /**
@@ -218,8 +240,9 @@ export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: st
   }
 
   if (outcome === "applied") {
+    const before = await beforeApply(db, workspaceId, change.fieldName, change.entityId);
     await applier.apply(db, workspaceId, change.entityId, change.value);
-    await afterApply(db, workspaceId, change.fieldName, change.entityId);
+    await afterApply(db, workspaceId, change.fieldName, change.entityId, before);
   }
   return outcome;
 }

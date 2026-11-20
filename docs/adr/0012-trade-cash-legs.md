@@ -45,7 +45,7 @@ A trade may carry an id generated on the device, as offline sync needs. The prim
 
 ## Consequences
 
-- Creating, editing (#509) and deleting (#509) a trade write its leg too, in the same database transaction; the leg's amount is always `tradeCashCents` of the trade as stored. An edit rewrites the existing leg in place, so it keeps its id, payee, memo and cleared status; it creates the leg when the trade starts moving cash and deletes it when the trade stops.
+- Creating, editing (#509) and deleting (#509) a trade write its leg too, in the same database transaction; the leg's amount is always `tradeCashCents` of the trade as stored. An edit rewrites the existing leg in place, so it keeps its id, payee and memo; a `cleared` leg whose amount, account or date changes goes back to `pending`, since it no longer matches what was ticked against the statement, and a leg the edit leaves unchanged keeps its status; it creates the leg when the trade starts moving cash and deletes it when the trade stops.
 - Every code path that changes a transaction's amount, account or date, or deletes a transaction, has to refuse a trade-owned one. Today that is `updateTransaction` (splits) and `deleteTransaction`; a later path (an import that merges into an existing row, a sync field) must do the same.
 - A brokerage account's register shows the cash legs as ordinary transactions; the UI can show the trade behind each one through `tradeId`.
 - An import of the broker's cash statement will find the legs as existing transactions and mark the matching rows as duplicates, as it does for any account.
