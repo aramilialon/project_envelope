@@ -23,7 +23,7 @@ export interface IncomingChange {
   readonly value: unknown;
 }
 
-export type ApplyOutcome = "applied" | "stale" | "unsupported_field" | "locked";
+export type ApplyOutcome = "applied" | "stale" | "unsupported_field" | "locked" | "trade_owned";
 
 type FieldApplier = (db: DbPool | DbClient, workspaceId: string, entityId: string, value: unknown) => Promise<void>;
 
@@ -52,6 +52,42 @@ export const SYNC_TEXT_FIELD_LIMITS: Readonly<Record<string, number>> = {
 };
 
 /**
+ * The fields of a trade's cash leg that belong to the trade (ADR 0012): its account, its date and
+ * its amount (a split's amount, and its category, which a leg never has). They are never sync
+ * fields: a change to one of them on a trade-owned transaction is refused with `trade_owned`,
+ * checked before the allowlist, so wiring one of these fields up later for ordinary transactions
+ * cannot open a way to change a leg behind its trade's back. A change to the trade is a change to
+ * the trade, and the server rewrites the leg.
+ */
+export const TRADE_OWNED_FIELDS: ReadonlySet<string> = new Set([
+  "transactions.account_id",
+  "transactions.occurred_at",
+  "transactions.amount_cents",
+  "splits.amount_cents",
+  "splits.category_id",
+]);
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether `entityId` is a trade's cash leg, or a split of one. A field of `splits` names the split
+ * row, a field of `transactions` the transaction.
+ */
+async function isTradeOwned(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+  if (!UUID_PATTERN.test(entityId)) {
+    return false;
+  }
+  const { rows } = await db.query(
+    fieldName.startsWith("splits.")
+      ? `SELECT 1 FROM splits s JOIN transactions t ON t.id = s.transaction_id AND t.workspace_id = s.workspace_id
+         WHERE s.id = $1 AND s.workspace_id = $2 AND t.trade_id IS NOT NULL`
+      : "SELECT 1 FROM transactions WHERE id = $1 AND workspace_id = $2 AND trade_id IS NOT NULL",
+    [entityId, workspaceId],
+  );
+  return rows.length > 0;
+}
+
+/**
  * "Reconciled transactions carry a plaintext 'locked' flag: the server rejects later changes"
  * (design.md) — a rule of the protocol itself, checked before clock resolution even runs, not
  * a per-field concern. Every field currently wired up belongs to `transactions`; extend this
@@ -69,6 +105,8 @@ async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: s
 }
 
 /**
+ * `trade_owned` for a field of a trade's cash leg that belongs to the trade (`TRADE_OWNED_FIELDS`),
+ * never recorded either, for the same reason as `locked`.
  * `unsupported_field` for anything not in `FIELD_APPLIERS` — recorded nowhere, since there is
  * nowhere to apply it to; the caller reports it back to the device rather than silently
  * dropping it. `locked` is likewise never recorded: unlike a merely stale change (superseded,
@@ -77,6 +115,9 @@ async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: s
  * apply then, undistorted by a change_log row from while it was refused.
  */
 export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: string, change: IncomingChange): Promise<ApplyOutcome> {
+  if (TRADE_OWNED_FIELDS.has(change.fieldName) && (await isTradeOwned(db, workspaceId, change.fieldName, change.entityId))) {
+    return "trade_owned";
+  }
   const applier = FIELD_APPLIERS[change.fieldName];
   if (!applier) {
     return "unsupported_field";

@@ -1,5 +1,5 @@
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
@@ -58,6 +58,14 @@ export function transactionTextChecks(
     ["memo", body.memo, MAX_FREE_TEXT_LENGTH],
     ...(splits ?? []).map((split, index): TextFieldCheck => [`splits[${index}].memo`, split.memo, MAX_FREE_TEXT_LENGTH]),
   ];
+}
+
+/**
+ * A 409 for a trade's cash leg (ADR 0012): its amount, account and date belong to the trade, and it
+ * goes only with the trade. `code` lets a client tell it apart from the reconciled lock.
+ */
+async function sendTradeOwned(reply: FastifyReply, reason: string): Promise<void> {
+  await reply.code(409).send({ error: `this transaction is the cash leg of a trade: ${reason}`, code: "trade_owned_transaction" });
 }
 
 /** The first split's categoryId that does not name a category of this workspace, if any. */
@@ -165,6 +173,10 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         await reply.code(409).send({ error: "a reconciled transaction cannot be edited; unlock it first" });
         return;
       }
+      if (result === "trade_owned") {
+        await sendTradeOwned(reply, "its amount comes from the trade; edit the trade instead");
+        return;
+      }
       return result;
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
@@ -183,6 +195,10 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     }
     if (result === "reconciled") {
       await reply.code(409).send({ error: "a reconciled transaction cannot be deleted; unlock it first" });
+      return;
+    }
+    if (result === "trade_owned") {
+      await sendTradeOwned(reply, "it is deleted with its trade");
       return;
     }
     await reply.code(204).send();
