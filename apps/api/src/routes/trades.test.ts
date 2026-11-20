@@ -1517,9 +1517,9 @@ describe("trades routes (#77)", () => {
         }
       });
 
-      it("refuses a transfer into or out of an archived portfolio", async () => {
+      it("refuses a transfer into an archived portfolio, but lets one empty it", async () => {
         const etf = await instrument();
-        const broker = await account();
+        const [broker, other] = [await account(), await account()];
         const [active, archived] = [await portfolio(), await portfolio()];
         const buy = { type: "buy", accountId: broker, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) };
         await created({ ...buy, portfolioId: active });
@@ -1529,13 +1529,19 @@ describe("trades routes (#77)", () => {
         const transfer = { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(2) };
         const into = await rejected({ ...transfer, from: { accountId: broker, portfolioId: active }, to: { accountId: broker, portfolioId: archived } }, "portfolio_archived");
         assert.equal(into.portfolioId, archived);
-        const outOf = await rejected({ ...transfer, from: { accountId: broker, portfolioId: archived }, to: { accountId: broker, portfolioId: active } }, "portfolio_archived");
-        assert.equal(outOf.portfolioId, archived);
         // A transfer in from outside the app has only the incoming leg.
         await rejected({ ...transfer, to: { accountId: broker, portfolioId: archived, costBasisCents: 20_000 } }, "portfolio_archived");
+
+        // Out of it: to another portfolio, to another account, and out of the app, until it is empty.
+        const toPortfolio = await created({ ...transfer, from: { accountId: broker, portfolioId: archived }, to: { accountId: broker, portfolioId: active } });
+        assert.equal(toPortfolio.length, 2);
+        const toAccount = await created({ ...transfer, from: { accountId: broker, portfolioId: archived, feesCents: 300 }, to: { accountId: other, portfolioId: active } });
+        assert.equal(toAccount.find((leg) => leg.portfolioId === archived)!.cashCents, -300);
+        const [outOfApp] = await created({ ...transfer, quantityE8: units(6), from: { accountId: broker, portfolioId: archived } });
+        assert.equal(outOfApp!.quantityE8, -units(6));
       });
 
-      it("refuses a split while an archived portfolio holds the instrument, as the split would need a row there", async () => {
+      it("records a split's row in an archived portfolio, so an archived holder never blocks the split", async () => {
         const etf = await instrument();
         const broker = await account();
         const [active, archived] = [await portfolio(), await portfolio()];
@@ -1544,12 +1550,8 @@ describe("trades routes (#77)", () => {
         await created({ ...buy, portfolioId: archived });
         await setArchived(archived, true);
 
-        const split = { type: "split", instrumentId: etf, tradeDate: "2026-03-01", splitFrom: 1, splitTo: 2 };
-        const details = await rejected(split, "portfolio_archived");
-        assert.equal(details.portfolioId, archived);
-
-        await setArchived(archived, false);
-        assert.equal((await created(split)).length, 2);
+        const rows = await created({ type: "split", instrumentId: etf, tradeDate: "2026-03-01", splitFrom: 1, splitTo: 2 });
+        assert.deepEqual(rows.map((row) => row.portfolioId).sort(), [active, archived].sort());
       });
 
       it("keeps the trades already in an archived portfolio editable and deletable, but refuses moving one into it", async () => {
@@ -1590,7 +1592,7 @@ describe("trades routes (#77)", () => {
         assert.equal(moved!.portfolioId, active);
       });
 
-      it("refuses a split edit that would add a row for a holding in an archived portfolio", async () => {
+      it("lets a split edit add a row for a holding in an archived portfolio", async () => {
         const etf = await instrument();
         const broker = await account();
         const [active, archived] = [await portfolio(), await portfolio()];
@@ -1600,10 +1602,9 @@ describe("trades routes (#77)", () => {
         const [split] = await created({ type: "split", instrumentId: etf, tradeDate: "2026-02-01", splitFrom: 1, splitTo: 2 });
         await setArchived(archived, true);
 
-        // Moved after the archived portfolio's buy, the split would need a new row there.
-        const details = await refusedEdit(split!.id, { tradeDate: "2026-04-01" }, "portfolio_archived");
-        assert.equal(details.portfolioId, archived);
-        assert.equal((await edited(split!.id, { splitTo: 3 })).length, 1);
+        // Moved after the archived portfolio's buy, the split gains a row there.
+        const moved = await edited(split!.id, { tradeDate: "2026-04-01" });
+        assert.deepEqual(moved.map((row) => row.portfolioId).sort(), [active, archived].sort());
       });
     });
   });

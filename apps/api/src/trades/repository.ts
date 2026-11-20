@@ -16,8 +16,9 @@
  * split), refuse a group whose cash leg is reconciled, and replay every instrument they touch the
  * same way, without the old rows and with the new ones.
  *
- * An archived portfolio takes no new trade rows (#597): creating one in it, or moving one into it,
- * is refused with "portfolio_archived"; the rows it already has stay editable and deletable.
+ * An archived portfolio takes no new trades (#597): creating one in it, or moving one into it, is
+ * refused with "portfolio_archived"; the rows it already has stay editable and deletable, a split
+ * still writes its row there, and a transfer out of it is allowed.
  *
  * Nothing is written before every check has passed: a request answered with a 400 commits nothing.
  */
@@ -667,9 +668,23 @@ function singleRow(input: SingleTradeInput, instrument: InstrumentRef | undefine
 type StoredPortfolios = ReadonlyMap<string, string>;
 
 /**
+ * Whether `row` may be written into an archived portfolio (#597): a row `stored` already in it
+ * (an edit of a trade the portfolio has), any split row (a split is a fact about the instrument:
+ * an archived holder must not block it for the other portfolios, on create or edit), and a new
+ * outgoing leg of a transfer (so the portfolio can be emptied without unarchiving it). Anything
+ * else — a buy, sell, dividend, fee or tax, an incoming leg, or a trade or leg an edit moves
+ * there — is a new trade in it.
+ */
+function mayBeInArchived(row: NewTradeRow, stored: StoredPortfolios): boolean {
+  if (row.type === "split" || stored.get(row.id) === row.portfolioId) {
+    return true;
+  }
+  return row.type === "transfer" && row.quantityE8 < 0 && !stored.has(row.id);
+}
+
+/**
  * Checks every row's account and portfolio, and the instrument against each account. A row may
- * not be put into an archived portfolio (#597): a new row, or a row an edit moves there, is
- * refused; a row `stored` already in that portfolio stays editable.
+ * not be put into an archived portfolio unless `mayBeInArchived` allows it (#597).
  */
 async function checkReferences(
   db: DbClient,
@@ -707,7 +722,7 @@ async function checkReferences(
   if (unknown !== undefined) {
     throw new ValidationError("unknown_portfolio", `unknown portfolio: "${unknown}"`, { portfolioId: unknown });
   }
-  const intoArchived = rows.find((row) => known.get(row.portfolioId)!.archived && stored.get(row.id) !== row.portfolioId);
+  const intoArchived = rows.find((row) => known.get(row.portfolioId)!.archived && !mayBeInArchived(row, stored));
   if (intoArchived) {
     throw new ValidationError("portfolio_archived", "an archived portfolio takes no new trades; unarchive it first", {
       portfolioId: intoArchived.portfolioId,
@@ -898,8 +913,8 @@ async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * a transaction: the request's own.
  *
  * @throws ValidationError "unknown_account", "account_not_brokerage", "unknown_portfolio",
- *   "portfolio_archived" (details: portfolioId; any row, so either leg of a transfer and the row a
- *   split needs for a holding in an archived portfolio, #597), "unknown_instrument",
+ *   "portfolio_archived" (details: portfolioId; a row in an archived portfolio other than a split
+ *   row or a transfer's outgoing leg, #597), "unknown_instrument",
  *   "currency_mismatch", "split_without_holdings", "tax_regime_required",
  *   the codes of `checkTradeEntry`, of `checkTradeRegime` and of `validatePositionHistory` ("insufficient_quantity",
  *   "split_missing_for_portfolio", "split_duplicate", "split_ratio_mismatch",
@@ -1312,8 +1327,9 @@ async function updateTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * same checks as `createTrades` on the edited rows, then replays the workspace's whole history of
  * every instrument the edit touches (the old one and the new one), every account, under their
  * locks; writes a `trade.update` audit log entry. `db` must be in a transaction: the request's own.
- * A row already in an archived portfolio stays editable there; a row the edit moves into one, or a
- * new split row for a holding in one, is refused with "portfolio_archived" (#597).
+ * A row already in an archived portfolio stays editable there, and a split covers holdings in one
+ * on any date; a trade or a transfer's leg the edit moves into one is refused with
+ * "portfolio_archived" (#597).
  *
  * @returns the rows as written; "not_found" when the workspace has no trade with this id;
  *   "reconciled" when a cash leg of the group is reconciled (ADR 0012), and nothing is written.
