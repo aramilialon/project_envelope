@@ -130,6 +130,37 @@ function validateSplits(splits: readonly SplitInput[], expectedTotal: number | u
   validateSplitTotals(splits, expectedTotal, "a transaction needs at least one split");
 }
 
+/**
+ * Refuses income (a single split with no category, not a transfer leg) on an on-budget credit
+ * card (#548). `packages/core` does not model income on a card yet (its README, "Known
+ * limitations"; design.md, "Credit cards"), and its `aggregateTransactions` throws
+ * `unsupported_transaction` for such a row, so one stored row would make every budget-month read
+ * of the workspace fail. Refused here, before anything is written, on every path that stores a
+ * transaction or a scheduled one: whatever the sign, since the core refuses both. A categorized
+ * inflow on a card (a merchant refund) is not income and stays allowed; so does income on an
+ * off-budget card, which the budget ignores. Shared with `scheduled-transactions/repository.ts`.
+ *
+ * @throws ValidationError with code "card_income_not_supported" and `details.accountId`.
+ */
+export async function assertNotCardIncome(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  splits: readonly { readonly categoryId: string | null }[],
+): Promise<void> {
+  if (splits.length !== 1 || splits[0]?.categoryId !== null || !isUuid(accountId)) {
+    return;
+  }
+  const { rows } = await db.query<{ type: string; on_budget: boolean }>(
+    "SELECT type, on_budget FROM accounts WHERE id = $1 AND workspace_id = $2",
+    [accountId, workspaceId],
+  );
+  const account = rows[0];
+  if (account?.type === "credit_card" && account.on_budget) {
+    throw new ValidationError("card_income_not_supported", "income on an on-budget credit card is not supported yet", { accountId });
+  }
+}
+
 /** An instant with its own explicit offset ("Z" or "+02:00") needs no anchoring: it already names one exact moment. */
 const HAS_EXPLICIT_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
@@ -189,6 +220,7 @@ export async function createTransaction(
   queue?: QueueDriver,
 ): Promise<TransactionRecord> {
   validateSplits(input.splits, input.amountCents);
+  await assertNotCardIncome(db, input.workspaceId, input.accountId, input.splits);
 
   const id = await insertTransactionRow(db, {
     workspaceId: input.workspaceId,
@@ -621,6 +653,10 @@ export async function updateTransaction(
   }
   if (patch.splits !== undefined) {
     validateSplits(patch.splits, patch.amountCents);
+    // A transfer leg's own split has no category by design: it is not income.
+    if (existing.transferId === null) {
+      await assertNotCardIncome(db, workspaceId, existing.accountId, patch.splits);
+    }
   }
 
   const payee = patch.payee ?? existing.payee ?? undefined;

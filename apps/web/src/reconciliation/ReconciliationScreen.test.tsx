@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Account } from "../accounts/api.ts";
 import * as accountsApi from "../accounts/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
@@ -177,5 +178,20 @@ describe("ReconciliationScreen (#60)", () => {
       tickedTransactionIds: ["t-a", "t-b"],
       adjustment: { categoryId: "cat-groceries" },
     });
+  });
+
+  it("says why when the API refuses an adjustment with no category on a credit card (#548)", async () => {
+    renderScreen(candidates());
+    await screen.findByText(/Checking/);
+    vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValue(
+      new ApiError("POST failed: 400", 400, "card_income_not_supported", { accountId: "acc-checking" }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "520.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €5.00" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
+
+    expect(await screen.findByText("On a credit card, an adjustment needs a category.")).toBeInTheDocument();
+    expect(screen.queryByText("Reconciliation complete")).not.toBeInTheDocument();
   });
 });

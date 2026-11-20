@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import { ApiError } from "../apiFetch.ts";
 import { shortDate } from "../format.ts";
 import { updateTransaction } from "../transactions/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -180,8 +181,16 @@ export default function ReconciliationScreen() {
         setError(intl.formatMessage({ id: "reconcile.outOfDate", defaultMessage: "Something changed in this account; refresh and try again." }));
         state.refetch();
       }
-    } catch {
-      setError(intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }));
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError && caught.code === "card_income_not_supported"
+          ? // #548: an adjustment with no category would be income on an on-budget credit card, not supported yet.
+            intl.formatMessage({
+              id: "reconcile.adjustment.cardIncomeNotSupported",
+              defaultMessage: "On a credit card, an adjustment needs a category.",
+            })
+          : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
+      );
     } finally {
       setSubmitting(false);
     }

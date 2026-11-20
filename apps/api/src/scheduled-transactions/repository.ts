@@ -1,8 +1,8 @@
-import { advanceDate, assertDate, ValidationError, type RecurUnit, type ScheduledItem } from "@envelope/core";
+import { advanceDate, assertDate, isValidationError, ValidationError, type RecurUnit, type ScheduledItem } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import type { QueueDriver } from "../queue/index.ts";
-import { createTransaction, type TransactionRecord } from "../transactions/repository.ts";
+import { assertNotCardIncome, createTransaction, type TransactionRecord } from "../transactions/repository.ts";
 import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "../transactions/splits.ts";
 
 export type { RecurUnit };
@@ -144,6 +144,8 @@ export async function createScheduledTransaction(
   assertValidRecurrence(input.recurEvery, input.recurUnit);
   const paymentCategoryIds = await paymentCategoryIdSet(db, input.workspaceId);
   validateScheduledSplits(input.splits, input.amountCents, paymentCategoryIds);
+  // Recording it would store income on an on-budget card (#548): refused when it is defined.
+  await assertNotCardIncome(db, input.workspaceId, input.accountId, input.splits);
 
   const { rows } = await db.query<{ id: string }>(
     `INSERT INTO scheduled_transactions (workspace_id, account_id, payee, memo, next_due_date, recur_every, recur_unit)
@@ -209,6 +211,7 @@ export async function updateScheduledTransaction(
   if (patch.splits !== undefined) {
     const paymentCategoryIds = await paymentCategoryIdSet(db, workspaceId);
     validateScheduledSplits(patch.splits, patch.amountCents, paymentCategoryIds);
+    await assertNotCardIncome(db, workspaceId, existing.accountId, patch.splits);
   }
 
   const payee = patch.payee ?? existing.payee ?? undefined;
@@ -322,6 +325,8 @@ export async function skipScheduledTransaction(
  * "Record" would. One still overdue by more than one recurrence step — the app was down a few
  * days, or `recurEvery` is short — is recorded repeatedly until its own `nextDueDate` is in the
  * future again, catching up every missed occurrence rather than only the most recent one.
+ * One that would store income on an on-budget credit card (#548; stored before that was refused)
+ * is left due and unrecorded, without stopping the others.
  */
 export async function fireDueScheduledTransactions(
   db: DbPool | DbClient,
@@ -334,7 +339,18 @@ export async function fireDueScheduledTransactions(
   for (const scheduledTransaction of due) {
     let current: ScheduledTransactionRecord | undefined = scheduledTransaction;
     while (current && current.nextDueDate <= today) {
-      const result = await recordScheduledTransaction(db, workspaceId, current.id, queue);
+      let result: RecordScheduledTransactionResult | undefined;
+      try {
+        result = await recordScheduledTransaction(db, workspaceId, current.id, queue);
+      } catch (error) {
+        // Scheduled income on an on-budget card stored before #548 refused it: recording it would
+        // break every budget-month read, so it stays due, unrecorded, until it is edited or
+        // deleted, and the other scheduled transactions still fire. Refused before any write.
+        if (isValidationError(error, "card_income_not_supported")) {
+          break;
+        }
+        throw error;
+      }
       if (!result) {
         break;
       }

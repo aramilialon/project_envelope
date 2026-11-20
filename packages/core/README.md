@@ -68,6 +68,6 @@ Comparisons with Perl, to find your way around the code.
 
 ## Current limitations
 
-- Income on a credit card (for example cashback) is not modeled as a transaction here yet; the API composes it from an income transaction plus a card payment instead (design.md, "Credit cards").
+- Income on a credit card (for example cashback) is not modeled as a transaction here yet: `aggregateTransactions` throws `unsupported_transaction` for an uncategorized transaction on an on-budget card. design.md ("Credit cards") describes the planned rule, an income transaction plus a card payment. Until it is built, the API refuses such a transaction on every write path with `card_income_not_supported` (#548; `apps/api/README.md`, "Income on a credit card stored before #548", has the query that finds any stored earlier). A categorized inflow on a card, such as a merchant refund, is supported.
 - Positions do not handle return of capital, amortizing bonds, bonds issued at a discount, spin-offs, mergers, rights issues or dividends paid in shares yet, nor the fiscal view in euros of instruments in other currencies.
 - Uncategorized transactions are rejected: the import flow stages rows until every one has a category, is a transfer, or is income (design.md, "Import and reconciliation").
