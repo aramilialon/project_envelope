@@ -1,6 +1,6 @@
 # 0014 — Assistant access through an MCP server
 
-- **Status:** accepted (decision D9, how the server is exposed to the internet, is still open)
+- **Status:** accepted
 - **Date:** 2026-11-20
 
 ## Context
@@ -35,9 +35,9 @@ Numbered as in the plan the maintainer agreed, so issues can refer to them.
 
 ### Exposure and identity
 
-- **D9 — How the server is exposed: open.** Two options remain, and the exposure issue of milestone 0.4.1 cannot ship until the maintainer chooses one:
+- **D9 — How the server is exposed: a small relay host (B), decided 2026-11-20.** A virtual server forwards TLS by SNI, without terminating it, over a VPN tunnel that the home server opens outbound; Caddy receives the original client address through the PROXY protocol and applies the path and address allowlists itself (D14). No inbound port is opened at home, the home address stays out of public DNS, and TLS ends only on the home server. The sign-in pages are reachable from any address, protected by the second factor (D12) and brute-force protection; `/mcp`, the token and the discovery endpoints still accept only the provider's ranges and the LAN. The options considered were:
   - **A. Port forwarding at home.** The router forwards 443 to Caddy; a firewall allowlist admits only the provider's published address ranges (D14) and the LAN. Members sign in to Keycloak from home, through split DNS (D10), so the sign-in pages need not be reachable from anywhere else.
-  - **B. A small relay host.** A virtual server forwards TLS by SNI, without terminating it, over a VPN tunnel that the home server opens outbound; Caddy receives the original client address through the PROXY protocol. No inbound port is opened at home, and TLS still ends only on the home server.
+  - **B. A small relay host (chosen).** A virtual server forwards TLS by SNI, without terminating it, over a VPN tunnel that the home server opens outbound; Caddy receives the original client address through the PROXY protocol. No inbound port is opened at home, and TLS still ends only on the home server.
 
   Tunnels run by a third party that terminate TLS are rejected under both options: they would see every request and token in plaintext.
 - **D10 — One public Keycloak hostname.** Keycloak gets one public hostname (`auth.<domain>`) and one issuer; on the LAN, split DNS resolves the same hostname to the home server, so tokens issued at home and outside carry the same `iss`.
@@ -116,4 +116,4 @@ Numbered as in the plan the maintainer agreed, so issues can refer to them.
 - Milestone 0.2.8 ships the local, read-only server; 0.4.0 adds rate limiting and the Keycloak upgrade and hardening; 0.4.1 the remote server, with connection approval and the database guard; 0.4.2 drafts. Local access to encrypted workspaces waits for 0.8.0.
 - Every new API route decides whether assistants may use it; the default is no.
 - Every new workspace table gets the restrictive no-assistant-write policies, or the schema test fails.
-- 0.4.1's exposure issue waits on D9.
+- The household runs and patches one more host, the relay; it holds no keys and sees only encrypted traffic, its timing and its volume.

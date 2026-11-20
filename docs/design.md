@@ -413,7 +413,7 @@ A member can let an AI assistant read their workspace through an MCP server, `ap
 
 - **Off by default.** The owner sets `assistant_access` per workspace: off, owner only, or all members.
 - **Local first, read-only** (milestone 0.2.8): over stdio, signed in with the device authorization grant, tokens kept in memory only.
-- **Remote** (milestone 0.4.1): over Streamable HTTP, behind an internet-facing Keycloak with multi-factor authentication for every user, pre-registered clients only, token exchange to a reduced-scope token for the API, an IP allowlist, and every new connection approved from the web app on the LAN. How the server is exposed to the internet is still open (ADR 0014, D9).
+- **Remote** (milestone 0.4.1): over Streamable HTTP, behind an internet-facing Keycloak with multi-factor authentication for every user, pre-registered clients only, token exchange to a reduced-scope token for the API, an IP allowlist, and every new connection approved from the web app on the LAN. The server is reached through a small relay host that forwards TLS unopened over an outbound tunnel, so no port is opened at home (ADR 0014, D9).
 - **Writes only as drafts** (milestone 0.4.2): an assistant proposes transaction and trade drafts that a member confirms in the web app; a restrictive policy in the database refuses every other write made on an assistant's behalf.
 - **Encrypted workspaces** are never reachable remotely, and locally only if the owner opts in (milestone 0.8.0).
 - **No advice.** Tools return the engine's own figures in neutral wording; what the assistant then says is its own.
