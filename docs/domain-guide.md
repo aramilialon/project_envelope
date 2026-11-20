@@ -122,6 +122,39 @@ accounts do not count — no money actually left the budget). A household living
 reads close to zero; one with a cushion reads higher, and watches the number instead of a single
 balance that says nothing about *when* that money is needed.
 
+### Transfers to and from off-budget accounts
+
+An off-budget account (a brokerage account, a mortgage, a loan, savings kept apart) is outside the
+budget, so a transfer between it and an on-budget account moves money into or out of the budget.
+Only the on-budget leg counts, and how it counts depends on where the money goes:
+
+- **Out to an off-budget account:** it always needs a real category, like any spending ("Investing"
+  for the monthly payment to the broker). Without one, or as "Unassigned", it is refused.
+- **In from an off-budget account into a cash account:** by default it is **income to assign**
+  ("Unassigned"), in the month of its date, like a salary. A real category can be chosen instead,
+  for example to refill the envelope that funded the investment.
+- **In from an off-budget account into an on-budget credit card:** it needs a real category, and is
+  then read as a refund on the card. Without one it is refused: income on a card is not modeled yet.
+
+Transfers between two on-budget accounts, or between two off-budget accounts, never carry a
+category.
+
+**Example.** September 2026: checking holds €3,000, of which €200 is unassigned, €1,800 is in
+Groceries and €1,000 in Rent; Investing holds nothing.
+
+1. Selling ETFs and moving €5,000 from the broker to checking, with no category: Unassigned becomes
+   **€5,200** and checking €8,000. The invariant holds: 5,200 + 1,800 + 1,000 = 8,000.
+2. The same transfer in Investing instead: Investing holds **€5,000**, Unassigned stays €200.
+3. €5,000 sent to the broker in June through Investing, and coming back in September as Unassigned:
+   September's unassigned money grows by €5,000; June, and Investing's spending in it, does not
+   change.
+4. Starting from example 1, after assigning €4,000 to Holiday (Unassigned €1,200), the transfer's
+   checking leg is edited to Investing: Unassigned becomes **−€3,800** (more assigned than there is,
+   shown as a warning) and Investing €5,000; the total is still €8,000, and the broker's leg does
+   not change.
+5. Refused: checking → broker with no category; broker → Visa with no category; the checking leg of
+   a transfer to the broker edited to no category.
+
 ### Import, duplicates and reconciliation
 
 A bank statement row is a duplicate of a transaction already in the account when the bank's own
