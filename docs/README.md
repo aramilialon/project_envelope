@@ -15,6 +15,7 @@
 
 - [Add a test to the core](how-to/add-a-core-test.md)
 - [Work with issues, pull requests and releases](how-to/work-with-issues-and-pull-requests.md)
+- [Work with the agent team](how-to/work-with-the-agent-team.md)
 - [Self-host push notifications](how-to/self-host-push-notifications.md)
 
 ## Decisions

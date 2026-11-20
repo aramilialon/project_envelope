@@ -56,6 +56,10 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 - Where the mockup cannot be followed, say why in the pull request and update the mockup and the design section in the same pull request once agreed.
 - Logic that the mockups compute in JavaScript (target calculation, covering overspending) belongs in `packages/core`, with tests.
 
+## Agent team
+
+The main session coordinates a team of role agents defined in `.claude/agents/` (developer, architect, domain expert, UX reviewer, QA, security reviewer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). The agents recommend; decisions stay with the maintainer.
+
 ## Git and GitHub workflow
 
 Every change reaches `main` through a pull request that the maintainer reviews and merges. Details in [docs/how-to/work-with-issues-and-pull-requests.md](docs/how-to/work-with-issues-and-pull-requests.md).
