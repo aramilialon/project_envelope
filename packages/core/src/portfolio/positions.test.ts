@@ -7,6 +7,7 @@ import type { AccountPosition, PortfolioPosition, Positions, PositionTrade } fro
 import {
   applyTradeChanges,
   computePositions,
+  derivedResults,
   summarizeByAccount,
   summarizeByPortfolio,
   validatePositionHistory,
@@ -14,6 +15,7 @@ import {
 } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
 import { amountOf, PRICE_FACTOR_ONE } from "./quantity.ts";
+import { tradeCashCents } from "./trades.ts";
 
 /** Units as a Quantity: units(1.5) is 150000000. Only for readable test data. */
 function units(value: number): Quantity {
@@ -410,7 +412,7 @@ describe("computePositions: the Italian examples", () => {
     const position = account(computePositions([first, second, sale]));
     assert.equal(position.costSoldCents, eur(3244));
     assert.equal(position.realizedCents, eur(951));
-    assert.equal(position.gainTaxCents, eur(247.26));
+    assert.equal(position.gainTaxWithheldCents, eur(247.26));
     assert.equal(position.transactionTaxCents, eur(5));
     assert.equal(position.tradeFeesCents, eur(15));
     assert.equal(position.costBasisCents, eur(8110 - 3244));
@@ -449,7 +451,7 @@ describe("computePositions: the Italian examples", () => {
     ]);
     const position = account(positions);
     assert.equal(position.costBasisCents, eur(1000));
-    assert.equal(position.dividendsCents, eur(30));
+    assert.equal(position.incomeGrossCents, eur(30));
     assert.equal(position.incomeFeesCents, eur(1));
     assert.equal(position.tradeFeesCents, 0);
     assert.equal(position.withholdingForeignCents, eur(4.5));
@@ -457,8 +459,24 @@ describe("computePositions: the Italian examples", () => {
     assert.equal(position.standaloneFeesCents, eur(2));
     assert.equal(position.standaloneTaxesCents, eur(2.5));
     assert.deepEqual(positions.charges, [
-      { accountId: ACCOUNT, portfolioId: "A", currency: "EUR", standaloneFeesCents: 0, standaloneTaxesCents: eur(34.2), gainTaxCents: 0 },
-      { accountId: ACCOUNT, portfolioId: "B", currency: "EUR", standaloneFeesCents: eur(3), standaloneTaxesCents: 0, gainTaxCents: 0 },
+      {
+        accountId: ACCOUNT,
+        portfolioId: "A",
+        currency: "EUR",
+        standaloneFeesCents: 0,
+        standaloneTaxesCents: eur(34.2),
+        gainTaxAdjustmentsCents: 0,
+        managedResultTaxCents: 0,
+      },
+      {
+        accountId: ACCOUNT,
+        portfolioId: "B",
+        currency: "EUR",
+        standaloneFeesCents: eur(3),
+        standaloneTaxesCents: 0,
+        gainTaxAdjustmentsCents: 0,
+        managedResultTaxCents: 0,
+      },
     ]);
 
     const [byAccount] = summarizeByAccount(positions);
@@ -475,7 +493,7 @@ describe("computePositions: the Italian examples", () => {
     );
   });
 
-  it("nets gain tax adjustments into the gain tax: a refund lowers it, extra tax raises it", () => {
+  it("keeps gain tax adjustments apart from the gain tax withheld: a refund lowers taxes on gains, extra tax raises them", () => {
     const history = [
       buy("2026-01-10", "A", 100, 50, 5, { transactionTaxCents: eur(5) }),
       buy("2026-02-10", "A", 50, 62, 5),
@@ -483,12 +501,16 @@ describe("computePositions: the Italian examples", () => {
       trade({ date: "2026-04-10", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(100) }),
     ];
     const position = account(computePositions(history));
-    assert.equal(position.gainTaxCents, eur(147.26));
+    assert.equal(position.gainTaxWithheldCents, eur(247.26));
+    assert.equal(position.gainTaxAdjustmentsCents, eur(100), "signed as entered: a refund is positive");
+    assert.equal(derivedResults(position).taxesOnGainsCents, eur(147.26));
     assert.equal(position.standaloneTaxesCents, 0);
     assert.equal(position.realizedCents, eur(951), "taxes never change the gain");
 
     const extra = trade({ date: "2026-05-10", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(-10) });
-    assert.equal(account(computePositions([...history, extra])).gainTaxCents, eur(157.26));
+    const withExtra = account(computePositions([...history, extra]));
+    assert.equal(withExtra.gainTaxAdjustmentsCents, eur(90));
+    assert.equal(derivedResults(withExtra).taxesOnGainsCents, eur(157.26));
 
     const withoutInstrument = trade({
       date: "2026-05-10",
@@ -498,8 +520,10 @@ describe("computePositions: the Italian examples", () => {
       grossCents: eur(20),
     });
     const positions = computePositions([...history, withoutInstrument]);
-    assert.equal(positions.charges[0]?.gainTaxCents, eur(-20));
-    assert.equal(summarizeByAccount(positions)[0]?.gainTaxCents, eur(127.26));
+    assert.equal(positions.charges[0]?.gainTaxAdjustmentsCents, eur(20));
+    const [summary] = summarizeByAccount(positions);
+    assert.equal(summary?.gainTaxAdjustmentsCents, eur(120));
+    assert.equal(derivedResults(summary!).taxesOnGainsCents, eur(127.26));
   });
 
   it("keeps a dividend's fee in income fees, apart from trade fees", () => {
@@ -516,14 +540,7 @@ describe("computePositions: the Italian examples", () => {
         }),
       ]),
     );
-    const income =
-      position.dividendsCents -
-      position.withholdingForeignCents -
-      position.withholdingDomesticCents -
-      position.incomeFeesCents +
-      position.accruedInterestReceivedCents -
-      position.accruedInterestPaidCents;
-    assert.equal(income, eur(10.58));
+    assert.equal(derivedResults(position).incomeCents, eur(10.58));
     assert.equal(position.tradeFeesCents, eur(5));
     assert.equal(position.costBasisCents, eur(1005));
   });
@@ -1141,5 +1158,132 @@ describe("computePositions: invariants on random histories", () => {
       checked += 1;
     }
     assert.ok(checked > 100);
+  });
+});
+
+describe("managed result tax (#79)", () => {
+  it("is a tax on gains of its own, not a standalone tax", () => {
+    const positions = computePositions([
+      buy("2026-01-10", "A", 10, 100, 0),
+      trade({ date: "2026-12-31", type: "tax", taxKind: "managed_result_tax", grossCents: eur(10) }),
+      trade({ date: "2026-12-31", type: "tax", instrumentId: null, taxKind: "managed_result_tax", grossCents: eur(250) }),
+    ]);
+    const position = account(positions);
+    assert.equal(position.managedResultTaxCents, eur(10));
+    assert.equal(position.standaloneTaxesCents, 0);
+    assert.equal(positions.charges[0]?.managedResultTaxCents, eur(250));
+    assert.equal(positions.charges[0]?.standaloneTaxesCents, 0);
+    const [summary] = summarizeByPortfolio(positions);
+    assert.equal(summary?.managedResultTaxCents, eur(260));
+    // A managed account paying 26% on a €1,000.00 result.
+    assert.deepEqual(derivedResults(summary!), { incomeCents: 0, costsCents: 0, taxesOnGainsCents: eur(260) });
+  });
+});
+
+describe("derivedResults (#79)", () => {
+  const zero = {
+    realizedCents: 0,
+    costInCents: 0,
+    costSoldCents: 0,
+    costTransferredOutCents: 0,
+    tradeFeesCents: 0,
+    incomeFeesCents: 0,
+    transferFeesCents: 0,
+    transactionTaxCents: 0,
+    accruedInterestPaidCents: 0,
+    accruedInterestReceivedCents: 0,
+    gainTaxWithheldCents: 0,
+    gainTaxAdjustmentsCents: 0,
+    managedResultTaxCents: 0,
+    incomeGrossCents: 0,
+    withholdingForeignCents: 0,
+    withholdingDomesticCents: 0,
+    standaloneFeesCents: 0,
+    standaloneTaxesCents: 0,
+  };
+
+  it("gives a dividend's net income: 20.00 − 3.00 − 4.42 − 2.00 = 10.58", () => {
+    const totals = { ...zero, incomeGrossCents: eur(20), withholdingForeignCents: eur(3), withholdingDomesticCents: eur(4.42), incomeFeesCents: eur(2) };
+    assert.deepEqual(derivedResults(totals), { incomeCents: eur(10.58), costsCents: 0, taxesOnGainsCents: 0 });
+  });
+
+  it("gives taxes on gains: 247.26 withheld − a 100.00 refund = 147.26", () => {
+    const totals = { ...zero, gainTaxWithheldCents: eur(247.26), gainTaxAdjustmentsCents: eur(100) };
+    assert.equal(derivedResults(totals).taxesOnGainsCents, eur(147.26));
+  });
+
+  it("gives a managed account's tax: 260.00 on a 1,000.00 result", () => {
+    assert.equal(derivedResults({ ...zero, managedResultTaxCents: eur(260) }).taxesOnGainsCents, eur(260));
+  });
+
+  it("counts the transaction tax, transfer fees, standalone fees and taxes as costs, never trade fees", () => {
+    const totals = {
+      ...zero,
+      tradeFeesCents: eur(15),
+      transactionTaxCents: eur(5),
+      transferFeesCents: eur(25),
+      standaloneFeesCents: eur(3),
+      standaloneTaxesCents: eur(34.2),
+    };
+    assert.equal(derivedResults(totals).costsCents, eur(67.2));
+  });
+
+  it("adds accrued interest received and subtracts accrued interest paid, with a domestic withholding credited back", () => {
+    const totals = {
+      ...zero,
+      accruedInterestPaidCents: eur(12),
+      accruedInterestReceivedCents: eur(20),
+      withholdingDomesticCents: eur(-1.5),
+    };
+    assert.equal(derivedResults(totals).incomeCents, eur(9.5));
+  });
+});
+
+describe("the account identity (#79)", () => {
+  /**
+   * realized + income − costs − taxes on gains = (cash + cost basis) − money transferred in, for an
+   * account whose securities all came in through buys: every cent that left the cash either sits in
+   * the cost basis or is one of these results.
+   */
+  function checkIdentity(history: readonly PositionTrade[], transferredInCents: Cents): Cents {
+    const positions = computePositions(history);
+    const [summary] = summarizeByAccount(positions);
+    assert.ok(summary);
+    const derived = derivedResults(summary);
+    const cash = history.reduce((total, row) => total + tradeCashCents(row), transferredInCents);
+    const left = summary.realizedCents + derived.incomeCents - derived.costsCents - derived.taxesOnGainsCents;
+    assert.equal(left, cash + summary.costBasisCents - transferredInCents);
+    return left;
+  }
+
+  it("holds for the financial transaction tax example with a custody fee: 9,795.74 − 9,000.00 = 795.74", () => {
+    const history = [
+      buy("2026-01-10", "A", 100, 50, 5, { transactionTaxCents: eur(5) }),
+      buy("2026-02-10", "A", 50, 62, 5),
+      sell("2026-03-10", "A", 60, 70, 5, { gainTaxCents: eur(247.26) }),
+      trade({ date: "2026-04-10", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(100) }),
+      trade({ date: "2026-04-30", type: "fee", instrumentId: null, feesCents: eur(3) }),
+    ];
+    assert.equal(checkIdentity(history, eur(9000)), eur(795.74));
+  });
+
+  it("holds for two portfolios sharing one average", () => {
+    const history = [buy("2026-01-10", "A", 10, 100, 5), buy("2026-01-11", "B", 30, 120, 5), sell("2026-01-12", "A", 5, 130, 5)];
+    assert.equal(checkIdentity(history, eur(10_000)), eur(68.75));
+  });
+
+  it("holds for a dividend's income", () => {
+    const history = [
+      buy("2026-01-10", "A", 10, 100, 5),
+      trade({
+        date: "2026-02-10",
+        type: "dividend",
+        grossCents: eur(20),
+        withholdingForeignCents: eur(3),
+        withholdingDomesticCents: eur(4.42),
+        feesCents: eur(2),
+      }),
+    ];
+    assert.equal(checkIdentity(history, eur(2000)), eur(10.58));
   });
 });

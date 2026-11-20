@@ -131,23 +131,28 @@ export interface PositionTotals {
   readonly accruedInterestPaidCents: Cents;
   /** Accrued interest received on sells, never part of the gain. */
   readonly accruedInterestReceivedCents: Cents;
+  /** Gain tax withheld on sales, as on each sale. */
+  readonly gainTaxWithheldCents: Cents;
   /**
-   * Gain tax withheld on sales, net of gain tax adjustments: an adjustment's
-   * positive amount (a refund) lowers it, a negative one (extra tax) raises it.
+   * Gain tax adjustments, signed as entered: a refund is positive (money back
+   * into the account), extra tax charged is negative. Taxes on gains are
+   * withheld − adjustments + managed result tax (`derivedResults`).
    */
-  readonly gainTaxCents: Cents;
+  readonly gainTaxAdjustmentsCents: Cents;
+  /** Tax on the result of a managed account (`managed_result_tax`): a tax on gains, not a cost. */
+  readonly managedResultTaxCents: Cents;
   /** Dividends and coupons, gross. */
-  readonly dividendsCents: Cents;
+  readonly incomeGrossCents: Cents;
   readonly withholdingForeignCents: Cents;
   /**
    * Domestic withholding net of credits: a dividend's and a sell's count as
    * withheld, a bond buy's (credited back with the accrued interest paid)
-   * counts negative.
+   * counts negative, so the total can be negative.
    */
   readonly withholdingDomesticCents: Cents;
   /** Fee trades. */
   readonly standaloneFeesCents: Cents;
-  /** Tax trades other than gain tax adjustments. */
+  /** Tax trades other than gain tax adjustments and managed result tax: stamp duty and other taxes. */
   readonly standaloneTaxesCents: Cents;
 }
 
@@ -188,8 +193,10 @@ export interface AccountCharge {
   readonly currency: CurrencyCode;
   readonly standaloneFeesCents: Cents;
   readonly standaloneTaxesCents: Cents;
-  /** Gain tax adjustments without an instrument: a refund counts negative. */
-  readonly gainTaxCents: Cents;
+  /** Gain tax adjustments without an instrument, signed as entered: a refund is positive. */
+  readonly gainTaxAdjustmentsCents: Cents;
+  /** Managed result tax without an instrument. */
+  readonly managedResultTaxCents: Cents;
 }
 
 export interface Positions {
@@ -236,8 +243,10 @@ const TOTAL_KEYS: readonly (keyof PositionTotals)[] = [
   "transactionTaxCents",
   "accruedInterestPaidCents",
   "accruedInterestReceivedCents",
-  "gainTaxCents",
-  "dividendsCents",
+  "gainTaxWithheldCents",
+  "gainTaxAdjustmentsCents",
+  "managedResultTaxCents",
+  "incomeGrossCents",
   "withholdingForeignCents",
   "withholdingDomesticCents",
   "standaloneFeesCents",
@@ -542,9 +551,18 @@ function applySplits(state: AccountState, date: LocalDate, splits: readonly Posi
   }
 }
 
-/** A tax trade's effect: [total, amount]; gain tax adjustments net into the gain tax. */
-function taxEffect(trade: PositionTrade): ["gainTaxCents" | "standaloneTaxesCents", Cents] {
-  return trade.taxKind === "gain_tax_adjustment" ? ["gainTaxCents", -trade.grossCents] : ["standaloneTaxesCents", trade.grossCents];
+type TaxTotal = "gainTaxAdjustmentsCents" | "managedResultTaxCents" | "standaloneTaxesCents";
+
+/** A tax trade's effect: [total, amount], each amount as entered. */
+function taxEffect(trade: PositionTrade): [TaxTotal, Cents] {
+  switch (trade.taxKind) {
+    case "gain_tax_adjustment":
+      return ["gainTaxAdjustmentsCents", trade.grossCents];
+    case "managed_result_tax":
+      return ["managedResultTaxCents", trade.grossCents];
+    default:
+      return ["standaloneTaxesCents", trade.grossCents];
+  }
 }
 
 /** Replays every account's trades of one instrument, already sorted. */
@@ -636,12 +654,12 @@ function replayInstrument(
         add(totals, "tradeFeesCents", trade.feesCents);
         add(totals, "transactionTaxCents", trade.transactionTaxCents);
         add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
-        add(totals, "gainTaxCents", trade.gainTaxCents);
+        add(totals, "gainTaxWithheldCents", trade.gainTaxCents);
         add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
         break;
       }
       case "dividend":
-        add(totals, "dividendsCents", trade.grossCents);
+        add(totals, "incomeGrossCents", trade.grossCents);
         add(totals, "incomeFeesCents", trade.feesCents);
         add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
         add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
@@ -835,7 +853,8 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
       currency: charge.currency,
       standaloneFeesCents: charge.totals.standaloneFeesCents,
       standaloneTaxesCents: charge.totals.standaloneTaxesCents,
-      gainTaxCents: charge.totals.gainTaxCents,
+      gainTaxAdjustmentsCents: charge.totals.gainTaxAdjustmentsCents,
+      managedResultTaxCents: charge.totals.managedResultTaxCents,
     }));
 
   return { accounts, portfolios, charges: orderedCharges };
@@ -916,7 +935,8 @@ function summarize<K extends string>(
     const found = entry(charge.key, charge.currency);
     add(found.totals, "standaloneFeesCents", charge.standaloneFeesCents);
     add(found.totals, "standaloneTaxesCents", charge.standaloneTaxesCents);
-    add(found.totals, "gainTaxCents", charge.gainTaxCents);
+    add(found.totals, "gainTaxAdjustmentsCents", charge.gainTaxAdjustmentsCents);
+    add(found.totals, "managedResultTaxCents", charge.managedResultTaxCents);
   }
   return [...byKey.values()]
     .sort((a, b) => compareIds(a.key, b.key) || compareIds(a.currency, b.currency))
@@ -946,4 +966,56 @@ export function summarizeByAccount(positions: Positions): AccountSummary[] {
     positions.accounts.map((row) => ({ ...row, key: row.accountId })),
     positions.charges.map((charge) => ({ ...charge, key: charge.accountId })),
   ).map(({ key, summary }) => ({ accountId: key, ...summary }));
+}
+
+// --- Derived results ------------------------------------------------------------
+
+/** The domain guide's sums of a position's or a summary's totals, in its currency. */
+export interface DerivedResults {
+  /**
+   * Income = dividends and coupons (gross) − foreign and domestic withholding
+   * − income fees + accrued interest received − accrued interest paid.
+   */
+  readonly incomeCents: Cents;
+  /**
+   * Costs = financial transaction tax + transfer fees + standalone fees +
+   * stamp duty and other taxes. Trade fees are already inside the cost and
+   * the gain, so they are not added again.
+   */
+  readonly costsCents: Cents;
+  /** Taxes on gains = gain tax withheld − gain tax adjustments (a refund is positive) + managed result tax. */
+  readonly taxesOnGainsCents: Cents;
+}
+
+function sumOf(label: string, parts: readonly Cents[]): Cents {
+  return parts.reduce((total, part) => plus(total, part, label), 0);
+}
+
+/**
+ * Income, costs and taxes on gains from a position's (or a summary's)
+ * totals. The net result (realized + unrealized + income − costs − taxes on
+ * gains) needs prices, and comes with them.
+ */
+export function derivedResults(totals: PositionTotals): DerivedResults {
+  return {
+    incomeCents: sumOf("incomeCents", [
+      totals.incomeGrossCents,
+      -totals.withholdingForeignCents,
+      -totals.withholdingDomesticCents,
+      -totals.incomeFeesCents,
+      totals.accruedInterestReceivedCents,
+      -totals.accruedInterestPaidCents,
+    ]),
+    costsCents: sumOf("costsCents", [
+      totals.transactionTaxCents,
+      totals.transferFeesCents,
+      totals.standaloneFeesCents,
+      totals.standaloneTaxesCents,
+    ]),
+    taxesOnGainsCents: sumOf("taxesOnGainsCents", [
+      totals.gainTaxWithheldCents,
+      -totals.gainTaxAdjustmentsCents,
+      totals.managedResultTaxCents,
+    ]),
+  };
 }
