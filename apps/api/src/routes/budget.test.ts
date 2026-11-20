@@ -126,6 +126,70 @@ describe("budget routes", () => {
     assert.equal(problem?.amountCents, 20_000); // 40000 assigned - 10000 - 50000 spent = -20000 available
   });
 
+  it("keeps a brokerage account, and a transfer into it, outside the budget like any off-budget account (#74)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const month = "2027-03";
+    const group = await superuserPool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Investing', 2) RETURNING id",
+      [workspaceId],
+    );
+    const viaSavings = await superuserPool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'To off-budget savings', 1) RETURNING id",
+      [workspaceId, group.rows[0]!.id],
+    );
+    const viaBroker = await superuserPool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'To broker', 2) RETURNING id",
+      [workspaceId, group.rows[0]!.id],
+    );
+    const offBudgetSavings = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: "Off-budget savings", type: "savings", currency: "EUR", onBudget: false },
+    });
+    const broker = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: "Broker", type: "brokerage", currency: "EUR" },
+    });
+    assert.equal(broker.json().onBudget, false);
+
+    const before = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/budget-months/${month}`, headers: auth });
+
+    // Same rule as any off-budget account: the on-budget leg needs a category.
+    const uncategorized = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: { sourceAccountId: accountId, destinationAccountId: broker.json().id, occurredAt: "2027-03-05", amountCents: 7_000 },
+    });
+    assert.equal(uncategorized.statusCode, 400);
+    assert.equal(uncategorized.json().error, "uncategorized_transaction");
+
+    for (const [destination, category] of [
+      [offBudgetSavings.json().id as string, viaSavings.rows[0]!.id],
+      [broker.json().id as string, viaBroker.rows[0]!.id],
+    ] as const) {
+      const transfer = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth,
+        payload: { sourceAccountId: accountId, destinationAccountId: destination, occurredAt: "2027-03-05", amountCents: 7_000, categoryId: category },
+      });
+      assert.equal(transfer.statusCode, 201);
+    }
+
+    const after = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/budget-months/${month}`, headers: auth });
+    assert.equal(after.statusCode, 200);
+    const body = after.json();
+    // The legs landing in the two off-budget accounts are not income to assign.
+    assert.equal(body.unassigned, before.json().unassigned);
+    const activityOf = (id: string) => body.categories.find((c: { categoryId: string }) => c.categoryId === id)?.activity;
+    assert.equal(activityOf(viaSavings.rows[0]!.id), -7_000);
+    assert.equal(activityOf(viaBroker.rows[0]!.id), activityOf(viaSavings.rows[0]!.id));
+  });
+
   describe("GET /budget-months/:month/events", () => {
     const auth = () => ({ authorization: `Bearer ${token}` });
 

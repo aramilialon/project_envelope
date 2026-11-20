@@ -8,6 +8,7 @@ export const ACCOUNT_TYPE_LABELS = defineMessages<AccountType>({
   savings: { id: "accounts.type.savings", defaultMessage: "Savings" },
   cash: { id: "accounts.type.cash", defaultMessage: "Cash" },
   credit_card: { id: "accounts.type.creditCard", defaultMessage: "Credit card" },
+  brokerage: { id: "accounts.type.brokerage", defaultMessage: "Brokerage" },
 });
 
 /** A one-line explanation per `AccountType`, shown under its own label in the creation form (`#402`). */
@@ -19,4 +20,5 @@ export const ACCOUNT_TYPE_HINTS = defineMessages<AccountType>({
     id: "accounts.type.creditCard.hint",
     defaultMessage: "Debt you pay off, with its own payment category",
   },
+  brokerage: { id: "accounts.type.brokerage.hint", defaultMessage: "Investments, always off budget" },
 });

@@ -14,7 +14,7 @@
 | Credit overspending | The part of a negative category paid with a credit card; it becomes card debt and does not touch unassigned money | `creditOverspending` | Spesa eccessiva con carta |
 | Payment category | A category per credit card holding the money set aside to pay it; covered card spending moves money into it | `paymentCategoryId`, `paymentCategories` | Pagamento carta |
 | Card payment | A transfer from a cash account to a credit card | `CardPayment` | Pagamento della carta |
-| On-budget / off-budget account | Accounts whose money is (or is not) part of the budget; investments and mortgages are usually off-budget | `onBudget` | Conto in budget / fuori budget |
+| On-budget / off-budget account | Accounts whose money is (or is not) part of the budget; investments and mortgages are usually off-budget, and a brokerage account ("Conto titoli") is always off-budget | `onBudget` | Conto in budget / fuori budget |
 | Split | One transaction spread across several categories | `Split` | Suddivisione |
 | Minor unit | The smallest unit of a currency: the cent for EUR, the yen for JPY | `Cents` | Centesimo |
 

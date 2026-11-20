@@ -1,6 +1,15 @@
+import { ValidationError } from "@envelope/core";
+
 import type { DbClient, DbPool } from "../db/pool.ts";
 
-export type AccountType = "checking" | "savings" | "cash" | "credit_card";
+export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
+
+export const ACCOUNT_TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card", "brokerage"];
+
+/** Whether a new account of `type` is on budget when the request does not say: a brokerage account never is (#74). */
+export function defaultOnBudget(type: AccountType): boolean {
+  return type !== "brokerage";
+}
 
 export interface AccountRecord {
   readonly id: string;
@@ -49,14 +58,27 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * cards"). `db` is expected to already be inside the request's single
  * transaction (workspace-membership.ts), so every write here commits or
  * rolls back together with it.
+ *
+ * @throws ValidationError with code "brokerage_on_budget" for an on-budget
+ * brokerage account. Migration 0025's CHECK constraint is the only rule:
+ * its violation is mapped to that code here. The failed INSERT leaves the
+ * request's transaction aborted, so it rolls back and nothing is stored.
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
-  const { rows } = await db.query<AccountRow>(
-    `INSERT INTO accounts (workspace_id, name, type, currency, on_budget)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING ${ACCOUNT_COLUMNS}`,
-    [input.workspaceId, input.name, input.type, input.currency, input.onBudget],
-  );
+  let rows: AccountRow[];
+  try {
+    ({ rows } = await db.query<AccountRow>(
+      `INSERT INTO accounts (workspace_id, name, type, currency, on_budget)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING ${ACCOUNT_COLUMNS}`,
+      [input.workspaceId, input.name, input.type, input.currency, input.onBudget],
+    ));
+  } catch (error) {
+    if (isBrokerageOffBudgetViolation(error)) {
+      throw brokerageOnBudgetError();
+    }
+    throw error;
+  }
   const account = rows[0];
   if (!account) {
     throw new Error("createAccount: INSERT ... RETURNING produced no row");
@@ -103,6 +125,22 @@ export async function closeAccount(
     [accountId, workspaceId],
   );
   return rows[0] ? toAccountRecord(rows[0]) : undefined;
+}
+
+const CHECK_VIOLATION = "23514";
+const BROKERAGE_OFF_BUDGET_CONSTRAINT = "accounts_brokerage_off_budget_check";
+
+function brokerageOnBudgetError(): ValidationError {
+  return new ValidationError("brokerage_on_budget", "a brokerage account is always off budget", { type: "brokerage" });
+}
+
+/** Whether `error` is PostgreSQL rejecting a row through migration 0025's `accounts_brokerage_off_budget_check`. */
+export function isBrokerageOffBudgetViolation(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const { code, constraint } = error as { code?: unknown; constraint?: unknown };
+  return code === CHECK_VIOLATION && constraint === BROKERAGE_OFF_BUDGET_CONSTRAINT;
 }
 
 async function createPaymentCategory(db: DbPool | DbClient, workspaceId: string, accountName: string): Promise<string> {

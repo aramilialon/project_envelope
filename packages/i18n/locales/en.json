@@ -15,6 +15,8 @@
   "accounts.offBudget": "Off budget",
   "accounts.onBudget": "On budget",
   "accounts.title": "Accounts",
+  "accounts.type.brokerage": "Brokerage",
+  "accounts.type.brokerage.hint": "Investments, always off budget",
   "accounts.type.cash": "Cash",
   "accounts.type.cash.hint": "Your wallet",
   "accounts.type.checking": "Checking",

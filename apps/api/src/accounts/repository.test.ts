@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { isValidationError } from "@envelope/core";
+
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { closeAccount, createAccount, listAccounts } from "./repository.ts";
+import { closeAccount, createAccount, isBrokerageOffBudgetViolation, listAccounts } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -147,5 +149,63 @@ describe("accounts repository", () => {
 
     const again = await closeAccount(pool, workspaceId, account.id);
     assert.equal(again, undefined);
+  });
+
+  describe("brokerage accounts (#74)", () => {
+    it("creates an off-budget brokerage account with no payment category", async () => {
+      const account = await createAccount(pool, { workspaceId, name: "Broker", type: "brokerage", currency: "EUR", onBudget: false });
+      assert.equal(account.type, "brokerage");
+      assert.equal(account.onBudget, false);
+      assert.equal(account.paymentCategoryId, null);
+    });
+
+    it("maps the database's refusal of an on-budget brokerage account to a ValidationError, writing nothing", async () => {
+      await assert.rejects(
+        () => createAccount(pool, { workspaceId, name: "On-budget broker", type: "brokerage", currency: "EUR", onBudget: true }),
+        (error: unknown) => isValidationError(error, "brokerage_on_budget"),
+      );
+      const { rows } = await pool.query("SELECT 1 FROM accounts WHERE workspace_id = $1 AND name = 'On-budget broker'", [
+        workspaceId,
+      ]);
+      assert.equal(rows.length, 0);
+    });
+
+    it("the database rejects inserting an on-budget brokerage account, recognized as that violation", async () => {
+      await assert.rejects(
+        () =>
+          pool.query(
+            "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Raw broker', 'brokerage', 'EUR', true)",
+            [workspaceId],
+          ),
+        (error: unknown) => isBrokerageOffBudgetViolation(error),
+      );
+    });
+
+    it("the database rejects updating a brokerage account to on budget", async () => {
+      const account = await createAccount(pool, { workspaceId, name: "Broker 2", type: "brokerage", currency: "EUR", onBudget: false });
+      await assert.rejects(
+        () => pool.query("UPDATE accounts SET on_budget = true WHERE id = $1", [account.id]),
+        (error: unknown) => isBrokerageOffBudgetViolation(error),
+      );
+    });
+
+    it("the database rejects turning an on-budget account into a brokerage one", async () => {
+      const account = await createAccount(pool, { workspaceId, name: "Was checking", type: "checking", currency: "EUR", onBudget: true });
+      await assert.rejects(
+        () => pool.query("UPDATE accounts SET type = 'brokerage' WHERE id = $1", [account.id]),
+        (error: unknown) => isBrokerageOffBudgetViolation(error),
+      );
+    });
+
+    it("does not mistake another constraint's violation for the brokerage one", async () => {
+      await assert.rejects(
+        () =>
+          pool.query(
+            "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Odd 2', 'off_budget', 'EUR', false)",
+            [workspaceId],
+          ),
+        (error: unknown) => !isBrokerageOffBudgetViolation(error) && /accounts_type_check/.test(String(error)),
+      );
+    });
   });
 });

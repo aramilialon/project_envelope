@@ -28,6 +28,8 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 
 Sign-in is the one screen this issue adds: every other screen above already had a mockup before 0.1.7 started. A screen whose 0.1.7 issue is not in this table has no mockup yet — stop and ask for one, or propose it in its own pull request (`CLAUDE.md`).
 
+The "+ Add account" form also offers a brokerage type ("Conto titoli", always off budget, so it has no "On budget" choice, `#74`), which the onboarding's first-account step in `settings-first-run.html` does not draw.
+
 ## Navigation structure
 
 - **Desktop.** A mariner band across the top of every screen: a button that opens the accounts panel (`#412`, [`accounts-panel.html`](mockups/accounts-panel.html)), the wordmark, primary navigation (Budget, Accounts, Portfolio), the workspace switcher and the user menu with settings. There is no persistent sidebar; the account list belongs to the Accounts screen by default — the accounts panel is a dismissible, closed-by-default detour from it, not a second place balances always show. The budget month adds its own second line to the band (month arrows, unassigned money with Assign, reserved, assigned to future months, days of buffer) and, under the band, the timeline, "To do", filter tabs (All, Underfunded, Overspent, With money) and the action toolbar (Summary, Targets, Scheduled, Quick assign, Move money, Undo). A category's detail opens in its own row; month-wide tools (group, summary, targets, scheduled, quick assign, move money, the target editor) open in a side sheet. Neither navigates to a URL of its own.

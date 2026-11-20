@@ -1,15 +1,16 @@
 import type { FastifyInstance } from "fastify";
 
 import {
+  ACCOUNT_TYPES,
   closeAccount,
   createAccount,
+  defaultOnBudget,
   listAccounts,
   type AccountType,
 } from "../accounts/repository.ts";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-
-const ACCOUNT_TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card"];
+import { sendIfValidationError } from "../errors.ts";
 
 export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
@@ -20,23 +21,35 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const type = body.type;
     const currency = typeof body.currency === "string" ? body.currency : "";
-    const onBudget = body.onBudget === undefined ? true : Boolean(body.onBudget);
     const startingBalanceCents = typeof body.startingBalanceCents === "number" ? body.startingBalanceCents : undefined;
 
     if (!name || typeof type !== "string" || !ACCOUNT_TYPES.includes(type as AccountType) || !currency) {
       await reply.code(400).send({ error: "invalid account: name, a valid type and currency are required" });
       return;
     }
+    if (body.onBudget !== undefined && typeof body.onBudget !== "boolean") {
+      await reply.code(400).send({ error: "invalid account: onBudget must be a boolean when given" });
+      return;
+    }
+    const accountType = type as AccountType;
+    const onBudget = body.onBudget ?? defaultOnBudget(accountType);
 
-    const account = await createAccount(request.db!, {
-      workspaceId: request.workspace!.id,
-      name,
-      type: type as AccountType,
-      currency,
-      onBudget,
-      ...(startingBalanceCents === undefined ? {} : { startingBalanceCents }),
-    });
-    await reply.code(201).send(account);
+    try {
+      const account = await createAccount(request.db!, {
+        workspaceId: request.workspace!.id,
+        name,
+        type: accountType,
+        currency,
+        onBudget,
+        ...(startingBalanceCents === undefined ? {} : { startingBalanceCents }),
+      });
+      await reply.code(201).send(account);
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
   });
 
   app.get("/workspaces/:workspaceId/accounts", { preHandler }, async (request) => {

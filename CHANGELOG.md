@@ -6,6 +6,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Added
+
+- `apps/api`, `apps/web`: a `brokerage` account type (`#74`), always off budget — the portfolio connects to the budget through off-budget accounts, so money paid to the broker is a transfer that leaves the budget without showing up as spending. Creating one without `onBudget` defaults it to off budget; asking for it on budget is refused with the stable code `brokerage_on_budget`, and migration 0025's `CHECK` constraint enforces the same in the database. The "Add account" form lists it ("Brokerage" / "Conto titoli") with no "On budget" choice.
+
 ## [0.1.8] - 2026-11-19
 
 ### Changed

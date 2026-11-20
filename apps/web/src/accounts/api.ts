@@ -1,7 +1,7 @@
 /** The accounts endpoints (#51): list, create and close an account in a workspace. */
 import { apiFetch } from "../apiFetch.ts";
 
-export type AccountType = "checking" | "savings" | "cash" | "credit_card";
+export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
 
 export interface Account {
   readonly id: string;
