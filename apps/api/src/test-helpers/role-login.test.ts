@@ -30,6 +30,12 @@ describe("test role logins (#585)", () => {
     assert.notEqual(other.password, testRoleLogin("envelope_app", url).password);
   });
 
+  it("refuses a DATABASE_URL with no password, which would make the derived password a constant", () => {
+    assert.throws(() => testRoleLogin("envelope_app", "postgres://envelope@127.0.0.1:5432/envelope_test_a"), {
+      message: /DATABASE_URL must include the superuser's password/,
+    });
+  });
+
   it("builds a connection string that carries any password back unchanged", () => {
     const password = "p@ss:w%rd/'\"#?";
     const built = new URL(roleConnectionString("postgres://envelope:x@127.0.0.1:5432/envelope_test", "envelope_app", password));
@@ -64,6 +70,11 @@ describe("test role logins on the server (#585)", () => {
 
   it("never changes the login or password of envelope_app or envelope_queue themselves", async () => {
     const before = await sharedRoleLogins();
+    // The migrations create both; without them the comparison below would prove nothing.
+    assert.deepEqual(
+      before.map((row) => (row as { rolname: string }).rolname),
+      ["envelope_app", "envelope_queue"],
+    );
     await ensureAppRoleLogin(pool);
     const other = testRoleLogin("envelope_queue", databaseUrl.replace(/\/[^/]*$/, `/not_a_database_${randomBytes(4).toString("hex")}`));
     created.push(other.role);
@@ -82,6 +93,13 @@ describe("test role logins on the server (#585)", () => {
     } finally {
       await asRole.end();
     }
+    // Its comment names this test's own database, which exists for as long as the test runs, so
+    // another run's sweep (which drops only roles whose database is gone) never drops it mid-test.
+    const { rows: comments } = await pool.query<{ comment: string }>(
+      "SELECT shobj_description(oid, 'pg_authid') AS comment FROM pg_roles WHERE rolname = $1",
+      [login.role],
+    );
+    assert.deepEqual(comments, [{ comment: `envelope-test-role database=${decodeURIComponent(new URL(databaseUrl).pathname.slice(1))}` }]);
     const { rows: [first] } = await pool.query("SELECT oid, rolpassword FROM pg_authid WHERE rolname = $1", [login.role]);
     await ensureTestRoleLogin(pool, "envelope_app", login);
     const { rows: [second] } = await pool.query("SELECT oid, rolpassword FROM pg_authid WHERE rolname = $1", [login.role]);

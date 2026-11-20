@@ -35,6 +35,11 @@ export interface TestRoleLogin {
 /** The test role standing in for `sharedRole` in the database `databaseUrl` (normally `DATABASE_URL`) names. */
 export function testRoleLogin(sharedRole: SharedRole, databaseUrl: string): TestRoleLogin {
   const url = new URL(databaseUrl);
+  if (!url.password) {
+    // Without it the password below would be a constant anyone with the repository could compute
+    // (#585): a login with envelope_app's privileges to every database PUBLIC may connect to.
+    throw new Error("DATABASE_URL must include the superuser's password: the tests derive their own roles' passwords from it");
+  }
   const key = `${url.hostname}:${url.port || "5432"}/${databaseName(databaseUrl)}`;
   const role = `${sharedRole}_t${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
   const password = createHmac("sha256", `envelope-test-role:${decodeURIComponent(url.password)}`).update(role).digest("hex");
@@ -62,11 +67,18 @@ export async function ensureTestRoleLogin(pool: DbPool, sharedRole: SharedRole, 
     throw new Error(`Not a test role login: ${login.role}`);
   }
   const comment = `${COMMENT_PREFIX}${databaseName(databaseUrl)}`.replaceAll("'", "''");
+  // Checked first, so the usual case of an existing role never sends a CREATE ROLE that fails:
+  // PostgreSQL logs a failing statement in full, password included.
+  const { rowCount } = await pool.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [login.role]);
   try {
-    await pool.query(`CREATE ROLE ${login.role} LOGIN PASSWORD '${login.password}' IN ROLE ${sharedRole}`);
+    if ((rowCount ?? 0) > 0) {
+      await setPassword(pool, login, roleUrl);
+    } else {
+      await pool.query(`CREATE ROLE ${login.role} LOGIN PASSWORD '${login.password}' IN ROLE ${sharedRole}`);
+    }
   } catch (error) {
-    // It exists already (another test file, maybe in another process, created it a moment ago, or
-    // DATABASE_URL's password changed since): then its password is the one to set.
+    // Another test file, maybe in another process, created it between the check and CREATE ROLE:
+    // then its password is the one to set.
     if (!isConcurrentOrDuplicate(error)) {
       throw error;
     }

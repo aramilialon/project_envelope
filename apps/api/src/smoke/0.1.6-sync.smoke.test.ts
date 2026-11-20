@@ -104,7 +104,7 @@ describe("smoke: 0.1.6 Sync, against the real process", () => {
       VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       KEYCLOAK_ISSUER: realm.issuer,
       KEYCLOAK_AUDIENCE: realm.audience,
-      LOG_LEVEL: "fatal",
+      LOG_LEVEL: "warn",
     });
 
     workspaceId = randomUUID();
