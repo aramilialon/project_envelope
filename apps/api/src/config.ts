@@ -111,8 +111,9 @@ function parsePort(env: NodeJS.ProcessEnv, name: string, defaultValue: number): 
     return defaultValue;
   }
   const port = Number(value);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`${name} must be an integer between 1 and 65535, got "${value}"`);
+  // 0 asks the operating system for any free port (the smoke tests use it, #519).
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    throw new Error(`${name} must be an integer between 0 and 65535, got "${value}"`);
   }
   return port;
 }

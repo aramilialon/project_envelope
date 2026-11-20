@@ -6,6 +6,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { processJob } from "../queue/postgres-driver.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { listTransactionsForAccount } from "../transactions/repository.ts";
 import { createScheduledTransactionsFireHandler } from "./fire-job.ts";
 import { listScheduledTransactions } from "./repository.ts";
@@ -23,8 +24,11 @@ if (!databaseUrl) {
  * `repository.test.ts`'s own tests use: this is the one test proving `app_is_system_job()`
  * (ADR 0010, migration 0023) actually lets the handler enumerate every workspace, across more
  * than one, rather than only the repository function it calls once a workspace is already known.
+ * In a database of its own (#519): the `scheduled-transactions-fire` job fires every workspace
+ * there is, so it must not see whatever other test files left in the shared one.
  */
 describe("createScheduledTransactionsFireHandler (#38)", () => {
+  let database: IsolatedDatabase;
   let superuserPool: DbPool;
   let appPool: DbPool;
   let workspaceA: string;
@@ -35,10 +39,11 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
   let scheduledB: string;
 
   before(async () => {
-    superuserPool = createPool(databaseUrl);
+    database = await createIsolatedDatabase(databaseUrl);
+    superuserPool = createPool(database.databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
-    appPool = createPool(appConnectionString(databaseUrl));
+    appPool = createPool(appConnectionString(database.databaseUrl));
 
     async function makeWorkspace(
       name: string,
@@ -89,9 +94,9 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
   });
 
   after(async () => {
-    await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceA, workspaceB]]);
     await appPool.end();
     await superuserPool.end();
+    await database.drop();
   });
 
   it("fires every due scheduled transaction in every workspace, not only the first", async () => {

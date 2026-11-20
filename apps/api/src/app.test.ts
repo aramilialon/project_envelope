@@ -7,9 +7,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
-import { setTimeout as sleep } from "node:timers/promises";
 
-import { SignJWT, generateKeyPair } from "jose";
+import { SignJWT, decodeJwt, generateKeyPair } from "jose";
 
 import { buildApp, type App } from "./app.ts";
 import { createWorkspaceMembershipPreHandler, registerWorkspaceScope } from "./auth/workspace-membership.ts";
@@ -17,7 +16,12 @@ import { loadConfig } from "./config.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "./db/migrate.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "./test-helpers/app-role.ts";
-import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "./test-helpers/keycloak.ts";
+import {
+  SHORT_LIVED_TOKEN_SECONDS,
+  setUpKeycloakTestRealm,
+  waitUntilExpired,
+  type KeycloakTestRealm,
+} from "./test-helpers/keycloak.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -80,8 +84,11 @@ describe("every route rejects a missing or foreign token", () => {
   });
 
   it("rejects an expired token", async () => {
-    const token = await realm.getUserToken();
-    await sleep(4000); // the test realm's access tokens live 3 seconds (see test-helpers/keycloak.ts)
+    // On purpose: every other token in the test realm lives a minute (#519).
+    const token = await realm.getShortLivedUserToken();
+    const { iat, exp } = decodeJwt(token);
+    assert.equal((exp ?? 0) - (iat ?? 0), SHORT_LIVED_TOKEN_SECONDS);
+    await waitUntilExpired(token);
     const response = await app.fastify.inject({
       method: "GET",
       url: `/workspaces/${workspaceId}/ping`,
