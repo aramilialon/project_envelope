@@ -1,4 +1,4 @@
-import { validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import { assertDate, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
@@ -94,6 +94,11 @@ export async function createAccount(db: DbPool | DbClient, input: CreateAccountI
     taxRegime: input.taxRegime,
     domesticWithholdingAgent: input.domesticWithholdingAgent,
   });
+  // Checked before the INSERT, not by `addTaxRegime` after it: a request that fails after the
+  // account row is written could still commit that row without its regime.
+  if (input.taxRegimeValidFrom !== undefined) {
+    assertDate(input.taxRegimeValidFrom);
+  }
 
   let rows: AccountRow[];
   try {

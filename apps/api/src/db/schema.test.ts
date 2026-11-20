@@ -765,6 +765,102 @@ describe("apps/api/migrations, applied to a real database", () => {
         );
       });
     });
+
+    it("rejects an administered or managed regime on an account whose broker is not an Italian withholding agent", async () => {
+      for (const regime of ["administered", "managed"]) {
+        await asApp(workspaceB, async (client) => {
+          await rejectsWith(
+            client.query(
+              "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2026-01-01', $3)",
+              [workspaceB, brokerageB, regime],
+            ),
+            "23514",
+            "account_tax_regimes_withholding_agent_check",
+          );
+        });
+      }
+    });
+
+    it("sets a withholding-agent flag once, then keeps it fixed", async () => {
+      await asApp(workspaceA, async (client) => {
+        const { rows } = await client.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'No flag yet', 'brokerage', 'EUR', false) RETURNING id",
+          [workspaceA],
+        );
+        await client.query("UPDATE accounts SET domestic_withholding_agent = true WHERE id = $1", [rows[0]!.id]);
+        await rejectsWith(
+          client.query("UPDATE accounts SET domestic_withholding_agent = false WHERE id = $1", [rows[0]!.id]),
+          "23514",
+          "accounts_withholding_agent_fixed_check",
+        );
+      });
+    });
+
+    it("accepts a new row before a first row dated 1 January", async () => {
+      await asApp(workspaceA, async (client) => {
+        const { rows } = await client.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget, domestic_withholding_agent) VALUES ($1, 'Since January', 'brokerage', 'EUR', false, true) RETURNING id",
+          [workspaceA],
+        );
+        const accountId = rows[0]!.id;
+        await client.query(
+          "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2025-01-01', 'administered')",
+          [workspaceA, accountId],
+        );
+        await client.query(
+          "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2019-03-03', 'self_declared')",
+          [workspaceA, accountId],
+        );
+        const history = await client.query("SELECT regime FROM account_tax_regimes WHERE account_id = $1 ORDER BY valid_from", [accountId]);
+        assert.deepEqual(history.rows, [{ regime: "self_declared" }, { regime: "administered" }]);
+      });
+    });
+
+    it("makes a second concurrent first period wait for the first, then rejects it", async () => {
+      const { rows } = await pool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency, on_budget, domestic_withholding_agent) VALUES ($1, 'Raced', 'brokerage', 'EUR', false, false) RETURNING id",
+        [workspaceA],
+      );
+      const accountId = rows[0]!.id;
+      const first = await pool.connect();
+      const second = await pool.connect();
+      const insert = "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, $3, 'self_declared')";
+      try {
+        for (const client of [first, second]) {
+          await client.query("BEGIN");
+          await client.query("SET LOCAL ROLE envelope_app");
+          await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceA]);
+        }
+        const secondPid = (await second.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+
+        await first.query(insert, [workspaceA, accountId, "2025-06-01"]);
+        const secondInsert = second.query(insert, [workspaceA, accountId, "2025-07-01"]).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+
+        // The second insert waits on the account row the first one's trigger locked.
+        for (let attempt = 0; ; attempt++) {
+          const waiting = await pool.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'", [secondPid]);
+          if (waiting.rows.length > 0) {
+            break;
+          }
+          assert.ok(attempt < 100, "expected the second insert to wait for the account lock");
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        await first.query("COMMIT");
+        const error = (await secondInsert) as { code?: string; constraint?: string } | undefined;
+        assert.equal(error?.code, "23514");
+        assert.equal(error?.constraint, "account_tax_regimes_year_start_check");
+      } finally {
+        await first.query("ROLLBACK").catch(() => undefined);
+        await second.query("ROLLBACK").catch(() => undefined);
+        first.release();
+        second.release();
+        await pool.query("DELETE FROM accounts WHERE id = $1", [accountId]);
+      }
+    });
   });
 
   describe("audit_log is append-only", () => {
