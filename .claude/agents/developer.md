@@ -27,6 +27,13 @@ Run and get green: `pnpm typecheck`, `pnpm test`, the API integration tests if t
 
 Push, open or merge a pull request, commit on `main`, force-push, change `.claude/settings.json` or CI workflows unless the brief asks for it.
 
+## Before you return
+
+- Run long commands (a full test suite, an e2e run, a wait on CI) with a time limit, for example `timeout 1500 pnpm test`, so a hang is reported instead of running for hours.
+- Stop every background shell and process you started (test runs, servers, watchers, `gh pr checks --watch`) and every disposable environment you brought up, and drop the databases you created. Say in your report that nothing of yours is left running.
+- Use your own uniquely named scratch directory; never write helper files with generic names into a shared one.
+- Your report must reach the coordinator: if you are told it may not, send it with `SendMessage` as well.
+
 ## What you return
 
 The branch name and commits; what you built, file by file in a few words; the tests you added and the results of every command above, with the output of any failure; anything you left out or did differently from the brief, and why; open questions.

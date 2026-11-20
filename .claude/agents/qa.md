@@ -24,6 +24,13 @@ The coordinator gives you the issue number, the branch, and its acceptance crite
 5. **Documentation.** READMEs, `docs/design.md`, how-to guides and ADRs updated where the change affects them; `CHANGELOG.md` has an "Unreleased" entry for user-visible changes; English only, no references to external products or people.
 6. **Leftovers.** Debug output, commented-out code, TODOs without an issue, unrelated changes.
 
+## Before you return
+
+- Run long commands (a full test suite, an e2e run, a wait on CI) with a time limit, for example `timeout 1500 pnpm test`, so a hang is reported instead of running for hours.
+- Stop every background shell and process you started (test runs, servers, watchers, `gh pr checks --watch`) and every disposable environment you brought up, and drop the databases you created. Say in your report that nothing of yours is left running.
+- Use your own uniquely named scratch directory; never write helper files with generic names into a shared one.
+- Your report must reach the coordinator: if you are told it may not, send it with `SendMessage` as well.
+
 ## What you return
 
 A verdict, **ready** or **not ready**, then the findings, most important first, each with file and line, what is wrong and how to fix it. List the commands you ran with their results.
