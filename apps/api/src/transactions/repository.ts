@@ -640,9 +640,10 @@ function sumOfSplits(splits: readonly { readonly amountCents: number }[]): numbe
  * legs are locked first, so the reconciliation flow cannot reconcile the other one in between.
  * The edit is refused as `reconciled` when the other leg is reconciled, and as `trade_owned` when
  * it is a trade's cash leg, as for the leg itself, and with a `ValidationError`
- * (`unsupported_transaction`) when the other leg has several splits, since nothing says which of them the difference belongs to. New
- * splits with the same total (a different category on the leg) leave the other leg alone. The
- * payee, memo and status of a leg stay its own: they never reach the other leg.
+ * (`unsupported_transaction`) when the other leg has several splits, since nothing says which of
+ * them the difference belongs to. New splits with the same total (a different category on the
+ * leg) leave the other leg alone. The payee, memo and status of a leg stay its own: they never
+ * reach the other leg.
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -652,7 +653,7 @@ export async function updateTransaction(
 ): Promise<TransactionRecord | "not_found" | "reconciled" | "trade_owned"> {
   let existing = await getTransaction(db, workspaceId, transactionId);
   if (existing !== undefined && existing.transferId !== null && patch.splits !== undefined) {
-    // In id order, the same order every other edit of this pair takes, so two never deadlock.
+    // Always in id order, so two edits of the same pair, from either leg, never deadlock.
     await db.query("SELECT id FROM transactions WHERE workspace_id = $1 AND id = ANY($2) ORDER BY id FOR UPDATE", [
       workspaceId,
       [existing.id, existing.transferId],
