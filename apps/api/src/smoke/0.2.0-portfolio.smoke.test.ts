@@ -40,6 +40,9 @@ if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
   throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
 }
 
+/** Names this run's catalog rows (`Smoke 0.2.0 <hex>`), so a run killed before its `after` leaves findable leftovers. */
+const RUN_PREFIX = `Smoke 0.2.0 ${randomBytes(4).toString("hex")}`;
+
 /** Units × 10^8 (ADR 0011). */
 const units = (n: number): number => n * 100_000_000;
 /** A price × 10^6 (ADR 0011), from a price written with at most 6 decimals. */
@@ -124,9 +127,10 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
   let realm: KeycloakTestRealm;
   let server: RunningServer;
   let ownerToken: string;
-  let workspaceId: string;
+  let workspaceId: string | undefined;
   const otherWorkspaceIds: string[] = [];
   const instrumentIds: string[] = [];
+  const tickers = new Map<string, string>();
 
   before(async () => {
     superuserPool = createPool(databaseUrl);
@@ -155,12 +159,22 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
   });
 
   after(async () => {
-    await server.stop();
-    // Trades reference instruments with ON DELETE RESTRICT: the workspaces go first.
-    await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceId, ...otherWorkspaceIds]]);
-    await superuserPool.query("DELETE FROM instruments WHERE id = ANY($1)", [instrumentIds]);
-    await realm.teardown();
-    await superuserPool.end();
+    // Each step is guarded, so a `before` that failed half-way still releases what it got and its
+    // own error is the one reported.
+    try {
+      await server?.stop();
+      // Trades reference instruments with ON DELETE RESTRICT: the workspaces go first.
+      const workspaceIds = [workspaceId, ...otherWorkspaceIds].filter((id): id is string => id !== undefined);
+      if (superuserPool && workspaceIds.length > 0) {
+        await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [workspaceIds]);
+      }
+      if (superuserPool && instrumentIds.length > 0) {
+        await superuserPool.query("DELETE FROM instruments WHERE id = ANY($1)", [instrumentIds]);
+      }
+    } finally {
+      await realm?.teardown();
+      await superuserPool?.end();
+    }
   });
 
   async function send(token: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: unknown }> {
@@ -175,7 +189,7 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
 
   /** A request to the household's workspace as its owner, which must succeed. */
   async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await send(ownerToken, method, `/workspaces/${workspaceId}${path}`, body);
+    const response = await send(ownerToken, method, `/workspaces/${workspaceId!}${path}`, body);
     if (response.status >= 300) {
       throw new Error(`${method} ${path} responded ${response.status}: ${JSON.stringify(response.body)}`);
     }
@@ -183,12 +197,22 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
   }
 
   async function createInstrument(name: string, type: string, priceFactorE6: number): Promise<string> {
-    // The catalog is shared by every workspace and run: a random ticker keeps runs apart.
+    // The catalog is shared by every workspace and run, and nothing deletes from it but this test's
+    // own `after`: a random ticker keeps runs apart, and the run's prefix on the name lets a killed
+    // run's leftovers be found.
     const ticker = `S${randomBytes(5).toString("hex").toUpperCase()}`;
-    const response = await send(ownerToken, "POST", "/instruments", { ticker, exchange: "XMIL", name, type, currency: "EUR", priceFactorE6 });
+    const response = await send(ownerToken, "POST", "/instruments", {
+      ticker,
+      exchange: "XMIL",
+      name: `${RUN_PREFIX} ${name}`,
+      type,
+      currency: "EUR",
+      priceFactorE6,
+    });
     assert.equal(response.status, 201, JSON.stringify(response.body));
     const id = (response.body as { id: string }).id;
     instrumentIds.push(id);
+    tickers.set(id, ticker);
     return id;
   }
 
@@ -461,7 +485,11 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
       costsCents: 150,
       taxesOnGainsCents: 4_498,
     });
-    assert.equal(140_250 + 308_550, 448_800);
+    // The portfolios' cost shares, as the API returns them, add up to the account's cost.
+    assert.equal(
+      position(growthPositions, etf).costBasisCents + position(incomePositions, etf).costBasisCents,
+      position(accountPositions, etf).costBasisCents,
+    );
     expectPosition(accountPositions, stock, {
       quantityE8: units(80),
       costBasisCents: 400_400,
@@ -510,11 +538,20 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
     // 30,000.00 − 2,005.00 − 3,605.00 − 4,004.00 + 1,250.02 + 24.16 − 1.50 − 9,987.00 − 3.50 = €11,668.18.
     const brokerBalance = await balanceOf(brokerId);
     assert.equal(brokerBalance, 1_166_818);
-    assert.equal(brokerBalance, 3_000_000 + trades.reduce((sum, t) => sum + t.cashCents, 0));
+    const { transactions: brokerTransactions } = await api<{ transactions: Transaction[] }>("GET", `/accounts/${brokerId}/transactions`);
+    const deposit = brokerTransactions.find((t) => t.id === transfer.destination.id);
+    assert.ok(deposit, "expected the transfer's leg on the brokerage account");
+    const depositCents = deposit.splits.reduce((sum, split) => sum + split.amountCents, 0);
+    assert.equal(depositCents, 3_000_000);
+    assert.equal(brokerBalance, depositCents + trades.reduce((sum, t) => sum + t.cashCents, 0));
     // The domain guide's "the account adds up": realized + income − costs − taxes on gains
     // = (cash + cost) − money transferred in: 173.00 − 10.84 − 5.00 − 44.98 = 112.18
-    // = 11,668.18 + 18,444.00 − 30,000.00.
-    assert.equal(17_300 - 1_084 - 500 - 4_498, brokerBalance + 1_844_400 - 3_000_000);
+    // = 11,668.18 + 18,444.00 − 30,000.00, every term read from the API.
+    const accountSummary = accountPositions.summaries[0]!;
+    assert.equal(
+      accountSummary.realizedCents! + accountSummary.incomeCents! - accountSummary.costsCents! - accountSummary.taxesOnGainsCents!,
+      brokerBalance + accountSummary.costBasisCents - depositCents,
+    );
 
     // --- 5e. The budget never sees a trade: both months are exactly as they were before the trades.
     assert.deepEqual(await api<BudgetMonth>("GET", "/budget-months/2026-03"), marchBeforeTrades);
@@ -590,6 +627,15 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
     assert.equal((await asNeighbour("DELETE", `/trades/${dividend!.id}`)).status, 404);
     const intoOurs = await asNeighbour("POST", "/trades", { ...onBroker, portfolioId: growth, type: "fee", tradeDate: "2026-05-01", feesCents: 100 });
     assert.equal(intoOurs.status, 400, JSON.stringify(intoOurs.body));
+    // The instruments catalog is shared: both households find the bond by its ticker.
+    for (const token of [ownerToken, neighbour.token]) {
+      const found = await send(token, "GET", `/instruments?q=${tickers.get(bond)!}`);
+      assert.equal(found.status, 200);
+      assert.deepEqual(
+        (found.body as { instruments: { id: string; name: string }[] }).instruments.map((i) => [i.id, i.name]),
+        [[bond, `${RUN_PREFIX} Treasury bond 2031`]],
+      );
+    }
     // Nor can they reach the household's workspace itself.
     assert.equal((await send(neighbour.token, "GET", `/workspaces/${workspaceId}/trades`)).status, 403);
     // And nothing they tried changed anything here.
