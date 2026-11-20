@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { assertExploreRealm } from "../explore-env/names.ts";
+
 /**
  * Gets a real access token for a persistent "demo" Keycloak user, without a browser. The
  * `envelope-api` client is public, PKCE-only, with `directAccessGrantsEnabled: false` by design
@@ -10,8 +12,30 @@ import { createHash, randomBytes } from "node:crypto";
  * the (disabled) self-registration screen.
  */
 
-const REALM = "envelope";
-const REDIRECT_URI = "http://localhost:5173";
+/**
+ * Which realm and which web origin to sign in through. The defaults are the shared development
+ * stack's (the `envelope` realm, Vite's dev server); a disposable environment (`explore-env/`) has a
+ * realm and a web origin of its own, read from its manifest (`scripts/README.md`, "Reference
+ * screenshots").
+ */
+export interface KeycloakTarget {
+  readonly realm: string;
+  readonly redirectUri: string;
+}
+
+export const DEFAULT_KEYCLOAK_TARGET: KeycloakTarget = { realm: "envelope", redirectUri: "http://localhost:5173" };
+
+/**
+ * `KEYCLOAK_REALM` and `WEB_URL` from the environment, each falling back to the shared stack's own.
+ * A realm other than `envelope` must be a disposable environment's own (`envelope-explore-<run>`).
+ */
+export function keycloakTargetFromEnv(env: Readonly<Record<string, string | undefined>> = process.env): KeycloakTarget {
+  const realm = env.KEYCLOAK_REALM ?? DEFAULT_KEYCLOAK_TARGET.realm;
+  if (realm !== DEFAULT_KEYCLOAK_TARGET.realm) {
+    assertExploreRealm(realm);
+  }
+  return { realm, redirectUri: env.WEB_URL ?? DEFAULT_KEYCLOAK_TARGET.redirectUri };
+}
 
 function base64url(input: Buffer): string {
   return input.toString("base64").replaceAll("+", "-").replaceAll("/", "_").replaceAll(/=+$/g, "");
@@ -41,11 +65,13 @@ export async function ensureDemoUser(
   adminPassword: string,
   username: string,
   password: string,
+  target: KeycloakTarget = DEFAULT_KEYCLOAK_TARGET,
 ): Promise<void> {
+  const realm = target.realm;
   const token = await adminToken(keycloakUrl, adminPassword);
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
-  const existing = await fetch(`${keycloakUrl}/admin/realms/${REALM}/users?username=${username}&exact=true`, { headers });
+  const existing = await fetch(`${keycloakUrl}/admin/realms/${realm}/users?username=${username}&exact=true`, { headers });
   if (!existing.ok) {
     throw new Error(`looking up the demo user failed: ${existing.status} ${await existing.text()}`);
   }
@@ -54,7 +80,7 @@ export async function ensureDemoUser(
     return;
   }
 
-  const created = await fetch(`${keycloakUrl}/admin/realms/${REALM}/users`, {
+  const created = await fetch(`${keycloakUrl}/admin/realms/${realm}/users`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -100,15 +126,22 @@ function findFormAction(html: string): string {
 }
 
 /** Signs in as `username`/`password` through the real PKCE handshake, returning an access token. */
-export async function signInAsDemoUser(keycloakUrl: string, clientId: string, username: string, password: string): Promise<string> {
+export async function signInAsDemoUser(
+  keycloakUrl: string,
+  clientId: string,
+  username: string,
+  password: string,
+  target: KeycloakTarget = DEFAULT_KEYCLOAK_TARGET,
+): Promise<string> {
+  const { realm, redirectUri } = target;
   const jar = new CookieJar();
   const { verifier, challenge } = pkcePair();
   const state = base64url(randomBytes(16));
 
-  const authUrl = new URL(`${keycloakUrl}/realms/${REALM}/protocol/openid-connect/auth`);
+  const authUrl = new URL(`${keycloakUrl}/realms/${realm}/protocol/openid-connect/auth`);
   authUrl.search = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     response_type: "code",
     scope: "openid",
     state,
@@ -142,13 +175,13 @@ export async function signInAsDemoUser(keycloakUrl: string, clientId: string, us
     throw new Error(`signInAsDemoUser: no "code" in the redirect location (${location})`);
   }
 
-  const tokenResponse = await fetch(`${keycloakUrl}/realms/${REALM}/protocol/openid-connect/token`, {
+  const tokenResponse = await fetch(`${keycloakUrl}/realms/${realm}/protocol/openid-connect/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
       client_id: clientId,
       code_verifier: verifier,
     }),
