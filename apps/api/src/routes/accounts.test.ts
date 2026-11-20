@@ -240,8 +240,8 @@ describe("accounts routes", () => {
       return memberToken;
     }
 
-    // The test realm's access tokens live 3 seconds (test-helpers/keycloak.ts): take a fresh one
-    // before each test rather than rely on the one the file's setup obtained.
+    // A fresh token before each test rather than the one the file's setup obtained, so no test
+    // depends on how long the realm's access tokens live (test-helpers/keycloak.ts: a minute).
     beforeEach(async () => {
       token = await realm.getUserToken();
     });

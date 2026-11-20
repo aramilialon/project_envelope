@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { setTimeout as sleep } from "node:timers/promises";
 
 import Fastify, { type FastifyInstance } from "fastify";
-import { SignJWT, generateKeyPair } from "jose";
+import { SignJWT, decodeJwt, generateKeyPair } from "jose";
 
-import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import {
+  SHORT_LIVED_TOKEN_SECONDS,
+  setUpKeycloakTestRealm,
+  waitUntilExpired,
+  type KeycloakTestRealm,
+} from "../test-helpers/keycloak.ts";
 import { createAuthPreHandler, createTokenVerifier } from "./token-verifier.ts";
 
 if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
@@ -85,8 +89,13 @@ describe("token verifier, against a real Keycloak realm", () => {
   });
 
   it("rejects an expired token", async () => {
-    const token = await realm.getUserToken();
-    await sleep(4000); // the test realm's access tokens live 3 seconds (see test-helpers/keycloak.ts)
+    // On purpose: every other token in the test realm lives a minute (#519).
+    const token = await realm.getShortLivedUserToken();
+    const { iat, exp, aud } = decodeJwt(token);
+    assert.equal((exp ?? 0) - (iat ?? 0), SHORT_LIVED_TOKEN_SECONDS);
+    // The right audience, so expiry is the only reason left for the 401 below.
+    assert.ok([aud ?? []].flat().includes(realm.audience));
+    await waitUntilExpired(token);
     const response = await app.inject({
       method: "GET",
       url: "/protected",

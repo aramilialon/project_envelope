@@ -110,9 +110,15 @@ function parsePort(env: NodeJS.ProcessEnv, name: string, defaultValue: number): 
   if (value === undefined) {
     return defaultValue;
   }
-  const port = Number(value);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`${name} must be an integer between 1 and 65535, got "${value}"`);
+  // Digits only: Number() alone would turn "", " ", "0x10" or "1e3" into a port.
+  const port = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isInteger(port) || port > 65535) {
+    throw new Error(`${name} must be an integer between 0 and 65535, got "${value}"`);
+  }
+  // 0 asks the operating system for any free port (the smoke tests use it, #519); a production
+  // server needs a port people can reach, so there it is a mistake, not a choice.
+  if (port === 0 && env.NODE_ENV === "production") {
+    throw new Error(`${name} cannot be 0 when NODE_ENV is production`);
   }
   return port;
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Postgres roles are cluster-wide, not per-database: running apps/api's own test suite (even
-# against envelope_test, never the dev "envelope" database) resets envelope_app's and
-# envelope_queue's passwords to a fixed test-only value on the whole cluster, breaking a live
-# dev server started from apps/api/.env's own passwords until they are set back. One command
-# instead of retyping the ALTER ROLE pair by hand every time this happens.
+# Postgres roles are cluster-wide, not per-database. apps/api's own tests log in with the same
+# envelope_app/envelope_queue passwords apps/api/.env gives them (#519), so running them no longer
+# changes these; this script only repairs a database whose passwords no longer match .env (for
+# example after a test run from before #519, or a role recreated by hand). One command instead of
+# retyping the ALTER ROLE pair by hand.
 #
 # Reads the passwords straight out of apps/api/.env (APP_DATABASE_URL/QUEUE_DATABASE_URL), so
 # there is nothing to pass on the command line; run from anywhere in the repo.

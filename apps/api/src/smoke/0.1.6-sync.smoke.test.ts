@@ -95,7 +95,6 @@ describe("smoke: 0.1.6 Sync, against the real process", () => {
 
     server = await startServer({
       HOST: "127.0.0.1",
-      PORT: "3906",
       APP_DATABASE_URL: appConnectionString(databaseUrl),
       QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
       VAPID_SUBJECT: TEST_VAPID_SUBJECT,

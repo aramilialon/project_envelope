@@ -11,6 +11,7 @@ import { createBudgetRecomputeHandler } from "../notifications/budget-recompute-
 import type { PushDriver, PushOutcome, PushPayload } from "../notifications/driver.ts";
 import type { PushDrivers } from "../notifications/repository.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { assertEveryJobTypeCovered, assertSingleDelivery, defineDoubleDeliveryCase, type DoubleDeliveryCase } from "./double-delivery.ts";
 import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./job-types.ts";
 
@@ -37,17 +38,21 @@ function fakePushDriver(outcome: PushOutcome = "sent"): PushDriver & { calls: { 
 /**
  * The shared harness (#37), applied to every real job type registered so far: each one plugs
  * in its own fixture and its own way of counting "did this run's effect happen exactly once".
+ * In a database of its own (#519): the `scheduled-transactions-fire` job fires every workspace
+ * there is, so it must not see whatever other test files left in the shared one.
  */
 describe("double-delivery harness (#37)", () => {
+  let database: IsolatedDatabase | undefined;
   let superuserPool: DbPool;
   let appPool: DbPool;
   let cases: DoubleDeliveryCase[];
 
   before(async () => {
-    superuserPool = createPool(databaseUrl);
+    database = await createIsolatedDatabase(databaseUrl);
+    superuserPool = createPool(database.databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
-    appPool = createPool(appConnectionString(databaseUrl));
+    appPool = createPool(appConnectionString(database.databaseUrl));
 
     const workspace = await superuserPool.query<{ id: string }>(
       "INSERT INTO workspaces (name, base_currency, time_zone) VALUES ('Test', 'EUR', 'UTC') RETURNING id",
@@ -134,8 +139,12 @@ describe("double-delivery harness (#37)", () => {
   });
 
   after(async () => {
-    await appPool.end();
-    await superuserPool.end();
+    try {
+      await appPool?.end();
+      await superuserPool?.end();
+    } finally {
+      await database?.drop();
+    }
   });
 
   it("covers every registered job type", () => {

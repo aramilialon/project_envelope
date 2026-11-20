@@ -50,10 +50,22 @@ describe("loadConfig", () => {
     );
   });
 
-  it("rejects a PORT that is not a positive integer", () => {
+  it("accepts PORT 0, which lets the operating system pick a free port", () => {
+    assert.equal(loadConfig({ ...BASE_ENV, PORT: "0" }).port, 0);
+  });
+
+  it("rejects PORT 0 when NODE_ENV is production", () => {
+    assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "0", NODE_ENV: "production" }), /PORT cannot be 0/);
+  });
+
+  it("rejects a PORT that is not an integer between 0 and 65535", () => {
     assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "not-a-number" }), /PORT/);
     assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "-1" }), /PORT/);
     assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "70000" }), /PORT/);
+    assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "" }), /PORT/);
+    assert.throws(() => loadConfig({ ...BASE_ENV, PORT: " " }), /PORT/);
+    assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "0x10" }), /PORT/);
+    assert.throws(() => loadConfig({ ...BASE_ENV, PORT: "1e3" }), /PORT/);
   });
 
   it("rejects an unknown LOG_LEVEL", () => {

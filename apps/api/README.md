@@ -68,9 +68,12 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 to 4 of the
 | `src/sync/repository.ts` | `recordChange`/`getLatestChange`: the field-level change log (design.md, "Field-level change protocol"). `recordChange` is idempotent on the change's own id (`ON CONFLICT (id) DO NOTHING`) — a repeated network retry of the same change never creates a duplicate row (#42). `listChangesSince`: every change later than a given HLC (or all of them, for a first sync), ordered the same way `compareHlc` would via Postgres's own row comparison `(hlc_physical, hlc_counter, device_id) > (...)` (#44) |
 | `src/sync/apply.ts` | `applyIncomingChange`: records an incoming change, then writes it onto the real column an explicit allowlist maps its `field_name` to — but only if its HLC is later than the field's current one; the allowlist exists because `field_name` comes from the device, not from code we wrote, and building `UPDATE` SQL from it directly would let an untrusted string name any column. Scoped to `transactions.memo`/`transactions.payee` for now (#43). A change to a reconciled transaction is rejected outright (`"locked"`), checked before clock resolution even runs and never recorded, so a retry after the transaction unlocks (#32) is unaffected by the rejected attempt (#45) |
 | `src/routes/sync.ts` | `POST /workspaces/:workspaceId/changes`: the upload side of the sync protocol — a device's own queued changes, applied in any order with the same converged result (#43). `GET /workspaces/:workspaceId/changes?sincePhysical=&sinceCounter=&sinceDeviceId=`: the download side — every change later than that HLC, or all of them when the three query params are omitted; any read-only member can call it too, unlike the upload side (#44) |
-| `src/test-helpers/keycloak.ts` | Provisions a throwaway Keycloak realm, clients and user for tests, through the admin REST API |
-| `src/test-helpers/app-role.ts` | Grants `envelope_app` a test-only login (idempotently, cluster-wide) so tests can connect as the same restricted role the running server uses |
+| `src/test-helpers/keycloak.ts` | Provisions a throwaway Keycloak realm, clients and user for tests, through the admin REST API. Its access tokens live 60 seconds; `getShortLivedUserToken()` and `waitUntilExpired()` are for the tests that check expiry on purpose. A 5xx from Keycloak is retried a few times, since concurrent runs creating and deleting realms occasionally get one (#519) |
+| `src/test-helpers/role-login.ts` | `rolePassword`/`ensureRoleLogin`: the password a role logs in with in tests is the developer's own (`APP_DATABASE_URL`/`QUEUE_DATABASE_URL`, from the environment or `apps/api/.env`), else a fixed test-only one (CI); it is set only when the role cannot already log in with it, so a test run never changes a password a dev server relies on, and parallel runs do not collide (#519) |
+| `src/test-helpers/app-role.ts` | Gives `envelope_app` its test login (through `role-login.ts`) so tests can connect as the same restricted role the running server uses |
 | `src/test-helpers/queue-role.ts` | Same as `app-role.ts`, for `envelope_queue` |
+| `src/test-helpers/isolated-database.ts` | `createIsolatedDatabase`: a throwaway database on the same server, for the tests of the `scheduled-transactions-fire` job, which fires every workspace in its database and so must not see what other test files left in the shared one (#519) |
+| `src/smoke/support.ts` | Starts the real server process for the smoke tests on port 0 and resolves on the `listening` line `main.ts` prints with the port it bound; a `NODE_ENV=production` server, which refuses port 0, gets a free port the system picked just before (#519) |
 | `src/test-helpers/vapid-keys.ts` | A fixed, throwaway VAPID key pair so tests can start the server without a real one (#39/#40) |
 | `src/app.ts` | `buildApp(config, queue?)`: assembles the Fastify instance and its routes, without opening a port (used directly by tests, which mostly omit `queue`); `queue`, when given, is threaded into the transactions routes so a write can enqueue a job in its own transaction (#35) |
 | `src/main.ts` | Entry point: loads the config, creates and starts the queue driver (its own pool, separate from `buildApp`'s), registers the `budget-recompute` handler (#40) and schedules/registers the `scheduled-transactions-fire` one (#38, an hourly cron — frequent enough to catch every workspace's own local midnight, whatever its time zone), builds the app (passing its own VAPID public key, #61), starts listening; stops the app, the queue driver and its pool on shutdown |
@@ -102,7 +105,7 @@ Copy `.env.example` to `.env` and adjust it; `.env` is read automatically by `de
 | `KEYCLOAK_ISSUER` | — (required) | The realm's issuer URL, e.g. `http://127.0.0.1:8080/realms/envelope`; also where the JWKS is fetched from |
 | `KEYCLOAK_AUDIENCE` | — (required) | The client id every access token must be issued for |
 | `HOST` | `127.0.0.1` | Address the server listens on |
-| `PORT` | `3000` | Port the server listens on |
+| `PORT` | `3000` | Port the server listens on, digits only; `0` lets the operating system pick a free one (the smoke tests use it) and is refused when `NODE_ENV` is `production`. Once listening, the server prints one `{"msg":"listening","address":…,"port":…}` line to standard output whatever `LOG_LEVEL` is |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug` or `trace` |
 | `LOG_PRETTY` | `false` | Human-readable logs instead of JSON; only for a terminal, never in production |
 | `NODE_ENV` | `development` | |
@@ -133,6 +136,17 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
 ```
 
 CI does the same against a fresh PostgreSQL service container and a Keycloak container it starts and waits on: see `.github/workflows/ci.yml`.
+
+Several runs can share one machine at the same time, each against a database of its own (for example `envelope_test_a` and `envelope_test_b`): the smoke tests listen on ports the operating system picks, the `envelope_app`/`envelope_queue` test passwords are set only when a role cannot already log in with them, and the two job test files that fire every workspace (`fire-job.test.ts`, `double-delivery.test.ts`) create and drop a throwaway database of their own, named after `DATABASE_URL`'s with a random suffix. The `DATABASE_URL` user therefore needs to be allowed to create databases, as the `envelope` superuser and CI's own are.
+
+The tests log in as `envelope_app` and `envelope_queue` with the passwords `APP_DATABASE_URL` and `QUEUE_DATABASE_URL` give them, from the environment or from this package's `.env`, the same ones a dev server uses; only without either (CI, a fresh checkout) do they fall back to fixed test-only passwords. They set a password only when the role cannot already log in with it, so running the tests never breaks a dev server, and `scripts/dev/reset-role-passwords.sh` is not needed afterwards.
+
+A run killed before its job tests finish can leave a throwaway database behind, named `<DATABASE_URL's database>_` followed by 12 hex digits. To list and remove them (here for `envelope_test`):
+
+```bash
+$ psql "$DATABASE_URL" -Atc "SELECT datname FROM pg_database WHERE datname ~ '^envelope_test_[0-9a-f]{12}$'"
+$ psql "$DATABASE_URL" -Atc "SELECT format('DROP DATABASE %I WITH (FORCE);', datname) FROM pg_database WHERE datname ~ '^envelope_test_[0-9a-f]{12}$'" | psql "$DATABASE_URL"
+```
 
 ## Administration
 

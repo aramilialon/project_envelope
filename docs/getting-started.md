@@ -232,7 +232,9 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
   pnpm --filter @envelope/api test
 ```
 
-Even against `envelope_test`, this resets `envelope_app`'s and `envelope_queue`'s own passwords on the whole Postgres instance to a fixed test-only value: roles are cluster-wide, not per-database (the test helpers grant themselves a login through the very same role object a live dev server also depends on). If a dev server started from this section stops reaching the database right after running the tests, that is why — `scripts/dev/reset-role-passwords.sh` sets both passwords back to whatever this `.env` already has, no arguments needed.
+Roles are cluster-wide, not per-database, so the tests log in as `envelope_app` and `envelope_queue` with the same passwords this `.env` gives them (`APP_DATABASE_URL`, `QUEUE_DATABASE_URL`; the environment wins if it sets them too), and set them only when a role cannot already log in with them. Running the tests therefore never breaks a dev server started from this section. `scripts/dev/reset-role-passwords.sh` is only for repairing a database whose passwords no longer match this `.env` (for example after a test run from before this change); it sets both back, no arguments needed.
+
+Two test runs can share this machine at the same time, as long as each has a database of its own (another `createdb`, and its name in `DATABASE_URL`): the smoke tests listen on ports the operating system picks, test tokens live a minute, and the tests of the scheduled-transactions job create and drop a throwaway database of their own, so the `envelope` user needs to be allowed to create databases (it is, as the superuser `infra/docker-compose.yml` creates).
 
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
 

@@ -1,20 +1,30 @@
 /**
  * Provisions a throwaway Keycloak realm for integration tests, through the
- * admin REST API: a realm with a short access-token lifespan (so a test can
- * wait for a token to expire), two clients with different audiences, and one
- * user. Nothing here is meant for anything but tests: the realm is deleted in
- * `teardown()`.
+ * admin REST API: a realm whose access tokens live a minute (long enough for a
+ * slow test on a loaded machine, #519), two clients with different audiences, a
+ * third client with the matching audience whose tokens live only
+ * `SHORT_LIVED_TOKEN_SECONDS` (for the tests that wait for a token to expire, on
+ * purpose), and one user. Nothing here is meant for anything but tests: the
+ * realm is deleted in `teardown()`.
  */
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import { decodeJwt } from "jose";
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://127.0.0.1:8080";
 const MATCHING_AUDIENCE = "envelope-api";
 const MISMATCHED_AUDIENCE = "some-other-api";
+const ACCESS_TOKEN_LIFESPAN_SECONDS = 60;
+/** How long a token from `getShortLivedUserToken()` lives. */
+export const SHORT_LIVED_TOKEN_SECONDS = 2;
 
 export interface KeycloakTestRealm {
   readonly issuer: string;
   readonly audience: string;
   getUserToken(): Promise<string>;
+  /** A token for the same user that expires after `SHORT_LIVED_TOKEN_SECONDS`, for tests of expiry. */
+  getShortLivedUserToken(): Promise<string>;
   getTokenWithMismatchedAudience(): Promise<string>;
   /** A token for a brand-new user in the same realm — for tests needing several distinct local users (e.g. #24's per-role checks). */
   getTokenForNewUser(): Promise<string>;
@@ -42,17 +52,21 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
     realm,
     enabled: true,
     sslRequired: "none",
-    accessTokenLifespan: 3,
+    accessTokenLifespan: ACCESS_TOKEN_LIFESPAN_SECONDS,
   });
 
   await createClientWithAudience(adminToken, realm, "envelope-api", clientSecret, MATCHING_AUDIENCE);
   await createClientWithAudience(adminToken, realm, "envelope-other", clientSecret, MISMATCHED_AUDIENCE);
+  await createClientWithAudience(adminToken, realm, "envelope-api-short-lived", clientSecret, MATCHING_AUDIENCE, {
+    "access.token.lifespan": String(SHORT_LIVED_TOKEN_SECONDS),
+  });
   const userId = await createUser(adminToken, realm, username, password);
 
   return {
     issuer: `${KEYCLOAK_URL}/realms/${realm}`,
     audience: MATCHING_AUDIENCE,
     getUserToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, username, password),
+    getShortLivedUserToken: () => getUserAccessToken(realm, "envelope-api-short-lived", clientSecret, username, password),
     getTokenWithMismatchedAudience: () => getUserAccessToken(realm, "envelope-other", clientSecret, username, password),
     getTokenForNewUser: async () => {
       const otherUsername = `test-user-${randomUUID()}`;
@@ -67,6 +81,21 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
       await adminRequest(adminToken, "DELETE", `/admin/realms/${realm}`);
     },
   };
+}
+
+/**
+ * Resolves once `token` is past its own `exp` (a second past it, since `exp` has whole-second
+ * precision), so a test of expiry waits exactly as long as the token itself says, not a guess.
+ */
+export async function waitUntilExpired(token: string): Promise<void> {
+  const { exp } = decodeJwt(token);
+  if (exp === undefined) {
+    throw new Error("expected the token to carry an exp claim");
+  }
+  const remainingMs = (exp + 1) * 1000 - Date.now();
+  if (remainingMs > 0) {
+    await sleep(remainingMs);
+  }
 }
 
 async function getAdminToken(adminPassword: string): Promise<string> {
@@ -98,7 +127,7 @@ async function getUserAccessToken(
 }
 
 async function postForm(url: string, fields: Record<string, string>): Promise<Record<string, unknown>> {
-  const response = await fetch(url, {
+  const response = await fetchRetryingServerErrors(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields),
@@ -115,7 +144,7 @@ async function adminRequest(
   path: string,
   body?: unknown,
 ): Promise<Response> {
-  const response = await fetch(`${KEYCLOAK_URL}${path}`, {
+  const response = await fetchRetryingServerErrors(`${KEYCLOAK_URL}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${adminToken}`,
@@ -127,6 +156,26 @@ async function adminRequest(
     throw new Error(`${method} ${path} responded ${response.status}: ${await response.text()}`);
   }
   return response;
+}
+
+/**
+ * Keycloak answers 500 now and then when several test runs create and delete realms at the same
+ * time (#519): a realm deleted by one run can still be in the role cache another run's admin
+ * request walks ("Not found in database", a NullPointerException), and the request is rolled
+ * back. Such a request succeeds when sent again a moment later, so a 5xx is retried a few times
+ * before it counts as a failure; any other status is returned as is.
+ */
+const SERVER_ERROR_ATTEMPTS = 5;
+
+async function fetchRetryingServerErrors(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(url, init);
+    if (response.status < 500 || attempt === SERVER_ERROR_ATTEMPTS) {
+      return response;
+    }
+    await response.body?.cancel();
+    await sleep(250 * attempt);
+  }
 }
 
 function createdEntityId(response: Response): string {
@@ -143,6 +192,7 @@ async function createClientWithAudience(
   clientId: string,
   secret: string,
   audience: string,
+  attributes: Record<string, string> = {},
 ): Promise<void> {
   const response = await adminRequest(adminToken, "POST", `/admin/realms/${realm}/clients`, {
     clientId,
@@ -152,6 +202,7 @@ async function createClientWithAudience(
     directAccessGrantsEnabled: true,
     standardFlowEnabled: false,
     serviceAccountsEnabled: false,
+    attributes,
   });
   const internalId = createdEntityId(response);
 

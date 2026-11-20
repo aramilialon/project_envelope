@@ -158,7 +158,7 @@ describe("workspaces routes (#394)", () => {
   });
 
   it("sets and clears the tax country, and only its own owner may (#508)", async () => {
-    // The test realm's access tokens live 3 seconds: take fresh ones as the test goes.
+    // Fresh tokens as the test goes, so it never depends on how long one lives (a minute).
     let ownerToken = await realm.getUserToken();
     const auth = () => ({ authorization: `Bearer ${ownerToken}` });
     const created = await app.fastify.inject({
@@ -217,7 +217,7 @@ describe("workspaces routes (#394)", () => {
     assert.equal(cleared.statusCode, 200);
     assert.equal(await listedTaxCountry(), null);
 
-    // This test outlasts a token's 3-second life: leave the next test a fresh one.
+    // Leave the next test a fresh token, whatever this one used up.
     token = await realm.getUserToken();
   });
 
