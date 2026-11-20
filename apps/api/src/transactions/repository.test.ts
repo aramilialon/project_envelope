@@ -366,6 +366,75 @@ describe("transactions repository", () => {
     assert.deepEqual(destination, transfer.destination);
   });
 
+  it("refuses to clear the category of the on-budget leg of a transfer to an off-budget account, writing nothing (#552)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 2500,
+      categoryId,
+    });
+
+    for (const amountCents of [-2500, -3000]) {
+      await assert.rejects(
+        () => updateTransaction(pool, workspaceId, transfer.source.id, { payee: "After", splits: [{ categoryId: null, amountCents }] }),
+        (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+      );
+    }
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.deepEqual(source, transfer.source);
+    assert.deepEqual(destination, transfer.destination);
+  });
+
+  it("refuses to clear the category of the on-budget leg of a transfer from an off-budget account (#552)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: accountId,
+      occurredAt: "2026-09-10",
+      amountCents: 900,
+      categoryId,
+    });
+
+    await assert.rejects(
+      () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 900 }] }),
+      (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+    );
+  });
+
+  it("ignores a category given to a leg that carries none, as creating the transfer does (#552)", async () => {
+    const onBudget = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 700,
+    });
+    const toOffBudget = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 700,
+      categoryId,
+    });
+    // Both legs on-budget, either leg; the off-budget leg of a transfer to an off-budget account.
+    const legs = [onBudget.source, onBudget.destination, toOffBudget.destination];
+    for (const leg of legs) {
+      const amountCents = leg.splits[0]!.amountCents * 2;
+      const updated = await updateTransaction(pool, workspaceId, leg.id, { splits: [{ categoryId: otherCategoryId, amountCents }] });
+      assert.ok(typeof updated !== "string", `expected a record, got "${String(updated)}"`);
+      assert.deepEqual(
+        updated.splits.map((split) => [split.categoryId, split.amountCents]),
+        [[null, amountCents]],
+      );
+    }
+    const [onBudgetLeg] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === toOffBudget.source.id);
+    assert.equal(onBudgetLeg?.splits[0]?.categoryId, categoryId, "the on-budget leg keeps its own category");
+  });
+
   it("creates a cash-to-card transfer the same way, no special-casing", async () => {
     const transfer = await createTransfer(pool, {
       workspaceId,

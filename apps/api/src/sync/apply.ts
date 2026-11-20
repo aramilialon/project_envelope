@@ -53,7 +53,10 @@ interface FieldApplier {
  * No amount is a sync field: a change to `splits.amount_cents` or `transactions.amount_cents`
  * answers `unsupported_field`. Wiring one up must keep a transfer's two legs cancelling out, as
  * `updateTransaction` does (#547): a bare UPDATE of one leg's split would break the budget
- * invariant.
+ * invariant. Nor is a split's category (`splits.category_id`): wiring it up must keep
+ * `updateTransaction`'s category rule for transfer legs (#552), refusing to clear the category of
+ * the on-budget leg of a transfer to or from an off-budget account, which would make every
+ * budget-month read of the workspace fail.
  */
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {
