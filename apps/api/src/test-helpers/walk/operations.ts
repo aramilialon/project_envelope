@@ -122,6 +122,11 @@ export const EXCLUSIONS: Readonly<Record<string, string>> = {
     "EXCLUDED, random walk finding 1 (#80, issue to be filed): PATCH .../transactions/:id with new splits on one leg of a " +
     "transfer is accepted and changes that leg only, so the two legs stop cancelling out and money appears in or " +
     "disappears from the accounts while the budget does not move (the budget invariant breaks).",
+  "card-income":
+    "EXCLUDED, random walk finding 2 (#80, issue to be filed): POST .../transactions with an uncategorized split (income) " +
+    "on an on-budget credit card is accepted, and from then on every GET .../budget-months/:month of the workspace " +
+    "answers 400 unsupported_transaction until it is deleted. Income on a card is a known limitation of the core " +
+    "(packages/core/README.md), but the API should refuse the write instead of accepting one that breaks every read.",
 };
 
 function excluded(name: string): boolean {
@@ -250,7 +255,7 @@ function acceptTransaction(model: WorkspaceModel, _p: TransactionParams, body: u
 
 const income: OperationSpec<TransactionParams> = {
   generate(model, { random, progress }) {
-    const accounts = model.budgetCashAccounts();
+    const accounts = [...model.budgetCashAccounts(), ...(excluded("card-income") ? [] : model.cards())];
     if (accounts.length === 0) return undefined;
     const p = payee(random);
     return {
@@ -536,11 +541,21 @@ const syncTradeOwned: OperationSpec<SyncParams> = {
   generate(model, { random }) {
     const candidates = legs(model);
     if (candidates.length === 0) return undefined;
-    const field = random.pick(["transactions.amount_cents", "transactions.occurred_at", "transactions.account_id"]);
-    const value = field === "transactions.amount_cents" ? -random.int(1, 9_999) : field === "transactions.occurred_at" ? "2025-10-01T10:00:00Z" : random.uuid();
-    return { tx: random.pick(candidates).handle, field, value, changeId: random.uuid(), deviceId: `walk-${random.int(1, 9)}`, physical: 1_760_000_000_000 + random.int(0, 1e9) };
+    const leg = random.pick(candidates);
+    // A split's own fields name the split: possible once the model holds the leg as the API returned it.
+    const splitId = leg.record.splits[0]?.id;
+    const fields = ["transactions.amount_cents", "transactions.occurred_at", "transactions.account_id", ...(splitId ? ["splits.amount_cents", "splits.category_id"] : [])];
+    const field = random.pick(fields);
+    const value = field.endsWith("amount_cents") ? -random.int(1, 9_999) : field === "transactions.occurred_at" ? "2025-10-01T10:00:00Z" : random.uuid();
+    return { tx: leg.handle, field, value, changeId: random.uuid(), deviceId: `walk-${random.int(1, 9)}`, physical: 1_760_000_000_000 + random.int(0, 1e9) };
   },
-  request: syncRequest,
+  request(model, p) {
+    const request = syncRequest(model, p);
+    if (!p.field.startsWith("splits.")) return request;
+    const splitId = model.transaction(p.tx).record.splits[0]?.id;
+    const [change] = (request.body as { changes: Record<string, unknown>[] }).changes;
+    return { ...request, body: { changes: [{ ...change, entityId: splitId }] } };
+  },
   predict: () => ({ kind: "syncOutcome", outcome: "trade_owned" }),
   accept: () => touched({}),
 };
@@ -927,7 +942,8 @@ const transferSecurities: OperationSpec<TransferSecuritiesParams> = {
   accept: (model, _p, body) => acceptTrades(model, body),
 };
 
-type EditTradeParams = { trade: string; patch: Record<string, unknown> };
+/** `move` names, by handle, the account or portfolio a trade moves to; `patch` holds only plain values. */
+type EditTradeParams = { trade: string; patch: Record<string, unknown>; move?: { account?: string; portfolio?: string } };
 const editTrade: OperationSpec<EditTradeParams> = {
   trade: true,
   generate(model, { random }) {
@@ -972,9 +988,27 @@ const editTrade: OperationSpec<EditTradeParams> = {
         patch = random.chance(0.5) ? { memo: `split ${random.int(1, 999)}` } : shiftDate();
         break;
     }
+    // Now and then a single trade moves to another account or portfolio: its cash leg goes with it.
+    if (r.type !== "transfer" && r.type !== "split" && random.chance(0.2)) {
+      const brokers = model.brokerageAccounts().filter((a) => a.id !== r.accountId);
+      const portfolios = [...model.portfolios.values()].filter((p) => p.id !== r.portfolioId);
+      const move = {
+        ...(brokers.length > 0 && random.chance(0.6) ? { account: random.pick(brokers).handle } : {}),
+        ...(portfolios.length > 0 && random.chance(0.6) ? { portfolio: random.pick(portfolios).handle } : {}),
+      };
+      if (Object.keys(move).length > 0) return { trade: entity.handle, patch, move };
+    }
     return { trade: entity.handle, patch };
   },
-  request: (model, p) => ({ method: "PATCH", path: ws(model, `/trades/${model.trade(p.trade).record.id}`), body: p.patch }),
+  request: (model, p) => ({
+    method: "PATCH",
+    path: ws(model, `/trades/${model.trade(p.trade).record.id}`),
+    body: {
+      ...p.patch,
+      ...(p.move?.account ? { accountId: model.account(p.move.account).id } : {}),
+      ...(p.move?.portfolio ? { portfolioId: model.portfolio(p.move.portfolio).id } : {}),
+    },
+  }),
   predict: (model, p) => (model.isTradeLocked(model.trade(p.trade)) ? { kind: "refuse", status: 409, code: "reconciled" } : ANY),
   accept(model, p, body) {
     const group = model.tradeGroup(model.trade(p.trade));
@@ -1091,7 +1125,7 @@ const foreign: OperationSpec<ForeignParams> = {
 
 // --- The operation set and the personas' weights -----------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/** Each operation has its own parameter type; `operation()` hands them out as plain `Params`. */
 export const OPERATIONS: Readonly<Record<string, OperationSpec<any>>> = {
   createAccount,
   createPortfolio,
