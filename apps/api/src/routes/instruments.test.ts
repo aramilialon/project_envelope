@@ -383,8 +383,8 @@ describe("instruments routes (#76)", () => {
   });
 
   it("has no endpoint that updates or deletes an instrument", async () => {
-    // The test realm's tokens live 3 seconds: a fresh one, so a slow machine cannot turn a 404
-    // into a 401 halfway through.
+    // A fresh token, so the 404s below never depend on how long the suite's shared one has
+    // already lived (the test realm's tokens live a minute, `keycloak.ts`).
     const token = await ctx.realm.getUserToken();
     const created = await post(token, { isin: randomIsin(), name: `${namePrefix} Fixed`, type: "fund", currency: "EUR" });
     assert.equal(created.statusCode, 201);

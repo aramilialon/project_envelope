@@ -28,7 +28,7 @@ if (!databaseUrl) {
  * there is, so it must not see whatever other test files left in the shared one.
  */
 describe("createScheduledTransactionsFireHandler (#38)", () => {
-  let database: IsolatedDatabase;
+  let database: IsolatedDatabase | undefined;
   let superuserPool: DbPool;
   let appPool: DbPool;
   let workspaceA: string;
@@ -94,9 +94,12 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
   });
 
   after(async () => {
-    await appPool.end();
-    await superuserPool.end();
-    await database.drop();
+    try {
+      await appPool?.end();
+      await superuserPool?.end();
+    } finally {
+      await database?.drop();
+    }
   });
 
   it("fires every due scheduled transaction in every workspace, not only the first", async () => {

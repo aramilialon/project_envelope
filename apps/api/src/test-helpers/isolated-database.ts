@@ -7,8 +7,10 @@
  * other test database; `drop()` removes it, and the `envelope_app`/`envelope_queue` roles it uses
  * are the server's own, shared with every other database.
  *
- * Needs the `DATABASE_URL` user to be allowed to create databases (the superuser it already is in
- * development and in CI). Names are random hex, never external input, so they are safe to embed.
+ * Its name is `DATABASE_URL`'s database name (at most 40 characters of it) followed by `_` and 12
+ * random hex digits; a run killed before `drop()` leaves one behind (apps/api/README.md shows how
+ * to remove them). Needs the `DATABASE_URL` user to be allowed to create databases (the superuser
+ * it already is in development and in CI).
  */
 import { randomBytes } from "node:crypto";
 
@@ -16,19 +18,22 @@ import { createPool } from "../db/pool.ts";
 
 export interface IsolatedDatabase {
   readonly databaseUrl: string;
-  /** Ends nothing by itself: close every pool on `databaseUrl` first. */
+  /** Close every pool on `databaseUrl` first: `WITH (FORCE)` would cut them off anyway. */
   drop(): Promise<void>;
 }
 
 export async function createIsolatedDatabase(databaseUrl: string): Promise<IsolatedDatabase> {
   const url = new URL(databaseUrl);
-  const base = url.pathname.slice(1).slice(0, 40) || "envelope_test";
+  const base = decodeURIComponent(url.pathname.slice(1)).slice(0, 40) || "envelope_test";
   const name = `${base}_${randomBytes(6).toString("hex")}`;
-  await onServer(databaseUrl, `CREATE DATABASE "${name}"`);
-  url.pathname = `/${name}`;
+  // CREATE/DROP DATABASE take no bind parameters. Part of the name comes from DATABASE_URL, so it
+  // is quoted as an identifier (any `"` doubled) rather than trusted as is.
+  const identifier = `"${name.replaceAll('"', '""')}"`;
+  await onServer(databaseUrl, `CREATE DATABASE ${identifier}`);
+  url.pathname = `/${encodeURIComponent(name)}`;
   return {
     databaseUrl: url.toString(),
-    drop: () => onServer(databaseUrl, `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`),
+    drop: () => onServer(databaseUrl, `DROP DATABASE IF EXISTS ${identifier} WITH (FORCE)`),
   };
 }
 

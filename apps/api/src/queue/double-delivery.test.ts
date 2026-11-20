@@ -42,7 +42,7 @@ function fakePushDriver(outcome: PushOutcome = "sent"): PushDriver & { calls: { 
  * there is, so it must not see whatever other test files left in the shared one.
  */
 describe("double-delivery harness (#37)", () => {
-  let database: IsolatedDatabase;
+  let database: IsolatedDatabase | undefined;
   let superuserPool: DbPool;
   let appPool: DbPool;
   let cases: DoubleDeliveryCase[];
@@ -139,9 +139,12 @@ describe("double-delivery harness (#37)", () => {
   });
 
   after(async () => {
-    await appPool.end();
-    await superuserPool.end();
-    await database.drop();
+    try {
+      await appPool?.end();
+      await superuserPool?.end();
+    } finally {
+      await database?.drop();
+    }
   });
 
   it("covers every registered job type", () => {

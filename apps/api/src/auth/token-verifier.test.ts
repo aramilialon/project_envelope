@@ -91,8 +91,10 @@ describe("token verifier, against a real Keycloak realm", () => {
   it("rejects an expired token", async () => {
     // On purpose: every other token in the test realm lives a minute (#519).
     const token = await realm.getShortLivedUserToken();
-    const { iat, exp } = decodeJwt(token);
+    const { iat, exp, aud } = decodeJwt(token);
     assert.equal((exp ?? 0) - (iat ?? 0), SHORT_LIVED_TOKEN_SECONDS);
+    // The right audience, so expiry is the only reason left for the 401 below.
+    assert.ok([aud ?? []].flat().includes(realm.audience));
     await waitUntilExpired(token);
     const response = await app.inject({
       method: "GET",
