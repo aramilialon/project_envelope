@@ -7,7 +7,7 @@ import SideSheet from "../layout/SideSheet.tsx";
 import { ACCOUNT_TYPE_HINTS, ACCOUNT_TYPE_LABELS } from "./accountType.ts";
 import { createAccount, type AccountType } from "./api.ts";
 
-const TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card"];
+const TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card", "brokerage"];
 
 interface Props {
   readonly workspaceId: string;
@@ -34,10 +34,10 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
   const [submitting, setSubmitting] = useState(false);
 
   // Whether on/off budget is even a choice: a checking, cash or credit card account is always
-  // on budget — only a savings account (money set aside, not necessarily budgeted day-to-day)
-  // leaves it up to the user (`#402`).
+  // on budget and a brokerage account always off it (#74) — only a savings account (money set
+  // aside, not necessarily budgeted day-to-day) leaves it up to the user (`#402`).
   const onBudgetEditable = type === "savings";
-  const effectiveOnBudget = onBudgetEditable ? onBudget : true;
+  const effectiveOnBudget = onBudgetEditable ? onBudget : type !== "brokerage";
 
   // Only an on-budget credit card has a payment category to seed: `apps/api`'s own
   // `createAccount` ignores `startingBalanceCents` for every other account type.

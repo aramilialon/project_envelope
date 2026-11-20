@@ -15,7 +15,7 @@ import {
 } from "@envelope/core";
 
 import { listAssignmentTotals } from "../assignments/repository.ts";
-import { listAccounts, type AccountRecord } from "../accounts/repository.ts";
+import { listAccounts, type AccountRecord, type AccountType } from "../accounts/repository.ts";
 import { listCategories, listCategoryGroups, type CategoryGroupRecord, type CategoryRecord } from "../categories/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { listReservationsForMonth } from "../scheduled-transactions/repository.ts";
@@ -52,10 +52,24 @@ export interface BudgetMonthResponse {
   readonly paymentCategories: readonly BudgetMonthCategory[];
 }
 
+/**
+ * `@envelope/core` only tells a credit card apart from every other kind of
+ * account. Exhaustive on purpose: a new `AccountType` fails to compile here
+ * until someone decides which of the two it is. A brokerage account (#74) is
+ * always off budget, so `aggregateTransactions` skips it either way.
+ */
+const BUDGET_ACCOUNT_TYPES: Readonly<Record<AccountType, BudgetAccount["type"]>> = {
+  checking: "cash",
+  savings: "cash",
+  cash: "cash",
+  credit_card: "credit",
+  brokerage: "cash",
+};
+
 function toBudgetAccount(account: AccountRecord): BudgetAccount {
   return {
     id: account.id,
-    type: account.type === "credit_card" ? "credit" : "cash",
+    type: BUDGET_ACCOUNT_TYPES[account.type],
     onBudget: account.onBudget,
     ...(account.paymentCategoryId ? { paymentCategoryId: account.paymentCategoryId } : {}),
   };

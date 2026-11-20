@@ -99,6 +99,37 @@ describe("AddAccountForm (#51)", () => {
     expect(screen.getByText("Money set aside, on or off budget as you choose")).toBeInTheDocument();
     expect(screen.getByText("Your wallet")).toBeInTheDocument();
     expect(screen.getByText("Debt you pay off, with its own payment category")).toBeInTheDocument();
+    expect(screen.getByText("Investments, always off budget")).toBeInTheDocument();
+  });
+
+  it("creates a brokerage account off budget, with no 'On budget' choice (#74)", async () => {
+    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue({
+      id: "a1",
+      workspaceId: "ws-1",
+      name: "Broker",
+      type: "brokerage",
+      currency: "EUR",
+      onBudget: false,
+      paymentCategoryId: null,
+      closedAt: null,
+      createdAt: "2026-01-01",
+    });
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Broker" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
+    expect(screen.queryByLabelText("On budget")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/owe on this card/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    await waitFor(() =>
+      expect(createAccount).toHaveBeenCalledWith("t", "ws-1", {
+        name: "Broker",
+        type: "brokerage",
+        currency: "EUR",
+        onBudget: false,
+      }),
+    );
   });
 
   it("negates the entered amount owed into a starting balance", async () => {

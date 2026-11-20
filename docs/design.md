@@ -19,7 +19,7 @@ The budget follows the envelope method: income arrives unassigned and the user d
 
 | Feature | What it does | Phase |
 | --- | --- | --- |
-| Accounts | Checking, credit card, cash, savings; "off-budget" accounts for mortgages and investments | MVP |
+| Accounts | Checking, credit card, cash, savings, brokerage (always off budget); "off-budget" accounts for mortgages and investments | MVP |
 | Categories and groups | Grouped categories (Home, Bills, Fun…), sortable and archivable | MVP |
 | Monthly assignment | Assigned, spent and available per category and month; a positive available balance rolls over to the next month | MVP |
 | Unassigned | Only money already received in on-budget accounts, never expected income; warning when assigning more than is available | MVP |

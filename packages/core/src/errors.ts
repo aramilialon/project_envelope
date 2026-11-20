@@ -30,7 +30,8 @@ export type ValidationErrorCode =
   | "direct_reconciliation_not_allowed"
   | "invalid_recurrence"
   | "invalid_currency"
-  | "invalid_time_zone";
+  | "invalid_time_zone"
+  | "brokerage_on_budget";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

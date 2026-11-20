@@ -72,6 +72,49 @@ describe("accounts routes", () => {
     assert.ok(response.json().paymentCategoryId);
   });
 
+  it("creates a brokerage account off budget when onBudget is not sent (#74)", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Broker", type: "brokerage", currency: "EUR" },
+    });
+    assert.equal(response.statusCode, 201);
+    const account = response.json();
+    assert.equal(account.type, "brokerage");
+    assert.equal(account.onBudget, false);
+    assert.equal(account.paymentCategoryId, null);
+  });
+
+  it("creates a brokerage account sent explicitly off budget", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Broker off", type: "brokerage", currency: "EUR", onBudget: false },
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().onBudget, false);
+  });
+
+  it("rejects an on-budget brokerage account with a stable code", async () => {
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "Broker on", type: "brokerage", currency: "EUR", onBudget: true },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error, "brokerage_on_budget");
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name === "Broker on"));
+  });
+
   it("rejects an invalid account body", async () => {
     const response = await app.fastify.inject({
       method: "POST",
