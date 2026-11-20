@@ -4,15 +4,28 @@ import type { FastifyInstance } from "fastify";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, type TextFieldCheck } from "../errors.ts";
+import { isUuid } from "../ids.ts";
 import { applyIncomingChange, SYNC_TEXT_FIELD_LIMITS, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
 import { listChangesSince } from "../sync/repository.ts";
 
-function parseChanges(body: Record<string, unknown>): IncomingChange[] | undefined {
+/** One change of an upload, and whether its ids are well formed. */
+interface ParsedChange {
+  readonly change: IncomingChange;
+  /** False when `id` or `entityId` is not a uuid: the change gets its own `invalid` result (#513). */
+  readonly wellFormed: boolean;
+}
+
+/**
+ * Undefined when the body's shape is wrong (not an array of change records with string ids and a
+ * numeric clock), which refuses the whole upload. A change whose `id` or `entityId` is a string
+ * but not a uuid is kept, marked, so it alone is answered `invalid` and the rest still apply.
+ */
+function parseChanges(body: Record<string, unknown>): ParsedChange[] | undefined {
   const raw = body.changes;
   if (!Array.isArray(raw) || raw.length === 0) {
     return undefined;
   }
-  const changes: IncomingChange[] = [];
+  const changes: ParsedChange[] = [];
   for (const item of raw) {
     if (typeof item !== "object" || item === null) {
       return undefined;
@@ -28,7 +41,10 @@ function parseChanges(body: Record<string, unknown>): IncomingChange[] | undefin
     if (typeof physical !== "number" || typeof counter !== "number" || typeof deviceId !== "string") {
       return undefined;
     }
-    changes.push({ id, entityId, fieldName, hlc: { physical, counter, deviceId }, value });
+    changes.push({
+      change: { id, entityId, fieldName, hlc: { physical, counter, deviceId }, value },
+      wellFormed: isUuid(id) && isUuid(entityId),
+    });
   }
   return changes;
 }
@@ -67,11 +83,12 @@ export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
 
   app.post("/workspaces/:workspaceId/changes", { preHandler: writePreHandler }, async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
-    const changes = parseChanges(body);
-    if (!changes) {
+    const parsed = parseChanges(body);
+    if (!parsed) {
       await reply.code(400).send({ error: "changes must be a non-empty array of valid change records" });
       return;
     }
+    const changes = parsed.map((item) => item.change);
     // A text field takes a string or null, nothing else: an object or array would otherwise skip
     // the length check below and be stored as its JSON text, of any size (#507).
     const textChanges = changes.filter((change) => SYNC_TEXT_FIELD_LIMITS[change.fieldName] !== undefined);
@@ -87,8 +104,8 @@ export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
     }
 
     const results: { id: string; outcome: ApplyOutcome }[] = [];
-    for (const change of changes) {
-      const outcome = await applyIncomingChange(request.db!, request.workspace!.id, change);
+    for (const { change, wellFormed } of parsed) {
+      const outcome = wellFormed ? await applyIncomingChange(request.db!, request.workspace!.id, change) : "invalid";
       results.push({ id: change.id, outcome });
     }
     await reply.code(201).send({ results });

@@ -6,7 +6,7 @@ import type { Hlc } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { getLatestChange, listChangesSince, recordChange } from "./repository.ts";
+import { findRecordedChange, getLatestChange, listChangesSince, recordChange } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -46,6 +46,7 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(1000),
       value: "Groceries",
+      outcome: "applied",
     });
 
     const latest = await getLatestChange(pool, workspaceId, entityId, "transactions.memo");
@@ -62,10 +63,11 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(1000),
       value: "Groceries",
+      outcome: "applied" as const,
     };
 
-    await recordChange(pool, change);
-    await recordChange(pool, change); // a retried network request, same change id
+    assert.equal(await recordChange(pool, change), true);
+    assert.equal(await recordChange(pool, change), false, "a retried network request, same change id, inserts nothing");
 
     const { rows } = await pool.query("SELECT count(*) FROM change_log WHERE id = $1", [change.id]);
     assert.equal(Number(rows[0]!.count), 1, "sending the same change again must never create a duplicate row");
@@ -80,6 +82,7 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(2000),
       value: "later",
+      outcome: "applied",
     });
     await recordChange(pool, {
       id: randomUUID(),
@@ -88,6 +91,7 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(1000),
       value: "earlier",
+      outcome: "stale",
     });
 
     const latest = await getLatestChange(pool, workspaceId, entityId, "transactions.memo");
@@ -103,6 +107,7 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(1000),
       value: "a memo",
+      outcome: "applied",
     });
     await recordChange(pool, {
       id: randomUUID(),
@@ -111,10 +116,33 @@ describe("change log repository (#42)", () => {
       fieldName: "transactions.payee",
       hlc: hlc(1000),
       value: "a payee",
+      outcome: "applied",
     });
 
     assert.equal((await getLatestChange(pool, workspaceId, entityId, "transactions.memo"))?.value, "a memo");
     assert.equal((await getLatestChange(pool, workspaceId, entityId, "transactions.payee"))?.value, "a payee");
+  });
+
+  it("finds a recorded change by id with its outcome, and says whether a resend is the same change (#513)", async () => {
+    const change = {
+      id: randomUUID(),
+      entityId: randomUUID(),
+      fieldName: "transactions.memo",
+      hlc: hlc(1000),
+      value: { nested: ["a"] },
+    };
+    await recordChange(pool, { ...change, workspaceId, outcome: "stale" });
+
+    assert.deepEqual(await findRecordedChange(pool, workspaceId, change), { outcome: "stale", sameChange: true });
+    assert.deepEqual(await findRecordedChange(pool, workspaceId, { ...change, value: { nested: ["b"] } }), {
+      outcome: "stale",
+      sameChange: false,
+    });
+    assert.deepEqual(await findRecordedChange(pool, workspaceId, { ...change, hlc: hlc(1000, 1) }), {
+      outcome: "stale",
+      sameChange: false,
+    });
+    assert.equal(await findRecordedChange(pool, workspaceId, { ...change, id: randomUUID() }), undefined);
   });
 
   it("returns undefined when a field has no recorded change yet", async () => {
@@ -152,8 +180,8 @@ describe("listChangesSince (#44)", () => {
   it("returns every change when since is omitted, ordered by clock", async () => {
     const workspaceId = await newWorkspace();
     const entityId = randomUUID();
-    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "b" });
-    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "a" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "b", outcome: "applied" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "a", outcome: "applied" });
 
     const changes = await listChangesSince(pool, workspaceId);
     assert.deepEqual(
@@ -165,9 +193,9 @@ describe("listChangesSince (#44)", () => {
   it("returns only changes later than the given clock", async () => {
     const workspaceId = await newWorkspace();
     const entityId = randomUUID();
-    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "first" });
-    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "second" });
-    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(3000), value: "third" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(1000), value: "first", outcome: "applied" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(2000), value: "second", outcome: "applied" });
+    await recordChange(pool, { id: randomUUID(), workspaceId, entityId, fieldName: "transactions.memo", hlc: hlc(3000), value: "third", outcome: "applied" });
 
     const changes = await listChangesSince(pool, workspaceId, hlc(1000));
     assert.deepEqual(
@@ -186,6 +214,7 @@ describe("listChangesSince (#44)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(5000, 0, "device-z"),
       value: "z",
+      outcome: "applied",
     });
     await recordChange(pool, {
       id: randomUUID(),
@@ -194,6 +223,7 @@ describe("listChangesSince (#44)", () => {
       fieldName: "transactions.payee",
       hlc: hlc(5000, 0, "device-a"),
       value: "a",
+      outcome: "applied",
     });
 
     const changes = await listChangesSince(pool, workspaceId, hlc(4000));
@@ -213,9 +243,28 @@ describe("listChangesSince (#44)", () => {
       fieldName: "transactions.memo",
       hlc: hlc(1000),
       value: "not mine",
+      outcome: "applied",
     });
 
     const changes = await listChangesSince(pool, workspaceId);
     assert.deepEqual(changes, []);
+  });
+
+  it("keeps the same change id in two workspaces as two changes, each listed only in its own (#513)", async () => {
+    const workspaceId = await newWorkspace();
+    const otherWorkspaceId = await newWorkspace();
+    const sharedId = randomUUID();
+    const change = { id: sharedId, entityId: randomUUID(), fieldName: "transactions.memo", hlc: hlc(1000) };
+
+    assert.equal(await recordChange(pool, { ...change, workspaceId: otherWorkspaceId, value: "theirs", outcome: "applied" }), true);
+    assert.equal(await recordChange(pool, { ...change, workspaceId, value: "mine", outcome: "applied" }), true);
+
+    const mine = await listChangesSince(pool, workspaceId);
+    assert.deepEqual(
+      mine.map((c) => [c.id, c.value]),
+      [[sharedId, "mine"]],
+    );
+    assert.deepEqual(await findRecordedChange(pool, workspaceId, { ...change, value: "mine" }), { outcome: "applied", sameChange: true });
+    assert.equal(await findRecordedChange(pool, await newWorkspace(), { ...change, value: "theirs" }), undefined);
   });
 });

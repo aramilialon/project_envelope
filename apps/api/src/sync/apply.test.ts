@@ -21,6 +21,8 @@ describe("applyIncomingChange (#43)", () => {
   let pool: DbPool;
   let workspaceId: string;
   let accountId: string;
+  let otherWorkspaceId: string;
+  let otherAccountId: string;
 
   before(async () => {
     pool = createPool(databaseUrl);
@@ -33,17 +35,27 @@ describe("applyIncomingChange (#43)", () => {
       [workspaceId],
     );
     accountId = account.rows[0]!.id;
+
+    otherWorkspaceId = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Other', 'EUR', 'UTC')", [
+      otherWorkspaceId,
+    ]);
+    const otherAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Checking', 'checking', 'EUR') RETURNING id",
+      [otherWorkspaceId],
+    );
+    otherAccountId = otherAccount.rows[0]!.id;
   });
 
   after(async () => {
-    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+    await pool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceId, otherWorkspaceId]]);
     await pool.end();
   });
 
-  async function createTestTransaction(): Promise<string> {
+  async function createTestTransaction(inOtherWorkspace = false): Promise<string> {
     const tx = await createTransaction(pool, {
-      workspaceId,
-      accountId,
+      workspaceId: inOtherWorkspace ? otherWorkspaceId : workspaceId,
+      accountId: inOtherWorkspace ? otherAccountId : accountId,
       occurredAt: "2026-09-01",
       splits: [{ categoryId: null, amountCents: 1000 }],
     });
@@ -57,6 +69,14 @@ describe("applyIncomingChange (#43)", () => {
 
   function hlc(physical: number, counter = 0, deviceId = "device-a"): Hlc {
     return { physical, counter, deviceId };
+  }
+
+  async function changeLogRows(changeId: string): Promise<{ workspace_id: string; value: unknown; outcome: string }[]> {
+    const { rows } = await pool.query<{ workspace_id: string; value: unknown; outcome: string }>(
+      "SELECT workspace_id, value, outcome FROM change_log WHERE id = $1 ORDER BY workspace_id",
+      [changeId],
+    );
+    return rows;
   }
 
   async function reconcile(transactionId: string): Promise<void> {
@@ -214,5 +234,146 @@ describe("applyIncomingChange (#43)", () => {
 
     assert.equal(retried, "applied");
     assert.equal(await memoOf(transactionId), "after unlocking");
+  });
+
+  describe("entities and change ids outside the workspace (#513)", () => {
+    it("answers not_found for another workspace's real transaction, applying and recording nothing", async () => {
+      const foreignTransactionId = await createTestTransaction(true);
+      const changeId = randomUUID();
+
+      const outcome = await applyIncomingChange(pool, workspaceId, {
+        id: changeId,
+        entityId: foreignTransactionId,
+        fieldName: "transactions.memo",
+        hlc: hlc(1000),
+        value: "not yours",
+      });
+
+      assert.equal(outcome, "not_found");
+      assert.equal(await memoOf(foreignTransactionId), null);
+      assert.deepEqual(await changeLogRows(changeId), []);
+    });
+
+    it("answers not_found for a uuid that names no row at all, recording nothing", async () => {
+      const changeId = randomUUID();
+      const outcome = await applyIncomingChange(pool, workspaceId, {
+        id: changeId,
+        entityId: randomUUID(),
+        fieldName: "transactions.payee",
+        hlc: hlc(1000),
+        value: "nobody",
+      });
+
+      assert.equal(outcome, "not_found");
+      assert.deepEqual(await changeLogRows(changeId), []);
+    });
+
+    it("answers invalid for a malformed change id or entity id, recording nothing", async () => {
+      const transactionId = await createTestTransaction();
+      const malformedId = await applyIncomingChange(pool, workspaceId, {
+        id: "not-a-uuid",
+        entityId: transactionId,
+        fieldName: "transactions.memo",
+        hlc: hlc(1000),
+        value: "x",
+      });
+      const malformedEntity = await applyIncomingChange(pool, workspaceId, {
+        id: randomUUID(),
+        entityId: "1; DROP TABLE transactions",
+        fieldName: "transactions.memo",
+        hlc: hlc(1000),
+        value: "x",
+      });
+
+      assert.equal(malformedId, "invalid");
+      assert.equal(malformedEntity, "invalid");
+      assert.equal(await memoOf(transactionId), null);
+    });
+
+    it("answers a retry of the same change with its original outcome, without applying it again", async () => {
+      const transactionId = await createTestTransaction();
+      const first = {
+        id: randomUUID(),
+        entityId: transactionId,
+        fieldName: "transactions.memo",
+        hlc: hlc(1000),
+        value: "first",
+      };
+      const stale = { ...first, id: randomUUID(), hlc: hlc(500), value: "older" };
+
+      assert.equal(await applyIncomingChange(pool, workspaceId, first), "applied");
+      assert.equal(await applyIncomingChange(pool, workspaceId, stale), "stale");
+      await applyIncomingChange(pool, workspaceId, { ...first, id: randomUUID(), hlc: hlc(2000), value: "second" });
+
+      assert.equal(await applyIncomingChange(pool, workspaceId, first), "applied", "a retry gets the outcome it got the first time");
+      assert.equal(await applyIncomingChange(pool, workspaceId, stale), "stale");
+      assert.equal(await memoOf(transactionId), "second", "a retry must never write its value again over a later one");
+      assert.equal((await changeLogRows(first.id)).length, 1);
+      assert.equal((await changeLogRows(stale.id)).length, 1);
+    });
+
+    it("answers a retry with its original outcome even after the transaction is reconciled", async () => {
+      const transactionId = await createTestTransaction();
+      const change = { id: randomUUID(), entityId: transactionId, fieldName: "transactions.memo", hlc: hlc(1000), value: "before" };
+      assert.equal(await applyIncomingChange(pool, workspaceId, change), "applied");
+      await reconcile(transactionId);
+
+      assert.equal(await applyIncomingChange(pool, workspaceId, change), "applied");
+    });
+
+    it("refuses a different change sent under an id this workspace already recorded, as id_conflict", async () => {
+      const transactionId = await createTestTransaction();
+      const changeId = randomUUID();
+      const original = { id: changeId, entityId: transactionId, fieldName: "transactions.memo", hlc: hlc(1000), value: "original" };
+      assert.equal(await applyIncomingChange(pool, workspaceId, original), "applied");
+
+      for (const different of [
+        { ...original, value: "different value" },
+        { ...original, hlc: hlc(2000) },
+        { ...original, fieldName: "transactions.payee" },
+        { ...original, entityId: await createTestTransaction() },
+      ]) {
+        assert.equal(await applyIncomingChange(pool, workspaceId, different), "id_conflict", JSON.stringify(different));
+      }
+      assert.equal(await memoOf(transactionId), "original");
+      assert.deepEqual(await changeLogRows(changeId), [{ workspace_id: workspaceId, value: "original", outcome: "applied" }]);
+    });
+
+    it("treats another workspace's change id as an unrelated change, applying and recording it here", async () => {
+      const foreignTransactionId = await createTestTransaction(true);
+      const changeId = randomUUID();
+      assert.equal(
+        await applyIncomingChange(pool, otherWorkspaceId, {
+          id: changeId,
+          entityId: foreignTransactionId,
+          fieldName: "transactions.memo",
+          hlc: hlc(1000),
+          value: "theirs",
+        }),
+        "applied",
+      );
+
+      const transactionId = await createTestTransaction();
+      const outcome = await applyIncomingChange(pool, workspaceId, {
+        id: changeId,
+        entityId: transactionId,
+        fieldName: "transactions.memo",
+        hlc: hlc(1000),
+        value: "mine",
+      });
+
+      assert.equal(outcome, "applied", "the same answer as for a fresh id, so it says nothing about the other workspace");
+      assert.equal(await memoOf(transactionId), "mine");
+      assert.equal(await memoOf(foreignTransactionId), "theirs");
+      const rows = await changeLogRows(changeId);
+      assert.deepEqual(
+        rows.map((row) => [row.workspace_id, row.value]).sort(),
+        [
+          [otherWorkspaceId, "theirs"],
+          [workspaceId, "mine"],
+        ].sort(),
+        "each workspace keeps its own change under the shared id",
+      );
+    });
   });
 });
