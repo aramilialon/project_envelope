@@ -2,13 +2,16 @@
   "name": "@envelope/scripts",
   "version": "0.0.0",
   "private": true,
-  "description": "Development scripts: Keycloak realm bootstrap, GitHub setup, demo data seed",
+  "description": "Development scripts: Keycloak realm bootstrap, GitHub setup, demo data seed, disposable environments",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "seed:demo": "node --env-file-if-exists=.env seed-demo.ts",
     "screenshots:demo": "node --env-file-if-exists=.env screenshot-demo.ts",
-    "test": "node --test \"lib/**/*.test.ts\"",
+    "explore:up": "node --env-file-if-exists=.env explore-env/cli.ts up",
+    "explore:down": "node --env-file-if-exists=.env explore-env/cli.ts down",
+    "explore:sweep": "node --env-file-if-exists=.env explore-env/cli.ts sweep",
+    "test": "node --test \"lib/**/*.test.ts\" \"explore-env/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

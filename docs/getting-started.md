@@ -297,6 +297,33 @@ With `apps/api` running (section 9), `scripts/README.md` has a seed script that 
 "Demo" workspace with realistic data through the real API — useful to have something to look at
 without building it up by hand through the web app.
 
+## 14. A disposable environment (optional)
+
+For exploratory testing, or to run the end-to-end tests without touching your own `envelope`
+database and realm, bring up a throwaway environment next to them: its own database, Keycloak
+realm, API and built web app, on free `127.0.0.1` ports, with persona users already in place.
+Needs PostgreSQL and Keycloak running (section 8) and `scripts/.env` with `DATABASE_URL` and
+`KEYCLOAK_ADMIN_PASSWORD` (`scripts/README.md`); `apps/api` and `apps/web` do not need to be
+running.
+
+```bash
+$ pnpm --filter @envelope/scripts explore:up
+== Run 3f9c0a1e (/tmp/envelope-explore/3f9c0a1e)
+...
+   web:      http://127.0.0.1:40437
+   manifest: /tmp/envelope-explore/3f9c0a1e/manifest.json
+$ pnpm --filter @envelope/scripts explore:down 3f9c0a1e
+```
+
+The manifest holds the web and API URLs and the personas' usernames and passwords; open the web
+URL exactly as printed (`127.0.0.1`, not `localhost`); from the laptop, forward the web, API
+and Keycloak ports as in section 10 (`-L <port>:127.0.0.1:<port>` for each port the manifest
+names) and browse to the same URL. `down` stops the processes, drops the
+database and deletes the realm, and is safe to run twice. `explore:sweep` removes environments
+left over for more than 24 hours. Several can run at the same time; each costs roughly 200 MB
+of memory for its own processes, plus some in the shared Keycloak. Details in
+`scripts/README.md`, "Disposable environments".
+
 ## Common problems
 
 | Symptom | Likely cause | Fix |
