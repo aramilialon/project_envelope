@@ -5,6 +5,7 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 - Name every file `NNNN_short_description.sql`, for example `0001_workspaces.sql`.
 - Never edit a file once it has been applied anywhere: the runner records its checksum and refuses to start if the checksum no longer matches. Add a new file instead.
 - Apply pending migrations: `pnpm --filter @envelope/api migrate`.
+- A new workspace-scoped table carries its own `workspace_id`, Row-Level Security and a grant to `envelope_app` (ADR 0006). If other tables will reference it, give it `UNIQUE (workspace_id, id)`; every foreign key to another workspace-scoped table is composite, `FOREIGN KEY (workspace_id, x_id) REFERENCES x (workspace_id, id)`, because PostgreSQL checks foreign keys without Row-Level Security (ADR 0006, "Foreign keys bypass Row-Level Security"). A nullable reference keeps the default `MATCH SIMPLE`; `ON DELETE SET NULL` names its column, `ON DELETE SET NULL (x_id)`, so it never clears `workspace_id`. `src/db/schema.test.ts` fails if either rule is missed.
 
 ## Contents
 
@@ -36,5 +37,6 @@ Plain SQL files, applied in order by `src/db/migrate.ts` — see [ADR 0005](../.
 | `0024_scheduled_income.sql` | `scheduled_transaction_splits.category_id` becomes nullable (#347) — a scheduled transaction's single split can now be income (no category), mirroring an ordinary transaction's own null-category convention (migration 0006); application code still rejects a null category mixed into a multi-split template |
 | `0025_brokerage_account_type.sql` | `accounts`: adds `'brokerage'` to `accounts_type_check` (#74), and `accounts_brokerage_off_budget_check` — a brokerage account is always off budget (`type <> 'brokerage' OR on_budget = false`). No data migration |
 | `0027_portfolios.sql` | `portfolios` (#75) — name, free-text purpose, `archived_at`; `UNIQUE (workspace_id, id)` so a later table (`trades`, #77) can reference a portfolio with a composite foreign key that cannot cross workspaces; a partial unique index on `(workspace_id, lower(btrim(name))) WHERE archived_at IS NULL` backs the application's own `name_taken` check against a concurrent request. No accounts join table: the accounts a portfolio spans are derived from its trades |
+| `0029_composite_workspace_foreign_keys.sql` | `UNIQUE (workspace_id, id)` (`<table>_workspace_id_id_key`) on every referenced workspace table, and every foreign key between two workspace-scoped tables becomes composite on `workspace_id`, keeping its name and `ON DELETE` behaviour (#504), so a row can no longer reference another workspace's row whose id it knows. Refuses to run, naming every offending column, if existing rows already cross workspaces. |
 
 Not here yet: the other portfolio tables (`instruments`, `trades`, `allocation_node`...), each added by its own issue of the 0.2.0 milestone.

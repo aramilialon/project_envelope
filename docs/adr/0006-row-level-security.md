@@ -20,7 +20,21 @@ PostgreSQL's Row-Level Security (RLS) is built for exactly this, but it only res
 - **`ALTER TABLE ... FORCE ROW LEVEL SECURITY`** on every one of those tables, so the policies apply even to a connection that happens to own the tables.
 - **A dedicated `envelope_app` role**, created without `LOGIN`, that every policy is written for. Migrations grant it exactly the privileges the application will need (`SELECT, INSERT, UPDATE, DELETE` on the tables above), nothing more. It has no password yet and is not what the API connects as today.
 - **`memberships` gets an additional clause**: a row is visible if `user_id` matches `app.user_id`, even when `app.workspace_id` does not match. Otherwise a user could never discover which workspaces they belong to before a workspace is already selected — a chicken-and-egg problem this rule avoids.
+- **Foreign keys between workspace-scoped tables are composite** (added by migration 0029, #504; see "Foreign keys bypass Row-Level Security" below).
 - **`users` has no RLS.** It holds identity and preferences mirrored from Keycloak, not workspace data; every real exposure risk is already bounded by the join through `memberships`.
+
+## Foreign keys bypass Row-Level Security
+
+PostgreSQL checks a foreign key as the owner of the referenced table, and Row-Level Security does not apply to that check. A plain `account_id REFERENCES accounts (id)` therefore lets a row in workspace A reference workspace B's account once its id is known: the policies hide B's rows from every read and write `envelope_app` makes, but not from the foreign key, so the insert succeeds.
+
+So every foreign key from one workspace-scoped table to another includes `workspace_id`:
+
+- The referenced table has `UNIQUE (workspace_id, id)`, named `<table>_workspace_id_id_key`.
+- The reference is `FOREIGN KEY (workspace_id, x_id) REFERENCES x (workspace_id, id)`: the referenced row must belong to the same workspace as the referencing one, which the policies already force to be the selected workspace.
+- A nullable reference keeps the default `MATCH SIMPLE`, so a null id skips the check as before.
+- `ON DELETE SET NULL` names its column (`ON DELETE SET NULL (x_id)`), so deleting the referenced row clears only the id and never the `NOT NULL` `workspace_id` beside it.
+
+References to `workspaces` itself and to `users` (global, not workspace data) stay single-column. `src/db/schema.test.ts` checks the catalog: every foreign key whose two tables both have a `workspace_id` column must pair them. `transactions.transfer_id` therefore pairs two transactions of the same workspace only; the link between two workspaces' transactions (design.md, "Workspaces and transfers between them") will need a design of its own.
 
 ## Why `envelope_app` has no password yet
 
@@ -33,5 +47,5 @@ Giving it `LOGIN` now would mean either committing a password to the repository 
 
 ## Consequences
 
-- Every future migration that adds a workspace-scoped table must also add its `workspace_id` column, its policy, and a grant to `envelope_app`; nothing enforces this automatically yet.
+- Every future migration that adds a workspace-scoped table must also add its `workspace_id` column, its policy, a grant to `envelope_app`, and composite foreign keys to the other workspace-scoped tables it references. `src/db/schema.test.ts` enforces the policy and the composite keys: it derives the list of workspace-scoped tables from every table with a `workspace_id` column, instead of a list kept by hand.
 - Until `envelope_app` gets `LOGIN`, RLS is proven correct by tests but not yet in effect for the running API, which still connects as the superuser `envelope`. This is a known, temporary gap, not an oversight: closing it is part of wiring up the API's real database connection in a later step.

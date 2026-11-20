@@ -12,6 +12,10 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 - `apps/api`: portfolios (`#75`) — a `portfolios` table (migration 0027, workspace-scoped with Row-Level Security) and `/workspaces/:workspaceId/portfolios` endpoints to list, get, create, rename, change the free-text purpose of, archive, unarchive and delete a portfolio. Names are unique per workspace among non-archived portfolios, ignoring case and surrounding spaces (409 `name_taken`). A portfolio declares no accounts: the accounts it spans will come from its trades (`#77`).
 - `@envelope/core`: quantities and prices of financial instruments as scaled integers (`#73`, ADR 0011): `Quantity` (units × 10^8), `Price` (× 10^6) and `PriceFactor`, with validation, locale-aware parsing (an Italian decimal comma included) and exact formatting, plus `amountOf`, `quantityFor`, `priceFrom` and `proportionalCost`, each with its own rounding rule and exact beyond 2^53. Docs: ADR 0011 decides the `quantity_e8`/`price_e6`/`price_factor_e6` columns, the `quantityE8`/`priceE6`/`priceFactorE6` API and sync fields, the rounding rules and the fixed replay order of trades; the glossary and the domain guide gain quantity, price, price factor and nominal, with worked examples.
 
+### Fixed
+
+- `apps/api`: a row could reference another workspace's row (an account, category, transaction, reconciliation, scheduled transaction or assignment) when its id was known, because PostgreSQL checks foreign keys without Row-Level Security. Migration 0029 makes every foreign key between two workspace tables composite on `workspace_id`, keeping each one's `ON DELETE` behaviour, and refuses to run, naming the offending columns, if existing rows already cross workspaces. `src/db/schema.test.ts` now reads the workspace tables from the schema instead of a hand-kept list that missed `reconciliations`, `goals`, `change_log` and others (`#504`).
+
 ## [0.1.8] - 2026-11-19
 
 ### Changed
