@@ -1,36 +1,102 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "node:test";
+import { randomBytes } from "node:crypto";
+import { after, before, describe, it } from "node:test";
 
-import { roleConnectionString, rolePassword } from "./role-login.ts";
+import { createPool, type DbPool } from "../db/pool.ts";
+import { ensureAppRoleLogin } from "./app-role.ts";
+import { requireIntegrationTestEnv } from "./integration-setup.ts";
+import { ensureTestRoleLogin, roleConnectionString, testRoleLogin } from "./role-login.ts";
 
-const VARIABLE = "ROLE_LOGIN_TEST_DATABASE_URL";
+describe("test role logins (#585)", () => {
+  const url = "postgres://envelope:secret@127.0.0.1:5432/envelope_test_a";
 
-describe("test role passwords (#519)", () => {
-  afterEach(() => {
-    delete process.env[VARIABLE];
+  it("gives every caller of one test database the same role and password", () => {
+    assert.deepEqual(testRoleLogin("envelope_app", url), testRoleLogin("envelope_app", url));
+    const { role, password } = testRoleLogin("envelope_app", url);
+    assert.match(role, /^envelope_app_t[0-9a-f]{16}$/);
+    assert.match(password, /^[0-9a-f]{64}$/);
+    assert.match(testRoleLogin("envelope_queue", url).role, /^envelope_queue_t[0-9a-f]{16}$/);
   });
 
-  it("uses the password the environment's connection string gives that same role", () => {
-    process.env[VARIABLE] = "postgres://envelope_app:dev%20secret@127.0.0.1:5432/envelope";
-    assert.equal(rolePassword("envelope_app", VARIABLE, "fallback"), "dev secret");
+  it("gives another database, or another server, roles of its own", () => {
+    const role = testRoleLogin("envelope_app", url).role;
+    assert.notEqual(testRoleLogin("envelope_app", "postgres://envelope:secret@127.0.0.1:5432/envelope_test_b").role, role);
+    assert.notEqual(testRoleLogin("envelope_app", "postgres://envelope:secret@127.0.0.1:55432/envelope_test_a").role, role);
   });
 
-  it("ignores a connection string for another role, or one with no password", () => {
-    process.env[VARIABLE] = "postgres://someone_else:secret@127.0.0.1:5432/envelope";
-    assert.equal(rolePassword("envelope_app", VARIABLE, "fallback"), "fallback");
-    process.env[VARIABLE] = "postgres://envelope_app@127.0.0.1:5432/envelope";
-    assert.equal(rolePassword("envelope_app", VARIABLE, "fallback"), "fallback");
-  });
-
-  it("falls back when nothing gives one", () => {
-    assert.equal(rolePassword("envelope_app", VARIABLE, "fallback"), "fallback");
+  it("derives the password from the superuser's own, so it cannot be guessed without it", () => {
+    const other = testRoleLogin("envelope_app", "postgres://envelope:another@127.0.0.1:5432/envelope_test_a");
+    assert.equal(other.role, testRoleLogin("envelope_app", url).role);
+    assert.notEqual(other.password, testRoleLogin("envelope_app", url).password);
   });
 
   it("builds a connection string that carries any password back unchanged", () => {
     const password = "p@ss:w%rd/'\"#?";
-    const url = new URL(roleConnectionString("postgres://envelope:x@127.0.0.1:5432/envelope_test", "envelope_app", password));
-    assert.equal(url.username, "envelope_app");
-    assert.equal(decodeURIComponent(url.password), password);
-    assert.equal(url.pathname, "/envelope_test");
+    const built = new URL(roleConnectionString("postgres://envelope:x@127.0.0.1:5432/envelope_test", "envelope_app", password));
+    assert.equal(built.username, "envelope_app");
+    assert.equal(decodeURIComponent(built.password), password);
+    assert.equal(built.pathname, "/envelope_test");
+  });
+});
+
+describe("test role logins on the server (#585)", () => {
+  const { databaseUrl } = requireIntegrationTestEnv();
+  let pool: DbPool;
+  const created: string[] = [];
+
+  before(() => {
+    pool = createPool(databaseUrl);
+  });
+
+  after(async () => {
+    for (const role of created) {
+      await pool.query(`DROP ROLE IF EXISTS ${role}`);
+    }
+    await pool.end();
+  });
+
+  async function sharedRoleLogins(): Promise<unknown[]> {
+    const { rows } = await pool.query(
+      "SELECT rolname, rolcanlogin, rolpassword FROM pg_authid WHERE rolname IN ('envelope_app', 'envelope_queue') ORDER BY rolname",
+    );
+    return rows;
+  }
+
+  it("never changes the login or password of envelope_app or envelope_queue themselves", async () => {
+    const before = await sharedRoleLogins();
+    await ensureAppRoleLogin(pool);
+    const other = testRoleLogin("envelope_queue", databaseUrl.replace(/\/[^/]*$/, `/not_a_database_${randomBytes(4).toString("hex")}`));
+    created.push(other.role);
+    await ensureTestRoleLogin(pool, "envelope_queue", other);
+    assert.deepEqual(await sharedRoleLogins(), before);
+  });
+
+  it("creates a member of the shared role that can log in, and leaves it as it is the next time", async () => {
+    const login = testRoleLogin("envelope_app", databaseUrl.replace(/\/[^/]*$/, `/not_a_database_${randomBytes(4).toString("hex")}`));
+    created.push(login.role);
+    await ensureTestRoleLogin(pool, "envelope_app", login);
+    const asRole = createPool(roleConnectionString(databaseUrl, login.role, login.password));
+    try {
+      const { rows } = await asRole.query<{ member: boolean }>("SELECT pg_has_role(current_user, 'envelope_app', 'USAGE') AS member");
+      assert.deepEqual(rows, [{ member: true }]);
+    } finally {
+      await asRole.end();
+    }
+    const { rows: [first] } = await pool.query("SELECT oid, rolpassword FROM pg_authid WHERE rolname = $1", [login.role]);
+    await ensureTestRoleLogin(pool, "envelope_app", login);
+    const { rows: [second] } = await pool.query("SELECT oid, rolpassword FROM pg_authid WHERE rolname = $1", [login.role]);
+    assert.deepEqual(second, first);
+  });
+
+  it("drops the test roles whose database is gone when it creates one", async () => {
+    const stale = `envelope_app_t${randomBytes(8).toString("hex")}`;
+    await pool.query(`CREATE ROLE ${stale} IN ROLE envelope_app`);
+    created.push(stale);
+    await pool.query(`COMMENT ON ROLE ${stale} IS 'envelope-test-role database=gone_${randomBytes(4).toString("hex")}'`);
+    const login = testRoleLogin("envelope_app", databaseUrl.replace(/\/[^/]*$/, `/not_a_database_${randomBytes(4).toString("hex")}`));
+    created.push(login.role);
+    await ensureTestRoleLogin(pool, "envelope_app", login);
+    const { rowCount } = await pool.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [stale]);
+    assert.equal(rowCount, 0);
   });
 });

@@ -1,22 +1,23 @@
 /**
- * Mirrors app-role.ts for envelope_queue (#34): every real environment gives
- * it a login and a password out of band, never in a migration or in the
- * repository. Tests use the developer's own (`QUEUE_DATABASE_URL`, from the
- * environment or `apps/api/.env`), else a fixed test-only one, granted only
- * when the role cannot already log in with it (role-login.ts, #519).
+ * Mirrors app-role.ts for envelope_queue (#34): tests connect as a login role of their own test
+ * database, a member of envelope_queue, and never touch envelope_queue's own login (role-login.ts,
+ * #585).
  */
 import type { DbPool } from "../db/pool.ts";
-import { ensureRoleLogin, roleConnectionString, rolePassword } from "./role-login.ts";
+import { requireDatabaseUrl } from "./app-role.ts";
+import { ensureTestRoleLogin, roleConnectionString, testRoleLogin, type TestRoleLogin } from "./role-login.ts";
 
-/** Used only when neither the environment nor `apps/api/.env` gives one (CI, a fresh checkout). */
-export const QUEUE_ROLE_FALLBACK_PASSWORD = "envelope-queue-test-password";
-
-const queueRolePassword = rolePassword("envelope_queue", "QUEUE_DATABASE_URL", QUEUE_ROLE_FALLBACK_PASSWORD);
-
-export async function ensureQueueRoleLogin(pool: DbPool): Promise<void> {
-  await ensureRoleLogin(pool, "envelope_queue", queueRolePassword);
+/** The run's own login standing in for envelope_queue, derived from `DATABASE_URL`. */
+export function queueRoleLogin(): TestRoleLogin {
+  return testRoleLogin("envelope_queue", requireDatabaseUrl());
 }
 
+export async function ensureQueueRoleLogin(pool: DbPool): Promise<void> {
+  await ensureTestRoleLogin(pool, "envelope_queue", queueRoleLogin());
+}
+
+/** `databaseUrl` (the run's database, or a throwaway one on the same server) as the run's envelope_queue login. */
 export function queueConnectionString(databaseUrl: string): string {
-  return roleConnectionString(databaseUrl, "envelope_queue", queueRolePassword);
+  const { role, password } = queueRoleLogin();
+  return roleConnectionString(databaseUrl, role, password);
 }
