@@ -155,8 +155,9 @@ missed case would be worst to find in production.
 
 ## Portfolios and rebalancing
 
-Not built yet (phase 0.2.x of the [roadmap](design.md#roadmap)) — these are the rules the engine
-will follow once it exists, not a description of something already running.
+Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
+are already computed in `packages/core`, though nothing records trades yet; the rest are the rules
+the engine will follow once it exists, not a description of something already running.
 
 ### Positions and returns
 
@@ -192,6 +193,71 @@ price is quoted in percent or in hundredths of the currency. Each conversion rou
   then another removes €0.25 + €0.25 = €0.50, while selling 2 units at once removes €0.505, so
   €0.51. Positions are rebuilt by replaying the trades always in the same order, so the same
   trades always give the same cost.
+
+#### Positions and cost basis
+
+A position is never typed in or stored: `packages/core` rebuilds it by replaying the trades of one
+account and instrument in a fixed order — by date, a split first on its date, then by time, by
+when the trade was recorded, and by id. Its cost `C` is the total paid, in whole cents, and its
+quantity `Q` the units held; the average cost is `C ÷ Q`, computed only to be shown.
+
+**The average cost belongs to the account.** Every portfolio holding the instrument in the same
+account shares one average cost: portfolios split the account's *quantity*, not its cost. Moving
+units between two portfolios of the same account moves quantity only and never changes the
+average. A portfolio's share of the cost is `C × its quantity ÷ Q`, rounded so that the shares
+add up to `C` exactly (the leftover cents go to the largest remainders). A sale realizes its gain
+at the account's average cost, and the gain belongs to the portfolio the sale is filed under.
+
+The cost follows the Italian rules (art. 68 TUIR):
+
+| Trade | Cost `C` | Gain |
+| --- | --- | --- |
+| Buy | `+ gross + fees`; the financial transaction tax and accrued interest are not part of it | — |
+| Sell | `− C × sold ÷ Q` (the cost removed) | gross − fees − cost removed; gain tax, transaction tax and withholdings are not part of it |
+| Transfer in from another account | `+` the cost the units carry | — |
+| Transfer out to another account | `− C × moved ÷ Q` | — |
+| Transfer between portfolios of the same account | unchanged | — |
+| Split | unchanged; each portfolio's quantity × the ratio, rounded down to 8 decimals | — |
+| Dividend, coupon, fee, tax | unchanged | — |
+
+Fees, transaction taxes, accrued interest, gain tax withheld, dividends and withholdings are each
+kept as their own total next to the position, so they can be shown as their own lines.
+
+Worked examples, each one a test in `packages/core`:
+
+- **Two portfolios, one average.** Portfolio A buys 10 units at €100 with a €5 fee; portfolio B,
+  in the same account, buys 30 at €120 with a €5 fee. The account holds 40 units for €4,610.00:
+  an average of €115.25 for both. A sells 5 at €130 with a €5 fee: the cost removed is
+  4,610 × 5 ÷ 40 = €576.25, the gain is 650 − 5 − 576.25 = €68.75, and it goes to A. The account
+  is left with 35 units for €4,033.75, of which A's share is €576.25 (5 units) and B's €3,457.50
+  (30 units).
+- **A split 1:4.** The same 35 units become 140 (A 20, B 120); the cost stays €4,033.75, so the
+  average becomes €28.8125. Nothing is realized.
+- **A reverse split 1:10 and cash in lieu.** The same 35 units become 3.5 (A 0.5, B 3), still
+  for €4,033.75. Selling A's 0.5 for €650 (€1,300 per unit, no fee) removes
+  4,033.75 × 0.5 ÷ 3.5 = €576.25 of cost and realizes €73.75.
+- **No negative holdings.** If A, holding 5 units, tries to sell 10, the sale is refused
+  (`insufficient_quantity`), even though the account as a whole holds 35. A trade backdated so that
+  a later sale would sell more than its portfolio held at that point is refused the same way, at
+  that later sale's date.
+- **Selling everything starts again from zero.** After selling every unit, the cost is exactly
+  zero; buying 10 at €90 with a €5 fee gives an average of €90.50.
+- **A transfer in is averaged in.** An account holds 10 units bought at €120 (€1,200). Ten more
+  arrive from another account carrying a cost of €1,000: 20 units for €2,200, an average of €110,
+  and no gain or loss.
+- **The financial transaction tax stays out of the cost.** 100 shares at €50, a €5 fee and €5 of
+  transaction tax cost €5,005.00; the tax is shown on its own line. Buying 50 more at €62 with a
+  €5 fee brings the cost to €8,110.00 for 150 shares. Selling 60 at €70 with a €5 fee removes
+  8,110 × 60 ÷ 150 = €3,244.00 of cost and realizes 4,200 − 5 − 3,244 = €951.00; the €247.26 of
+  gain tax the broker withholds (26%) is recorded as its own total, not subtracted from the gain.
+- **A split applies at the start of its day.** Holding 5 units, a 1:4 split and a buy of 10 on the
+  same day give 5 × 4 + 10 = 30 units, whatever the time recorded on each.
+- **A split covers every portfolio.** A split is recorded once per portfolio of the account
+  holding the instrument. A trade that would make another portfolio hold the instrument on that
+  date without its own split row is refused (`split_missing_for_portfolio`).
+
+Not handled yet: return of capital, amortizing bonds, spin-offs, mergers and rights issues, and
+the fiscal view in euros for instruments in other currencies.
 
 ### Target allocation and thresholds
 

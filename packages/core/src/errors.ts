@@ -38,7 +38,12 @@ export type ValidationErrorCode =
   | "invalid_price"
   | "invalid_price_format"
   | "invalid_price_factor"
-  | "invalid_sale_quantity";
+  | "invalid_sale_quantity"
+  | "invalid_trade"
+  | "unknown_trade"
+  | "insufficient_quantity"
+  | "split_missing_for_portfolio"
+  | "split_leaves_no_quantity";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

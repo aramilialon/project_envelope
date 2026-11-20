@@ -26,6 +26,28 @@ export {
   toPriceFactor,
   toQuantity,
 } from "./portfolio/quantity.ts";
+export type {
+  AccountCharge,
+  AccountPosition,
+  AccountSummary,
+  PortfolioPosition,
+  PortfolioSummary,
+  Positions,
+  PositionSummary,
+  PositionTotals,
+  PositionTrade,
+  TaxKind,
+  TradeChange,
+  TradeType,
+} from "./portfolio/positions.ts";
+export {
+  applyTradeChanges,
+  computePositions,
+  summarizeByAccount,
+  summarizeByPortfolio,
+  validatePositionHistory,
+  valuePosition,
+} from "./portfolio/positions.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
 export type {
