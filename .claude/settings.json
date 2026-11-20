@@ -23,6 +23,9 @@
       "Bash(git tag *)",
       "Bash(gh release *)",
       "Bash(gh api *)"
+    ],
+    "allow": [
+      "Bash(gh pr merge * --squash --delete-branch)"
     ]
   }
 }
