@@ -42,3 +42,7 @@
 | ADR | Architecture Decision Record: a page explaining a decision and the discarded alternatives |
 | Locale | Language and regional conventions for numbers and dates, for example `it-IT` or `en-US` |
 | i18n | Internationalization: preparing the app to be translated and formatted for any locale |
+| MCP | Model Context Protocol: the standard through which an AI assistant calls an application's tools; `apps/mcp` is the app's MCP server ([ADR 0014](adr/0014-assistant-access-through-mcp.md)) |
+| Assistant connection | One member's link between an assistant client and a workspace, `pending` until approved from the web app on the LAN, then `active` until revoked; `assistant_connections` |
+| Delegated token | An access token issued to a client other than the app's own (an assistant), on a member's behalf; the API allows it only on routes flagged for assistants |
+| Draft | A transaction or trade proposed by an assistant and not yet recorded; it becomes real only when a member confirms it in the web app (`trade_drafts`, staged transactions) |
