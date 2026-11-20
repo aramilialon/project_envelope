@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "./migrate.ts";
-import { createPool, type DbPool } from "./pool.ts";
+import { createPool, type DbClient, type DbPool } from "./pool.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -23,6 +23,7 @@ const WORKSPACE_TABLES = [
   "splits",
   "assignment_ledger",
   "audit_log",
+  "portfolios",
 ];
 
 describe("apps/api/migrations, applied to a real database", () => {
@@ -129,6 +130,79 @@ describe("apps/api/migrations, applied to a real database", () => {
         await client.query("ROLLBACK");
         client.release();
       }
+    });
+  });
+
+  describe("portfolios (#75), as the envelope_app role", () => {
+    let workspaceA: string;
+    let workspaceB: string;
+    let portfolioB: string;
+
+    before(async () => {
+      workspaceA = randomUUID();
+      workspaceB = randomUUID();
+      await pool.query(
+        "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Portfolios A', 'EUR', 'Europe/Rome'), ($2, 'Portfolios B', 'EUR', 'Europe/Rome')",
+        [workspaceA, workspaceB],
+      );
+      await pool.query("INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Growth A')", [workspaceA]);
+      const { rows } = await pool.query<{ id: string }>(
+        "INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Growth B') RETURNING id",
+        [workspaceB],
+      );
+      portfolioB = rows[0]!.id;
+    });
+
+    after(async () => {
+      await pool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceA, workspaceB]]);
+    });
+
+    async function asWorkspaceA<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL ROLE envelope_app");
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceA]);
+        return await fn(client);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    }
+
+    it("only shows, updates and deletes the selected workspace's portfolios", async () => {
+      await asWorkspaceA(async (client) => {
+        const visible = await client.query("SELECT name FROM portfolios");
+        assert.deepEqual(visible.rows, [{ name: "Growth A" }]);
+
+        const updated = await client.query("UPDATE portfolios SET name = 'Taken over' WHERE id = $1", [portfolioB]);
+        assert.equal(updated.rowCount, 0);
+        const deleted = await client.query("DELETE FROM portfolios WHERE id = $1", [portfolioB]);
+        assert.equal(deleted.rowCount, 0);
+      });
+      const untouched = await pool.query("SELECT name FROM portfolios WHERE id = $1", [portfolioB]);
+      assert.deepEqual(untouched.rows, [{ name: "Growth B" }]);
+    });
+
+    it("does not let envelope_app insert a portfolio into another workspace", async () => {
+      await asWorkspaceA(async (client) => {
+        await assert.rejects(
+          () => client.query("INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Sneaky')", [workspaceB]),
+          /row-level security/,
+        );
+      });
+    });
+
+    it("refuses a second non-archived portfolio with the same name, ignoring case and spaces, but not an archived one", async () => {
+      await asWorkspaceA(async (client) => {
+        await assert.rejects(
+          () => client.query("INSERT INTO portfolios (workspace_id, name) VALUES ($1, ' growth a ')", [workspaceA]),
+          /portfolios_active_name_idx/,
+        );
+      });
+      await asWorkspaceA(async (client) => {
+        await client.query("INSERT INTO portfolios (workspace_id, name, archived_at) VALUES ($1, 'GROWTH A', now())", [workspaceA]);
+      });
     });
   });
 
