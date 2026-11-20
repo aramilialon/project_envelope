@@ -98,6 +98,8 @@ const RECONCILED_TRANSACTION: Prediction = { kind: "refuse", status: 409 };
 const TRADE_OWNED: Prediction = { kind: "refuse", status: 409, code: "trade_owned_transaction" };
 /** Income on an on-budget credit card, which `@envelope/core` does not model yet (#548). */
 const CARD_INCOME: Prediction = { kind: "refuse", status: 400, code: "card_income_not_supported" };
+/** Money leaving the budget for an off-budget account without a category (#378). */
+const UNCATEGORIZED: Prediction = { kind: "refuse", status: 400, code: "uncategorized_transaction" };
 
 /**
  * The codes an `any` refusal may carry: the rules the walk does not predict but can run into
@@ -362,7 +364,18 @@ function transferSpec(choose: (model: WorkspaceModel, random: WalkRandom) => { s
         ...(p.category === undefined ? {} : { categoryId: model.category(p.category).id }),
       },
     }),
-    predict: () => ACCEPT,
+    predict(model, p) {
+      // The category rule of a transfer between an on-budget and an off-budget account: going out
+      // it needs one (#378); coming in, none leaves the money to assign (#598), except on a card,
+      // where income is not modeled yet (#548).
+      const source = model.account(p.source);
+      const destination = model.account(p.destination);
+      if (p.category === undefined && source.onBudget !== destination.onBudget) {
+        if (source.onBudget) return UNCATEGORIZED;
+        if (destination.type === "credit_card") return CARD_INCOME;
+      }
+      return ACCEPT;
+    },
     accept(model, p, body) {
       const { source, destination } = body as { source: TransactionJson; destination: TransactionJson };
       // The category goes on the on-budget leg when exactly one of the two accounts is off budget.
@@ -405,31 +418,46 @@ const cardPayment = transferSpec((model, random) => {
   return { source: random.pick(cash), destination: random.pick(cards) };
 }, 80_000);
 
-/** The monthly transfer from the budget to the broker, assigned to the "Investments" category. */
+/**
+ * The monthly transfer from the budget to the broker, assigned to the "Investments" category. Now
+ * and then without one, which is refused (#378).
+ */
 const fundBroker = transferSpec((model, random) => {
   const cash = model.budgetCashAccounts();
   const brokers = model.brokerageAccounts();
   const category = investmentsCategory(model);
   if (cash.length === 0 || brokers.length === 0 || !category) return undefined;
-  return { source: random.pick(cash), destination: random.pick(brokers), category };
+  return { source: random.pick(cash), destination: random.pick(brokers), ...(random.chance(0.1) ? {} : { category }) };
 }, 600_000);
 
+/**
+ * Money back from the broker: half of the time as income to assign, with no category (#598), half
+ * back into the "Investments" category. Now and then into a card: refused without a category
+ * (#548), a refund on the card with one.
+ */
 const withdrawBroker = transferSpec((model, random) => {
   const cash = model.budgetCashAccounts();
   const brokers = model.brokerageAccounts();
   const category = investmentsCategory(model);
   if (cash.length === 0 || brokers.length === 0 || !category) return undefined;
-  return { source: random.pick(brokers), destination: random.pick(cash), category };
+  const cards = model.cards().filter((card) => card.onBudget);
+  const destination = cards.length > 0 && random.chance(0.15) ? random.pick(cards) : random.pick(cash);
+  return { source: random.pick(brokers), destination, ...(random.chance(0.5) ? {} : { category }) };
 }, 150_000);
 
-/** Money kept apart in an off-budget savings account: it leaves the budget through a category, either way. */
+/**
+ * Money kept apart in an off-budget savings account: it leaves the budget through a category, and
+ * comes back through one or, half of the time, as income to assign (#598).
+ */
 const offBudgetSavings = transferSpec((model, random) => {
   const cash = model.budgetCashAccounts();
   const savings = [...model.accounts.values()].filter((a) => !a.onBudget && a.type === "savings");
   const categories = model.ordinaryCategories();
   if (cash.length === 0 || savings.length === 0 || categories.length === 0) return undefined;
-  const [source, destination] = random.chance(0.7) ? [random.pick(cash), random.pick(savings)] : [random.pick(savings), random.pick(cash)];
-  return { source: source!, destination: destination!, category: random.pick(categories).handle };
+  const outgoing = random.chance(0.7);
+  const [source, destination] = outgoing ? [random.pick(cash), random.pick(savings)] : [random.pick(savings), random.pick(cash)];
+  const category = random.pick(categories).handle;
+  return { source: source!, destination: destination!, ...(!outgoing && random.chance(0.5) ? {} : { category }) };
 }, 200_000);
 
 /** A transfer between two cards' payment categories (#260). */
@@ -1480,7 +1508,7 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     transfer: 3,
     cardPayment: 1,
     fundBroker: 7,
-    withdrawBroker: 2,
+    withdrawBroker: 3,
     editTransaction: 2,
     clearTransaction: 5,
     deleteTransaction: 2,

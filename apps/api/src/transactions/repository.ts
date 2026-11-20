@@ -346,12 +346,17 @@ export interface CreateTransferInput {
   readonly memo?: string;
   readonly status?: TransactionStatus;
   /**
-   * Required, and applied to whichever leg is on-budget, when exactly one of the two accounts is
-   * off-budget (design.md, "Account register": "transfers to an off-budget account ask for a
-   * category") — money is leaving (or entering) the budget, the same as ordinary spending or
-   * income, so `packages/core` needs a category on that leg the same way it would for an
-   * outflow. Ignored when both accounts are on-budget or both are off-budget, where a transfer
-   * is budget-neutral (or entirely outside the budget) either way.
+   * Applied to whichever leg is on-budget when exactly one of the two accounts is off-budget —
+   * money is leaving (or entering) the budget, the same as ordinary spending or income:
+   * - on-budget to off-budget: required (design.md, "Account register": "transfers to an
+   *   off-budget account ask for a category"), as `packages/core` requires for an outflow;
+   * - off-budget to on-budget: optional (#598). Left out, the incoming leg is stored without a
+   *   category and is income to assign ("Unassigned"); given, it is that category's activity
+   *   (for example refilling the envelope that funded the investment). Left out on a transfer
+   *   into an on-budget credit card, it is refused (`card_income_not_supported`), since income
+   *   on a card is not modeled yet (#548).
+   * Ignored when both accounts are on-budget or both are off-budget, where a transfer is
+   * budget-neutral (or entirely outside the budget) either way.
    */
   readonly categoryId?: string;
 }
@@ -365,7 +370,13 @@ export interface TransferRecord {
  * Creates a transfer as two linked `transactions` rows (`transfer_id`), each with a single
  * split. Both legs are categoryless (the transfer amount itself, not income — income is the
  * only meaning `null` gets on a non-transfer transaction; see `SplitInput`) unless exactly one
- * account is off-budget, in which case the on-budget leg carries `input.categoryId` instead.
+ * account is off-budget, in which case the on-budget leg carries `input.categoryId` instead
+ * (`CreateTransferInput.categoryId`). The one exception: the on-budget leg of a transfer from an
+ * off-budget account into a cash account, left without a category, is income to assign (#598);
+ * `packages/core` reads it so from the leg's sign and the other account. A transfer into an
+ * on-budget card without a category is refused with `card_income_not_supported` and
+ * `details.accountId`; one from an on-budget account to an off-budget one without a category with
+ * `uncategorized_transaction`.
  * Card-to-card is a card-to-card transfer (#260), moving money between the two cards' payment
  * categories once the budget month is computed, same as any other transfer here.
  */
@@ -385,32 +396,38 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
   if (malformed !== undefined) {
     throw new ValidationError("unknown_account", `unknown account: "${malformed}"`, { accountId: malformed });
   }
-  const { rows } = await db.query<{ id: string; on_budget: boolean }>(
-    "SELECT id, on_budget FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+  const { rows } = await db.query<{ id: string; on_budget: boolean; type: string }>(
+    "SELECT id, on_budget, type FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],
   );
-  const onBudgetById = new Map(rows.map((row) => [row.id, row.on_budget]));
-  const sourceOnBudget = onBudgetById.get(input.sourceAccountId);
-  const destinationOnBudget = onBudgetById.get(input.destinationAccountId);
-  if (sourceOnBudget === undefined || destinationOnBudget === undefined) {
-    const missing = sourceOnBudget === undefined ? input.sourceAccountId : input.destinationAccountId;
+  const accountById = new Map(rows.map((row) => [row.id, row]));
+  const source = accountById.get(input.sourceAccountId);
+  const destination = accountById.get(input.destinationAccountId);
+  if (source === undefined || destination === undefined) {
+    const missing = source === undefined ? input.sourceAccountId : input.destinationAccountId;
     throw new ValidationError("unknown_account", `unknown account: "${missing}"`, { accountId: missing });
   }
 
   let sourceCategoryId: string | null = null;
   let destinationCategoryId: string | null = null;
-  if (sourceOnBudget !== destinationOnBudget) {
+  if (source.on_budget && !destination.on_budget) {
+    // Money leaving the budget needs a real category (#378), as `packages/core` requires.
     if (input.categoryId === undefined) {
       throw new ValidationError(
         "uncategorized_transaction",
-        "a transfer between an on-budget and an off-budget account needs a category on its on-budget leg",
+        "a transfer from an on-budget to an off-budget account needs a category on its on-budget leg",
       );
     }
-    if (sourceOnBudget) {
-      sourceCategoryId = input.categoryId;
-    } else {
-      destinationCategoryId = input.categoryId;
+    sourceCategoryId = input.categoryId;
+  } else if (!source.on_budget && destination.on_budget) {
+    // Money coming into the budget is income to assign when no category is given (#598), except on
+    // a credit card, where `packages/core` does not model income yet (#548).
+    if (input.categoryId === undefined && destination.type === "credit_card") {
+      throw new ValidationError("card_income_not_supported", "income on an on-budget credit card is not supported yet", {
+        accountId: destination.id,
+      });
     }
+    destinationCategoryId = input.categoryId ?? null;
   }
 
   const sourceId = await insertTransferLeg(db, input, input.sourceAccountId, -input.amountCents, sourceCategoryId);
@@ -628,18 +645,42 @@ function sumOfSplits(splits: readonly { readonly amountCents: number }[]): numbe
 }
 
 /**
- * Whether `legId` is the on-budget leg of a transfer whose other leg (`partnerId`) is off-budget:
- * the one transfer leg that carries a category (`createTransfer`).
+ * How a transfer leg's category is handled (#552, #598), from where its money goes:
+ * - `incoming_cash`: the on-budget leg of a transfer from an off-budget account into a cash
+ *   account. A category is kept; none leaves it income to assign ("Unassigned").
+ * - `incoming_card`: the same into an on-budget credit card. A category is kept; none is refused
+ *   (`card_income_not_supported`), since income on a card is not modeled yet (#548).
+ * - `outgoing`: the on-budget leg of a transfer to an off-budget account. A category is kept;
+ *   none is refused (`uncategorized_transaction`).
+ * - `uncategorized`: any other leg (the off-budget leg, both accounts on-budget, both
+ *   off-budget). It never carries a category: one sent is ignored.
+ * The direction is the leg's own: `amountCents` is its current amount, whose sign an edit cannot
+ * change.
  */
-async function isCategorizedTransferLeg(db: DbPool | DbClient, workspaceId: string, legId: string, partnerId: string): Promise<boolean> {
-  const { rows } = await db.query<{ id: string; on_budget: boolean }>(
-    `SELECT t.id, a.on_budget FROM transactions t
+type TransferLegKind = "incoming_cash" | "incoming_card" | "outgoing" | "uncategorized";
+
+async function classifyTransferLeg(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  legId: string,
+  partnerId: string,
+  amountCents: number,
+): Promise<TransferLegKind> {
+  const { rows } = await db.query<{ id: string; on_budget: boolean; type: string }>(
+    `SELECT t.id, a.on_budget, a.type FROM transactions t
        JOIN accounts a ON a.id = t.account_id AND a.workspace_id = t.workspace_id
       WHERE t.workspace_id = $1 AND t.id = ANY($2)`,
     [workspaceId, [legId, partnerId]],
   );
-  const onBudgetById = new Map(rows.map((row) => [row.id, row.on_budget]));
-  return onBudgetById.get(legId) === true && onBudgetById.get(partnerId) === false;
+  const leg = rows.find((row) => row.id === legId);
+  const partner = rows.find((row) => row.id === partnerId);
+  if (leg?.on_budget !== true || partner?.on_budget !== false) {
+    return "uncategorized";
+  }
+  if (amountCents < 0) {
+    return "outgoing";
+  }
+  return leg.type === "credit_card" ? "incoming_card" : "incoming_cash";
 }
 
 /**
@@ -665,11 +706,18 @@ async function isCategorizedTransferLeg(db: DbPool | DbClient, workspaceId: stri
  * written. A new split with the same amount (a different category on the leg) leaves the other leg
  * alone. The payee, memo and status the request gives stay the edited leg's own.
  *
- * A leg's category follows `createTransfer` (#552): the on-budget leg of a transfer to or from an
- * off-budget account needs one, and a new split without one is refused with
- * `uncategorized_transaction` (otherwise every budget-month read of the workspace would fail); on
- * any other leg (both accounts on-budget, both off-budget, or the off-budget leg) a category in
- * the new split is ignored and the leg stays categoryless, as creating the transfer ignores it.
+ * A leg's category follows `createTransfer` (#552, #598; `classifyTransferLeg`), so no stored leg
+ * can make every budget-month read of the workspace fail:
+ * - the on-budget leg of a transfer to an off-budget account keeps the category sent, and a new
+ *   split without one is refused with `uncategorized_transaction`;
+ * - the on-budget leg of a transfer from an off-budget account into a cash account keeps the
+ *   category sent, or none: income to assign ("Unassigned");
+ * - the same into an on-budget credit card keeps the category sent, and a new split without one
+ *   is refused with `card_income_not_supported` and `details.accountId`;
+ * - on any other leg (both accounts on-budget, both off-budget, or the off-budget leg) a category
+ *   in the new split is ignored and the leg stays categoryless, as creating the transfer ignores
+ *   it.
+ * A new category with the same amount leaves the other leg, and its status, alone.
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -719,18 +767,22 @@ export async function updateTransaction(
         transactionId: existing.id,
       });
     }
-    // The category rule `createTransfer` applies (#552): only the on-budget leg of a transfer to or
-    // from an off-budget account carries a category, and it needs one; any other leg has none.
-    if (await isCategorizedTransferLeg(db, workspaceId, existing.id, existing.transferId)) {
-      if (legSplit.categoryId === null) {
-        throw new ValidationError(
-          "uncategorized_transaction",
-          "a transfer between an on-budget and an off-budget account needs a category on its on-budget leg",
-          { transactionId: existing.id },
-        );
-      }
-    } else {
+    // The category rule `createTransfer` applies (#552, #598): only the on-budget leg of a transfer
+    // to or from an off-budget account carries a category; going out it needs one, coming in it may
+    // be left as income to assign, except on a card. Any other leg has none.
+    const kind = await classifyTransferLeg(db, workspaceId, existing.id, existing.transferId, sumOfSplits(existing.splits));
+    if (kind === "uncategorized") {
       newSplits = [{ ...legSplit, categoryId: null }];
+    } else if (legSplit.categoryId === null && kind === "outgoing") {
+      throw new ValidationError(
+        "uncategorized_transaction",
+        "a transfer from an on-budget to an off-budget account needs a category on its on-budget leg",
+        { transactionId: existing.id },
+      );
+    } else if (legSplit.categoryId === null && kind === "incoming_card") {
+      throw new ValidationError("card_income_not_supported", "income on an on-budget credit card is not supported yet", {
+        accountId: existing.accountId,
+      });
     }
     const newTotal = sumOfSplits(patch.splits);
     const oldTotal = sumOfSplits(existing.splits);
