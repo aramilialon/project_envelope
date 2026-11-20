@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { after, before, beforeEach, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 
@@ -145,11 +145,6 @@ describe("trades routes (#77)", () => {
     ({ superuserPool, realm, app, workspaceId, token } = await setupIntegrationTest());
     const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
     userId = rows[0]!.id;
-  });
-
-  // A fresh token for every test: the test realm's tokens live 3 seconds.
-  beforeEach(async () => {
-    token = await realm.getUserToken();
   });
 
   after(async () => {
