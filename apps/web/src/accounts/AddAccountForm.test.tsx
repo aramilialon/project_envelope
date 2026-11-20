@@ -190,49 +190,74 @@ describe("AddAccountForm (#51)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("asks a brokerage account's tax regime and withholding agent only in an IT workspace (#508)", () => {
+  const BROKER = {
+    id: "a1",
+    workspaceId: "ws-1",
+    name: "Broker",
+    type: "brokerage" as const,
+    currency: "EUR",
+    onBudget: false,
+    paymentCategoryId: null,
+    closedAt: null,
+    createdAt: "2026-01-01",
+  };
+  const AGENT_LABEL = "The broker is an Italian withholding agent";
+
+  it("asks a brokerage account's tax regime only in an IT workspace, with no regime preselected (#508)", () => {
     renderForm(vi.fn(), vi.fn(), "IT");
 
-    expect(screen.queryByLabelText("Tax regime")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Tax regime" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
-    expect(screen.getByLabelText("Tax regime")).toBeInTheDocument();
-    expect(screen.getByLabelText("The broker is an Italian withholding agent")).not.toBeChecked();
-    expect(screen.getByRole("option", { name: "Self-declared" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Administered" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Managed" })).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "Tax regime" });
+    expect(group).toHaveAccessibleDescription(
+      "How gains on this account are taxed. Your broker's contract or tax statements say which one.",
+    );
+    for (const [name, hint] of [
+      ["Self-declared", "You report gains and losses in your tax return"],
+      ["Administered", "The broker works out and withholds the tax on each gain"],
+      ["Managed", "A manager runs the account under a mandate and taxes the result"],
+    ] as const) {
+      const radio = screen.getByRole("radio", { name });
+      expect(radio).not.toBeChecked();
+      expect(radio).toHaveAccessibleDescription(hint);
+    }
 
     fireEvent.click(screen.getByRole("radio", { name: "Savings" }));
-    expect(screen.queryByLabelText("Tax regime")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("The broker is an Italian withholding agent")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Tax regime" })).not.toBeInTheDocument();
+  });
+
+  it("asks about the withholding agent only for a self-declared regime", () => {
+    renderForm(vi.fn(), vi.fn(), "IT");
+    fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
+    expect(screen.queryByLabelText(AGENT_LABEL, { exact: false })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Self-declared" }));
+    const checkbox = screen.getByRole("checkbox", { name: new RegExp(AGENT_LABEL) });
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toHaveAccessibleDescription("It withholds Italian tax at source on dividends, coupons and fund income.");
+
+    for (const name of ["Administered", "Managed"]) {
+      fireEvent.click(screen.getByRole("radio", { name }));
+      expect(screen.queryByRole("checkbox", { name: new RegExp(AGENT_LABEL) })).not.toBeInTheDocument();
+    }
   });
 
   it("does not ask for a tax regime outside an IT workspace", () => {
     renderForm(vi.fn(), vi.fn(), null);
     fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
-    expect(screen.queryByLabelText("Tax regime")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("The broker is an Italian withholding agent")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Tax regime" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: new RegExp(AGENT_LABEL) })).not.toBeInTheDocument();
   });
 
-  it("requires the regime before creating a brokerage account in an IT workspace, then sends both settings", async () => {
-    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue({
-      id: "a1",
-      workspaceId: "ws-1",
-      name: "Broker",
-      type: "brokerage",
-      currency: "EUR",
-      onBudget: false,
-      paymentCategoryId: null,
-      closedAt: null,
-      createdAt: "2026-01-01",
-    });
+  it("requires the regime, then sends an administered account's broker as a withholding agent", async () => {
+    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue(BROKER);
     renderForm(vi.fn(), vi.fn(), "IT");
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Broker" } });
     fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
     expect(screen.getByRole("button", { name: "Add account" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Tax regime"), { target: { value: "administered" } });
-    fireEvent.click(screen.getByLabelText("The broker is an Italian withholding agent"));
+    fireEvent.click(screen.getByRole("radio", { name: "Administered" }));
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));
 
     await waitFor(() =>
@@ -245,6 +270,47 @@ describe("AddAccountForm (#51)", () => {
         domesticWithholdingAgent: true,
       }),
     );
+  });
+
+  it("sends a self-declared account's withholding agent as checked", async () => {
+    const createAccount = vi.spyOn(accountsApi, "createAccount").mockResolvedValue(BROKER);
+    renderForm(vi.fn(), vi.fn(), "IT");
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Broker" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Self-declared" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    await waitFor(() =>
+      expect(createAccount).toHaveBeenCalledWith(
+        "t",
+        "ws-1",
+        expect.objectContaining({ taxRegime: "self_declared", domesticWithholdingAgent: false }),
+      ),
+    );
+  });
+
+  it("names the API's tax-settings refusals", async () => {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    for (const [code, message] of [
+      ["tax_regime_required", "Choose this account's tax regime."],
+      ["tax_regime_not_applicable", "A tax regime applies only to a brokerage account in a workspace whose tax country is Italy."],
+      [
+        "tax_regime_requires_withholding_agent",
+        "An administered or managed account needs a broker that is an Italian withholding agent.",
+      ],
+    ] as const) {
+      vi.spyOn(accountsApi, "createAccount").mockRejectedValueOnce(new accountsApi.AccountTaxError(code));
+      const { unmount } = renderWithIntl(
+        <AddAccountForm workspaceId="ws-1" baseCurrency="EUR" taxCountry="IT" onClose={vi.fn()} onCreated={vi.fn()} />,
+      );
+      fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Broker" } });
+      fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
+      fireEvent.click(screen.getByRole("radio", { name: "Managed" }));
+      fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      unmount();
+    }
   });
 
   it("calls onClose when cancelled", () => {

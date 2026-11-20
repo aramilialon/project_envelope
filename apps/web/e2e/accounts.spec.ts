@@ -85,8 +85,9 @@ test.describe("accounts (#51)", () => {
       await page.getByLabel("Name").fill("Broker");
       await page.getByRole("radio", { name: /Brokerage/ }).check();
       await expect(page.getByRole("button", { name: "Add account", exact: true })).toBeDisabled();
-      await page.getByLabel("Tax regime").selectOption("administered");
-      await page.getByLabel("The broker is an Italian withholding agent").check();
+      await page.getByRole("group", { name: "Tax regime" }).getByRole("radio", { name: "Administered" }).check();
+      // An administered account's broker is always an Italian withholding agent: no question asked.
+      await expect(page.getByRole("checkbox", { name: /withholding agent/ })).not.toBeVisible();
       await page.getByRole("button", { name: "Add account", exact: true }).click();
       await expect(page.getByRole("dialog")).not.toBeVisible();
 

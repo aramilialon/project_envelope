@@ -1,7 +1,9 @@
 /** The accounts endpoints (#51): list, create and close an account in a workspace. */
 import type { TaxRegime } from "@envelope/core";
 
-import { apiFetch } from "../apiFetch.ts";
+import { apiFetch, authHeaders } from "../apiFetch.ts";
+
+const API_URL: string = import.meta.env.VITE_API_URL;
 
 export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
 
@@ -35,12 +37,50 @@ export async function listAccounts(accessToken: string, workspaceId: string): Pr
   return body.accounts;
 }
 
+/** Why the API refused a brokerage account's tax settings (#508): `@envelope/core`'s stable codes. */
+export type AccountTaxErrorCode = "tax_regime_required" | "tax_regime_not_applicable" | "tax_regime_requires_withholding_agent";
+
+const ACCOUNT_TAX_ERROR_CODES: readonly string[] = [
+  "tax_regime_required",
+  "tax_regime_not_applicable",
+  "tax_regime_requires_withholding_agent",
+];
+
+/** A 400 from creating an account, for one of the tax-settings codes the form can name. */
+export class AccountTaxError extends Error {
+  readonly code: AccountTaxErrorCode;
+
+  constructor(code: AccountTaxErrorCode) {
+    super(`account tax settings refused: ${code}`);
+    this.code = code;
+  }
+}
+
+/**
+ * Creates an account. A 400 carrying one of the tax-settings codes becomes an `AccountTaxError`,
+ * every other failure the same generic error `apiFetch` throws — so this uses a plain `fetch`,
+ * since `apiFetch` throws before the body's own `code` could be read.
+ */
 export async function createAccount(
   accessToken: string,
   workspaceId: string,
   input: CreateAccountInput,
 ): Promise<Account> {
-  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts`, input);
+  const path = `/workspaces/${workspaceId}/accounts`;
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: authHeaders(accessToken, true),
+    body: JSON.stringify(input),
+  });
+  if (response.status === 400) {
+    const { error } = (await response.json()) as { error?: unknown };
+    if (typeof error === "string" && ACCOUNT_TAX_ERROR_CODES.includes(error)) {
+      throw new AccountTaxError(error as AccountTaxErrorCode);
+    }
+  }
+  if (!response.ok) {
+    throw new Error(`POST ${path} failed: ${response.status}`);
+  }
   return (await response.json()) as Account;
 }
 
