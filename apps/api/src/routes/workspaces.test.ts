@@ -158,21 +158,23 @@ describe("workspaces routes (#394)", () => {
   });
 
   it("sets and clears the tax country, and only its own owner may (#508)", async () => {
-    const auth = { authorization: `Bearer ${token}` };
+    // The test realm's access tokens live 3 seconds: take fresh ones as the test goes.
+    let ownerToken = await realm.getUserToken();
+    const auth = () => ({ authorization: `Bearer ${ownerToken}` });
     const created = await app.fastify.inject({
       method: "POST",
       url: "/workspaces",
-      headers: auth,
+      headers: auth(),
       payload: { name: "Taxed", baseCurrency: "EUR", timeZone: "Europe/Rome" },
     });
     const workspace = created.json();
     createdWorkspaceIds.push(workspace.id);
     assert.equal(workspace.taxCountry, null);
 
-    const patch = (payload: unknown, headers: Record<string, string> = auth) =>
+    const patch = (payload: unknown, headers: Record<string, string> = auth()) =>
       app.fastify.inject({ method: "PATCH", url: `/workspaces/${workspace.id}`, headers, payload: payload as object });
     const listedTaxCountry = async () => {
-      const listed = await app.fastify.inject({ method: "GET", url: "/me/workspaces", headers: auth });
+      const listed = await app.fastify.inject({ method: "GET", url: "/me/workspaces", headers: auth() });
       return listed.json().workspaces.find((w: { id: string }) => w.id === workspace.id).taxCountry;
     };
 
@@ -208,11 +210,15 @@ describe("workspaces routes (#394)", () => {
     ]);
     const byEditor = await patch({ taxCountry: null }, { authorization: `Bearer ${editorToken}` });
     assert.equal(byEditor.statusCode, 403);
+    ownerToken = await realm.getUserToken();
     assert.equal(await listedTaxCountry(), "IT");
 
     const cleared = await patch({ taxCountry: null });
     assert.equal(cleared.statusCode, 200);
     assert.equal(await listedTaxCountry(), null);
+
+    // This test outlasts a token's 3-second life: leave the next test a fresh one.
+    token = await realm.getUserToken();
   });
 
   it("deleting a workspace the caller does not belong to is a 403, the same as any other unknown one", async () => {

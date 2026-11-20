@@ -21,8 +21,10 @@ describe("regimeAt", () => {
     assert.equal(regimeAt([], "2026-06-30"), undefined);
   });
 
-  it("returns undefined before the first entry", () => {
-    assert.equal(regimeAt(history, "2024-03-14"), undefined);
+  it("applies the first entry to every date before it, whatever the order of the history", () => {
+    assert.equal(regimeAt(history, "2024-03-14"), "administered");
+    assert.equal(regimeAt(history, "1999-01-01"), "administered");
+    assert.equal(regimeAt([{ validFrom: "2026-11-20", regime: "managed" }], "2020-06-30"), "managed");
   });
 
   it("applies an entry from its own first day, whatever the order of the history", () => {

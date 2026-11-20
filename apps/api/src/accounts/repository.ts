@@ -36,7 +36,10 @@ export interface CreateAccountInput {
   readonly startingBalanceCents?: number;
   /** Brokerage accounts only (#508): the regime in force from `taxRegimeValidFrom`. Required in an `IT` workspace. */
   readonly taxRegime?: TaxRegime;
-  /** The first day of `taxRegime`, any date; defaults to today in the workspace's time zone. */
+  /**
+   * When `taxRegime` was recorded, any date; defaults to today in the workspace's time zone. As
+   * the first period, it also applies to every earlier date (`@envelope/core`'s `regimeAt`).
+   */
   readonly taxRegimeValidFrom?: LocalDate;
   /** Brokerage accounts only (#508). Required in an `IT` workspace. */
   readonly domesticWithholdingAgent?: boolean;

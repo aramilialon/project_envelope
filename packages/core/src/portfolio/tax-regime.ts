@@ -3,8 +3,8 @@
  *
  * An account keeps a history of regimes rather than a single value, so a later change never
  * reinterprets trades already recorded: a trade uses the regime in force on its own date. The
- * first entry may start on any date; every later one starts on 1 January, the only day a
- * change takes effect. No two entries share a date.
+ * first entry may start on any date, and also covers every date before it; every later one
+ * starts on 1 January, the only day a change takes effect. No two entries share a date.
  *
  * Only the rules about the history live here. What each regime means for taxes is computed
  * elsewhere, later (design.md, "Portfolio module").
@@ -57,21 +57,27 @@ export function validateTaxRegimeHistory(history: readonly TaxRegimeEntry[]): vo
 }
 
 /**
- * The regime in force on `date`: the entry with the latest `validFrom` on or before it.
- * `undefined` when the history is empty or `date` comes before its first entry.
+ * The regime in force on `date`: the entry with the latest `validFrom` on or before it. The
+ * first entry also applies to every earlier date: before the first recorded change, the initial
+ * regime is the only one known, so trades older than the day it was recorded still have one.
+ * `undefined` only when the history is empty.
  *
  * @throws ValidationError "invalid_date" if `date` is not a real "YYYY-MM-DD" date.
  */
 export function regimeAt(history: readonly TaxRegimeEntry[], date: LocalDate): TaxRegime | undefined {
   assertDate(date);
   let found: TaxRegimeEntry | undefined;
+  let first: TaxRegimeEntry | undefined;
   for (const entry of history) {
     // "YYYY-MM-DD" strings compare in calendar order.
     if (entry.validFrom <= date && (found === undefined || entry.validFrom > found.validFrom)) {
       found = entry;
     }
+    if (first === undefined || entry.validFrom < first.validFrom) {
+      first = entry;
+    }
   }
-  return found?.regime;
+  return (found ?? first)?.regime;
 }
 
 /** Tax countries whose rules need every brokerage account's regime and withholding agent; others are added with their own rules. */

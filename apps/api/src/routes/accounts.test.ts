@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { after, before, describe, it } from "node:test";
+import { after, before, beforeEach, describe, it } from "node:test";
 
 import { MAX_NAME_LENGTH } from "@envelope/core";
 import { decodeJwt } from "jose";
@@ -173,7 +173,6 @@ describe("accounts routes", () => {
 
   describe("tax regime of brokerage accounts (#508)", () => {
     const auth = () => ({ authorization: `Bearer ${token}` });
-    let readOnlyToken: string;
     /** A brokerage account created before the workspace's tax country was set: no regime at all. */
     let legacyBrokerageId: string;
 
@@ -199,7 +198,28 @@ describe("accounts routes", () => {
       });
     }
 
+    /** A token for a new user who is a read_only member of the workspace. */
+    async function readOnlyMemberToken(): Promise<string> {
+      const readOnlyToken = await realm.getTokenForNewUser();
+      await app.fastify.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${readOnlyToken}` } });
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [
+        decodeJwt(readOnlyToken).sub,
+      ]);
+      await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'read_only')", [
+        rows[0]!.id,
+        workspaceId,
+      ]);
+      return readOnlyToken;
+    }
+
+    // The test realm's access tokens live 3 seconds (test-helpers/keycloak.ts): take a fresh one
+    // before each test rather than rely on the one the file's setup obtained.
+    beforeEach(async () => {
+      token = await realm.getUserToken();
+    });
+
     before(async () => {
+      token = await realm.getUserToken();
       const legacy = await create({ name: "Broker before IT", type: "brokerage", currency: "EUR" });
       assert.equal(legacy.statusCode, 201);
       legacyBrokerageId = legacy.json().id;
@@ -211,16 +231,6 @@ describe("accounts routes", () => {
         payload: { taxCountry: "IT" },
       });
       assert.equal(setCountry.statusCode, 200);
-
-      readOnlyToken = await realm.getTokenForNewUser();
-      await app.fastify.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${readOnlyToken}` } });
-      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [
-        decodeJwt(readOnlyToken).sub,
-      ]);
-      await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'read_only')", [
-        rows[0]!.id,
-        workspaceId,
-      ]);
     });
 
     after(async () => {
@@ -352,7 +362,9 @@ describe("accounts routes", () => {
     });
 
     it("lets a read-only member read the history but not change it", async () => {
-      const headers = { authorization: `Bearer ${readOnlyToken}` };
+      const headers = { authorization: `Bearer ${await readOnlyMemberToken()}` };
+      // Creating that user can take long enough for the owner's token to expire.
+      token = await realm.getUserToken();
       const listed = await history(legacyBrokerageId, headers);
       assert.equal(listed.statusCode, 200);
 

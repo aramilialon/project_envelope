@@ -402,8 +402,13 @@ regimes it is under:
   which needs private instruments (milestone 0.2.1); until then it records individual trades only.
 
 **The regime is a history.** An account can change regime, but a change takes effect from
-1 January; only the first regime recorded may start on any date (the day the account was opened,
-for example). Each trade is read under the regime in force on its own date.
+1 January; only the first regime recorded may start on any date (by default, the day it is
+recorded). Each trade is read under the regime in force on its own date. The first regime also
+covers every date before it: until the first change, it is the only regime known for the account,
+so a household importing years of older trades does not have to backdate it.
+
+**Example.** A regime "administered" is recorded on 20 November 2026 for an account opened years
+earlier. A sale from 2019, imported later, is read under the administered regime too.
 
 **Example.** An account administered since 15 March 2024 switches to self-declared from 1 January
 2027. A sale on 20 December 2026 is under the administered regime, so the broker withholds the tax
