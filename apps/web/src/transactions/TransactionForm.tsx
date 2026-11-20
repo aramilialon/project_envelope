@@ -179,6 +179,13 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           );
       }
     }
+    if (caught instanceof ApiError && caught.code === "card_income_not_supported") {
+      // #548: income (an inflow with no category) on an on-budget credit card is not supported yet.
+      return intl.formatMessage({
+        id: "transactions.form.cardIncomeNotSupported",
+        defaultMessage: "Income on a credit card is not supported yet: choose a category for this inflow.",
+      });
+    }
     return intl.formatMessage({ id: "transactions.form.error", defaultMessage: "We could not save this transaction." });
   }
 
