@@ -1,6 +1,6 @@
 # Work with issues, pull requests and releases
 
-Every change reaches `main` through a pull request that a person reviews and merges. Claude Code, like any contributor, pushes branches and opens pull requests, but never pushes to `main`, never approves and never merges.
+Every change reaches `main` through a pull request. Claude Code, like any contributor, pushes branches and opens pull requests, and never pushes to `main`. It may review and approve pull requests (`gh pr review`) and squash-merge them, but only after the CI run on the pull request has passed; the maintainer can review any pull request before or after.
 
 ## How the pieces fit together
 
@@ -121,6 +121,6 @@ When every issue of a milestone is closed:
 | --- | --- | --- |
 | Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request, only "Squash and merge" allowed, requires the `test` and `conventional-title` checks | The repository is public, so this works on the free plan |
 | Git hooks (`scripts/git-hooks/`) | `pre-push` refuses `git push` to `main`; `commit-msg` checks the commit convention | Local: must be activated in each clone |
-| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, merging and approving pull requests, skipping hooks; ask before force pushes, tags, releases and raw API calls | Match the usual command forms, not every possible variant |
+| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, force pushes and skipping hooks; allow squash merges and pull request reviews; ask before tags, releases and raw API calls | Match the usual command forms, not every possible variant |
 
 Only the ruleset is a real boundary; the other two catch mistakes early.
