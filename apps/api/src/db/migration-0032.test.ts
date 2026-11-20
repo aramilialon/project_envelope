@@ -59,11 +59,11 @@ describe("migration 0032 on a database with existing change_log rows", () => {
       workspaceId,
     ]);
     const entityId = randomUUID();
-    const insert = (id: string, physical: number, receivedAt: string) =>
+    const insert = (id: string, physical: number, receivedAt: string, entity = entityId) =>
       scratchPool.query(
         `INSERT INTO change_log (id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value, received_at)
          VALUES ($1, $2, $3, 'transactions.memo', $4, 0, 'd', '"v"', $5)`,
-        [id, workspaceId, entityId, physical, receivedAt],
+        [id, workspaceId, entity, physical, receivedAt],
       );
     const first = randomUUID();
     const later = randomUUID();
@@ -71,6 +71,12 @@ describe("migration 0032 on a database with existing change_log rows", () => {
     await insert(first, 1000, "2026-01-01T00:00:00Z");
     await insert(later, 2000, "2026-01-02T00:00:00Z");
     await insert(arrivedLate, 1500, "2026-01-03T00:00:00Z");
+    // One request, sent in clock order by its device: both share received_at, and both applied.
+    const batchEntityId = randomUUID();
+    const batchFirst = randomUUID();
+    const batchSecond = randomUUID();
+    await insert(batchFirst, 1000, "2026-01-04T00:00:00Z", batchEntityId);
+    await insert(batchSecond, 2000, "2026-01-04T00:00:00Z", batchEntityId);
 
     await copyFile(path.join(DEFAULT_MIGRATIONS_DIR, MIGRATION), path.join(migrationsDir, MIGRATION));
     assert.deepEqual(await runMigrations(scratchPool, migrationsDir), [MIGRATION]);
@@ -80,6 +86,8 @@ describe("migration 0032 on a database with existing change_log rows", () => {
     assert.equal(outcomeOf(first), "applied");
     assert.equal(outcomeOf(later), "applied");
     assert.equal(outcomeOf(arrivedLate), "stale");
+    assert.equal(outcomeOf(batchFirst), "applied", "an earlier change of the same request is not stale against a later one");
+    assert.equal(outcomeOf(batchSecond), "applied");
 
     const { rows: key } = await scratchPool.query<{ columns: string[] }>(
       `SELECT array_agg(a.attname::text ORDER BY k.ord) AS columns

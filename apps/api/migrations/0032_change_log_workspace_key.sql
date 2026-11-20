@@ -16,10 +16,11 @@ ALTER TABLE change_log ADD CONSTRAINT change_log_pkey PRIMARY KEY (workspace_id,
 ALTER TABLE change_log ADD COLUMN outcome text;
 
 -- Rows recorded before this migration did not keep their outcome. A change was applied unless a
--- change to the same field with a clock at least as late had been received by then; changes
--- received in the same request share one received_at and their order among themselves is lost,
--- so one of those with an equal or later clock counts as received first. Best effort, and only
--- ever read back by a retry of such an old change.
+-- change to the same field with a clock at least as late had been received before it. Changes
+-- received in the same request share one received_at, and a device sends its queue in clock
+-- order, so none of those counts as received before another: only a strictly earlier
+-- received_at makes a change stale. Best effort, and only ever read back by a retry of such an
+-- old change.
 UPDATE change_log c
 SET outcome = CASE
   WHEN EXISTS (
@@ -28,7 +29,7 @@ SET outcome = CASE
       AND p.entity_id = c.entity_id
       AND p.field_name = c.field_name
       AND p.id <> c.id
-      AND p.received_at <= c.received_at
+      AND p.received_at < c.received_at
       AND (p.hlc_physical, p.hlc_counter, p.device_id) >= (c.hlc_physical, c.hlc_counter, c.device_id)
   ) THEN 'stale'
   ELSE 'applied'
