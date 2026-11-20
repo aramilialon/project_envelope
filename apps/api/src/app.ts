@@ -18,6 +18,7 @@ import { registerHealthRoute } from "./routes/health.ts";
 import { registerImportRoutes } from "./routes/import.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerMyWorkspacesRoute } from "./routes/my-workspaces.ts";
+import { registerPortfoliosRoutes } from "./routes/portfolios.ts";
 import { registerQuickAssignRoutes } from "./routes/quick-assign.ts";
 import { registerReconciliationRoutes } from "./routes/reconciliation.ts";
 import { registerScheduledTransactionsRoutes } from "./routes/scheduled-transactions.ts";
@@ -83,6 +84,7 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   registerGoalsRoutes(fastify, pool);
   registerImportRoutes(fastify, pool);
   registerMyWorkspacesRoute(fastify, pool);
+  registerPortfoliosRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
   registerScheduledTransactionsRoutes(fastify, pool, queue);
