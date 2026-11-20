@@ -1,7 +1,7 @@
 /**
  * The seeded model-based random walk through the API (#80, ADR 0013). In CI it runs a few fixed
  * seeds for a few hundred steps each through `inject`, and one short walk through `fetch` against
- * the real server process. On demand:
+ * the real server process, and replays every log in `regressions/`. On demand:
  *
  *   WALK_SEED=1234 WALK_STEPS=5000 node --test src/test-helpers/walk/walk.test.ts   # a long run
  *   WALK_REPLAY=/tmp/envelope-walk-….json node --test src/test-helpers/walk/walk.test.ts
@@ -10,9 +10,10 @@
  * A failure prints the seed, the step and the path of the operation log it wrote.
  */
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 
 import { buildApp, type App } from "../../app.ts";
@@ -46,6 +47,14 @@ const FETCH_STEPS = 60;
  */
 const DETERMINISM_SEED = 20261120;
 const DETERMINISM_STEPS = 60;
+
+/**
+ * The minimal logs of the bugs the walk found, one per issue (README, "The random walk"). Each
+ * replays in fresh workspaces through `inject` on every run, a few steps each, so a fixed bug
+ * cannot come back unnoticed.
+ */
+const REGRESSIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), "regressions");
+const REGRESSION_LOGS = readdirSync(REGRESSIONS_DIR).filter((name) => name.endsWith(".json")).sort();
 
 const { databaseUrl } = requireIntegrationTestEnv();
 
@@ -198,6 +207,13 @@ describe("random walk through the API (#80, ADR 0013)", () => {
       assert.fail(`seed ${DETERMINISM_SEED} walked differently the second time, from step ${step + 1}:\n  ${JSON.stringify(first.log.ops[step])}\n  ${JSON.stringify(second.log.ops[step])}`);
     }
   });
+
+  for (const name of REGRESSION_LOGS) {
+    it(`replays the regression log ${name} (inject)`, async () => {
+      const log = JSON.parse(readFileSync(join(REGRESSIONS_DIR, name), "utf8")) as WalkLog;
+      report(await runWalk(env, { seed: log.seed, steps: log.ops.length, replay: log, ...(logDir ? { logDir } : {}) }), "inject");
+    });
+  }
 
   it(`keeps every invariant through the real process, seed ${CI_SEEDS[0]}, ${FETCH_STEPS} steps (fetch)`, async () => {
     const fetchEnv = await fetchEnvironment();
