@@ -1541,6 +1541,43 @@ describe("trades routes (#77)", () => {
         assert.equal(outOfApp!.quantityE8, -units(6));
       });
 
+      it("refuses a transfer from one archived portfolio into another, naming the receiving one", async () => {
+        const etf = await instrument();
+        const broker = await account();
+        const [source, target] = [await portfolio(), await portfolio()];
+        await created({ type: "buy", accountId: broker, portfolioId: source, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) });
+        await setArchived(source, true);
+        await setArchived(target, true);
+
+        const details = await rejected(
+          { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(2), from: { accountId: broker, portfolioId: source }, to: { accountId: broker, portfolioId: target } },
+          "portfolio_archived",
+        );
+        assert.deepEqual(details, { portfolioId: target });
+      });
+
+      it("keeps a transfer whose outgoing leg is in an archived portfolio editable: its quantity and its date", async () => {
+        const etf = await instrument();
+        const broker = await account();
+        const [source, target] = [await portfolio(), await portfolio()];
+        await created({ type: "buy", accountId: broker, portfolioId: source, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(100) });
+        const legs = await created({
+          type: "transfer",
+          instrumentId: etf,
+          tradeDate: "2026-02-01",
+          quantityE8: units(2),
+          from: { accountId: broker, portfolioId: source },
+          to: { accountId: broker, portfolioId: target },
+        });
+        await setArchived(source, true);
+        const outgoing = legs.find((leg) => leg.portfolioId === source)!;
+
+        const quantity = await edited(outgoing.id, { quantityE8: units(3) });
+        assert.deepEqual(quantity.map((leg) => leg.quantityE8).sort((a, b) => a - b), [-units(3), units(3)]);
+        const date = await edited(outgoing.id, { tradeDate: "2026-02-15" });
+        assert.deepEqual(date.map((leg) => [leg.portfolioId, leg.tradeDate]).sort(), [[source, "2026-02-15"], [target, "2026-02-15"]].sort());
+      });
+
       it("records a split's row in an archived portfolio, so an archived holder never blocks the split", async () => {
         const etf = await instrument();
         const broker = await account();
