@@ -89,7 +89,55 @@ describe("tradeCashCents (ADR 0012)", () => {
   });
 });
 
+describe("tradeCashCents, worked examples (domain expert)", () => {
+  // A BTP: 10,000 nominal at 98.765432 (percent), a €5.00 fee, €34.90 of accrued interest paid and
+  // €3.75 of domestic withholding on it credited back.
+  it("takes a bond buy's gross, fee and accrued interest out, net of the withholding credited back", () => {
+    const buy = amounts({ type: "buy", grossCents: 987_654, feesCents: 500, accruedInterestCents: 3_490, withholdingDomesticCents: 375 });
+    assert.equal(tradeCashCents(buy), -991_269);
+  });
+
+  // The same nominal sold at 100.00: €40.00 of accrued interest received, €5.00 withheld on it, a
+  // €5.00 fee and €7.11 of gain tax.
+  it("puts a bond sale's gross and accrued interest in, net of fee, gain tax and withholding", () => {
+    const sell = amounts({
+      type: "sell",
+      grossCents: 1_000_000,
+      accruedInterestCents: 4_000,
+      feesCents: 500,
+      gainTaxCents: 711,
+      withholdingDomesticCents: 500,
+    });
+    assert.equal(tradeCashCents(sell), 1_002_289);
+  });
+
+  it("puts a coupon in net of its domestic withholding", () => {
+    // €200.00 gross on the nominal, 12.5% withheld.
+    assert.equal(tradeCashCents(amounts({ type: "dividend", grossCents: 20_000, withholdingDomesticCents: 2_500 })), 17_500);
+  });
+
+  it("puts a foreign dividend in net of both withholdings and its fee", () => {
+    // €100.00 gross, €15.00 withheld abroad, €22.10 domestic, a €2.00 fee.
+    const dividend = amounts({ type: "dividend", grossCents: 10_000, withholdingForeignCents: 1_500, withholdingDomesticCents: 2_210, feesCents: 200 });
+    assert.equal(tradeCashCents(dividend), 6_090);
+  });
+});
+
 describe("checkTradeEntry", () => {
+  it("refuses a fee of 0, a tax of 0 or less, and a gain tax adjustment of 0", () => {
+    for (const [fields, field] of [
+      [{ type: "fee" }, "feesCents"],
+      [{ type: "tax", taxKind: "stamp_duty" }, "grossCents"],
+      [{ type: "tax", taxKind: "gain_tax_adjustment" }, "grossCents"],
+    ] as const) {
+      assert.throws(
+        () => checkTradeEntry(amounts(fields), null),
+        (error) => isValidationError(error, "invalid_trade") && error.details.field === field,
+        JSON.stringify(fields),
+      );
+    }
+  });
+
   it("accepts an ordinary buy, a bond buy with accrued interest and a gain tax adjustment charging extra tax", () => {
     checkTradeEntry(amounts({ type: "buy", grossCents: 10_000, feesCents: 500 }), "fund");
     checkTradeEntry(amounts({ type: "buy", grossCents: 10_000, accruedInterestCents: 300, withholdingDomesticCents: 37 }), "government_bond");
@@ -141,53 +189,95 @@ describe("checkTradeEntry", () => {
 });
 
 describe("checkTradeRegime (#508)", () => {
+  type Regime = "self_declared" | "administered" | "managed";
   const regimeError = (field: string) => (error: unknown) =>
     isValidationError(error, "tax_kind_not_allowed_in_regime") && error.details.field === field;
   const sellWithGainTax = amounts({ type: "sell", grossCents: 10_000, gainTaxCents: 260 });
   const refund = amounts({ type: "tax", taxKind: "gain_tax_adjustment", grossCents: 100 });
+  /** One regime since 2020, on 2026-06-01. */
+  const context = (regime: Regime, domesticWithholdingAgent: boolean | null, instrumentType: "fund" | "stock" | "bond" | null) => ({
+    history: [{ validFrom: "2020-01-01", regime }],
+    date: "2026-06-01",
+    domesticWithholdingAgent,
+    instrumentType,
+  });
 
   it("refuses gain tax in managed, on a sale or as an adjustment", () => {
-    const context = { regime: "managed", domesticWithholdingAgent: true, instrumentType: "fund" } as const;
-    assert.throws(() => checkTradeRegime(sellWithGainTax, context), regimeError("gainTaxCents"));
-    assert.throws(() => checkTradeRegime(refund, context), regimeError("taxKind"));
+    assert.throws(() => checkTradeRegime(sellWithGainTax, context("managed", true, "fund")), regimeError("gainTaxCents"));
+    assert.throws(() => checkTradeRegime(refund, context("managed", true, "fund")), regimeError("taxKind"));
   });
 
   it("allows gain tax in administered", () => {
-    checkTradeRegime(sellWithGainTax, { regime: "administered", domesticWithholdingAgent: true, instrumentType: "stock" });
+    checkTradeRegime(sellWithGainTax, context("administered", true, "stock"));
+    checkTradeRegime(refund, context("administered", true, null));
   });
 
   it("allows gain tax in self_declared only on a fund at a domestic withholding agent", () => {
-    checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "fund" });
+    checkTradeRegime(sellWithGainTax, context("self_declared", true, "fund"));
+    assert.throws(() => checkTradeRegime(sellWithGainTax, context("self_declared", true, "stock")), regimeError("gainTaxCents"));
+    assert.throws(() => checkTradeRegime(sellWithGainTax, context("self_declared", false, "fund")), regimeError("gainTaxCents"));
+    // An adjustment in self_declared names the fund it adjusts.
+    checkTradeRegime(refund, context("self_declared", true, "fund"));
+    assert.throws(() => checkTradeRegime(refund, context("self_declared", true, null)), regimeError("taxKind"));
+  });
+
+  it("allows an adjustment when any regime in force on or before its date allowed gain tax", () => {
+    // An administered sale in December, self-declared from 1 January, a refund in February.
+    const history = [
+      { validFrom: "2025-03-10", regime: "administered" as const },
+      { validFrom: "2026-01-01", regime: "self_declared" as const },
+    ];
+    checkTradeRegime(refund, { history, date: "2026-02-10", domesticWithholdingAgent: true, instrumentType: null });
+    // A sale with gain tax on the same date is judged by the regime in force then.
     assert.throws(
-      () => checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "stock" }),
+      () => checkTradeRegime(sellWithGainTax, { history, date: "2026-02-10", domesticWithholdingAgent: true, instrumentType: "stock" }),
       regimeError("gainTaxCents"),
     );
+    // Before the administered period started (the first period covers earlier dates): only it counts.
+    const managedThenAdministered = [
+      { validFrom: "2024-05-01", regime: "managed" as const },
+      { validFrom: "2026-01-01", regime: "administered" as const },
+    ];
     assert.throws(
-      () => checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: false, instrumentType: "fund" }),
-      regimeError("gainTaxCents"),
+      () => checkTradeRegime(refund, { history: managedThenAdministered, date: "2025-06-01", domesticWithholdingAgent: true, instrumentType: null }),
+      regimeError("taxKind"),
     );
+    checkTradeRegime(refund, { history: managedThenAdministered, date: "2026-06-01", domesticWithholdingAgent: true, instrumentType: null });
   });
 
   it("allows managed_result_tax in managed only", () => {
     const tax = amounts({ type: "tax", taxKind: "managed_result_tax", grossCents: 500 });
-    checkTradeRegime(tax, { regime: "managed", domesticWithholdingAgent: true, instrumentType: null });
+    checkTradeRegime(tax, context("managed", true, null));
     for (const regime of ["administered", "self_declared"] as const) {
-      assert.throws(() => checkTradeRegime(tax, { regime, domesticWithholdingAgent: true, instrumentType: null }), regimeError("taxKind"));
+      assert.throws(() => checkTradeRegime(tax, context(regime, true, null)), regimeError("taxKind"));
     }
   });
 
-  it("refuses a domestic withholding unless the broker is a domestic withholding agent", () => {
-    const dividend = amounts({ type: "dividend", grossCents: 1_000, withholdingDomesticCents: 260 });
-    checkTradeRegime(dividend, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "stock" });
+  it("refuses a domestic withholding on a bond trade's accrued interest unless the broker is a domestic withholding agent", () => {
+    const bondSale = amounts({ type: "sell", grossCents: 100_000, accruedInterestCents: 1_000, withholdingDomesticCents: 125 });
+    checkTradeRegime(bondSale, context("self_declared", true, "bond"));
     assert.throws(
-      () => checkTradeRegime(dividend, { regime: "self_declared", domesticWithholdingAgent: false, instrumentType: "stock" }),
-      (error) => isValidationError(error, "domestic_withholding_requires_agent"),
+      () => checkTradeRegime(bondSale, context("self_declared", false, "bond")),
+      (error) => isValidationError(error, "domestic_withholding_requires_agent") && error.details.field === "withholdingDomesticCents",
+    );
+  });
+
+  it("accepts a dividend's domestic withholding at any broker: it may have been taken upstream", () => {
+    const dividend = amounts({ type: "dividend", grossCents: 10_000, withholdingDomesticCents: 2_600 });
+    checkTradeRegime(dividend, context("self_declared", false, "stock"));
+    assert.equal(tradeCashCents(dividend), 7_400);
+  });
+
+  it("refuses a trade on an account with no regime", () => {
+    assert.throws(
+      () => checkTradeRegime(amounts({ type: "buy", grossCents: 1 }), { history: [], date: "2026-01-01", domesticWithholdingAgent: null, instrumentType: "stock" }),
+      (error) => isValidationError(error, "tax_regime_required"),
     );
   });
 
   it("accepts an ordinary buy in every regime", () => {
     for (const regime of ["administered", "self_declared", "managed"] as const) {
-      checkTradeRegime(amounts({ type: "buy", grossCents: 1_000 }), { regime, domesticWithholdingAgent: null, instrumentType: "stock" });
+      checkTradeRegime(amounts({ type: "buy", grossCents: 1_000 }), context(regime, null, "stock"));
     }
   });
 });

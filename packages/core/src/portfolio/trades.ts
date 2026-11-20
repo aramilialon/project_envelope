@@ -17,7 +17,9 @@ import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
 import type { InstrumentType } from "./instrument.ts";
 import type { PositionTrade } from "./positions.ts";
-import type { TaxRegime } from "./tax-regime.ts";
+import type { LocalDate } from "../month.ts";
+import type { TaxRegime, TaxRegimeEntry } from "./tax-regime.ts";
+import { regimeAt } from "./tax-regime.ts";
 
 /** Instrument types that pay accrued interest when they change hands. */
 const INTEREST_BEARING: ReadonlySet<InstrumentType> = new Set<InstrumentType>(["government_bond", "bond"]);
@@ -113,7 +115,9 @@ export function tradeCashCents(trade: TradeAmounts): Cents {
  *   - "withholding_exceeds_gross" (details: field — "withholding" for a
  *     dividend's two withholdings together —, withheld, gross) when the
  *     withholdings of a dividend exceed its gross, or the domestic
- *     withholding of a bond buy or sale exceeds its accrued interest.
+ *     withholding of a bond buy or sale exceeds its accrued interest;
+ *   - "invalid_trade" (details: field) for a fee of 0, a tax of 0 or less, or
+ *     a gain tax adjustment of 0: a trade that moves nothing is not recorded.
  */
 export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentType | null): void {
   for (const field of AMOUNT_FIELDS) {
@@ -129,6 +133,13 @@ export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentT
     if (trade.costBasisCents < 0) {
       throw new ValidationError("negative_amount_not_allowed", "costBasisCents cannot be negative", { field: "costBasisCents" });
     }
+  }
+
+  if (trade.type === "fee" && trade.feesCents <= 0) {
+    throw new ValidationError("invalid_trade", "a fee needs a positive amount", { field: "feesCents" });
+  }
+  if (trade.type === "tax" && (trade.taxKind === "gain_tax_adjustment" ? trade.grossCents === 0 : trade.grossCents <= 0)) {
+    throw new ValidationError("invalid_trade", "a tax needs a non-zero amount", { field: "grossCents" });
   }
 
   if (trade.taxKind !== null && trade.type !== "tax") {
@@ -164,8 +175,10 @@ export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentT
 
 /** What the regime check needs to know about the account and the instrument of a trade. */
 export interface TradeRegimeContext {
-  /** The account's regime in force on the trade date (`regimeAt`). */
-  readonly regime: TaxRegime;
+  /** The account's regime history (`regimeAt` picks the one in force on a date). */
+  readonly history: readonly TaxRegimeEntry[];
+  /** The trade date. */
+  readonly date: LocalDate;
   /** Whether the broker is a domestic (Italian) withholding agent. */
   readonly domesticWithholdingAgent: boolean | null;
   /** The instrument's type, or null for a fee or a tax without one. */
@@ -173,20 +186,38 @@ export interface TradeRegimeContext {
 }
 
 /**
- * Checks a trade on a brokerage account of an `IT` workspace against the account's tax regime on
- * the trade date (#508). Outside such a workspace there is no regime, and nothing to check.
+ * Whether gain tax can be withheld under `regime`: by the broker in `administered`; in
+ * `self_declared` only on a `fund` at a domestic withholding agent, which still withholds on fund
+ * gains; never in `managed`, where the mandate settles the tax on its result.
+ */
+function gainTaxAllowed(regime: TaxRegime, context: TradeRegimeContext): boolean {
+  if (regime === "administered") return true;
+  if (regime === "self_declared") return context.instrumentType === "fund" && context.domesticWithholdingAgent === true;
+  return false;
+}
+
+/**
+ * Checks a trade on a brokerage account of an `IT` workspace against the account's tax regime
+ * history (#508). Outside such a workspace there is no regime, and nothing to check.
  *
- * - Gain tax (a sale's `gainTaxCents`, or a `gain_tax_adjustment`) is settled by the mandate in
- *   `managed`, so it cannot appear there; in `self_declared` the investor declares gains, so it
- *   can appear only where a domestic withholding agent still withholds it: on a `fund`.
+ * - Gain tax on a sale needs a regime that allows it on the sale's date (`gainTaxAllowed`).
+ * - A gain tax adjustment corrects gain tax withheld earlier, possibly under an earlier regime (an
+ *   administered sale in December, a switch to self-declared from 1 January, a refund in
+ *   February), so it is allowed when any regime in force on or before its date allows gain tax.
+ *   In `self_declared` that means it names the fund it adjusts.
  * - `managed_result_tax` exists only in `managed`.
- * - A domestic withholding needs a broker that is a domestic withholding agent.
+ * - The domestic withholding on the accrued interest of a bond buy or sale is computed only by a
+ *   domestic withholding agent. A dividend's or a coupon's domestic withholding may have been taken
+ *   upstream, before a foreign broker paid it, so any broker can carry it.
  *
  * @throws ValidationError "tax_kind_not_allowed_in_regime" (details: regime, field — "gainTaxCents"
  *   or "taxKind" —, and taxKind for a tax); "domestic_withholding_requires_agent" (details: field).
  */
 export function checkTradeRegime(trade: TradeAmounts, context: TradeRegimeContext): void {
-  const { regime } = context;
+  const regime = regimeAt(context.history, context.date);
+  if (regime === undefined) {
+    throw new ValidationError("tax_regime_required", "the account has no tax regime", {});
+  }
   const refuse = (field: string): never => {
     throw new ValidationError("tax_kind_not_allowed_in_regime", `the ${regime} regime does not allow this ${field}`, {
       regime,
@@ -195,26 +226,23 @@ export function checkTradeRegime(trade: TradeAmounts, context: TradeRegimeContex
     });
   };
 
-  const gainTaxField =
-    trade.type === "sell" && trade.gainTaxCents !== 0
-      ? "gainTaxCents"
-      : trade.type === "tax" && trade.taxKind === "gain_tax_adjustment"
-        ? "taxKind"
-        : null;
-  if (gainTaxField !== null) {
-    if (regime === "managed") refuse(gainTaxField);
-    if (regime === "self_declared" && !(context.instrumentType === "fund" && context.domesticWithholdingAgent === true)) {
-      refuse(gainTaxField);
-    }
+  if (trade.type === "sell" && trade.gainTaxCents !== 0 && !gainTaxAllowed(regime, context)) {
+    refuse("gainTaxCents");
+  }
+  if (trade.type === "tax" && trade.taxKind === "gain_tax_adjustment") {
+    // Every regime in force on or before the date: each period that started by then, and the
+    // first period, which also covers earlier dates.
+    const regimes = new Set<TaxRegime>([regime, ...context.history.filter((entry) => entry.validFrom <= context.date).map((entry) => entry.regime)]);
+    if (![...regimes].some((candidate) => gainTaxAllowed(candidate, context))) refuse("taxKind");
   }
   if (trade.type === "tax" && trade.taxKind === "managed_result_tax" && regime !== "managed") {
     refuse("taxKind");
   }
 
-  if (trade.withholdingDomesticCents !== 0 && context.domesticWithholdingAgent !== true) {
+  if ((trade.type === "buy" || trade.type === "sell") && trade.withholdingDomesticCents !== 0 && context.domesticWithholdingAgent !== true) {
     throw new ValidationError(
       "domestic_withholding_requires_agent",
-      "only a broker that is a domestic withholding agent withholds domestic tax",
+      "only a domestic withholding agent withholds tax on the accrued interest of a bond trade",
       { field: "withholdingDomesticCents" },
     );
   }
