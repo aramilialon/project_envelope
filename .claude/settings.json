@@ -18,7 +18,11 @@
       "Bash(git config core.hooksPath *)",
       "Bash(git config --unset core.hooksPath)",
       "Bash(gh repo edit *)",
-      "Bash(gh repo delete *)"
+      "Bash(gh repo delete *)",
+      "mcp__playwright__browser_run_code_unsafe",
+      "mcp__playwright__browser_file_upload",
+      "mcp__playwright__browser_drop",
+      "mcp__playwright__browser_network_request"
     ],
     "ask": [
       "Bash(git tag *)",
