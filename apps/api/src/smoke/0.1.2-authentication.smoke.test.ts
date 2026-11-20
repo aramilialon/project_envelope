@@ -52,6 +52,7 @@ describe("smoke: 0.1.2 Authentication, against the real process", () => {
       VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       KEYCLOAK_ISSUER: realm.issuer,
       KEYCLOAK_AUDIENCE: realm.audience,
+      LOG_LEVEL: "fatal",
     };
     server = await startServer(baseEnv);
     prodServer = await startServer({ ...baseEnv, NODE_ENV: "production" });

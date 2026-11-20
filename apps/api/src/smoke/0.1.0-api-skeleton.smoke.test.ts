@@ -43,6 +43,7 @@ describe("smoke: 0.1.0 API skeleton, against the real process", () => {
       // /health does not touch Keycloak: any well-formed values satisfy loadConfig's validation.
       KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
       KEYCLOAK_AUDIENCE: "envelope-api",
+      LOG_LEVEL: "fatal",
     });
   });
 

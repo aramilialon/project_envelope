@@ -26,6 +26,12 @@ async function main(): Promise<void> {
   const app = buildApp(config, queue, pushConfig.vapidPublicKey);
 
   await app.fastify.listen({ host: config.host, port: config.port });
+  // One machine-readable line with the address actually bound, whatever LOG_LEVEL says: with
+  // PORT=0 (the smoke tests, #519) nothing else tells a caller which port the system picked.
+  const address = app.fastify.server.address();
+  if (address !== null && typeof address === "object") {
+    process.stdout.write(`${JSON.stringify({ msg: "listening", address: address.address, port: address.port })}\n`);
+  }
 
   const shutdown = (): void => {
     Promise.all([app.close(), queue.stop(), queuePool.end()]).finally(() => process.exit(0));

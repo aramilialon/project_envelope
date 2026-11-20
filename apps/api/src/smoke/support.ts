@@ -5,10 +5,10 @@
  * config parsing, listen()'s host/port binding, staying up — not just its
  * handlers (ADR 0007).
  *
- * The server listens on port 0, so the operating system picks a free port and
- * two runs on one machine never collide (#519); the actual address is read
- * back from the server's own "Server listening at ..." log line, which is why
- * `LOG_LEVEL` is always `info` and `LOG_PRETTY` always off here.
+ * The server listens on port 0 unless a test says otherwise, so the operating
+ * system picks a free port and two runs on one machine never collide (#519).
+ * main.ts prints one `{"msg":"listening","address":…,"port":…}` line once it
+ * is listening, whatever LOG_LEVEL says; this resolves on that line.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,8 @@ const MAIN_TS = fileURLToPath(new URL("../main.ts", import.meta.url));
 const APPS_API_DIR = fileURLToPath(new URL("../..", import.meta.url));
 const READY_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 5_000;
-const LISTENING_LINE = /"msg":"Server listening at (http:\/\/[^"]+)"/;
+/** How much of the server's own output is kept, only to report a failure to start. */
+const OUTPUT_CAP_CHARS = 64 * 1024;
 
 export interface RunningServer {
   readonly baseUrl: string;
@@ -27,41 +28,71 @@ export interface RunningServer {
 export async function startServer(env: Record<string, string>): Promise<RunningServer> {
   const child = spawn(process.execPath, [MAIN_TS], {
     cwd: APPS_API_DIR,
-    env: { ...process.env, PORT: "0", ...env, LOG_LEVEL: "info", LOG_PRETTY: "false" },
+    env: { ...process.env, PORT: "0", ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
-  const output: string[] = [];
-  child.stdout?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
-  child.stderr?.on("data", (chunk: Buffer) => output.push(chunk.toString()));
-
-  const baseUrl = await waitUntilReady(child, output);
-
-  return {
-    baseUrl,
-    stop: () => stopServer(child),
-  };
+  try {
+    const baseUrl = await waitUntilListening(child);
+    return { baseUrl, stop: () => stopServer(child) };
+  } catch (error) {
+    child.kill("SIGKILL");
+    throw error;
+  }
 }
 
-async function waitUntilReady(child: ChildProcess, output: string[]): Promise<string> {
-  const deadline = Date.now() + READY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(`Server process exited before becoming ready:\n${output.join("")}`);
-    }
-    const baseUrl = LISTENING_LINE.exec(output.join(""))?.[1];
-    if (baseUrl) {
-      try {
-        await fetch(`${baseUrl}/health`);
-        return baseUrl;
-      } catch {
-        // Listening, but not answering yet: try again below.
+function waitUntilListening(child: ChildProcess): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let output = "";
+    let pendingLine = "";
+
+    const record = (chunk: string): void => {
+      output = (output + chunk).slice(-OUTPUT_CAP_CHARS);
+    };
+    const finish = (settle: () => void): void => {
+      clearTimeout(timer);
+      child.stdout?.off("data", onStdout);
+      child.stderr?.off("data", onStderr);
+      child.off("exit", onExit);
+      // Keep draining the pipes once nobody reads them, so a chatty server never blocks on a full one.
+      child.stdout?.resume();
+      child.stderr?.resume();
+      settle();
+    };
+    const onStdout = (chunk: Buffer): void => {
+      const text = chunk.toString();
+      record(text);
+      const lines = (pendingLine + text).split("\n");
+      pendingLine = lines.pop() ?? "";
+      for (const line of lines) {
+        const baseUrl = listeningUrl(line);
+        if (baseUrl) {
+          finish(() => resolve(baseUrl));
+          return;
+        }
       }
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    };
+    const onStderr = (chunk: Buffer): void => record(chunk.toString());
+    const onExit = (): void =>
+      finish(() => reject(new Error(`Server process exited before becoming ready:\n${output}`)));
+    const timer = setTimeout(
+      () => finish(() => reject(new Error(`Server did not become ready within ${READY_TIMEOUT_MS}ms:\n${output}`))),
+      READY_TIMEOUT_MS,
+    );
+
+    child.stdout?.on("data", onStdout);
+    child.stderr?.on("data", onStderr);
+    child.once("exit", onExit);
+  });
+}
+
+function listeningUrl(line: string): string | undefined {
+  if (!line.startsWith('{"msg":"listening"')) {
+    return undefined;
   }
-  child.kill("SIGKILL");
-  throw new Error(`Server did not become ready within ${READY_TIMEOUT_MS}ms:\n${output.join("")}`);
+  const { address, port } = JSON.parse(line) as { address: string; port: number };
+  const host = address.includes(":") ? `[${address}]` : address;
+  return `http://${host}:${port}`;
 }
 
 async function stopServer(child: ChildProcess): Promise<void> {
