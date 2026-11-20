@@ -47,7 +47,7 @@ Once a milestone's issues are merged, and before its release, the coordinator ru
 ## Keeping the team tidy
 
 - Every agent with a shell stops its own background work before returning (the "Before you return" section of each definition): no test run, server, CI watch or disposable environment of its outlives it.
-- Once a branch is merged, the coordinator stops that branch's agents (`TaskStop`), so the list of agents shows only work in progress.
+- Once a branch is merged, the coordinator stops that branch's agents (`TaskStop`) and removes its Git worktree under `.claude/worktrees/` (`git worktree remove <path>`, which keeps the branch and its history), so the list of agents and that folder show only work in progress. The folder is ignored by Git and never committed.
 - The coordinator regularly compares the running agents with the reports it has received. An agent that ended without a report, or that has been waiting much longer than its task needs, is chased at once: a hang is a finding in its own right.
 
 Small changes (a typo, a dependency bump with no code change, a release changelog) skip the team: the coordinator handles them directly.
