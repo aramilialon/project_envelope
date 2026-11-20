@@ -6,8 +6,10 @@
  *
  * The expected state is never kept here: `invariants.ts` works it out from this log with
  * `@envelope/core`. The only rules the model applies itself are ADR 0012's for a trade's cash
- * leg (its amount, account and date come from the trade; its memo, payee and status are its own),
- * which is what the walk checks the API against.
+ * leg (its amount, account and date come from the trade; its memo, payee and status are its own)
+ * and #547's for a transfer leg whose amount is edited (the other leg gets the opposite amount, and
+ * a cleared other leg goes back to pending, in `editTransaction`), which is what the walk checks
+ * the API against.
  */
 import {
   PRICE_FACTOR_ONE,
