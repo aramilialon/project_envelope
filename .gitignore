@@ -24,6 +24,8 @@ infra/ansible/vars.yml
 
 # Personal Claude Code settings (the shared ones are in .claude/settings.json)
 .claude/settings.local.json
+# Agents' Git worktrees (local working copies, one per branch; their work reaches main through pull requests)
+.claude/worktrees/
 
 # Operating system and editors
 .DS_Store
