@@ -99,7 +99,10 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
                 name="acc-type"
                 value={t}
                 checked={type === t}
-                onChange={() => setType(t)}
+                onChange={() => {
+                  setType(t);
+                  setError(null);
+                }}
                 aria-describedby={`acc-type-hint-${t}`}
               />
               <span>

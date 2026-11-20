@@ -27,8 +27,12 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
       await reply.code(400).send({ error: "invalid account: name, a valid type and currency are required" });
       return;
     }
+    if (body.onBudget !== undefined && typeof body.onBudget !== "boolean") {
+      await reply.code(400).send({ error: "invalid account: onBudget must be a boolean when given" });
+      return;
+    }
     const accountType = type as AccountType;
-    const onBudget = body.onBudget === undefined ? defaultOnBudget(accountType) : Boolean(body.onBudget);
+    const onBudget = body.onBudget ?? defaultOnBudget(accountType);
 
     try {
       const account = await createAccount(request.db!, {

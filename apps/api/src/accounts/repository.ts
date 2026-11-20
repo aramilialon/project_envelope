@@ -60,16 +60,11 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * rolls back together with it.
  *
  * @throws ValidationError with code "brokerage_on_budget" for an on-budget
- * brokerage account. Migration 0025's CHECK constraint is the rule itself;
- * the early check only keeps the request's transaction from being aborted by
- * a statement known to fail, and a violation that still reaches the database
- * maps to the same code.
+ * brokerage account. Migration 0025's CHECK constraint is the only rule:
+ * its violation is mapped to that code here. The failed INSERT leaves the
+ * request's transaction aborted, so it rolls back and nothing is stored.
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
-  if (input.type === "brokerage" && input.onBudget) {
-    throw brokerageOnBudgetError();
-  }
-
   let rows: AccountRow[];
   try {
     ({ rows } = await db.query<AccountRow>(

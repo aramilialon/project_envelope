@@ -115,6 +115,26 @@ describe("accounts routes", () => {
     assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name === "Broker on"));
   });
 
+  it("rejects an onBudget that is not a real boolean, storing nothing", async () => {
+    for (const onBudget of ["false", 0, null]) {
+      const name = `Not boolean ${String(onBudget)}`;
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name, type: "savings", currency: "EUR", onBudget },
+      });
+      assert.equal(response.statusCode, 400, `onBudget ${JSON.stringify(onBudget)}`);
+
+      const listed = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name === name));
+    }
+  });
+
   it("rejects an invalid account body", async () => {
     const response = await app.fastify.inject({
       method: "POST",

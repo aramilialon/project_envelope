@@ -159,7 +159,7 @@ describe("accounts repository", () => {
       assert.equal(account.paymentCategoryId, null);
     });
 
-    it("rejects an on-budget brokerage account with a ValidationError before writing anything", async () => {
+    it("maps the database's refusal of an on-budget brokerage account to a ValidationError, writing nothing", async () => {
       await assert.rejects(
         () => createAccount(pool, { workspaceId, name: "On-budget broker", type: "brokerage", currency: "EUR", onBudget: true }),
         (error: unknown) => isValidationError(error, "brokerage_on_budget"),
@@ -206,5 +206,6 @@ describe("accounts repository", () => {
           ),
         (error: unknown) => !isBrokerageOffBudgetViolation(error) && /accounts_type_check/.test(String(error)),
       );
-    });  });
+    });
+  });
 });

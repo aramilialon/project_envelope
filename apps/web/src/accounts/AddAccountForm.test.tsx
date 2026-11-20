@@ -175,6 +175,19 @@ describe("AddAccountForm (#51)", () => {
     expect(createAccount).not.toHaveBeenCalled();
   });
 
+  it("clears a previous error when the account type changes", async () => {
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Visa" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Credit card" }));
+    fireEvent.change(screen.getByLabelText(/owe on this card/), { target: { value: "not a number" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid amount.");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Brokerage" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("calls onClose when cancelled", () => {
     const { onClose } = renderForm();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
