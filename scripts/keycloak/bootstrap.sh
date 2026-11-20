@@ -4,6 +4,14 @@
 # apps/api/src/test-helpers/keycloak.ts provisions and tears down on every
 # test run. Safe to run again: an existing realm or client is left alone.
 #
+# KEYCLOAK_REALM names another realm instead of "envelope" (the disposable
+# environments of scripts/explore-env/ use "envelope-explore-<run>"), and
+# WEB_ORIGINS, a space-separated list of origins such as
+# "http://127.0.0.1:41234", replaces the default localhost redirect URIs and
+# web origins with exactly those origins (each one's redirect URIs are
+# "<origin>" and "<origin>/*"). Both are optional; without them the script
+# behaves as before.
+#
 # Requirements: Keycloak running and reachable at KEYCLOAK_URL (default
 # http://127.0.0.1:8080), KEYCLOAK_ADMIN_PASSWORD in the environment (the
 # value from infra/.env), and jq installed.
@@ -44,7 +52,7 @@ set -euo pipefail
 command -v jq >/dev/null || { echo "jq is not installed" >&2; exit 1; }
 
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://127.0.0.1:8080}"
-REALM="envelope"
+REALM="${KEYCLOAK_REALM:-envelope}"
 CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 : "${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env)}"
 
@@ -59,8 +67,18 @@ CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 # (no leading ":") is a glob over the whole rest of the URL, so it still matches if the web
 # app is ever reached on a non-default port too.
 LAN_ORIGIN="${LAN_ORIGIN:-}"
-REDIRECT_URIS='["http://localhost:*", "http://127.0.0.1:*"]'
-WEB_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173"]'
+REQUESTED_ORIGINS="${WEB_ORIGINS:-}"
+if [[ -n "$REQUESTED_ORIGINS" ]]; then
+  REDIRECT_URIS='[]'
+  WEB_ORIGINS='[]'
+  for origin in $REQUESTED_ORIGINS; do
+    REDIRECT_URIS=$(jq -c --arg o "$origin" '. + [$o, $o + "/*"]' <<<"$REDIRECT_URIS")
+    WEB_ORIGINS=$(jq -c --arg o "$origin" '. + [$o]' <<<"$WEB_ORIGINS")
+  done
+else
+  REDIRECT_URIS='["http://localhost:*", "http://127.0.0.1:*"]'
+  WEB_ORIGINS='["http://localhost:5173", "http://127.0.0.1:5173"]'
+fi
 if [[ -n "$LAN_ORIGIN" ]]; then
   REDIRECT_URIS=$(jq -c --arg o "https://$LAN_ORIGIN*" '. + [$o]' <<<"$REDIRECT_URIS")
   WEB_ORIGINS=$(jq -c --arg o "https://$LAN_ORIGIN" '. + [$o]' <<<"$WEB_ORIGINS")
