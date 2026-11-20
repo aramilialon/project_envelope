@@ -14,14 +14,15 @@ import {
   updatePortfolio,
   type PortfolioChanges,
 } from "../portfolios/repository.ts";
+import { isPortfolioHasTradesViolation, portfolioHasTrades } from "../trades/repository.ts";
 
 /**
  * A 409's own `code`, so a client can say which conflict it was without matching on the English
  * `error` text: `name_taken` (another non-archived portfolio of the workspace already has that
  * name, ignoring case and surrounding spaces — the same code category groups and categories use,
- * #397).
+ * #397); `portfolio_has_trades` (a portfolio with trades cannot be deleted, #77).
  */
-type PortfolioConflict = "name_taken";
+type PortfolioConflict = "name_taken" | "portfolio_has_trades";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,6 +42,13 @@ function purposeField(body: Record<string, unknown>): string | null | undefined 
 
 async function sendNameTaken(reply: FastifyReply): Promise<void> {
   await reply.code(409).send({ error: "another portfolio already has this name", code: "name_taken" satisfies PortfolioConflict });
+}
+
+async function sendHasTrades(reply: FastifyReply): Promise<void> {
+  await reply.code(409).send({
+    error: "this portfolio has trades and cannot be deleted; archive it instead",
+    code: "portfolio_has_trades" satisfies PortfolioConflict,
+  });
 }
 
 async function sendNotFound(reply: FastifyReply): Promise<void> {
@@ -147,12 +155,29 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
     }
   });
 
-  // No trades table exists yet (#77), so nothing can refer to a portfolio and deleting one always
-  // succeeds. Once trades exist, their foreign key is ON DELETE RESTRICT and this route will answer
-  // 409 `portfolio_has_trades` for a portfolio that still has any.
+  // A portfolio that still has trades cannot be deleted (409 `portfolio_has_trades`): archive it
+  // instead. Checked first; the trades foreign key (ON DELETE RESTRICT) catches a trade a concurrent
+  // request files under it in between.
   app.delete(`${base}/:portfolioId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { portfolioId } = request.params as { portfolioId: string };
-    const removed = UUID_PATTERN.test(portfolioId) && (await deletePortfolio(request.db!, request.workspace!.id, portfolioId));
+    if (!UUID_PATTERN.test(portfolioId)) {
+      await sendNotFound(reply);
+      return;
+    }
+    if (await portfolioHasTrades(request.db!, request.workspace!.id, portfolioId)) {
+      await sendHasTrades(reply);
+      return;
+    }
+    let removed: boolean;
+    try {
+      removed = await deletePortfolio(request.db!, request.workspace!.id, portfolioId);
+    } catch (error) {
+      if (isPortfolioHasTradesViolation(error)) {
+        await sendHasTrades(reply);
+        return;
+      }
+      throw error;
+    }
     if (!removed) {
       await sendNotFound(reply);
       return;
