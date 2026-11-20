@@ -20,6 +20,7 @@ import {
 } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { isUuid } from "../ids.ts";
 import { createTransaction, createTransfer, listTransactionsForAccount, updateTransaction } from "../transactions/repository.ts";
 
 const STAGING_EXPIRY_INTERVAL = "7 days";
@@ -280,6 +281,11 @@ export async function confirmStagedTransactions(
 ): Promise<ConfirmationOutcome[]> {
   const outcomes: ConfirmationOutcome[] = [];
   for (const decision of decisions) {
+    // A malformed id names no staged row: reported like any other unknown one (#512).
+    if (!isUuid(decision.stagedTransactionId)) {
+      outcomes.push({ stagedTransactionId: decision.stagedTransactionId, outcome: "not_found" });
+      continue;
+    }
     const { rows } = await db.query<StagedTransactionRow>(
       `SELECT ${STAGED_COLUMNS} FROM staged_transactions WHERE id = $1 AND workspace_id = $2 AND account_id = $3`,
       [decision.stagedTransactionId, workspaceId, accountId],

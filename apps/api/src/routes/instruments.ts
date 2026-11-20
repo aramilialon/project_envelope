@@ -3,9 +3,8 @@ import type { FastifyInstance } from "fastify";
 
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
+import { isUuid } from "../ids.ts";
 import { createInstrument, getInstrument, InstrumentConflictError, searchInstruments } from "../instruments/repository.ts";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A field that is present must be a string (or `null`, when it is optional): anything else is a 400, never ignored. */
 function notAString(field: string): ValidationError {
@@ -78,7 +77,7 @@ export function registerInstrumentsRoutes(app: FastifyInstance, pool: DbPool): v
 
   app.get("/instruments/:instrumentId", async (request, reply) => {
     const { instrumentId } = request.params as { instrumentId: string };
-    const instrument = UUID.test(instrumentId) ? await getInstrument(pool, instrumentId) : undefined;
+    const instrument = isUuid(instrumentId) ? await getInstrument(pool, instrumentId) : undefined;
     if (!instrument) {
       await reply.code(404).send({ error: "instrument not found" });
       return;

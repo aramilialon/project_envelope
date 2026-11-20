@@ -50,6 +50,8 @@ export interface SetupIntegrationTestOptions {
   readonly configOverrides?: Record<string, string>;
   readonly role?: WorkspaceRole;
   readonly workspaceName?: string;
+  /** Called with the app before its first request, the last moment Fastify still accepts new routes (a test-only route, #512). */
+  readonly beforeReady?: (app: App) => void;
 }
 
 export async function setupIntegrationTest(options: SetupIntegrationTestOptions = {}): Promise<IntegrationTestContext> {
@@ -74,6 +76,8 @@ export async function setupIntegrationTest(options: SetupIntegrationTestOptions 
     "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, $2, 'EUR', 'Europe/Rome')",
     [workspaceId, options.workspaceName ?? "Mine"],
   );
+
+  options.beforeReady?.(app);
 
   const token = await realm.getUserToken();
   // Any authenticated route triggers the user-mapper preHandler; /me needs no membership of its

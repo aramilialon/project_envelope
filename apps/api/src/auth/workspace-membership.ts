@@ -22,6 +22,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { isUuid } from "../ids.ts";
 
 export type WorkspaceRole = "owner" | "editor" | "read_only";
 
@@ -59,8 +60,6 @@ async function releaseRequestTransaction(request: FastifyRequest, finish: "COMMI
   }
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function createWorkspaceMembershipPreHandler(pool: DbPool) {
   return async function workspaceMembershipPreHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
     const workspaceId = extractWorkspaceId(request);
@@ -74,7 +73,7 @@ export function createWorkspaceMembershipPreHandler(pool: DbPool) {
 
     // A malformed id cannot be a workspace the caller belongs to: answer like a non-member,
     // before taking a connection (a failing query below would otherwise leak it).
-    if (!UUID_PATTERN.test(workspaceId)) {
+    if (!isUuid(workspaceId)) {
       await reply.code(403).send({ error: "forbidden" });
       return;
     }

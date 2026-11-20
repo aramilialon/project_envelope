@@ -15,6 +15,7 @@ import {
   type RecurUnit,
   type ScheduledSplitInput,
 } from "../scheduled-transactions/repository.ts";
+import { sendIfAccountNotFound } from "./account-ownership.ts";
 import { transactionTextChecks } from "./transactions.ts";
 
 const RECUR_UNITS: readonly RecurUnit[] = ["day", "month", "year"];
@@ -73,6 +74,9 @@ export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: 
       return;
     }
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
+      return;
+    }
+    if (await sendIfAccountNotFound(request, reply, accountId)) {
       return;
     }
 

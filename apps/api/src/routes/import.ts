@@ -17,6 +17,7 @@ import {
   type StagedTransactionDecision,
   type StageImportResult,
 } from "../import/repository.ts";
+import { requireAccountOfWorkspace } from "./account-ownership.ts";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
 const DECIMAL_SEPARATORS: readonly DecimalSeparator[] = [".", ","];
@@ -96,8 +97,10 @@ function parseDecisions(body: Record<string, unknown>): StagedTransactionDecisio
 }
 
 export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
-  const preHandler = createWorkspaceMembershipPreHandler(pool);
-  const writePreHandler = withWriteAccess(preHandler);
+  // Every route here names an account in its path, which must belong to the workspace (#512).
+  const membershipPreHandler = createWorkspaceMembershipPreHandler(pool);
+  const preHandler = [membershipPreHandler, requireAccountOfWorkspace];
+  const writePreHandler = [...withWriteAccess(membershipPreHandler), requireAccountOfWorkspace];
   const base = "/workspaces/:workspaceId/accounts/:accountId";
 
   app.put(`${base}/import-mapping`, { preHandler: writePreHandler }, async (request, reply) => {

@@ -1,0 +1,93 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { ValidationError } from "@envelope/core";
+
+import { toErrorReply } from "./errors.ts";
+import { isUuid } from "./ids.ts";
+
+/** Shaped like node-postgres' own `DatabaseError`: a message, a SQLSTATE `code` and a `severity`. */
+function databaseError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code, severity: "ERROR" });
+}
+
+describe("toErrorReply (#512)", () => {
+  it("maps a foreign-key violation to 400 invalid_reference, without the database message", () => {
+    const reply = toErrorReply(
+      databaseError("23503", 'insert or update on table "import_mappings" violates foreign key constraint "import_mappings_account_fk"'),
+    );
+    assert.deepEqual(reply, { statusCode: 400, body: { error: "invalid_reference" } });
+  });
+
+  it("maps invalid input syntax to 400 invalid_input", () => {
+    const reply = toErrorReply(databaseError("22P02", 'invalid input syntax for type uuid: "nope"'));
+    assert.deepEqual(reply, { statusCode: 400, body: { error: "invalid_input" } });
+  });
+
+  it("maps insufficient privilege and a Row-Level Security refusal to 403 forbidden", () => {
+    assert.deepEqual(toErrorReply(databaseError("42501", "permission denied for table accounts")), {
+      statusCode: 403,
+      body: { error: "forbidden" },
+    });
+    assert.deepEqual(
+      toErrorReply(databaseError("P0001", 'new row violates row-level security policy for table "import_mappings"')),
+      { statusCode: 403, body: { error: "forbidden" } },
+    );
+  });
+
+  it("maps any other database error to a generic 500", () => {
+    const reply = toErrorReply(databaseError("23505", 'duplicate key value violates unique constraint "accounts_pkey"'));
+    assert.deepEqual(reply, { statusCode: 500, body: { error: "internal_error" } });
+  });
+
+  it("maps a ValidationError to 400 with its code and details", () => {
+    const reply = toErrorReply(new ValidationError("invalid_amount", "an English message", { amount: 1.5 }));
+    assert.deepEqual(reply, { statusCode: 400, body: { error: "invalid_amount", details: { amount: 1.5 } } });
+  });
+
+  it("keeps a Fastify client error's status, with a fixed body instead of its message", () => {
+    const unsupported = Object.assign(new Error("Unsupported Media Type: text/plain"), {
+      statusCode: 415,
+      code: "FST_ERR_CTP_INVALID_MEDIA_TYPE",
+    });
+    assert.deepEqual(toErrorReply(unsupported), {
+      statusCode: 415,
+      body: { error: "unsupported_media_type", code: "FST_ERR_CTP_INVALID_MEDIA_TYPE" },
+    });
+    const tooLarge = Object.assign(new Error("Request body is too large"), { statusCode: 413 });
+    assert.deepEqual(toErrorReply(tooLarge), { statusCode: 413, body: { error: "payload_too_large" } });
+    const teapot = Object.assign(new Error("short and stout"), { statusCode: 418 });
+    assert.deepEqual(toErrorReply(teapot), { statusCode: 418, body: { error: "client_error" } });
+  });
+
+  it("maps anything else, a 5xx status included, to a generic 500", () => {
+    assert.deepEqual(toErrorReply(new Error("secret detail")), { statusCode: 500, body: { error: "internal_error" } });
+    assert.deepEqual(toErrorReply(Object.assign(new Error("boom"), { statusCode: 503 })), {
+      statusCode: 500,
+      body: { error: "internal_error" },
+    });
+    assert.deepEqual(toErrorReply("a thrown string"), { statusCode: 500, body: { error: "internal_error" } });
+    assert.deepEqual(toErrorReply(null), { statusCode: 500, body: { error: "internal_error" } });
+  });
+
+  it("does not take a non-database error's code for a SQLSTATE", () => {
+    // A Node system error has a `code` too, but no `severity`: still a generic 500.
+    assert.deepEqual(toErrorReply(Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" })), {
+      statusCode: 500,
+      body: { error: "internal_error" },
+    });
+  });
+});
+
+describe("isUuid (#512)", () => {
+  it("accepts a uuid in either letter case", () => {
+    assert.equal(isUuid("0b6f1c2e-3a4d-4e5f-8a9b-0c1d2e3f4a5b"), true);
+    assert.equal(isUuid("0B6F1C2E-3A4D-4E5F-8A9B-0C1D2E3F4A5B"), true);
+  });
+
+  it("refuses anything else", () => {
+    for (const value of ["", "nope", "0b6f1c2e-3a4d-4e5f-8a9b-0c1d2e3f4a5", "0b6f1c2e3a4d4e5f8a9b0c1d2e3f4a5b", " 0b6f1c2e-3a4d-4e5f-8a9b-0c1d2e3f4a5b", 42, null, undefined]) {
+      assert.equal(isUuid(value), false, String(value));
+    }
+  });
+});

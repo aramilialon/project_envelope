@@ -6,6 +6,8 @@ import { createUserMapperPreHandler } from "./auth/user-mapper.ts";
 import { registerWorkspaceScope } from "./auth/workspace-membership.ts";
 import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
+import { registerErrorHandler } from "./errors.ts";
+import { rejectMalformedIdParams } from "./ids.ts";
 import type { QueueDriver } from "./queue/index.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerAssignmentsRoutes } from "./routes/assignments.ts";
@@ -71,6 +73,11 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   // workspace.
   fastify.addHook("preHandler", skipPublicPaths(authPreHandler));
   fastify.addHook("preHandler", skipPublicPaths(userMapperPreHandler));
+  // After authentication, so a caller without a token still gets 401, and before any route's own
+  // preHandlers, so a malformed id never takes a database connection (#512).
+  fastify.addHook("preHandler", rejectMalformedIdParams);
+  // A thrown error never reaches the client as itself: no database message, table or constraint (#512).
+  registerErrorHandler(fastify);
 
   registerWorkspaceScope(fastify);
   registerHealthRoute(fastify, pool);
