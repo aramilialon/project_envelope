@@ -376,6 +376,24 @@ const withdrawBroker = transferSpec((model, random) => {
   return { source: random.pick(brokers), destination: random.pick(cash), category };
 }, 150_000);
 
+/** Money kept apart in an off-budget savings account: it leaves the budget through a category, either way. */
+const offBudgetSavings = transferSpec((model, random) => {
+  const cash = model.budgetCashAccounts();
+  const savings = [...model.accounts.values()].filter((a) => !a.onBudget && a.type === "savings");
+  const categories = model.ordinaryCategories();
+  if (cash.length === 0 || savings.length === 0 || categories.length === 0) return undefined;
+  const [source, destination] = random.chance(0.7) ? [random.pick(cash), random.pick(savings)] : [random.pick(savings), random.pick(cash)];
+  return { source: source!, destination: destination!, category: random.pick(categories).handle };
+}, 200_000);
+
+/** A transfer between two cards' payment categories (#260). */
+const cardToCard = transferSpec((model, random) => {
+  const cards = model.cards();
+  if (cards.length < 2) return undefined;
+  const source = random.pick(cards);
+  return { source, destination: random.pick(cards.filter((c) => c !== source)) };
+}, 50_000);
+
 const brokerToBroker = transferSpec((model, random) => {
   const brokers = model.brokerageAccounts();
   if (brokers.length < 2) return undefined;
@@ -1013,11 +1031,12 @@ const editTrade: OperationSpec<EditTradeParams> = {
   accept(model, p, body) {
     const group = model.tradeGroup(model.trade(p.trade));
     const accountsBefore = group.map((t) => model.accountById(t.record.accountId).handle);
+    const portfoliosBefore = group.map((t) => model.handleOf(t.record.portfolioId));
     const { trades } = body as { trades: TradeJson[] };
-    model.replaceTrades(trades);
+    model.applyTradeEdit(group, trades);
     return touched({
       accounts: [...accountsBefore, ...trades.map((t) => model.accountById(t.accountId).handle)],
-      portfolios: [...group.map((t) => model.handleOf(t.record.portfolioId)), ...trades.map((t) => model.handleOf(t.portfolioId))].filter((h): h is string => h !== undefined),
+      portfolios: [...portfoliosBefore, ...trades.map((t) => model.handleOf(t.portfolioId))].filter((h): h is string => h !== undefined),
     });
   },
 };
@@ -1137,6 +1156,8 @@ export const OPERATIONS: Readonly<Record<string, OperationSpec<any>>> = {
   cardPayment,
   fundBroker,
   withdrawBroker,
+  offBudgetSavings,
+  cardToCard,
   brokerToBroker,
   editTransaction,
   clearTransaction,
@@ -1174,6 +1195,8 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     spend: 14,
     transfer: 3,
     cardPayment: 4,
+    offBudgetSavings: 2,
+    cardToCard: 1,
     editTransaction: 4,
     clearTransaction: 7,
     deleteTransaction: 2,

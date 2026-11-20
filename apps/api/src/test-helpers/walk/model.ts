@@ -304,15 +304,27 @@ export class WorkspaceModel {
     });
   }
 
-  /** Records trades the API rewrote in an edit, and what the edit does to each one's leg. */
-  replaceTrades(records: readonly TradeJson[]): void {
+  /**
+   * Records what an edit of `group` (a trade and the rows that go with it) returned, and what it
+   * does to each one's leg. A split stands for every holding at the start of its date, so moving
+   * its date can add rows (a holding that only exists by the new date) and remove some: the
+   * split's rows become exactly the ones returned.
+   */
+  applyTradeEdit(group: readonly TradeEntity[], records: readonly TradeJson[]): void {
     for (const record of records) {
       const entity = this.tradeById(record.id);
-      if (!entity) throw new Error(`an edit returned trade ${record.id}, which the model does not have`);
+      if (!entity) {
+        if (record.type !== "split") throw new Error(`an edit returned trade ${record.id}, which the model does not have`);
+        this.addTrades([record]);
+        continue;
+      }
       const before = entity.record;
       entity.record = record;
       this.syncLeg(entity, before);
     }
+    const returned = new Set(records.map((record) => record.id));
+    const dropped = group.filter((member) => member.record.type === "split" && !returned.has(member.record.id));
+    this.removeTrades(dropped.map((member) => member.handle));
   }
 
   /** Forgets trades the API deleted, with their legs. */

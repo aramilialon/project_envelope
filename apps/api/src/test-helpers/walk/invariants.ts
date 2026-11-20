@@ -15,6 +15,7 @@ import {
   computeBudgetMonth,
   computePositions,
   derivedResults,
+  isValidationError,
   monthOf,
   summarizeByAccount,
   summarizeByPortfolio,
@@ -226,7 +227,14 @@ function sortRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
 
 /** The oracle: every position of the workspace, replayed by the core from the model's trades. */
 export function oraclePositions(model: WorkspaceModel): Positions {
-  return computePositions(model.positionTrades());
+  try {
+    return computePositions(model.positionTrades());
+  } catch (error) {
+    if (isValidationError(error)) {
+      fail(`the API accepted a trade history of ${model.persona} that the core refuses: ${error.code} ${show(error.details)}`);
+    }
+    throw error;
+  }
 }
 
 export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity, oracle: Positions): Promise<PositionResponse> {
