@@ -30,7 +30,7 @@
 | Cash leg | The one transaction a trade that moves money owns on its brokerage account; its amount, account and date come from the trade ([ADR 0012](adr/0012-trade-cash-legs.md)) | `cashTransactionId`, `transactions.trade_id`, `tradeCashCents` | Movimento di liquidità |
 | Position | What an account or a portfolio holds in one instrument, rebuilt from the trades on every request, never stored | `PositionRecord`, `computePositions` | Posizione |
 | Weighted average cost | The cost method: the total cost of a holding divided by its quantity, per account and instrument, shared by every portfolio of the account | `accountAverageCostE6`, `averageCost` | Costo medio ponderato |
-| Cost basis | The cost of the units held: buys at gross + fees, less the share removed by each sale or transfer out | `costBasisCents` | Costo di carico |
+| Cost basis | The cost of the units held: buys at gross + fees, plus the cost brought by transfers in from another account or from outside the app, less the share removed by each sale or transfer out | `costBasisCents` | Costo di carico |
 | Realized gain or loss | What a sale earned over the cost it removed: gross − fees − cost removed; economic, not taxable | `realizedCents` | Plusvalenza o minusvalenza realizzata |
 | Stock split | A change in the number of units of a security, written from:to (1:4: one unit becomes four; a reverse split 10:1: ten become one); the cost does not change. Not to be confused with a split of a transaction across categories | `split`, `splitFrom`, `splitTo` | Split azionario |
 | Ex-date | The day a stock split or a dividend takes effect on the price; a split is recorded on it, and applies before every other trade of that date | `tradeDate` of a split | Data di stacco |

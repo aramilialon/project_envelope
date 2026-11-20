@@ -129,14 +129,16 @@ category, and the transfer to the broker spends it.
 **Example.** €40,000.00 of income arrives; €30,000.00 is assigned to "Investments" and €500.00 to
 "Groceries"; €123.45 is spent on groceries. The €30,000.00 transfer from the checking account to
 the brokerage account is spending from "Investments": its available goes from €30,000.00 to 0, and
-unassigned money stays at 40,000.00 − 30,000.00 − 500.00 = €9,500.00. The checking account holds
-40,000.00 − 123.45 − 30,000.00 = €9,876.55 = 9,500.00 + 0 + 376.55, the invariant below. Every buy,
-sale and fee on the brokerage account afterwards moves cash within that account only, and leaves
-the budget exactly as it was.
+unassigned money stays at 40,000.00 − 30,000.00 − 500.00 = €9,500.00, and "Groceries" has
+500.00 − 123.45 = €376.55 available. The checking account holds 40,000.00 − 123.45 − 30,000.00 =
+€9,876.55 = 9,500.00 (unassigned) + 0 ("Investments") + 376.55 ("Groceries"), the invariant
+below. Every buy, sale and fee on the brokerage account afterwards moves cash within that account
+only, and leaves the budget exactly as it was.
 
 Money brought back from an off-budget account goes into the category its on-budget leg names, the
 same way a refund does: €500.00 transferred back from the broker with "Investments" as its category
-puts €500.00 back into that category's available.
+puts €500.00 back into that category's available. Today that leg needs a category too; letting
+such money land as unassigned money by default is planned (#598).
 
 ### Days of buffer
 
@@ -424,8 +426,9 @@ mergers and rights issues, dividends paid in shares, and the fiscal view in euro
 in other currencies. Until exchange rates exist, a transfer between two accounts in different
 currencies is refused, because its cost cannot be converted: the API answers `currency_mismatch`,
 since in 0.2.0 the instrument must be in each account's currency, and the core's own replay refuses
-it too (`invalid_trade`, field `currency`). Such a move is entered as a transfer out of the app from the first account plus a transfer in from
-outside into the second, carrying the cost converted by the user.
+it too (`invalid_trade`, field `currency`). Such a move is entered as a transfer out of the app
+from the first account plus a transfer in from outside into the second, carrying the cost
+converted by the user.
 
 ### Target allocation and thresholds
 
@@ -567,8 +570,9 @@ gains and income from securities; 12.5% applies to government bonds.
 A trade the regime does not allow is refused with `tax_kind_not_allowed_in_regime`, naming the
 regime and the field; the withholding on accrued interest at a foreign broker is refused with
 `domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
-takes no trade at all (`tax_regime_required`). The worked examples below are tests in
-`packages/core` and `apps/api`.
+takes no trade at all (`tax_regime_required`). The worked examples below follow the tests in
+`packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
+result tax, for one, is not).
 
 **Example: a sale's gain tax in each regime.** An ETF (a fund) is sold at a gain of €173.00, and
 the broker withholds 26% of it, €44.98: 1,300.00 of gross, a €5.00 fee and €44.98 of gain tax put

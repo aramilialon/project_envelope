@@ -127,7 +127,8 @@ workspace's rows, whatever its SQL says.
 **Composite workspace keys.** PostgreSQL checks a foreign key without Row-Level Security, so a
 plain `account_id REFERENCES accounts (id)` would let a row point at another workspace's account
 once its id was known. Every foreign key between two workspace-scoped tables therefore carries the
-workspace too, and the row it points at must have the same `workspace_id` (migration 0029, #504):
+workspace too, and the row it points at must have the same `workspace_id`. The keys below come
+from migrations 0028 to 0031; migration 0029 (#504) converted the older tables' keys the same way:
 
 | Key | Points at | On delete |
 | --- | --- | --- |
@@ -159,7 +160,8 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 { "taxCountry": "IT" }
 ```
 
-`taxCountry` is an ISO 3166-1 alpha-2 code, or `null` to remove it. The answer is the workspace:
+`taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
+`invalid_tax_country`), or `null` to remove it. The answer is the workspace:
 
 ```json
 { "id": "45fd02be-…", "name": "Household", "baseCurrency": "EUR", "timeZone": "Europe/Rome", "taxCountry": "IT" }
@@ -167,7 +169,7 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 
 | Error | Details |
 | --- | --- |
-| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not a known region |
+| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not a known region |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -198,7 +200,7 @@ below). `GET /me/workspaces` lists each workspace's `taxCountry`.
   required in an `IT` workspace and refused anywhere else, and on any other account type.
 - `taxRegimeValidFrom` is the first day of that regime, any date; it defaults to today in the
   workspace's time zone. As the first period it also covers every earlier date, so older trades
-  recorded later need no backdated regime.
+  recorded later need no backdated regime. Sent without `taxRegime`, it is a plain 400.
 
 The answer (201) is the account; the regime is read with `GET …/tax-regimes`:
 
@@ -348,7 +350,7 @@ accounts its trades are on, and one account can hold several portfolios.
 - `purpose` is free text; `null` or a blank string clears it.
 - `archived: true` archives (keeping the first `archivedAt`), `false` unarchives. An archived
   portfolio keeps its trades and positions, is left out of the list unless asked for, and still
-  accepts trades.
+  accepts trades today; refusing new trades in an archived portfolio is planned (#597).
 - Two non-archived portfolios of a workspace cannot share a name, ignoring case and surrounding
   spaces: 409 `name_taken`, on create, rename and unarchive. An archived one does not block its
   name.
@@ -432,11 +434,15 @@ required; `id` is an optional client-generated UUID. Then, by type:
 
 | Type | Required | Optional | Rules |
 | --- | --- | --- | --- |
-| `buy` | `instrumentId`, `quantityE8` > 0, `priceE6` | `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
+| `buy` | `instrumentId`, `quantityE8` > 0 | `priceE6` (default 0), `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
 | `sell` | as a buy | as a buy, plus `gainTaxCents` | the portfolio must hold the units on that date |
-| `dividend` (a coupon too) | `instrumentId`, `grossCents` | `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
+| `dividend` (a coupon too) | `instrumentId` | `grossCents` (default 0), `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
 | `fee` | `feesCents` > 0 | `instrumentId` | without an instrument, a fee on the whole account (custody) |
 | `tax` | `taxKind`, `grossCents` > 0 | `instrumentId` | a `gain_tax_adjustment`'s `grossCents` is signed and not 0: positive is a refund, negative extra tax |
+
+A buy or a sale without `priceE6`, and a dividend without `grossCents`, are accepted today: the
+missing amount is 0, so a buy or a sale at a price of 0 and a dividend of 0 are recorded as sent.
+Requiring them is tracked in #600.
 
 **Transfer of securities.** Units move between two portfolios of one account, between two
 accounts, or into or out of the app. No `accountId` or `portfolioId` at the top: each leg carries
@@ -529,6 +535,13 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `invalid_date` | `{ "value" }` | `tradeDate` is not a real date |
 | `invalid_amount`, `invalid_quantity`, `invalid_price` | `{ "label", "value" }` | not a safe integer (a decimal number, or too large); a negative price |
 | 409 `id_taken` | `{ "tradeId" }` | the client-generated id is already used, in this workspace or any other |
+
+`invalid_trade`'s `details.field` is usually a field of the request (`feesCents`, `grossCents`,
+`costBasisCents`, `occurredAt`, …), but some checks report the core's own name instead:
+`quantity` for `quantityE8`, `price` for `priceE6`, `date` for `tradeDate`, and `currency`,
+`priceFactor` and `transferTradeId`, which are not request fields at all (the account's or the
+instrument's currency and price factor, the link between a transfer's legs). A client that shows
+the field to the user maps both kinds of name.
 
 The `insufficient_quantity` details name the trade where the holding would go negative, which is
 not always the one being recorded: a backdated sale, or an edit or deletion of an earlier buy,
@@ -720,7 +733,7 @@ Each in the account's minor unit, counting the trades of the portfolio (or accou
 | Total | What it adds up |
 | --- | --- |
 | `realizedCents` | gains (positive) and losses of sales: economic, not taxable |
-| `costInCents` | cost that came in: buys (gross + fees) and transfers in |
+| `costInCents` | cost that came in: buys (gross + fees), and transfers in from another account or from outside the app. A transfer between two portfolios of the same account adds nothing |
 | `costSoldCents` | cost removed by sales |
 | `costTransferredOutCents` | cost carried out by transfers to another account or out of the app |
 | `tradeFeesCents` | fees of buys and sells: already inside the cost and the gain, shown for information |
