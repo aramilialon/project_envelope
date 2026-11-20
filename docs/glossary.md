@@ -17,6 +17,10 @@
 | On-budget / off-budget account | Accounts whose money is (or is not) part of the budget; investments and mortgages are usually off-budget, and a brokerage account ("Conto titoli") is always off-budget | `onBudget` | Conto in budget / fuori budget |
 | Split | One transaction spread across several categories | `Split` | Suddivisione |
 | Minor unit | The smallest unit of a currency: the cent for EUR, the yen for JPY | `Cents` | Centesimo |
+| Quantity | How many units of an instrument a trade or position holds, with up to 8 decimals; for a bond quoted in percent, its nominal amount ([ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)) | `Quantity`, `quantity_e8`, `quantityE8` | Quantità |
+| Price | The price of one unit as quoted, with up to 6 decimals; in the instrument's currency when the price factor is 1 | `Price`, `price_e6`, `priceE6` | Prezzo |
+| Price factor | What turns quantity × price into an amount: 1 for most instruments, 0.01 for a bond quoted in percent of nominal or a share quoted in pence | `PriceFactor`, `price_factor_e6`, `priceFactorE6` | Fattore di prezzo |
+| Nominal | A bond's face value, the amount repaid at maturity; it is the bond's quantity, so 10 bonds of €1,000 are a quantity of 10,000 | `quantity_e8` | Valore nominale |
 
 ## Technical
 

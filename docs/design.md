@@ -113,7 +113,7 @@ The user records every instrument they own and every transaction. The app derive
 | Portfolios | Several per workspace (for example "Long term", "Third pillar", "Fourth pillar"). A portfolio can span several brokerage accounts, and one brokerage account can hold several portfolios: every trade is assigned to exactly one portfolio at entry (never left unassigned, and an account is never treated as if it were a portfolio), so an account's positions are split logically across its portfolios | MVP |
 | Instruments | ETFs, stocks, bonds, funds, cash; search by ISIN or ticker; currency, exchange, asset class | MVP |
 | Trades | Buy, sell, dividend or coupon, fees, taxes, split, transfer of securities | MVP |
-| Positions | Quantity, average cost, current value, unrealized and realized gains or losses | MVP |
+| Positions | Quantity, average cost (weighted, per account and instrument, [ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)), current value, unrealized and realized gains or losses | MVP |
 | Historical prices | Daily closing price stored; monthly view for each instrument and for the portfolio | MVP |
 | Monthly performance | Month-by-month table and chart: value, net contributions, gain, return | MVP |
 | Manual prices | For instruments without automatic quotes (some government bonds, funds, real estate) | MVP |
@@ -284,7 +284,7 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 ### Accounting rules
 
 - **Amounts as integers.** In cents, or the currency's minor unit. Never floating-point numbers ([ADR 0002](adr/0002-amounts-in-minor-units.md)).
-- **High-precision quantities.** Fixed decimal with 8 digits for fractional shares; prices with 6 digits.
+- **High-precision quantities.** Fixed decimal with 8 digits for fractional shares; prices with 6 digits. Both are scaled integers (`quantity_e8`, `price_e6`), with one rounding rule per conversion ([ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)).
 - **Derived values are never the source of truth.** Balances and positions are recomputed from transactions; caches are rebuildable optimizations.
 - **Dates always in UTC.** In the database (`timestamptz`), for transactions and system events alike; the app converts them to the user's preferred time zone.
 - **Workspace time zone.** Every workspace has a reference time zone, used only to decide which budget day and month a transaction belongs to. All members therefore see the same monthly totals, even from different time zones. Date-only transactions, such as bank imports, are stored in UTC starting from that day in the workspace's time zone.

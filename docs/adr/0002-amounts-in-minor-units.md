@@ -22,4 +22,4 @@ JavaScript numbers (like Perl's) are floating point: `0.1 + 0.2` is `0.300000000
 ## Consequences
 
 - Sums and comparisons are exact.
-- Quantities and prices of financial instruments will have their own rule, with more decimals: it will be a separate ADR.
+- Quantities and prices of financial instruments have their own rule, with more decimals: scaled integers ([ADR 0011](0011-quantities-and-prices-as-scaled-integers.md)).

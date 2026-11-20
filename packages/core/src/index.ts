@@ -3,6 +3,29 @@ export type { ValidationErrorCode } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
+export type { Price, PriceFactor, Quantity } from "./portfolio/quantity.ts";
+export {
+  amountOf,
+  assertPrice,
+  assertPriceFactor,
+  assertQuantity,
+  formatPrice,
+  formatQuantity,
+  ONE_UNIT,
+  parsePrice,
+  parseQuantity,
+  PRICE_DECIMALS,
+  PRICE_FACTOR_DECIMALS,
+  PRICE_FACTOR_HUNDREDTH,
+  PRICE_FACTOR_ONE,
+  priceFrom,
+  proportionalCost,
+  QUANTITY_DECIMALS,
+  quantityFor,
+  toPrice,
+  toPriceFactor,
+  toQuantity,
+} from "./portfolio/quantity.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
 export type {

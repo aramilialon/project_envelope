@@ -61,7 +61,7 @@ export function currencyDecimals(currency: CurrencyCode): number {
   return decimals;
 }
 
-interface Separators {
+export interface Separators {
   readonly group: string;
   readonly decimal: string;
 }
@@ -109,27 +109,65 @@ function groupPattern(group: string): string {
  * @throws ValidationError with code "invalid_amount_format".
  */
 export function parseAmount(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
-  const { group, decimal } = separatorsFor(options.locale);
   const decimals = currencyDecimals(options.currency);
-  const g = groupPattern(group);
-  const d = escapeRegExp(decimal);
-  const fraction = decimals > 0 ? `(?:${d}(\\d{1,${decimals}}))?` : "()";
-  const pattern = new RegExp(`^(-)?(\\d{1,3}(?:${g}\\d{3})+|\\d+)${fraction}$`);
-
-  const match = pattern.exec(text.trim());
-  if (match === null) {
+  const parts = matchLocaleDecimal(text, options.locale, decimals);
+  if (parts === null) {
     throw new ValidationError("invalid_amount_format", `not a valid amount for ${options.locale}: "${text}"`, {
       text,
       locale: options.locale,
     });
   }
-  const [, minus, integerPart = "0", fractionPart = ""] = match;
-  const whole = Number(integerPart.replace(new RegExp(g, "g"), ""));
-  const minor = decimals > 0 ? Number(fractionPart.padEnd(decimals, "0")) : 0;
+  const whole = Number(parts.integerDigits);
+  const minor = decimals > 0 ? Number(parts.fractionDigits.padEnd(decimals, "0")) : 0;
   const result = whole * 10 ** decimals + minor;
   assertCents(result);
   // "-0" would become -0: normalize it to 0.
-  return minus === undefined || result === 0 ? result : -result;
+  return !parts.negative || result === 0 ? result : -result;
+}
+
+/** The pieces of a decimal number typed in a locale, digits only. */
+export interface LocaleDecimalParts {
+  readonly negative: boolean;
+  /** The integer part without group separators, for example "1234". */
+  readonly integerDigits: string;
+  /** The fraction digits as typed, at most `maxDecimals` of them, possibly empty. */
+  readonly fractionDigits: string;
+}
+
+/**
+ * Splits a decimal number typed in a locale into its sign, integer digits and
+ * fraction digits, or returns null if it does not match the locale's
+ * conventions: an optional leading "-", digits with or without group
+ * separators (in groups of three), and at most `maxDecimals` decimals after
+ * the locale's decimal separator.
+ *
+ * Shared by every parser of typed numbers (amounts here, quantities and prices
+ * in `portfolio/quantity.ts`), so they all accept the same input. Internal to
+ * the core: not exported from the package.
+ */
+export function matchLocaleDecimal(text: string, locale: Locale, maxDecimals: number): LocaleDecimalParts | null {
+  const { group, decimal } = separatorsFor(locale);
+  const g = groupPattern(group);
+  const d = escapeRegExp(decimal);
+  const fraction = maxDecimals > 0 ? `(?:${d}(\\d{1,${maxDecimals}}))?` : "()";
+  const pattern = new RegExp(`^(-)?(\\d{1,3}(?:${g}\\d{3})+|\\d+)${fraction}$`);
+
+  const match = pattern.exec(text.trim());
+  if (match === null) return null;
+  const [, minus, integerPart = "0", fractionPart = ""] = match;
+  return {
+    negative: minus !== undefined,
+    integerDigits: integerPart.replace(new RegExp(g, "g"), ""),
+    fractionDigits: fractionPart,
+  };
+}
+
+/**
+ * The group and decimal separators of a locale, for formatters that assemble
+ * a number themselves. Internal to the core: not exported from the package.
+ */
+export function localeSeparators(locale: Locale): Separators {
+  return separatorsFor(locale);
 }
 
 const formatterCache = new Map<string, Intl.NumberFormat>();

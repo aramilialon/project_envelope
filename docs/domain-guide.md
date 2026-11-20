@@ -170,6 +170,29 @@ historical prices, rather than asking the user to maintain a balance by hand. Tw
 - **MWR/XIRR** (money-weighted return) measures the *household's own result*, given exactly when
   their contributions happened — the number that answers "did my timing help or hurt me."
 
+#### Quantities, prices and rounding
+
+Quantities have up to 8 decimals and prices up to 6, kept as exact integers rather than fractional
+numbers ([ADR 0011](adr/0011-quantities-and-prices-as-scaled-integers.md)). The amount of a trade
+is quantity × price × price factor; the price factor is 1 for most instruments and 0.01 when the
+price is quoted in percent or in hundredths of the currency. Each conversion rounds by one rule:
+
+- **A savings plan buys what the money allows, never more.** €100 at €87.123456 buys
+  1.14779652 units (100 ÷ 87.123456 = 1.147796525…, rounded toward zero). If the broker only
+  sells thousandths of a unit, it is 1.147; with whole units only, 1.
+- **A bond's quantity is its nominal.** 10,000 nominal at 98.765432 (percent) is
+  10,000 × 98.765432 × 0.01 = €9,876.5432, so €9,876.54. Working back, €9,876.54 for 10,000
+  nominal is an average price of 98.7654 (rounded half to even at 6 decimals, for display).
+- **A share quoted in pence.** 100 shares at 1,234.5p are 100 × 1,234.5 × 0.01 = £1,234.50.
+- **Selling part of a position removes its cost proportionally.** €1,000 of cost on 3 units, sold
+  one unit at a time: the first sale removes a third of €1,000 = €333.33; the second, half of the
+  €666.67 left = €333.335, so €333.34 (half away from zero); the last sale removes everything that
+  is left, €333.33. Together they make exactly €1,000.
+- **The order of sales matters, so it is fixed.** A cost of €1.01 on 4 units: selling 1 unit and
+  then another removes €0.25 + €0.25 = €0.50, while selling 2 units at once removes €0.505, so
+  €0.51. Positions are rebuilt by replaying the trades always in the same order, so the same
+  trades always give the same cost.
+
 ### Target allocation and thresholds
 
 A target allocation is a tree of percentages that must add up to 100% at each level — for example

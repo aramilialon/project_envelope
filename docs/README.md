@@ -32,6 +32,7 @@
 | [0008](adr/0008-assignment-ledger.md) | Monthly assignments as an append-only ledger, not mutable totals |
 | [0009](adr/0009-i18n-library.md) | FormatJS for the web app's i18n library |
 | [0010](adr/0010-system-job-workspace-enumeration.md) | A third RLS session variable for periodic jobs that must enumerate every workspace |
+| [0011](adr/0011-quantities-and-prices-as-scaled-integers.md) | Quantities and prices as scaled integers |
 
 ## Rule
 
