@@ -156,7 +156,7 @@ missed case would be worst to find in production.
 ## Portfolios and rebalancing
 
 Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
-are already computed in `packages/core`, and the API records trades (#77); the rest are the rules
+are already computed in `packages/core`, the API records trades (#77) and returns positions, without prices yet (#79); the rest are the rules
 the engine will follow once it exists, not a description of something already running.
 
 ### Positions and returns
