@@ -1,4 +1,6 @@
 /** The accounts endpoints (#51): list, create and close an account in a workspace. */
+import type { TaxRegime } from "@envelope/core";
+
 import { apiFetch } from "../apiFetch.ts";
 
 export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
@@ -22,6 +24,9 @@ export interface CreateAccountInput {
   readonly onBudget: boolean;
   /** Only meaningful for an on-budget credit card (`apps/api`'s own `createAccount` ignores it otherwise). */
   readonly startingBalanceCents?: number;
+  /** Brokerage accounts only (#508); required, with `domesticWithholdingAgent`, in an "IT" workspace. */
+  readonly taxRegime?: TaxRegime;
+  readonly domesticWithholdingAgent?: boolean;
 }
 
 export async function listAccounts(accessToken: string, workspaceId: string): Promise<Account[]> {

@@ -378,6 +378,43 @@ proportion to its own target, and every CAPE value entered is kept, so the targe
 over time is never lost. The CAPE number itself is typed in by the user each month, with a reminder
 and a link to whichever source they picked — the app does not fetch it automatically.
 
+### Tax regimes of a brokerage account
+
+Recorded now (#508), used later: the app does not compute any tax yet. Indicative taxes are part of
+the local tax rules (milestone 0.11.0, see the [design document](design.md#tax-regime-of-brokerage-accounts)).
+What follows describes the Italian rules the records are shaped for; it says what each regime
+means, not which one to choose.
+
+A workspace whose tax country is Italy (`IT`) records, for every brokerage account, which of three
+regimes it is under:
+
+- **Self-declared** (*dichiarativo*, `self_declared`). The broker does not settle the tax on
+  capital gains: the investor reports gains and losses in their own annual tax return. Whether the
+  broker is an Italian withholding agent (*sostituto d'imposta*) still matters here: an Italian
+  agent withholds tax at source on fund gains, dividends and coupons it pays out, while a foreign
+  broker withholds nothing Italian, so that income is reported by the investor too.
+- **Administered** (*amministrato*). The broker, an Italian withholding agent, computes and
+  withholds the tax on each realized gain when it happens, and keeps track of losses within that
+  account to offset later gains.
+- **Managed** (*gestito*). The investor has given a manager a mandate to manage the account; the
+  tax is applied by the manager on the result of the whole mandate rather than trade by trade. Such
+  an account is normally recorded as one private "mandate" instrument with a value entered by hand,
+  which needs private instruments (milestone 0.2.1); until then it records individual trades only.
+
+**The regime is a history.** An account can change regime, but a change takes effect from
+1 January; only the first regime recorded may start on any date (the day the account was opened,
+for example). Each trade is read under the regime in force on its own date.
+
+**Example.** An account administered since 15 March 2024 switches to self-declared from 1 January
+2027. A sale on 20 December 2026 is under the administered regime, so the broker withholds the tax
+on its gain at the sale; a sale on 5 January 2027 is under the self-declared regime, so its gain
+goes into the investor's own annual return. Recording the switch does not change the 2026 sale. A
+switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start`).
+
+**Example.** Two self-declared accounts each receive a dividend. At a broker that is an Italian
+withholding agent, the dividend arrives net of the agent's withholding; at a foreign broker it
+arrives with no Italian withholding, and the investor reports it.
+
 ### What the engine will not do
 
 The same "no advice" rule that keeps the budget from judging a purchase applies here too, more

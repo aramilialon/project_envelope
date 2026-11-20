@@ -125,3 +125,11 @@ export {
   normalizeInstrument,
   parseInstrumentSearch,
 } from "./portfolio/instrument.ts";
+export type { AccountTaxSettings, TaxRegime, TaxRegimeEntry } from "./portfolio/tax-regime.ts";
+export {
+  isTaxRegime,
+  regimeAt,
+  TAX_REGIMES,
+  validateAccountTaxSettings,
+  validateTaxRegimeHistory,
+} from "./portfolio/tax-regime.ts";

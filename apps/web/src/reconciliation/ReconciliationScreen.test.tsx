@@ -44,7 +44,7 @@ function candidates(overrides: Partial<ReconciliationCandidates> = {}): Reconcil
 function renderScreen(initialCandidates: ReconciliationCandidates) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
@@ -132,7 +132,7 @@ describe("ReconciliationScreen (#60)", () => {
       );
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
     vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);

@@ -27,10 +27,10 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 | File | What it does |
 | --- | --- |
 | `keycloak-test-user.ts` | `createTestUser()`: a throwaway Keycloak user (admin API), with `teardown()` to remove it; `subject` is Keycloak's own user id, the `sub` claim any token issued to them carries |
-| `db.ts` | `findUserIdBySubject(subject)`: the local `users.id` once the user-mapper preHandler has created it; `createWorkspaceWithMembership(userId, name, role?)`: a throwaway workspace with a membership, with `teardown()` to remove it |
+| `db.ts` | `findUserIdBySubject(subject)`: the local `users.id` once the user-mapper preHandler has created it; `createWorkspaceWithMembership(userId, name, role?)`: a throwaway workspace with a membership, with `teardown()` to remove it; `setWorkspaceTaxCountry`, `listTaxRegimes` (`#508`) |
 | `sign-in.spec.ts` | Signs in through the real Keycloak login form and back, and signs out again (`#49`) |
 | `workspaces.spec.ts` | The workspace switcher (`#50`): the empty-workspace message, skipping straight through a single workspace, the picker once a second one exists, and switching between them |
-| `accounts.spec.ts` | The accounts screen (`#51`, `#323`): creating an account from its own "+ Add account", opening its register by clicking its name, and closing it |
+| `accounts.spec.ts` | The accounts screen (`#51`, `#323`): creating an account from its own "+ Add account", opening its register by clicking its name, and closing it; in a workspace whose tax country is `IT`, creating a brokerage account with its tax regime and withholding agent (`#508`) |
 | `categories.spec.ts` | The categories screen (`#52`): reaching it from the workspace switcher's "Workspace settings", adding a group and a category, then archiving the category |
 | `budget.spec.ts` | The budget month screen (`#53`): unassigned money at zero and the empty-categories message for a brand new workspace, and month navigation |
 | `transactions.spec.ts` | The account register (`#54`): reaching it from the Accounts screen (`#323`), adding an outflow with a category and a transfer to another account, and toggling a transaction's status |

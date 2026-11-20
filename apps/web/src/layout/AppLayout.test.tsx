@@ -12,7 +12,7 @@ import { useBandSecondRow } from "./useBandSecondRow.tsx";
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
 
-const WORKSPACE = { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" };
+const WORKSPACE = { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null };
 
 const ORIGINAL_WIDTH = window.innerWidth;
 

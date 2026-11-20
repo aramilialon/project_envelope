@@ -13,8 +13,8 @@ vi.mock("react-oidc-context", () => ({ useAuth }));
 function renderSwitcher(subject = "user-1") {
   useAuth.mockReturnValue({ user: { access_token: "t", profile: { sub: subject } } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-    { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+    { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
   return renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
@@ -51,8 +51,8 @@ describe("WorkspaceSwitcher (#50)", () => {
 
   it("creates a workspace from '+ New workspace', landing on it and refreshing the list (#394)", async () => {
     useAuth.mockReturnValue({ user: { access_token: "t", profile: { sub: "user-1" } } });
-    const FAMIGLIA = { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" };
-    const LAVORO = { id: "ws-new", name: "Lavoro", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" };
+    const FAMIGLIA = { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null };
+    const LAVORO = { id: "ws-new", name: "Lavoro", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null };
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValueOnce([FAMIGLIA]).mockResolvedValueOnce([FAMIGLIA, LAVORO]);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
@@ -77,7 +77,7 @@ describe("WorkspaceSwitcher (#50)", () => {
   it("offers 'Delete workspace' only to the current workspace's own owner (#394)", async () => {
     useAuth.mockReturnValue({ user: { access_token: "t", profile: { sub: "user-1" } } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "editor", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "editor", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
@@ -94,7 +94,7 @@ describe("WorkspaceSwitcher (#50)", () => {
   it("deletes the current workspace after typing its own name to confirm, then leaves it (#394)", async () => {
     useAuth.mockReturnValue({ user: { access_token: "t", profile: { sub: "user-1" } } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>

@@ -127,6 +127,16 @@ The user records every instrument they own and every transaction. The app derive
 
 The portfolio connects to the budget through off-budget accounts. A payment from the checking account to the broker is a transfer, so invested money leaves the budget without showing up as spending.
 
+### Tax regime of brokerage accounts
+
+A workspace has an optional **tax country** (ISO 3166-1 alpha-2), set by its owner. It decides which tax data a brokerage account must carry; only `IT` asks for any today, other countries are added with their own rules. Nothing here computes a tax yet: these records let trades be checked against the regime now, and let the local tax rules (milestone 0.11.0) estimate taxes later. The three regimes are described in the [domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account).
+
+- **Regime history, not a single value.** Each brokerage account keeps a list of periods, each a regime and the first day it applies: `self_declared`, `administered` or `managed`. A trade uses the regime in force on its own date (`regimeAt` in `@envelope/core`), so a later change never reinterprets past trades. The first period may start on any date; every later one starts on 1 January (`tax_regime_change_not_year_start`), and no two periods start on the same day (`tax_regime_duplicate_date`).
+- **Withholding agent.** A brokerage account also records whether the broker is an Italian withholding agent. In the self-declared regime this decides which withholdings can appear on the account's income: an Italian agent still withholds on fund gains, dividends and coupons, a foreign one withholds nothing Italian.
+- **When they are required.** Creating a brokerage account in an `IT` workspace needs both the regime and the withholding-agent flag (`tax_regime_required`); any other account type rejects either (`tax_regime_not_applicable`). A brokerage account created before its workspace's tax country became `IT` keeps working with no regime until one is added; recording a trade on it will need one (trades, issue #77).
+- **Managed accounts.** A managed (discretionary mandate) account is normally modelled as one private "mandate" instrument per account with a manually entered value, which needs private instruments (milestone 0.2.1). Until then, a managed account records individual trades only.
+- **Deferred to the local tax rules (milestone 0.11.0):** tax estimates, loss carry-forward and its expiry, conversion to euro, per-taxpayer averages, account owners.
+
 ### ETF look-through (phase 2)
 
 The app breaks every ETF down into its holdings and shows the portfolio's real exposure: by country, region, sector, currency and single company. For example "62% of your stocks are in the United States" or "one company weighs 3.1% across all your ETFs".
@@ -263,9 +273,10 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Entity | Main fields | Notes |
 | --- | --- | --- |
 | User | email, password hash, passkeys, 2FA, language, locale, time zone | A user can belong to several workspaces |
-| Workspace | name, base currency, reference time zone, plan | Security boundary: every query is filtered by workspace |
+| Workspace | name, base currency, reference time zone, tax country (optional), plan | Security boundary: every query is filtered by workspace |
 | Membership | user, workspace, role | Owner, editor, read-only |
-| Account | type, currency, on or off budget, closed | Bank accounts, cards, brokers; each real account lives in exactly one workspace |
+| Account | type, currency, on or off budget, withholding agent (brokerage only), closed | Bank accounts, cards, brokers; each real account lives in exactly one workspace |
+| AccountTaxRegime | account, valid from, regime | A brokerage account's regime history (see "Tax regime of brokerage accounts"): self-declared, administered or managed; later periods start on 1 January |
 | Transaction | account, date, amount, payee, status (pending, cleared, reconciled) | Edited in place, or deleted outright (both legs together for a transfer); reconciled transactions neither, until unlocked |
 | Split | transaction, category, amount | One transaction across several categories |
 | Category / Group | name, order, archived | |

@@ -28,6 +28,31 @@ export async function findUserIdBySubject(keycloakSubject: string): Promise<stri
   }
 }
 
+/** Sets a workspace's tax country (#508), which no screen sets yet. */
+export async function setWorkspaceTaxCountry(workspaceId: string, taxCountry: string | null): Promise<void> {
+  const pool = new pg.Pool({ connectionString: databaseUrl() });
+  try {
+    await pool.query("UPDATE workspaces SET tax_country = $2 WHERE id = $1", [workspaceId, taxCountry]);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** A brokerage account's tax regime history (#508), oldest first. */
+export async function listTaxRegimes(accountName: string, workspaceId: string): Promise<{ regime: string }[]> {
+  const pool = new pg.Pool({ connectionString: databaseUrl() });
+  try {
+    const { rows } = await pool.query<{ regime: string }>(
+      `SELECT r.regime FROM account_tax_regimes r JOIN accounts a ON a.id = r.account_id
+       WHERE a.workspace_id = $1 AND a.name = $2 ORDER BY r.valid_from`,
+      [workspaceId, accountName],
+    );
+    return rows;
+  } finally {
+    await pool.end();
+  }
+}
+
 export interface TestWorkspace {
   readonly id: string;
   teardown(): Promise<void>;

@@ -21,6 +21,12 @@
 | Price | The price of one unit as quoted, with up to 6 decimals; in the instrument's currency when the price factor is 1 | `Price`, `price_e6`, `priceE6` | Prezzo |
 | Price factor | What turns quantity × price into an amount: 1 for most instruments, 0.01 for a bond quoted in percent of nominal or a share quoted in pence | `PriceFactor`, `price_factor_e6`, `priceFactorE6` | Fattore di prezzo |
 | Nominal | A bond's face value, the amount repaid at maturity; it is the bond's quantity, so 10 bonds of €1,000 are a quantity of 10,000 | `quantity_e8` | Valore nominale |
+| Tax country | A workspace's country for tax purposes (ISO 3166-1 alpha-2); in `IT`, every brokerage account records its tax regime | `taxCountry`, `tax_country` | Paese fiscale |
+| Tax regime | How a brokerage account's gains are taxed, kept as a history of periods (a change starts on 1 January): self-declared, administered or managed | `TaxRegime`, `account_tax_regimes` | Regime fiscale |
+| Self-declared regime | The investor reports gains and losses in their own tax return; the broker settles no tax on gains | `self_declared` | Dichiarativo |
+| Administered regime | The broker, an Italian withholding agent, withholds the tax on each realized gain and tracks losses within the account | `administered` | Amministrato |
+| Managed regime | A manager runs the account under a mandate and applies the tax to the mandate's result | `managed` | Gestito |
+| Withholding agent | A broker that withholds Italian tax at source on the investor's behalf; decides which withholdings appear in a self-declared account | `domesticWithholdingAgent` | Sostituto d'imposta |
 
 ## Technical
 

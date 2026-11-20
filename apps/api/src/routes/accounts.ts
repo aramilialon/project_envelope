@@ -1,4 +1,4 @@
-import { MAX_NAME_LENGTH } from "@envelope/core";
+import { isTaxRegime, MAX_NAME_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import {
@@ -9,6 +9,7 @@ import {
   listAccounts,
   type AccountType,
 } from "../accounts/repository.ts";
+import { addTaxRegime, listTaxRegimes } from "../accounts/tax-regimes.ts";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
@@ -35,6 +36,18 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
       return;
     }
+    if (body.taxRegime !== undefined && !isTaxRegime(body.taxRegime)) {
+      await reply.code(400).send({ error: "invalid account: taxRegime must be self_declared, administered or managed when given" });
+      return;
+    }
+    if (body.taxRegimeValidFrom !== undefined && (typeof body.taxRegimeValidFrom !== "string" || body.taxRegime === undefined)) {
+      await reply.code(400).send({ error: "invalid account: taxRegimeValidFrom must be a YYYY-MM-DD date, given with taxRegime" });
+      return;
+    }
+    if (body.domesticWithholdingAgent !== undefined && typeof body.domesticWithholdingAgent !== "boolean") {
+      await reply.code(400).send({ error: "invalid account: domesticWithholdingAgent must be a boolean when given" });
+      return;
+    }
     const accountType = type as AccountType;
     const onBudget = body.onBudget ?? defaultOnBudget(accountType);
 
@@ -46,6 +59,9 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
         currency,
         onBudget,
         ...(startingBalanceCents === undefined ? {} : { startingBalanceCents }),
+        ...(isTaxRegime(body.taxRegime) ? { taxRegime: body.taxRegime } : {}),
+        ...(typeof body.taxRegimeValidFrom === "string" ? { taxRegimeValidFrom: body.taxRegimeValidFrom } : {}),
+        ...(typeof body.domesticWithholdingAgent === "boolean" ? { domesticWithholdingAgent: body.domesticWithholdingAgent } : {}),
       });
       await reply.code(201).send(account);
     } catch (error) {
@@ -69,5 +85,44 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
       return;
     }
     return account;
+  });
+
+  // A brokerage account's tax regime history (#508): read by any member, changed by an owner or editor.
+  app.get("/workspaces/:workspaceId/accounts/:accountId/tax-regimes", { preHandler }, async (request, reply) => {
+    const { accountId } = request.params as { accountId: string };
+    const taxRegimes = await listTaxRegimes(request.db!, request.workspace!.id, accountId);
+    if (!taxRegimes) {
+      await reply.code(404).send({ error: "account not found" });
+      return;
+    }
+    return { taxRegimes };
+  });
+
+  app.post("/workspaces/:workspaceId/accounts/:accountId/tax-regimes", { preHandler: writePreHandler }, async (request, reply) => {
+    const { accountId } = request.params as { accountId: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (!isTaxRegime(body.regime) || (body.validFrom !== undefined && typeof body.validFrom !== "string")) {
+      await reply.code(400).send({
+        error: "invalid tax regime: regime (self_declared, administered or managed) is required, validFrom a YYYY-MM-DD date when given",
+      });
+      return;
+    }
+
+    try {
+      const entry = await addTaxRegime(request.db!, request.workspace!.id, accountId, {
+        regime: body.regime,
+        ...(typeof body.validFrom === "string" ? { validFrom: body.validFrom } : {}),
+      });
+      if (!entry) {
+        await reply.code(404).send({ error: "account not found" });
+        return;
+      }
+      await reply.code(201).send(entry);
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
   });
 }

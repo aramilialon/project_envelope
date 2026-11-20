@@ -1,6 +1,7 @@
-import { ValidationError } from "@envelope/core";
+import { validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
 
 export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
 
@@ -19,6 +20,8 @@ export interface AccountRecord {
   readonly currency: string;
   readonly onBudget: boolean;
   readonly paymentCategoryId: string | null;
+  /** Brokerage accounts only (#508): whether the broker is a domestic withholding agent; null when not recorded. */
+  readonly domesticWithholdingAgent: boolean | null;
   readonly closedAt: string | null;
   readonly createdAt: string;
 }
@@ -31,6 +34,12 @@ export interface CreateAccountInput {
   readonly onBudget: boolean;
   /** Only meaningful for an on-budget credit_card account; negative = debt already owed. */
   readonly startingBalanceCents?: number;
+  /** Brokerage accounts only (#508): the regime in force from `taxRegimeValidFrom`. Required in an `IT` workspace. */
+  readonly taxRegime?: TaxRegime;
+  /** The first day of `taxRegime`, any date; defaults to today in the workspace's time zone. */
+  readonly taxRegimeValidFrom?: LocalDate;
+  /** Brokerage accounts only (#508). Required in an `IT` workspace. */
+  readonly domesticWithholdingAgent?: boolean;
 }
 
 interface AccountRow {
@@ -41,12 +50,14 @@ interface AccountRow {
   readonly currency: string;
   readonly on_budget: boolean;
   readonly payment_category_id: string | null;
+  readonly domestic_withholding_agent: boolean | null;
   /** `node-postgres` parses `timestamptz` into a `Date`, not a string, despite the column's SQL type. */
   readonly closed_at: Date | null;
   readonly created_at: Date;
 }
 
-const ACCOUNT_COLUMNS = "id, workspace_id, name, type, currency, on_budget, payment_category_id, closed_at, created_at";
+const ACCOUNT_COLUMNS =
+  "id, workspace_id, name, type, currency, on_budget, payment_category_id, domestic_withholding_agent, closed_at, created_at";
 
 /** The shared group every card's payment category lives in, found by this exact name (`findOrCreatePaymentCategoryGroup`). */
 export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
@@ -63,25 +74,51 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * brokerage account. Migration 0025's CHECK constraint is the only rule:
  * its violation is mapped to that code here. The failed INSERT leaves the
  * request's transaction aborted, so it rolls back and nothing is stored.
+ *
+ * A brokerage account's tax settings (#508) are checked against the
+ * workspace's tax country by `@envelope/core`'s `validateAccountTaxSettings`
+ * before anything is written; its first regime, when given, is stored in
+ * `account_tax_regimes` (`tax-regimes.ts`) in the same transaction.
+ *
+ * @throws ValidationError "tax_regime_required" / "tax_regime_not_applicable"
+ * from `validateAccountTaxSettings`, and "invalid_date" for a bad
+ * `taxRegimeValidFrom`.
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
+  validateAccountTaxSettings({
+    accountType: input.type,
+    taxCountry: await workspaceTaxCountry(db, input.workspaceId),
+    taxRegime: input.taxRegime,
+    domesticWithholdingAgent: input.domesticWithholdingAgent,
+  });
+
   let rows: AccountRow[];
   try {
     ({ rows } = await db.query<AccountRow>(
-      `INSERT INTO accounts (workspace_id, name, type, currency, on_budget)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO accounts (workspace_id, name, type, currency, on_budget, domestic_withholding_agent)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING ${ACCOUNT_COLUMNS}`,
-      [input.workspaceId, input.name, input.type, input.currency, input.onBudget],
+      [input.workspaceId, input.name, input.type, input.currency, input.onBudget, input.domesticWithholdingAgent ?? null],
     ));
   } catch (error) {
     if (isBrokerageOffBudgetViolation(error)) {
       throw brokerageOnBudgetError();
+    }
+    if (isConstraintViolation(error, CHECK_VIOLATION, "accounts_withholding_agent_brokerage_check")) {
+      throw notApplicableError(input.type, "domesticWithholdingAgent");
     }
     throw error;
   }
   const account = rows[0];
   if (!account) {
     throw new Error("createAccount: INSERT ... RETURNING produced no row");
+  }
+
+  if (input.taxRegime !== undefined) {
+    await addTaxRegime(db, input.workspaceId, account.id, {
+      regime: input.taxRegime,
+      ...(input.taxRegimeValidFrom === undefined ? {} : { validFrom: input.taxRegimeValidFrom }),
+    });
   }
 
   if (input.type !== "credit_card" || !input.onBudget) {
@@ -125,6 +162,14 @@ export async function closeAccount(
     [accountId, workspaceId],
   );
   return rows[0] ? toAccountRecord(rows[0]) : undefined;
+}
+
+/** The workspace's tax country (#508), or null when it has none. */
+async function workspaceTaxCountry(db: DbPool | DbClient, workspaceId: string): Promise<string | null> {
+  const { rows } = await db.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [
+    workspaceId,
+  ]);
+  return rows[0]?.tax_country ?? null;
 }
 
 const CHECK_VIOLATION = "23514";
@@ -222,6 +267,7 @@ function toAccountRecord(row: AccountRow): AccountRecord {
     currency: row.currency,
     onBudget: row.on_budget,
     paymentCategoryId: row.payment_category_id,
+    domesticWithholdingAgent: row.domestic_withholding_agent,
     closedAt: row.closed_at ? row.closed_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
   };

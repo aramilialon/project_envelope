@@ -57,6 +57,7 @@ describe("WorkspaceGate (#50)", () => {
       role: "owner",
       baseCurrency: "EUR",
       timeZone: "Europe/Rome",
+      taxCountry: null,
     });
     renderGate();
     await screen.findByText("You do not belong to any workspace yet.");
@@ -73,7 +74,7 @@ describe("WorkspaceGate (#50)", () => {
 
   it("skips straight to the only workspace when there is exactly one", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     renderGate();
 
@@ -82,8 +83,8 @@ describe("WorkspaceGate (#50)", () => {
 
   it("shows the picker when there is more than one workspace", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     renderGate();
 
@@ -93,8 +94,8 @@ describe("WorkspaceGate (#50)", () => {
 
   it("goes straight to the last-used workspace, skipping the picker, when the user is still a member (#343)", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     setLastUsedWorkspaceId("user-1", "ws-2");
     renderGate("user-1");
@@ -104,8 +105,8 @@ describe("WorkspaceGate (#50)", () => {
 
   it("falls through to the picker, and forgets the preference, when the last-used workspace is no longer reachable (#343)", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     setLastUsedWorkspaceId("user-1", "ws-removed");
     renderGate("user-1");
@@ -116,8 +117,8 @@ describe("WorkspaceGate (#50)", () => {
 
   it("ignores a last-used workspace stored under a different user's own key (#343)", async () => {
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     setLastUsedWorkspaceId("someone-else", "ws-2");
     renderGate("user-1");
@@ -130,8 +131,8 @@ describe("WorkspaceGate (#50)", () => {
       throw new Error("storage disabled");
     });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
-      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+      { id: "ws-2", name: "Personale", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     renderGate("user-1");
 

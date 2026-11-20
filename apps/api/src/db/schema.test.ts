@@ -581,6 +581,192 @@ describe("apps/api/migrations, applied to a real database", () => {
     });
   });
 
+  describe("tax regimes of brokerage accounts (#508), as the envelope_app role", () => {
+    let workspaceA: string;
+    let workspaceB: string;
+    let brokerageA: string;
+    let checkingA: string;
+    let brokerageB: string;
+
+    /** Runs `body` as envelope_app with workspace `workspaceId` selected, always rolled back. */
+    async function asApp(workspaceId: string, body: (client: DbClient) => Promise<void>): Promise<void> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL ROLE envelope_app");
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+        await body(client);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    }
+
+    /** Asserts `query` fails as a violation of the named constraint, with the given SQLSTATE. */
+    async function rejectsWith(query: Promise<unknown>, code: string, constraint: string): Promise<void> {
+      await assert.rejects(query, (error: { code?: string; constraint?: string }) => {
+        assert.equal(error.code, code);
+        assert.equal(error.constraint, constraint);
+        return true;
+      });
+    }
+
+    before(async () => {
+      workspaceA = randomUUID();
+      workspaceB = randomUUID();
+      await pool.query(
+        "INSERT INTO workspaces (id, name, base_currency, time_zone, tax_country) VALUES ($1, 'Taxed A', 'EUR', 'Europe/Rome', 'IT'), ($2, 'Taxed B', 'EUR', 'Europe/Rome', 'IT')",
+        [workspaceA, workspaceB],
+      );
+      const accounts = await pool.query<{ id: string; name: string }>(
+        `INSERT INTO accounts (workspace_id, name, type, currency, on_budget, domestic_withholding_agent)
+         VALUES ($1, 'Broker A', 'brokerage', 'EUR', false, true), ($1, 'Checking A', 'checking', 'EUR', true, NULL),
+                ($2, 'Broker B', 'brokerage', 'EUR', false, false)
+         RETURNING id, name`,
+        [workspaceA, workspaceB],
+      );
+      const idOf = (name: string) => accounts.rows.find((row) => row.name === name)!.id;
+      brokerageA = idOf("Broker A");
+      checkingA = idOf("Checking A");
+      brokerageB = idOf("Broker B");
+      await pool.query(
+        "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2024-03-15', 'administered'), ($3, $4, '2025-06-01', 'self_declared')",
+        [workspaceA, brokerageA, workspaceB, brokerageB],
+      );
+    });
+
+    it("only shows the selected workspace's regimes", async () => {
+      await asApp(workspaceA, async (client) => {
+        const { rows } = await client.query("SELECT account_id FROM account_tax_regimes");
+        assert.deepEqual(rows, [{ account_id: brokerageA }]);
+      });
+    });
+
+    it("does not let envelope_app insert a regime for another workspace", async () => {
+      await asApp(workspaceA, async (client) => {
+        await assert.rejects(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2027-01-01', 'managed')",
+            [workspaceB, brokerageB],
+          ),
+          /row-level security/,
+        );
+      });
+    });
+
+    it("keeps a regime in its account's own workspace (composite foreign key)", async () => {
+      await rejectsWith(
+        pool.query(
+          "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2027-01-01', 'managed')",
+          [workspaceA, brokerageB],
+        ),
+        "23503",
+        "account_tax_regimes_account_fkey",
+      );
+    });
+
+    it("accepts a change on 1 January, and rejects one on any other day", async () => {
+      await asApp(workspaceA, async (client) => {
+        await client.query(
+          "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2027-01-01', 'self_declared')",
+          [workspaceA, brokerageA],
+        );
+        await rejectsWith(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2028-07-01', 'managed')",
+            [workspaceA, brokerageA],
+          ),
+          "23514",
+          "account_tax_regimes_year_start_check",
+        );
+      });
+    });
+
+    it("rejects an entry before a first one that does not start on 1 January", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2023-01-01', 'managed')",
+            [workspaceA, brokerageA],
+          ),
+          "23514",
+          "account_tax_regimes_year_start_check",
+        );
+      });
+    });
+
+    it("rejects two regimes on the same date", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2024-03-15', 'managed')",
+            [workspaceA, brokerageA],
+          ),
+          "23505",
+          "account_tax_regimes_pkey",
+        );
+      });
+    });
+
+    it("rejects a regime on an account that is not a brokerage account", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2026-05-05', 'managed')",
+            [workspaceA, checkingA],
+          ),
+          "23514",
+          "account_tax_regimes_brokerage_check",
+        );
+      });
+    });
+
+    it("rejects an unknown regime", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query(
+            "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2030-01-01', 'other')",
+            [workspaceA, brokerageA],
+          ),
+          "23514",
+          "account_tax_regimes_regime_check",
+        );
+      });
+    });
+
+    it("gives envelope_app no UPDATE on a regime: a change is a new row", async () => {
+      await asApp(workspaceA, async (client) => {
+        await assert.rejects(
+          client.query("UPDATE account_tax_regimes SET regime = 'managed' WHERE account_id = $1", [brokerageA]),
+          /permission denied/,
+        );
+      });
+    });
+
+    it("rejects a withholding-agent flag on an account that is not a brokerage account", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query(
+            "INSERT INTO accounts (workspace_id, name, type, currency, domestic_withholding_agent) VALUES ($1, 'Flagged', 'checking', 'EUR', true)",
+            [workspaceA],
+          ),
+          "23514",
+          "accounts_withholding_agent_brokerage_check",
+        );
+      });
+    });
+
+    it("keeps the workspace tax country to two capital letters", async () => {
+      await asApp(workspaceA, async (client) => {
+        await rejectsWith(
+          client.query("UPDATE workspaces SET tax_country = 'ita' WHERE id = $1", [workspaceA]),
+          "23514",
+          "workspaces_tax_country_check",
+        );
+      });
+    });
+  });
+
   describe("audit_log is append-only", () => {
     let workspaceId: string;
     let entryId: string;

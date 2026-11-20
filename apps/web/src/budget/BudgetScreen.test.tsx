@@ -82,7 +82,7 @@ function renderScreen(
 ) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role, baseCurrency: "EUR", timeZone: "UTC" },
+    { id: "ws-1", name: "Famiglia", role, baseCurrency: "EUR", timeZone: "UTC", taxCountry: null },
   ]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
@@ -508,7 +508,7 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(await screen.findByText("Loading your budget…")).toBeInTheDocument();
     expect(getBudgetMonth).not.toHaveBeenCalled();
 
-    resolveWorkspaces([{ id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" }]);
+    resolveWorkspaces([{ id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null }]);
     await screen.findByText("Groceries");
     expect(getBudgetMonth.mock.calls).toEqual([["t", "ws-1", "2026-10"]]);
   });

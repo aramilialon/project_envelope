@@ -10,6 +10,8 @@ export interface Workspace {
   readonly baseCurrency: string;
   /** IANA time zone name (e.g. "Europe/Rome"): "today" and "this month" are the workspace's own, not the browser's (#326). */
   readonly timeZone: string;
+  /** ISO 3166-1 alpha-2, or null (#508): in an "IT" workspace a brokerage account needs a tax regime. */
+  readonly taxCountry: string | null;
 }
 
 export interface CreateWorkspaceInput {

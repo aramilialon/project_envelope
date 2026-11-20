@@ -37,7 +37,7 @@ afterEach(() => {
 function renderScreen(accounts: Account[]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
   vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([]);
@@ -132,7 +132,7 @@ describe("AccountsScreen (#51, #323)", () => {
   it("shows each account's own balance, summed from its own transactions", async () => {
     useAuth.mockReturnValue({ user: { access_token: "t" } });
     vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+      { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
     ]);
     vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
     vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([
