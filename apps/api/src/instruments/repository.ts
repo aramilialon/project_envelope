@@ -1,11 +1,12 @@
-import type { InstrumentSearch, InstrumentType, NormalizedInstrument } from "@envelope/core";
+import { toPriceFactor, type InstrumentSearch, type InstrumentType, type NormalizedInstrument, type PriceFactor } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 
 /**
  * The shared instruments catalog (#76, migration 0026): no workspace and no Row-Level Security,
- * so these queries run on the pool directly. `created_by` is written but never read back: the
- * catalog is shared, and who added an instrument is another workspace's private data.
+ * so these queries run on the pool directly. Neither `created_by` nor `created_at` is ever read
+ * back: the catalog is shared, and who added an instrument, or when, is another workspace's
+ * private data.
  */
 export interface Instrument {
   readonly id: string;
@@ -16,9 +17,8 @@ export interface Instrument {
   readonly type: InstrumentType;
   readonly currency: string;
   readonly assetClass: string | null;
-  /** amount = quantity × price × priceFactorE6 / 10^6: 1000000, or 10000 for a price in percent of nominal or in pence. */
-  readonly priceFactorE6: number;
-  readonly createdAt: string;
+  /** The price factor × 10^6 ([ADR 0011](../../../../docs/adr/0011-quantities-and-prices-as-scaled-integers.md)): 1000000, or 10000 for a price in percent of nominal or in pence. */
+  readonly priceFactorE6: PriceFactor;
 }
 
 /** Which uniqueness rule a duplicate broke, so the route can answer with a stable 409 `code`. */
@@ -34,7 +34,10 @@ export class InstrumentConflictError extends Error {
   }
 }
 
-/** Most rows a search returns: enough to pick from, never a listing of the catalog. */
+/**
+ * Most rows a search returns: enough to pick from. For usability, not confidentiality: any
+ * signed-in user can still read the whole catalog by trying every prefix.
+ */
 export const INSTRUMENT_SEARCH_LIMIT = 20;
 
 const UNIQUE_VIOLATION = "23505";
@@ -43,7 +46,7 @@ const CONFLICT_BY_CONSTRAINT: Readonly<Record<string, InstrumentConflict>> = {
   instruments_ticker_exchange_key: "ticker_taken",
 };
 
-const COLUMNS = `id, isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6, created_at`;
+const COLUMNS = `id, isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6`;
 
 interface InstrumentRow {
   id: string;
@@ -54,9 +57,8 @@ interface InstrumentRow {
   type: InstrumentType;
   currency: string;
   asset_class: string | null;
-  /** node-postgres returns a bigint as a string; always a safe integer here (assertPriceFactorE6 on the way in). */
+  /** node-postgres returns a bigint as a string; `toPriceFactor` checks it is a positive safe integer. */
   price_factor_e6: string;
-  created_at: Date;
 }
 
 function toInstrument(row: InstrumentRow): Instrument {
@@ -69,8 +71,7 @@ function toInstrument(row: InstrumentRow): Instrument {
     type: row.type,
     currency: row.currency,
     assetClass: row.asset_class,
-    priceFactorE6: Number(row.price_factor_e6),
-    createdAt: row.created_at.toISOString(),
+    priceFactorE6: toPriceFactor(Number(row.price_factor_e6), "price_factor_e6"),
   };
 }
 

@@ -51,6 +51,8 @@ export type ValidationErrorCode =
   | "invalid_instrument_field"
   | "missing_instrument_identifier"
   | "missing_exchange"
+  | "invalid_ticker"
+  | "invalid_exchange"
   | "search_query_too_short";
 
 export class ValidationError extends Error {

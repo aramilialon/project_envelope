@@ -4,13 +4,13 @@ import { describe, it } from "node:test";
 import { isValidationError } from "../errors.ts";
 import {
   assertIsin,
-  assertPriceFactorE6,
   INSTRUMENT_TYPES,
   isinCheckDigit,
   isValidIsin,
   normalizeInstrument,
   parseInstrumentSearch,
 } from "./instrument.ts";
+import { PRICE_FACTOR_HUNDREDTH, PRICE_FACTOR_ONE } from "./quantity.ts";
 
 // Published ISINs, used here only as check-digit test vectors.
 const VALID_ISINS = ["US0378331005", "AU0000XVGZA3", "GB0002634946", "IE00B4L5Y983", "DE0005140008"];
@@ -60,20 +60,6 @@ describe("assertIsin", () => {
   });
 });
 
-describe("assertPriceFactorE6", () => {
-  it("accepts a positive safe integer", () => {
-    for (const value of [1_000_000, 10_000, 1]) {
-      assert.doesNotThrow(() => assertPriceFactorE6(value), String(value));
-    }
-  });
-
-  it("rejects zero, negatives, fractions, non-numbers and unsafe integers", () => {
-    for (const value of [0, -1, -10_000, 0.5, 10_000.5, Number.NaN, Infinity, 2 ** 53, "10000", null, true]) {
-      assert.throws(() => assertPriceFactorE6(value), (error) => isValidationError(error, "invalid_price_factor"), String(value));
-    }
-  });
-});
-
 describe("INSTRUMENT_TYPES", () => {
   it("is exactly the tax-relevant list, ETFs filed as funds", () => {
     assert.deepEqual([...INSTRUMENT_TYPES], ["stock", "fund", "etc_etn", "government_bond", "bond", "certificate", "cash", "other"]);
@@ -114,17 +100,68 @@ describe("normalizeInstrument", () => {
     assert.equal(byTicker.ticker, "ABC");
   });
 
-  it("keeps a bond's price factor", () => {
-    const bond = normalizeInstrument({ isin: "US0378331005", name: "Bond", type: "government_bond", currency: "EUR", priceFactorE6: 10_000 });
-    assert.equal(bond.priceFactorE6, 10_000);
+  it("keeps a bond's price factor, and defaults to a factor of 1", () => {
+    const bond = normalizeInstrument({
+      isin: "US0378331005",
+      name: "Bond",
+      type: "government_bond",
+      currency: "EUR",
+      priceFactorE6: PRICE_FACTOR_HUNDREDTH,
+    });
+    assert.equal(bond.priceFactorE6, PRICE_FACTOR_HUNDREDTH);
+    const stock = normalizeInstrument({ isin: "US0378331005", name: "A", type: "stock", currency: "USD", priceFactorE6: null });
+    assert.equal(stock.priceFactorE6, PRICE_FACTOR_ONE);
   });
 
-  it("rejects a missing name, an invalid ISIN, type, currency or price factor with stable codes", () => {
+  it("strips control and format characters from the name and asset class", () => {
+    const instrument = normalizeInstrument({
+      isin: "US0378331005",
+      name: "Wor\u200bld\u0007 equity\u202e",
+      type: "fund",
+      currency: "EUR",
+      assetClass: "\u200b\u200b",
+    });
+    assert.equal(instrument.name, "World equity");
+    assert.equal(instrument.assetClass, null);
+    assert.throws(
+      () => normalizeInstrument({ isin: "US0378331005", name: "\u200b\u0000 ", type: "fund", currency: "EUR" }),
+      (error) => isValidationError(error, "invalid_instrument_field") && error.details.field === "name",
+    );
+  });
+
+  it("accepts tickers with dots and hyphens and a four-character MIC", () => {
+    const instrument = normalizeInstrument({ ticker: "brk.b", exchange: "xnys", name: "A", type: "stock", currency: "USD" });
+    assert.equal(instrument.ticker, "BRK.B");
+    assert.equal(instrument.exchange, "XNYS");
+    assert.equal(normalizeInstrument({ ticker: "AB-C1", exchange: "X2X3", name: "A", type: "stock", currency: "USD" }).ticker, "AB-C1");
+  });
+
+  it("checks a ticker's length after upper-casing, which can lengthen it", () => {
+    // "ß".toUpperCase() is "SS": 20 characters become 40.
+    assert.throws(
+      () => normalizeInstrument({ ticker: "\u00df".repeat(20), exchange: "XMIL", name: "A", type: "stock", currency: "EUR" }),
+      (error) => isValidationError(error, "invalid_ticker"),
+    );
+    assert.equal(
+      normalizeInstrument({ ticker: "\u00df".repeat(16), exchange: "XMIL", name: "A", type: "stock", currency: "EUR" }).ticker,
+      "SS".repeat(16),
+    );
+  });
+
+  it("rejects invalid input with stable codes", () => {
     const base = { isin: "US0378331005", name: "X", type: "stock", currency: "USD" };
     const cases: [Parameters<typeof normalizeInstrument>[0], string][] = [
       [{ ...base, name: "  " }, "invalid_instrument_field"],
       [{ ...base, name: "x".repeat(201) }, "invalid_instrument_field"],
-      [{ ...base, ticker: "x".repeat(33) }, "invalid_instrument_field"],
+      [{ ...base, assetClass: "x".repeat(65) }, "invalid_instrument_field"],
+      [{ ...base, ticker: "X".repeat(33), exchange: "XMIL" }, "invalid_ticker"],
+      [{ ...base, ticker: "AB C", exchange: "XMIL" }, "invalid_ticker"],
+      [{ ...base, ticker: "AB/C", exchange: "XMIL" }, "invalid_ticker"],
+      [{ ...base, ticker: "\u0410BC", exchange: "XMIL" }, "invalid_ticker"], // Cyrillic A
+      [{ ...base, exchange: "MIL" }, "invalid_exchange"],
+      [{ ...base, exchange: "XMILA" }, "invalid_exchange"],
+      [{ ...base, exchange: "Borsa Italiana" }, "invalid_exchange"],
+      [{ ...base, exchange: "XM\u0399L" }, "invalid_exchange"], // Greek capital iota
       [{ ...base, isin: "US0378331004" }, "invalid_isin"],
       [{ ...base, type: "crypto" }, "invalid_instrument_type"],
       [{ ...base, type: "etf" }, "invalid_instrument_type"], // an ETF is a `fund`
@@ -133,7 +170,6 @@ describe("normalizeInstrument", () => {
       [{ ...base, priceFactorE6: 0 }, "invalid_price_factor"],
       [{ ...base, priceFactorE6: -10_000 }, "invalid_price_factor"],
       [{ ...base, priceFactorE6: 0.01 }, "invalid_price_factor"],
-      [{ ...base, priceFactorE6: "10000" }, "invalid_price_factor"],
       [{ name: "Cash", type: "cash", currency: "EUR" }, "missing_instrument_identifier"],
       [{ name: "Cash", type: "cash", currency: "EUR", isin: " ", exchange: "XMIL" }, "missing_instrument_identifier"],
       [{ name: "X", type: "stock", currency: "USD", ticker: "ABC" }, "missing_exchange"],
@@ -142,6 +178,22 @@ describe("normalizeInstrument", () => {
     for (const [input, code] of cases) {
       assert.throws(() => normalizeInstrument(input), (error) => isValidationError(error, code as never), JSON.stringify(input));
     }
+  });
+
+  it("rejects a price factor that is not a number, with the same details shape as assertPriceFactor", () => {
+    for (const priceFactorE6 of ["10000", true, {}]) {
+      assert.throws(
+        () => normalizeInstrument({ isin: "US0378331005", name: "X", type: "stock", currency: "USD", priceFactorE6 }),
+        (error) =>
+          isValidationError(error, "invalid_price_factor") &&
+          error.details.label === "priceFactorE6" &&
+          error.details.value === String(priceFactorE6),
+      );
+    }
+    assert.throws(
+      () => normalizeInstrument({ isin: "US0378331005", name: "X", type: "stock", currency: "USD", priceFactorE6: -1 }),
+      (error) => isValidationError(error, "invalid_price_factor") && error.details.label === "priceFactorE6" && error.details.value === "-1",
+    );
   });
 });
 

@@ -94,7 +94,7 @@ describe("instruments routes (#76)", () => {
     assert.equal((await get(undefined, `/instruments/${randomUUID()}`)).statusCode, 401);
   });
 
-  it("creates an instrument, normalized, without exposing who created it, and reads it back", async () => {
+  it("creates an instrument, normalized, without exposing who created it or when, and reads it back", async () => {
     const isin = randomIsin();
     const ticker = randomTicker();
     const created = await post(tokenA, {
@@ -109,10 +109,9 @@ describe("instruments routes (#76)", () => {
     assert.equal(created.statusCode, 201);
     const body = created.json();
     assert.deepEqual(
-      { ...body, id: undefined, createdAt: undefined },
+      { ...body, id: undefined },
       {
         id: undefined,
-        createdAt: undefined,
         isin,
         ticker,
         exchange: "XMIL",
@@ -124,6 +123,7 @@ describe("instruments routes (#76)", () => {
       },
     );
     assert.equal("createdBy" in body, false);
+    assert.equal("createdAt" in body, false);
 
     const read = await get(tokenA, `/instruments/${body.id}`);
     assert.equal(read.statusCode, 200);
@@ -173,6 +173,48 @@ describe("instruments routes (#76)", () => {
     }
   });
 
+  it("rejects a field that is present but not a string with invalid_instrument_field", async () => {
+    const base = { isin: randomIsin(), name: `${namePrefix} Typed`, type: "fund", currency: "EUR" };
+    const cases: [string, unknown][] = [
+      ["isin", 123],
+      ["ticker", ["ABC"]],
+      ["exchange", { mic: "XMIL" }],
+      ["name", 42],
+      ["name", null],
+      ["type", true],
+      ["currency", 978],
+      ["assetClass", 1],
+    ];
+    for (const [field, value] of cases) {
+      const response = await post(tokenA, { ...base, [field]: value });
+      assert.equal(response.statusCode, 400, `${field}: ${JSON.stringify(value)}`);
+      assert.deepEqual(response.json(), { error: "invalid_instrument_field", details: { field } }, field);
+    }
+  });
+
+  it("checks a ticker after upper-casing, so a lengthening one is a 400, never a 500", async () => {
+    const response = await post(tokenA, {
+      ticker: "\u00df".repeat(20),
+      exchange: "XMIL",
+      name: `${namePrefix} Long ticker`,
+      type: "stock",
+      currency: "EUR",
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().error, "invalid_ticker");
+  });
+
+  it("strips control and format characters from the name", async () => {
+    const response = await post(tokenA, {
+      isin: randomIsin(),
+      name: `${namePrefix} Hid\u200bden\u0007`,
+      type: "fund",
+      currency: "EUR",
+    });
+    assert.equal(response.statusCode, 201);
+    assert.equal(response.json().name, `${namePrefix} Hidden`);
+  });
+
   it("rejects invalid input with stable codes", async () => {
     const cases: [Record<string, unknown>, string][] = [
       [{ name: `${namePrefix} No id`, type: "cash", currency: "EUR" }, "missing_instrument_identifier"],
@@ -182,6 +224,9 @@ describe("instruments routes (#76)", () => {
       [{ isin: randomIsin(), name: `${namePrefix} Old type`, type: "etf", currency: "USD" }, "invalid_instrument_type"],
       [{ isin: randomIsin(), name: `${namePrefix} Bad currency`, type: "stock", currency: "EURO" }, "invalid_currency"],
       [{ isin: randomIsin(), name: "  ", type: "stock", currency: "USD" }, "invalid_instrument_field"],
+      [{ isin: randomIsin(), exchange: "MIL", name: `${namePrefix} Short MIC`, type: "stock", currency: "EUR" }, "invalid_exchange"],
+      [{ isin: randomIsin(), exchange: "XMIL\u200b", name: `${namePrefix} Hidden MIC`, type: "stock", currency: "EUR" }, "invalid_exchange"],
+      [{ ticker: "AB C", exchange: "XMIL", name: `${namePrefix} Spaced ticker`, type: "stock", currency: "EUR" }, "invalid_ticker"],
     ];
     for (const [payload, code] of cases) {
       const response = await post(tokenA, payload);
@@ -298,10 +343,38 @@ describe("instruments routes (#76)", () => {
     assert.equal(response.json().instruments.length, 20);
   });
 
-  it("treats LIKE wildcards in the query as plain characters", async () => {
-    const response = await get(tokenA, "/instruments?q=%25%25");
-    assert.equal(response.statusCode, 200);
-    assert.deepEqual(response.json().instruments, []);
+  it("treats LIKE wildcards and the escape character in the query as plain characters", async () => {
+    // For each special character, one row has it literally and one has an ordinary character in
+    // its place: only the literal one may match.
+    for (const special of ["%", "_", "\\"]) {
+      const literal = await post(tokenA, {
+        isin: randomIsin(),
+        name: `${namePrefix}${special}lit`,
+        type: "fund",
+        currency: "EUR",
+      });
+      const ordinary = await post(tokenA, { isin: randomIsin(), name: `${namePrefix}zlit`, type: "fund", currency: "EUR" });
+      assert.equal(literal.statusCode, 201, special);
+      assert.equal(ordinary.statusCode, 201, special);
+
+      const response = await get(tokenA, `/instruments?q=${encodeURIComponent(`${namePrefix}${special}`)}`);
+      assert.equal(response.statusCode, 200, special);
+      assert.deepEqual(
+        response.json().instruments.map((instrument: { id: string }) => instrument.id),
+        [literal.json().id],
+        special,
+      );
+
+      await superuserPool.query("DELETE FROM instruments WHERE id = ANY($1)", [[literal.json().id, ordinary.json().id]]);
+    }
+  });
+
+  it("lets only one of two identical concurrent requests through", async () => {
+    const payload = { isin: randomIsin(), exchange: "XETR", name: `${namePrefix} Race`, type: "fund", currency: "EUR" };
+    const responses = await Promise.all([post(tokenA, payload), post(tokenB, payload)]);
+    assert.deepEqual(responses.map((response) => response.statusCode).sort(), [201, 409]);
+    const conflict = responses.find((response) => response.statusCode === 409)!;
+    assert.equal(conflict.json().code, "isin_taken");
   });
 
   it("answers 404 for an unknown or malformed id", async () => {
@@ -310,18 +383,23 @@ describe("instruments routes (#76)", () => {
   });
 
   it("has no endpoint that updates or deletes an instrument", async () => {
-    const created = await post(tokenA, { isin: randomIsin(), name: `${namePrefix} Fixed`, type: "fund", currency: "EUR" });
+    // The test realm's tokens live 3 seconds: a fresh one, so a slow machine cannot turn a 404
+    // into a 401 halfway through.
+    const token = await ctx.realm.getUserToken();
+    const created = await post(token, { isin: randomIsin(), name: `${namePrefix} Fixed`, type: "fund", currency: "EUR" });
+    assert.equal(created.statusCode, 201);
     const id = created.json().id;
     for (const method of ["PATCH", "PUT", "DELETE"] as const) {
       const response = await app.fastify.inject({
         method,
         url: `/instruments/${id}`,
-        headers: { authorization: `Bearer ${tokenA}` },
+        headers: { authorization: `Bearer ${token}` },
         payload: { name: "Changed" },
       });
       assert.equal(response.statusCode, 404, method);
     }
-    assert.equal((await get(tokenA, `/instruments/${id}`)).json().name, `${namePrefix} Fixed`);
+    const { rows } = await superuserPool.query<{ name: string }>("SELECT name FROM instruments WHERE id = $1", [id]);
+    assert.deepEqual(rows, [{ name: `${namePrefix} Fixed` }]);
   });
 
   it("gives envelope_app SELECT and INSERT on instruments, and no UPDATE or DELETE", async () => {
@@ -349,6 +427,18 @@ describe("instruments routes (#76)", () => {
         `${namePrefix} No exchange`,
       ]),
       { code: "23514", constraint: "instruments_ticker_exchange_check" },
+    );
+    await assert.rejects(
+      superuserPool.query("INSERT INTO instruments (ticker, exchange, name, type, currency) VALUES ('ABC', 'MIL', $1, 'stock', 'EUR')", [
+        `${namePrefix} Short MIC`,
+      ]),
+      { code: "23514", constraint: "instruments_exchange_check" },
+    );
+    await assert.rejects(
+      superuserPool.query("INSERT INTO instruments (ticker, exchange, name, type, currency) VALUES ('abc', 'XMIL', $1, 'stock', 'EUR')", [
+        `${namePrefix} Lower ticker`,
+      ]),
+      { code: "23514", constraint: "instruments_ticker_check" },
     );
   });
 });

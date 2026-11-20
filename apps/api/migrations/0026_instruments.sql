@@ -10,9 +10,12 @@ CREATE TABLE instruments (
   -- The API has already checked the check digit (@envelope/core's isValidIsin); the CHECK
   -- only guards the shape, upper case included.
   isin text CHECK (isin ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$'),
-  -- Ticker and exchange are stored upper-cased (@envelope/core's normalizeInstrument).
-  ticker text CHECK (char_length(ticker) BETWEEN 1 AND 32 AND ticker = upper(ticker)),
-  exchange text CHECK (char_length(exchange) BETWEEN 1 AND 32 AND exchange = upper(exchange)),
+  -- Upper-cased ASCII only (@envelope/core's normalizeInstrument), so no lookalike Unicode
+  -- letter can make a second listing of the same ticker.
+  ticker text CHECK (ticker ~ '^[-A-Z0-9.]{1,32}$'),
+  -- The exchange's ISO 10383 market identifier code (MIC), such as XMIL or XETR: exactly four
+  -- characters, so "XMIL" and "MIL" can never be two listings of the same security.
+  exchange text CHECK (exchange ~ '^[A-Z0-9]{4}$'),
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 200),
   -- Split along the lines tax rules draw (fund, ETFs included, vs stock and etc_etn; government
   -- vs other bonds), since a row can never be updated later (@envelope/core's INSTRUMENT_TYPES).
@@ -23,13 +26,14 @@ CREATE TABLE instruments (
   -- Free text: the allocation itself is the user's own tree (design.md, "Rebalancing engine"),
   -- and a mixed fund is split across its items by AllocationLink, not by this field.
   asset_class text CHECK (char_length(asset_class) BETWEEN 1 AND 64),
-  -- amount = quantity × price × price_factor_e6 / 10^6, a scaled integer (ADR 0011): 1000000
-  -- (a factor of 1) for most instruments, 10000 (0.01) for a bond quoted in percent of nominal
-  -- (quantity = nominal) or an instrument quoted in pence.
+  -- amount = quantity × price × price_factor_e6 / 10^6, a scaled integer
+  -- (docs/adr/0011-quantities-and-prices-as-scaled-integers.md): 1000000 (a factor of 1) for
+  -- most instruments, 10000 (0.01) for a bond quoted in percent of nominal (quantity = nominal)
+  -- or an instrument quoted in pence.
   price_factor_e6 bigint NOT NULL DEFAULT 1000000 CHECK (price_factor_e6 > 0),
+  -- Who added it and when, for an administrator; never returned by the API, since the catalog
+  -- is shared and both are another workspace's private data.
   created_at timestamptz NOT NULL DEFAULT now(),
-  -- Who added it, for a later administration task; never returned by the API, since the
-  -- catalog is shared and a user id of another workspace is private data.
   created_by uuid REFERENCES users (id) ON DELETE SET NULL,
   -- No private instruments in the shared catalog yet: every row is identified by an ISIN, or
   -- by a ticker on an exchange. A ticker always needs its exchange: on its own it is ambiguous.
@@ -49,5 +53,6 @@ CREATE INDEX instruments_ticker_prefix_idx ON instruments (upper(ticker) text_pa
 CREATE INDEX instruments_name_prefix_idx ON instruments (lower(name) text_pattern_ops);
 
 -- Append-only for the app (#76's decision): an instrument other workspaces may already
--- reference cannot be altered or removed by one of them; corrections are an administration task.
+-- reference cannot be altered or removed by one of them; an administrator corrects the catalog
+-- with SQL as the table owner (apps/api/README.md, "Administration").
 GRANT SELECT, INSERT ON instruments TO envelope_app;

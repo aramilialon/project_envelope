@@ -1,4 +1,4 @@
-import { normalizeInstrument, parseInstrumentSearch } from "@envelope/core";
+import { normalizeInstrument, parseInstrumentSearch, ValidationError } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import type { DbPool } from "../db/pool.ts";
@@ -7,22 +7,33 @@ import { createInstrument, getInstrument, InstrumentConflictError, searchInstrum
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A field that is present must be a string (or `null`, when it is optional): anything else is a 400, never ignored. */
+function notAString(field: string): ValidationError {
+  return new ValidationError("invalid_instrument_field", `${field} must be a string`, { field });
+}
+
 function optionalString(body: Record<string, unknown>, field: string): string | null | undefined {
   const value = body[field];
-  return typeof value === "string" || value === null ? value : undefined;
+  if (value === undefined || value === null || typeof value === "string") return value;
+  throw notAString(field);
 }
 
 function requiredString(body: Record<string, unknown>, field: string): string {
   const value = body[field];
-  return typeof value === "string" ? value : "";
+  if (value === undefined) return "";
+  if (typeof value === "string") return value;
+  throw notAString(field);
 }
 
 /**
  * The shared instruments catalog (#76): any signed-in user can add an instrument and find one,
  * with no workspace membership, since the catalog belongs to no workspace (the global
  * auth/user-mapper preHandlers still protect every route here). There is deliberately no update
- * or delete endpoint — other workspaces may already reference an instrument — and no endpoint
- * that lists the whole catalog, which would show one workspace what the others hold.
+ * or delete endpoint, since other workspaces may already reference an instrument (an
+ * administrator corrects the catalog with SQL, see apps/api/README.md, "Administration"), and no
+ * endpoint that lists the whole catalog in one answer. That is for usability, not
+ * confidentiality: every signed-in user can effectively read the whole catalog by trying prefixes,
+ * and the search's minimum length and result limit do not change that.
  */
 export function registerInstrumentsRoutes(app: FastifyInstance, pool: DbPool): void {
   app.post("/instruments", async (request, reply) => {
