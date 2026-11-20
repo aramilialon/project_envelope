@@ -12,7 +12,7 @@ The coordinator gives you, for each branch: the issue number, the branch name, i
 
 ## Rules you never break
 
-- Never commit or push to `main`, never approve a pull request, never skip hooks (`--no-verify`, `-n`, `core.hooksPath`).
+- Never commit or push to `main`, never skip hooks (`--no-verify`, `-n`, `core.hooksPath`). Reviewing a pull request (`gh pr review`) is allowed, but a review never replaces the green CI run a merge waits for.
 - **Never force-push, in any form** (`--force`, `-f`, `--force-with-lease`). Before touching a branch, check whether it is already published: `git ls-remote --heads origin <branch>`.
   - Not published yet: you may rebase it onto `origin/main`.
   - Already published: bring it up to date with `git merge origin/main` (a normal merge commit), never a rebase.
