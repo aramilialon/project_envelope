@@ -169,10 +169,10 @@ Every create and update route caps the names and free text it accepts (#507), so
 
 | Limit | Fields |
 | --- | --- |
-| 100 (`MAX_NAME_LENGTH`) | Account, category group, category and workspace names, on create and rename |
-| 500 (`MAX_FREE_TEXT_LENGTH`) | Transaction and transfer `payee` and `memo`, every split's `memo`, the same on scheduled transactions, a reconciliation's `adjustment.memo`, and synced `transactions.payee`/`transactions.memo` changes |
+| 100 (`MAX_NAME_LENGTH`) | Account, category group, category, workspace and portfolio names, on create and rename |
+| 500 (`MAX_FREE_TEXT_LENGTH`) | Transaction and transfer `payee` and `memo`, every split's `memo`, the same on scheduled transactions, a portfolio's `purpose`, a reconciliation's `adjustment.memo`, and synced `transactions.payee`/`transactions.memo` changes |
 
-The payee takes the free-text limit, not the name one, because a file import stores a bank's whole description in it. A value over its limit is refused with a 400, `{ "error": "text_too_long", "details": { "field": "<field>", "max": <limit> } }`, where `field` is the body property (`name`, `payee`, `memo`, `splits[1].memo`, `adjustment.memo`) or, for a sync upload, the change's `fieldName`; a sync upload with one such change applies none of the batch. Payees and memos read from an imported file are not checked yet.
+The payee takes the free-text limit, not the name one, because a file import stores a bank's whole description in it. A value over its limit is refused with a 400, `{ "error": "text_too_long", "details": { "field": "<field>", "max": <limit> } }`, where `field` is the body property (`name`, `purpose`, `payee`, `memo`, `splits[1].memo`, `adjustment.memo`) or, for a sync upload, the change's `fieldName`; a sync upload with one such change applies none of the batch. Payees and memos read from an imported file are not checked yet.
 
 ## Current limitations
 

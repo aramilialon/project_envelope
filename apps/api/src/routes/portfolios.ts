@@ -1,7 +1,9 @@
+import { MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
+import { sendIfTextTooLong } from "../errors.ts";
 import {
   createPortfolio,
   deletePortfolio,
@@ -74,6 +76,9 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
       await reply.code(400).send({ error: "invalid portfolio: name is required, and purpose must be a string or null" });
       return;
     }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH], ["purpose", purpose, MAX_FREE_TEXT_LENGTH]])) {
+      return;
+    }
     if (await isPortfolioNameTaken(request.db!, request.workspace!.id, name)) {
       await sendNameTaken(reply);
       return;
@@ -107,6 +112,9 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
       await reply.code(400).send({
         error: "invalid portfolio change: give a non-empty name, a purpose (string or null) or archived (boolean)",
       });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH], ["purpose", purpose, MAX_FREE_TEXT_LENGTH]])) {
       return;
     }
 

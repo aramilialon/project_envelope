@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH } from "@envelope/core";
+
 import { decodeJwt } from "jose";
 
 import { type App } from "../app.ts";
@@ -312,6 +314,45 @@ describe("portfolios routes (#75)", () => {
         foreignPortfolioId,
       ]);
       assert.deepEqual(untouched.rows, [{ workspace_id: foreignWorkspace, name: "Not mine", archived_at: null }]);
+    });
+  });
+
+  describe("name and purpose length limits (#507)", () => {
+    const expected = (field: string, max: number) => ({ error: "text_too_long", details: { field, max } });
+
+    it("accepts a name and a purpose at their limits on create, and rejects each one character over", async () => {
+      const accepted = await create({ name: "n".repeat(MAX_NAME_LENGTH), purpose: "p".repeat(MAX_FREE_TEXT_LENGTH) });
+      assert.equal(accepted.statusCode, 201);
+      assert.equal(accepted.json().name, "n".repeat(MAX_NAME_LENGTH));
+
+      const nameTooLong = await create({ name: "o".repeat(MAX_NAME_LENGTH + 1) });
+      assert.equal(nameTooLong.statusCode, 400);
+      assert.deepEqual(nameTooLong.json(), expected("name", MAX_NAME_LENGTH));
+
+      const purposeTooLong = await create({ name: "Length limits", purpose: "p".repeat(MAX_FREE_TEXT_LENGTH + 1) });
+      assert.equal(purposeTooLong.statusCode, 400);
+      assert.deepEqual(purposeTooLong.json(), expected("purpose", MAX_FREE_TEXT_LENGTH));
+    });
+
+    it("accepts a name and a purpose at their limits on update, and rejects each one character over", async () => {
+      const created = await create({ name: "To rename at the limit" });
+      assert.equal(created.statusCode, 201);
+      const id = created.json().id as string;
+
+      const accepted = await patch(id, { name: "r".repeat(MAX_NAME_LENGTH), purpose: "q".repeat(MAX_FREE_TEXT_LENGTH) });
+      assert.equal(accepted.statusCode, 200);
+      assert.equal(accepted.json().purpose, "q".repeat(MAX_FREE_TEXT_LENGTH));
+
+      const nameTooLong = await patch(id, { name: "s".repeat(MAX_NAME_LENGTH + 1) });
+      assert.equal(nameTooLong.statusCode, 400);
+      assert.deepEqual(nameTooLong.json(), expected("name", MAX_NAME_LENGTH));
+
+      const purposeTooLong = await patch(id, { purpose: "q".repeat(MAX_FREE_TEXT_LENGTH + 1) });
+      assert.equal(purposeTooLong.statusCode, 400);
+      assert.deepEqual(purposeTooLong.json(), expected("purpose", MAX_FREE_TEXT_LENGTH));
+
+      const unchanged = await app.fastify.inject({ method: "GET", url: url(`/${id}`), headers: auth() });
+      assert.equal(unchanged.json().name, "r".repeat(MAX_NAME_LENGTH));
     });
   });
 });
