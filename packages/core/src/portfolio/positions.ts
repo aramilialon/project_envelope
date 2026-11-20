@@ -1,9 +1,11 @@
 /**
  * Positions computed from trades (design.md, "Portfolio module"; ADR 0011).
  *
- * A position is never stored: it is rebuilt by replaying the trades of one
- * account and instrument in a fixed order, so every rebuild gives the same
- * result to the cent and to the 10^-8 unit.
+ * A position is never stored: it is rebuilt by replaying the trades in a
+ * fixed order, so every rebuild gives the same result to the cent and to the
+ * 10^-8 unit. All the trades of one instrument in a workspace are replayed
+ * together, because a transfer between two accounts carries the cost the
+ * outgoing leg removes into the receiving account.
  *
  * - The cost method is the weighted average cost **per account and
  *   instrument**, shared by every portfolio of that account holding it.
@@ -18,14 +20,18 @@
  *   - sell: removed = proportionalCost(C, sold, Q); realized = gross − fees −
  *     removed, attributed to the portfolio of the sale; gain tax, transaction
  *     tax and withholdings are not part of the gain;
- *   - transfer between two accounts: the incoming leg adds the cost it
- *     carries, the outgoing leg removes its proportional cost, no gain;
+ *   - transfer between two accounts: the outgoing leg removes its
+ *     proportional cost and the incoming leg adds exactly that cost, no gain;
+ *     an incoming transfer from outside the app (no outgoing leg) adds the
+ *     cost it carries; a transfer's fees are their own total, never cost;
  *     between two portfolios of the same account: quantity only;
- *   - split: each portfolio's quantity × to ÷ from, toward zero to 8 decimals,
- *     C unchanged, no gain;
+ *   - split (on its ex-date): each portfolio's quantity × to ÷ from, toward
+ *     zero to 8 decimals, C unchanged, no gain;
  *   - dividends, coupons, standalone fees and taxes: C unchanged.
- * - Replay order: `(date, split first, occurredAt, createdAt, id)`. A split
- *   applies at the start of its date, before every other trade of that date.
+ * - Replay order: `(date, split first, occurredAt, createdAt, id)`. `date` is
+ *   the trade date on the broker's statement; a split applies at the start of
+ *   its date, before every other trade of that date. Timestamps are compared
+ *   to the millisecond; ties fall to the next key.
  * - No portfolio may hold a negative quantity at any point of the replay.
  */
 
@@ -42,11 +48,14 @@ export type TradeType = "buy" | "sell" | "dividend" | "fee" | "tax" | "split" | 
 export type TaxKind = "stamp_duty" | "managed_result_tax" | "gain_tax_adjustment" | "other";
 
 const TRADE_TYPES: ReadonlySet<string> = new Set<TradeType>(["buy", "sell", "dividend", "fee", "tax", "split", "transfer"]);
+const TAX_KINDS: ReadonlySet<string> = new Set<TaxKind>(["stamp_duty", "managed_result_tax", "gain_tax_adjustment", "other"]);
 
 /**
  * One trade, as the replay needs it: the columns of the `trades` table plus
- * three values the caller joins in (`date`, `currency`, `priceFactor`).
- * Every `*Cents` is in the account's currency.
+ * the two values the caller joins in (`currency`, `priceFactor`). Every
+ * `*Cents` is in the account's currency. An amount, quantity or price a type
+ * does not use is 0; `taxKind`, `costBasisCents`, `splitFrom`, `splitTo` and
+ * `transferTradeId` are null when not used.
  */
 export interface PositionTrade {
   readonly id: string;
@@ -55,20 +64,24 @@ export interface PositionTrade {
   /** Null only for an account-wide fee or tax. */
   readonly instrumentId: string | null;
   readonly type: TradeType;
-  /** When the trade happened, as an ISO 8601 timestamp. */
-  readonly occurredAt: string;
-  /** The day of `occurredAt` in the workspace's time zone (a split applies at its start). */
+  /** The trade date as on the broker's statement; a split's is its ex-date. */
   readonly date: LocalDate;
-  /** When the trade was recorded, as an ISO 8601 timestamp: breaks ties in the replay order. */
+  /**
+   * When the trade happened, as a strict ISO 8601 timestamp with `Z` or an
+   * offset: orders trades within the same date, to the millisecond.
+   */
+  readonly occurredAt: string;
+  /** When the trade was recorded, same format: breaks ties of `occurredAt`. */
   readonly createdAt: string;
   /** The account's currency. */
   readonly currency: CurrencyCode;
   /**
    * Units × 10^8. Positive on a buy and a sell (the type gives the
    * direction); on a transfer, negative on the outgoing leg and positive on
-   * the incoming one. Ignored by the other types.
+   * the incoming one; 0 on every other type.
    */
   readonly quantity: Quantity;
+  /** The price of a buy or a sell; 0 on every other type. */
   readonly price: Price;
   /** The instrument's price factor. */
   readonly priceFactor: PriceFactor;
@@ -78,45 +91,61 @@ export interface PositionTrade {
   readonly transactionTaxCents: Cents;
   readonly accruedInterestCents: Cents;
   readonly withholdingForeignCents: Cents;
+  /**
+   * Dividend: withheld (≥ 0). Bond buy or sell with accrued interest: signed,
+   * as in the cash leg (a buy's is credited back, a sell's is withheld).
+   */
   readonly withholdingDomesticCents: Cents;
   readonly gainTaxCents: Cents;
+  /** Required on a tax, null otherwise. */
   readonly taxKind: TaxKind | null;
-  /** The cost carried by the incoming leg of a transfer between two accounts. */
+  /** Only on an incoming transfer from outside the app (no other leg): the cost the units bring. */
   readonly costBasisCents: Cents | null;
   readonly splitFrom: number | null;
   readonly splitTo: number | null;
-  /** The other leg of a transfer. */
+  /** The other leg of a transfer; null for a transfer from or to outside the app. */
   readonly transferTradeId: string | null;
 }
 
 /** Running totals of a position, each in the account's minor unit. */
 export interface PositionTotals {
-  /** Gains (positive) and losses (negative) realized by sales. */
+  /** Gains (positive) and losses (negative) realized by sales: economic, not taxable. */
   readonly realizedCents: Cents;
-  /** Cost that entered the position: buys (gross + fees) and transfers in from another account. */
+  /** Cost that entered the position: buys (gross + fees) and transfers in. */
   readonly costInCents: Cents;
   /** Cost removed by sales. */
   readonly costSoldCents: Cents;
-  /** Cost carried out by transfers to another account. */
+  /** Cost carried out by transfers to another account or outside the app. */
   readonly costTransferredOutCents: Cents;
-  /** Fees of buys, sells and dividends. */
-  readonly feesCents: Cents;
+  /** Fees of buys and sells: informational, already inside the cost and the gain. */
+  readonly tradeFeesCents: Cents;
+  /** Fees of dividends and coupons, to subtract from income. */
+  readonly incomeFeesCents: Cents;
+  /** Fees of transfers of securities: never part of the cost. */
+  readonly transferFeesCents: Cents;
   /** Transaction taxes (the financial transaction tax and similar), never part of the cost. */
   readonly transactionTaxCents: Cents;
   /** Accrued interest paid on buys, never part of the cost. */
   readonly accruedInterestPaidCents: Cents;
   /** Accrued interest received on sells, never part of the gain. */
   readonly accruedInterestReceivedCents: Cents;
-  /** Gain tax withheld on sales. */
+  /**
+   * Gain tax withheld on sales, net of gain tax adjustments: an adjustment's
+   * positive amount (a refund) lowers it, a negative one (extra tax) raises it.
+   */
   readonly gainTaxCents: Cents;
   /** Dividends and coupons, gross. */
   readonly dividendsCents: Cents;
   readonly withholdingForeignCents: Cents;
-  /** Signed: a bond trade with accrued interest can carry a negative domestic withholding. */
+  /**
+   * Domestic withholding net of credits: a dividend's and a sell's count as
+   * withheld, a bond buy's (credited back with the accrued interest paid)
+   * counts negative.
+   */
   readonly withholdingDomesticCents: Cents;
   /** Fee trades. */
   readonly standaloneFeesCents: Cents;
-  /** Tax trades; a gain tax adjustment (money back) counts negative. */
+  /** Tax trades other than gain tax adjustments. */
   readonly standaloneTaxesCents: Cents;
 }
 
@@ -156,8 +185,9 @@ export interface AccountCharge {
   readonly portfolioId: string;
   readonly currency: CurrencyCode;
   readonly standaloneFeesCents: Cents;
-  /** A gain tax adjustment (money back) counts negative. */
   readonly standaloneTaxesCents: Cents;
+  /** Gain tax adjustments without an instrument: a refund counts negative. */
+  readonly gainTaxCents: Cents;
 }
 
 export interface Positions {
@@ -198,7 +228,9 @@ const TOTAL_KEYS: readonly (keyof PositionTotals)[] = [
   "costInCents",
   "costSoldCents",
   "costTransferredOutCents",
-  "feesCents",
+  "tradeFeesCents",
+  "incomeFeesCents",
+  "transferFeesCents",
   "transactionTaxCents",
   "accruedInterestPaidCents",
   "accruedInterestReceivedCents",
@@ -242,15 +274,35 @@ function invalidTrade(trade: PositionTrade, field: string, message: string): Val
   return new ValidationError("invalid_trade", `trade ${trade.id}: ${message}`, { tradeId: trade.id, field });
 }
 
-function timestampOf(value: string, label: string): number {
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) {
-    throw new ValidationError("invalid_date", `${label} is not an ISO 8601 timestamp: "${value}"`, { value });
+const TIMESTAMP_PATTERN = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+/**
+ * Milliseconds since the epoch of a strict ISO 8601 timestamp with `Z` or an
+ * offset, or null if it is anything else. Digits beyond the millisecond are
+ * accepted and ignored.
+ */
+function strictTimestamp(value: string): number | null {
+  const match = TIMESTAMP_PATTERN.exec(value);
+  if (match === null) return null;
+  const [, date, hours, minutes, seconds, , offsetHours, offsetMinutes] = match;
+  try {
+    assertDate(date as string);
+  } catch {
+    return null;
   }
+  if (Number(hours) > 23 || Number(minutes) > 59 || Number(seconds) > 59) return null;
+  if (offsetHours !== undefined && (Number(offsetHours) > 23 || Number(offsetMinutes) > 59)) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function timestampOf(trade: PositionTrade, field: "occurredAt" | "createdAt"): number {
+  const ms = strictTimestamp(trade[field]);
+  if (ms === null) throw invalidTrade(trade, field, `not an ISO 8601 timestamp with an offset: "${trade[field]}"`);
   return ms;
 }
 
-const CENTS_FIELDS = [
+const AMOUNT_FIELDS = [
   "grossCents",
   "feesCents",
   "transactionTaxCents",
@@ -260,32 +312,107 @@ const CENTS_FIELDS = [
   "gainTaxCents",
 ] as const;
 
+type AmountField = (typeof AMOUNT_FIELDS)[number];
+
+/** The amounts each type uses; every other amount must be 0. */
+const USED_AMOUNTS: Readonly<Record<TradeType, readonly AmountField[]>> = {
+  buy: ["grossCents", "feesCents", "transactionTaxCents", "accruedInterestCents", "withholdingDomesticCents"],
+  sell: ["grossCents", "feesCents", "transactionTaxCents", "accruedInterestCents", "withholdingDomesticCents", "gainTaxCents"],
+  dividend: ["grossCents", "feesCents", "withholdingForeignCents", "withholdingDomesticCents"],
+  fee: ["feesCents"],
+  tax: ["grossCents"],
+  split: [],
+  transfer: ["feesCents"],
+};
+
+/** Whether an amount may be negative: a bond trade's domestic withholding, a gain tax adjustment. */
+function signedAllowed(trade: PositionTrade, field: AmountField): boolean {
+  if (field === "withholdingDomesticCents") return trade.type === "buy" || trade.type === "sell";
+  if (field === "grossCents") return trade.type === "tax" && trade.taxKind === "gain_tax_adjustment";
+  return false;
+}
+
 function checkTrade(trade: PositionTrade): void {
   if (!TRADE_TYPES.has(trade.type)) throw invalidTrade(trade, "type", `unknown type "${String(trade.type)}"`);
   assertDate(trade.date);
   assertQuantity(trade.quantity);
   assertPrice(trade.price);
   assertPriceFactor(trade.priceFactor);
-  for (const field of CENTS_FIELDS) assertCents(trade[field], field);
-  if (trade.costBasisCents !== null) assertCents(trade.costBasisCents, "costBasisCents");
+
+  const used = USED_AMOUNTS[trade.type];
+  for (const field of AMOUNT_FIELDS) {
+    const value = trade[field];
+    assertCents(value, field);
+    if (!used.includes(field)) {
+      if (value !== 0) throw invalidTrade(trade, field, `a ${trade.type} does not use ${field}`);
+    } else if (value < 0 && !signedAllowed(trade, field)) {
+      throw invalidTrade(trade, field, `${field} cannot be negative`);
+    }
+  }
+  if ((trade.type === "buy" || trade.type === "sell") && trade.withholdingDomesticCents !== 0 && trade.accruedInterestCents === 0) {
+    throw invalidTrade(trade, "withholdingDomesticCents", "only a trade with accrued interest has a domestic withholding");
+  }
+
   if (trade.instrumentId === null && trade.type !== "fee" && trade.type !== "tax") {
     throw invalidTrade(trade, "instrumentId", `a ${trade.type} needs an instrument`);
   }
-  if ((trade.type === "buy" || trade.type === "sell") && trade.quantity <= 0) {
-    throw invalidTrade(trade, "quantity", `a ${trade.type} needs a positive quantity`);
+  if (trade.type === "buy" || trade.type === "sell") {
+    if (trade.quantity <= 0) throw invalidTrade(trade, "quantity", `a ${trade.type} needs a positive quantity`);
+  } else {
+    if (trade.price !== 0) throw invalidTrade(trade, "price", `a ${trade.type} does not use a price`);
+    if (trade.type === "transfer") {
+      if (trade.quantity === 0) throw invalidTrade(trade, "quantity", "a transfer needs a non-zero quantity");
+    } else if (trade.quantity !== 0) {
+      throw invalidTrade(trade, "quantity", `a ${trade.type} does not use a quantity`);
+    }
   }
-  if (trade.type === "transfer") {
-    if (trade.quantity === 0) throw invalidTrade(trade, "quantity", "a transfer needs a non-zero quantity");
-    if (trade.transferTradeId === null) throw invalidTrade(trade, "transferTradeId", "a transfer needs its other leg");
+
+  if (trade.type === "tax") {
+    if (trade.taxKind === null || !TAX_KINDS.has(trade.taxKind)) throw invalidTrade(trade, "taxKind", "a tax needs a kind");
+  } else if (trade.taxKind !== null) {
+    throw invalidTrade(trade, "taxKind", `a ${trade.type} has no tax kind`);
   }
-  if (trade.type === "split") {
-    for (const field of ["splitFrom", "splitTo"] as const) {
-      const value = trade[field];
+
+  for (const field of ["splitFrom", "splitTo"] as const) {
+    const value = trade[field];
+    if (trade.type === "split") {
       if (value === null || !Number.isSafeInteger(value) || value <= 0) {
         throw invalidTrade(trade, field, "a split needs a ratio of two positive integers");
       }
+    } else if (value !== null) {
+      throw invalidTrade(trade, field, `a ${trade.type} has no split ratio`);
     }
   }
+
+  if (trade.type !== "transfer" && trade.transferTradeId !== null) {
+    throw invalidTrade(trade, "transferTradeId", `a ${trade.type} has no other leg`);
+  }
+  const fromOutside = trade.type === "transfer" && trade.transferTradeId === null && trade.quantity > 0;
+  if (fromOutside) {
+    if (trade.costBasisCents === null) {
+      throw invalidTrade(trade, "costBasisCents", "a transfer in from outside the app needs its cost");
+    }
+    assertCents(trade.costBasisCents, "costBasisCents");
+    if (trade.costBasisCents < 0) throw invalidTrade(trade, "costBasisCents", "costBasisCents cannot be negative");
+  } else if (trade.costBasisCents !== null) {
+    throw invalidTrade(trade, "costBasisCents", "only a transfer in from outside the app carries a cost");
+  }
+}
+
+/** Checks that two transfer legs belong together: linked both ways, equal and opposite, same time. */
+function checkLegs(trade: PositionTrade, other: PositionTrade | undefined): PositionTrade {
+  if (other === undefined) throw invalidTrade(trade, "transferTradeId", "the other leg of the transfer is missing");
+  if (other.type !== "transfer" || other.transferTradeId !== trade.id || other.instrumentId !== trade.instrumentId) {
+    throw invalidTrade(trade, "transferTradeId", "the other leg is not a transfer of the same instrument linked back");
+  }
+  if (other.quantity !== -trade.quantity) {
+    throw invalidTrade(trade, "quantity", "the two legs of a transfer need equal and opposite quantities");
+  }
+  if (other.date !== trade.date) throw invalidTrade(trade, "date", "the two legs of a transfer need the same date");
+  if (strictTimestamp(other.occurredAt) !== strictTimestamp(trade.occurredAt)) {
+    throw invalidTrade(trade, "occurredAt", "the two legs of a transfer need the same time");
+  }
+  return other;
 }
 
 // --- Replay -----------------------------------------------------------------
@@ -316,7 +443,8 @@ interface PortfolioState {
   readonly totals: MutableTotals;
 }
 
-interface GroupState {
+/** The position of one account in the instrument being replayed. */
+interface AccountState {
   readonly accountId: string;
   readonly instrumentId: string;
   readonly currency: CurrencyCode;
@@ -326,7 +454,7 @@ interface GroupState {
   readonly portfolios: Map<string, PortfolioState>;
 }
 
-function portfolioOf(state: GroupState, portfolioId: string): PortfolioState {
+function portfolioOf(state: AccountState, portfolioId: string): PortfolioState {
   let portfolio = state.portfolios.get(portfolioId);
   if (portfolio === undefined) {
     portfolio = { quantity: 0 as Quantity, totals: emptyTotals() };
@@ -335,21 +463,21 @@ function portfolioOf(state: GroupState, portfolioId: string): PortfolioState {
   return portfolio;
 }
 
-function changeQuantity(state: GroupState, portfolio: PortfolioState, delta: number): void {
+function changeQuantity(state: AccountState, portfolio: PortfolioState, delta: number): void {
   portfolio.quantity = toQuantity(portfolio.quantity + delta);
   state.quantity = toQuantity(state.quantity + delta);
 }
 
-function requireQuantity(state: GroupState, portfolioId: string, trade: PositionTrade, requested: number): PortfolioState {
-  const portfolio = portfolioOf(state, portfolioId);
+function requireQuantity(state: AccountState, trade: PositionTrade, requested: number): PortfolioState {
+  const portfolio = portfolioOf(state, trade.portfolioId);
   if (requested > portfolio.quantity) {
     throw new ValidationError(
       "insufficient_quantity",
-      `portfolio ${portfolioId} holds ${portfolio.quantity} of instrument ${state.instrumentId} on ${trade.date}, not ${requested} (units × 10^8)`,
+      `portfolio ${trade.portfolioId} holds ${portfolio.quantity} of instrument ${state.instrumentId} on ${trade.date}, not ${requested} (units × 10^8)`,
       {
         tradeId: trade.id,
         accountId: state.accountId,
-        portfolioId,
+        portfolioId: trade.portfolioId,
         instrumentId: state.instrumentId,
         date: trade.date,
         available: portfolio.quantity,
@@ -360,78 +488,119 @@ function requireQuantity(state: GroupState, portfolioId: string, trade: Position
   return portfolio;
 }
 
-function applySplits(state: GroupState, splits: readonly PositionTrade[]): void {
+/** Removes the proportional cost of `moved` units from an account, returning it. */
+function removeCost(state: AccountState, moved: Quantity): Cents {
+  const removed = proportionalCost(state.cost, moved, state.quantity);
+  state.cost = plus(state.cost, -removed, "costBasisCents");
+  return removed;
+}
+
+/** Applies the split rows of one account on one date. */
+function applySplits(state: AccountState, splits: readonly PositionTrade[]): void {
   const first = splits[0];
   if (first === undefined) return;
-  const covered = new Set(splits.map((split) => split.portfolioId));
-  const uncovered = [...state.portfolios.entries()]
+  const where = { accountId: state.accountId, instrumentId: state.instrumentId, date: first.date };
+  const covered = new Set<string>();
+  for (const split of splits) {
+    if (covered.has(split.portfolioId)) {
+      throw new ValidationError("split_duplicate", `portfolio ${split.portfolioId} has two split rows on ${first.date}`, {
+        ...where,
+        portfolioId: split.portfolioId,
+      });
+    }
+    covered.add(split.portfolioId);
+    // Same ratio: from₁ × to₂ = from₂ × to₁ (ratios checked positive by checkTrade).
+    if (BigInt(split.splitFrom ?? 1) * BigInt(first.splitTo ?? 1) !== BigInt(first.splitFrom ?? 1) * BigInt(split.splitTo ?? 1)) {
+      throw new ValidationError(
+        "split_ratio_mismatch",
+        `the split rows of instrument ${state.instrumentId} on ${first.date} have different ratios`,
+        where,
+      );
+    }
+  }
+  const missing = [...state.portfolios.entries()]
     .filter(([id, portfolio]) => portfolio.quantity > 0 && !covered.has(id))
     .map(([id]) => id)
-    .sort(compareIds);
-  const missing = uncovered[0];
+    .sort(compareIds)[0];
   if (missing !== undefined) {
     throw new ValidationError(
       "split_missing_for_portfolio",
       `portfolio ${missing} holds instrument ${state.instrumentId} on ${first.date} but has no split row`,
-      { accountId: state.accountId, portfolioId: missing, instrumentId: state.instrumentId, date: first.date },
+      { ...where, portfolioId: missing },
     );
   }
   for (const split of splits) {
     const portfolio = portfolioOf(state, split.portfolioId);
-    // Ratio checked by checkTrade; toward zero, to 8 decimals.
+    // Toward zero, to 8 decimals.
     const scaled = (BigInt(portfolio.quantity) * BigInt(split.splitTo ?? 1)) / BigInt(split.splitFrom ?? 1);
-    const next = toQuantity(Number(scaled));
-    changeQuantity(state, portfolio, next - portfolio.quantity);
+    changeQuantity(state, portfolio, toQuantity(Number(scaled)) - portfolio.quantity);
   }
   if (state.quantity === 0 && state.cost !== 0) {
     throw new ValidationError(
       "split_leaves_no_quantity",
       `the split on ${first.date} rounds the whole position in instrument ${state.instrumentId} down to zero`,
-      { accountId: state.accountId, instrumentId: state.instrumentId, date: first.date },
+      where,
     );
   }
 }
 
-/** Replays one account and instrument's trades, already sorted. */
-function replay(
-  accountId: string,
+/** A tax trade's effect: [total, amount]; gain tax adjustments net into the gain tax. */
+function taxEffect(trade: PositionTrade): ["gainTaxCents" | "standaloneTaxesCents", Cents] {
+  return trade.taxKind === "gain_tax_adjustment" ? ["gainTaxCents", -trade.grossCents] : ["standaloneTaxesCents", trade.grossCents];
+}
+
+/** Replays every account's trades of one instrument, already sorted. */
+function replayInstrument(
   instrumentId: string,
   sorted: readonly PositionTrade[],
   byId: ReadonlyMap<string, PositionTrade>,
-): GroupState {
-  const head = sorted[0];
-  if (head === undefined) throw new Error("replay of an empty group");
-  const state: GroupState = {
-    accountId,
-    instrumentId,
-    currency: head.currency,
-    priceFactor: head.priceFactor,
-    quantity: 0 as Quantity,
-    cost: 0,
-    portfolios: new Map(),
+): Map<string, AccountState> {
+  const accounts = new Map<string, AccountState>();
+  const accountOf = (trade: PositionTrade): AccountState => {
+    let state = accounts.get(trade.accountId);
+    if (state === undefined) {
+      state = {
+        accountId: trade.accountId,
+        instrumentId,
+        currency: trade.currency,
+        priceFactor: trade.priceFactor,
+        quantity: 0 as Quantity,
+        cost: 0,
+        portfolios: new Map(),
+      };
+      accounts.set(trade.accountId, state);
+    }
+    if (trade.currency !== state.currency) throw invalidTrade(trade, "currency", "differs from the account's currency");
+    if (trade.priceFactor !== state.priceFactor) {
+      throw invalidTrade(trade, "priceFactor", "differs from the instrument's price factor");
+    }
+    return state;
   };
   const done = new Set<string>();
 
   for (let i = 0; i < sorted.length; i++) {
     const trade = sorted[i] as PositionTrade;
     if (done.has(trade.id)) continue;
-    if (trade.currency !== state.currency) throw invalidTrade(trade, "currency", "differs from the position's currency");
-    if (trade.priceFactor !== state.priceFactor) {
-      throw invalidTrade(trade, "priceFactor", "differs from the position's price factor");
-    }
 
     if (trade.type === "split") {
-      const splits: PositionTrade[] = [];
+      // Every split row of this date (they sort first), applied per account.
+      const byAccount = new Map<string, PositionTrade[]>();
       for (let j = i; j < sorted.length; j++) {
         const other = sorted[j] as PositionTrade;
         if (other.type !== "split" || other.date !== trade.date) break;
-        splits.push(other);
+        const rows = byAccount.get(other.accountId) ?? [];
+        rows.push(other);
+        byAccount.set(other.accountId, rows);
         done.add(other.id);
       }
-      applySplits(state, splits);
+      for (const accountId of [...byAccount.keys()].sort(compareIds)) {
+        const rows = byAccount.get(accountId) as PositionTrade[];
+        applySplits(accountOf(rows[0] as PositionTrade), rows);
+      }
       continue;
     }
 
+    const state = accountOf(trade);
     const portfolio = portfolioOf(state, trade.portfolioId);
     const totals = portfolio.totals;
     switch (trade.type) {
@@ -440,21 +609,21 @@ function replay(
         state.cost = plus(state.cost, cost, "costBasisCents");
         changeQuantity(state, portfolio, trade.quantity);
         add(totals, "costInCents", cost);
-        add(totals, "feesCents", trade.feesCents);
+        add(totals, "tradeFeesCents", trade.feesCents);
         add(totals, "transactionTaxCents", trade.transactionTaxCents);
         add(totals, "accruedInterestPaidCents", trade.accruedInterestCents);
-        add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
+        // Credited back with the accrued interest paid: a negative withholding.
+        add(totals, "withholdingDomesticCents", -trade.withholdingDomesticCents);
         break;
       }
       case "sell": {
-        requireQuantity(state, trade.portfolioId, trade, trade.quantity);
-        const removed = proportionalCost(state.cost, trade.quantity, state.quantity);
-        state.cost = plus(state.cost, -removed, "costBasisCents");
+        requireQuantity(state, trade, trade.quantity);
+        const removed = removeCost(state, trade.quantity);
         changeQuantity(state, portfolio, -trade.quantity);
         const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
         add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
         add(totals, "costSoldCents", removed);
-        add(totals, "feesCents", trade.feesCents);
+        add(totals, "tradeFeesCents", trade.feesCents);
         add(totals, "transactionTaxCents", trade.transactionTaxCents);
         add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
         add(totals, "gainTaxCents", trade.gainTaxCents);
@@ -463,7 +632,7 @@ function replay(
       }
       case "dividend":
         add(totals, "dividendsCents", trade.grossCents);
-        add(totals, "feesCents", trade.feesCents);
+        add(totals, "incomeFeesCents", trade.feesCents);
         add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
         add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
         break;
@@ -471,48 +640,51 @@ function replay(
         add(totals, "standaloneFeesCents", trade.feesCents);
         break;
       case "tax":
-        add(totals, "standaloneTaxesCents", taxAmount(trade));
+        add(totals, ...taxEffect(trade));
         break;
       case "transfer": {
-        const other = trade.transferTradeId === null ? undefined : byId.get(trade.transferTradeId);
-        if (other !== undefined && other.accountId === trade.accountId) {
-          // Between two portfolios of the same account: quantity only, both legs at once.
-          if (other.type !== "transfer" || other.instrumentId !== trade.instrumentId || other.quantity !== -trade.quantity) {
-            throw invalidTrade(trade, "transferTradeId", "the two legs of a transfer do not match");
+        if (trade.transferTradeId === null) {
+          add(totals, "transferFeesCents", trade.feesCents);
+          if (trade.quantity < 0) {
+            // Out of the app: its proportional cost leaves, no gain.
+            const moved = -trade.quantity as Quantity;
+            requireQuantity(state, trade, moved);
+            add(totals, "costTransferredOutCents", removeCost(state, moved));
+            changeQuantity(state, portfolio, trade.quantity);
+          } else {
+            // In from outside the app: the units bring the cost they carry.
+            const cost = trade.costBasisCents ?? 0;
+            state.cost = plus(state.cost, cost, "costBasisCents");
+            add(totals, "costInCents", cost);
+            changeQuantity(state, portfolio, trade.quantity);
           }
-          const outgoing = trade.quantity < 0 ? trade : other;
-          const incoming = trade.quantity < 0 ? other : trade;
-          const source = requireQuantity(state, outgoing.portfolioId, outgoing, incoming.quantity);
-          changeQuantity(state, source, outgoing.quantity);
-          changeQuantity(state, portfolioOf(state, incoming.portfolioId), incoming.quantity);
-          done.add(other.id);
-        } else if (trade.quantity < 0) {
-          // Out to another account: its proportional cost leaves, no gain.
-          const moved = -trade.quantity;
-          requireQuantity(state, trade.portfolioId, trade, moved);
-          const removed = proportionalCost(state.cost, moved as Quantity, state.quantity);
-          state.cost = plus(state.cost, -removed, "costBasisCents");
-          changeQuantity(state, portfolio, trade.quantity);
-          add(totals, "costTransferredOutCents", removed);
-        } else {
-          // In from another account: the units bring their own cost.
-          if (trade.costBasisCents === null) {
-            throw invalidTrade(trade, "costBasisCents", "a transfer in from another account needs its cost");
-          }
-          state.cost = plus(state.cost, trade.costBasisCents, "costBasisCents");
-          changeQuantity(state, portfolio, trade.quantity);
-          add(totals, "costInCents", trade.costBasisCents);
+          break;
         }
+        const other = checkLegs(trade, byId.get(trade.transferTradeId));
+        checkLegs(other, trade);
+        done.add(other.id);
+        const outgoing = trade.quantity < 0 ? trade : other;
+        const incoming = trade.quantity < 0 ? other : trade;
+        const source = accountOf(outgoing);
+        const target = accountOf(incoming);
+        const sourcePortfolio = requireQuantity(source, outgoing, incoming.quantity);
+        const targetPortfolio = portfolioOf(target, incoming.portfolioId);
+        add(sourcePortfolio.totals, "transferFeesCents", outgoing.feesCents);
+        add(targetPortfolio.totals, "transferFeesCents", incoming.feesCents);
+        if (source !== target) {
+          // Between two accounts: the cost the outgoing leg removes is the cost the incoming one adds.
+          const removed = removeCost(source, incoming.quantity);
+          add(sourcePortfolio.totals, "costTransferredOutCents", removed);
+          target.cost = plus(target.cost, removed, "costBasisCents");
+          add(targetPortfolio.totals, "costInCents", removed);
+        }
+        changeQuantity(source, sourcePortfolio, outgoing.quantity);
+        changeQuantity(target, targetPortfolio, incoming.quantity);
         break;
       }
     }
   }
-  return state;
-}
-
-/** A tax trade's amount: positive when paid, negative for a gain tax adjustment (money back). */
-function taxAmount(trade: PositionTrade): Cents {
-  return trade.taxKind === "gain_tax_adjustment" ? -trade.grossCents : trade.grossCents;
+  return accounts;
 }
 
 /**
@@ -546,34 +718,33 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
   return quantity === 0 ? null : priceFrom(cost, quantity, priceFactor, currency);
 }
 
-function groupKey(accountId: string, id: string): string {
-  return JSON.stringify([accountId, id]);
-}
-
 /**
  * Computes every position of the given trades, per account and instrument
- * and per portfolio, by replaying each account and instrument's trades in the
- * fixed order. The result does not depend on the order of `trades`.
+ * and per portfolio, by replaying each instrument's trades across all
+ * accounts in the fixed order. The result does not depend on the order of
+ * `trades`.
  *
- * Pass every trade of each account and instrument involved: a partial history
- * gives a wrong position. The outgoing leg of a transfer is matched with its
- * other leg when both are given; a leg whose other leg is missing or in
- * another account counts as a transfer between accounts.
+ * Pass every trade of each instrument involved, in every account of the
+ * workspace: a transfer between two accounts needs both legs, and a partial
+ * history gives a wrong position.
  *
  * @throws ValidationError "insufficient_quantity" if a portfolio's quantity
  *   would go negative at any point (details: tradeId, accountId, portfolioId,
  *   instrumentId, date, available, requested, quantities in units × 10^8);
  *   "split_missing_for_portfolio" if a portfolio holds the instrument at the
- *   start of a split's date but has no split row for it (details: accountId,
- *   portfolioId, instrumentId, date); "split_leaves_no_quantity" if a split
- *   rounds a whole position with a cost down to zero units; "invalid_trade"
- *   (details: tradeId, field) for a trade that breaks the shape of its type;
+ *   start of a split's date but has no split row for it, "split_duplicate"
+ *   for two split rows of one portfolio on one date, "split_ratio_mismatch"
+ *   for split rows of one account and date with different ratios (details:
+ *   accountId, instrumentId, date, and portfolioId where one is concerned);
+ *   "split_leaves_no_quantity" if a split rounds a whole position with a cost
+ *   down to zero units; "invalid_trade" (details: tradeId, field) for a trade
+ *   that breaks the shape of its type or a transfer whose legs do not match;
  *   "invalid_date", "invalid_amount", "invalid_quantity", "invalid_price",
  *   "invalid_price_factor" for malformed values.
  */
 export function computePositions(trades: readonly PositionTrade[]): Positions {
   const byId = new Map<string, PositionTrade>();
-  const groups = new Map<string, { accountId: string; instrumentId: string; trades: SortableTrade[] }>();
+  const instruments = new Map<string, SortableTrade[]>();
   const charges = new Map<string, { accountId: string; portfolioId: string; currency: CurrencyCode; totals: MutableTotals }>();
 
   for (const trade of trades) {
@@ -582,11 +753,11 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
     byId.set(trade.id, trade);
     const sortable: SortableTrade = {
       trade,
-      occurredMs: timestampOf(trade.occurredAt, "occurredAt"),
-      createdMs: timestampOf(trade.createdAt, "createdAt"),
+      occurredMs: timestampOf(trade, "occurredAt"),
+      createdMs: timestampOf(trade, "createdAt"),
     };
     if (trade.instrumentId === null) {
-      const key = groupKey(trade.accountId, trade.portfolioId);
+      const key = JSON.stringify([trade.accountId, trade.portfolioId]);
       let charge = charges.get(key);
       if (charge === undefined) {
         charge = { accountId: trade.accountId, portfolioId: trade.portfolioId, currency: trade.currency, totals: emptyTotals() };
@@ -594,26 +765,24 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
       }
       if (trade.currency !== charge.currency) throw invalidTrade(trade, "currency", "differs from the account's currency");
       if (trade.type === "fee") add(charge.totals, "standaloneFeesCents", trade.feesCents);
-      else add(charge.totals, "standaloneTaxesCents", taxAmount(trade));
+      else add(charge.totals, ...taxEffect(trade));
       continue;
     }
-    const key = groupKey(trade.accountId, trade.instrumentId);
-    let group = groups.get(key);
-    if (group === undefined) {
-      group = { accountId: trade.accountId, instrumentId: trade.instrumentId, trades: [] };
-      groups.set(key, group);
-    }
-    group.trades.push(sortable);
+    const group = instruments.get(trade.instrumentId) ?? [];
+    group.push(sortable);
+    instruments.set(trade.instrumentId, group);
   }
+
+  const states: AccountState[] = [];
+  for (const [instrumentId, group] of instruments) {
+    const sorted = group.sort(compareReplay).map((s) => s.trade);
+    states.push(...replayInstrument(instrumentId, sorted, byId).values());
+  }
+  states.sort((a, b) => compareIds(a.accountId, b.accountId) || compareIds(a.instrumentId, b.instrumentId));
 
   const accounts: AccountPosition[] = [];
   const portfolios: PortfolioPosition[] = [];
-  const orderedGroups = [...groups.values()].sort(
-    (a, b) => compareIds(a.accountId, b.accountId) || compareIds(a.instrumentId, b.instrumentId),
-  );
-  for (const group of orderedGroups) {
-    const sorted = group.trades.sort(compareReplay).map((s) => s.trade);
-    const state = replay(group.accountId, group.instrumentId, sorted, byId);
+  for (const state of states) {
     const averageCost = averageCostOf(state.cost, state.quantity, state.priceFactor, state.currency);
     const portfolioIds = [...state.portfolios.keys()].sort(compareIds);
     const costs = splitByQuantity(
@@ -656,16 +825,18 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
       currency: charge.currency,
       standaloneFeesCents: charge.totals.standaloneFeesCents,
       standaloneTaxesCents: charge.totals.standaloneTaxesCents,
+      gainTaxCents: charge.totals.gainTaxCents,
     }));
 
   return { accounts, portfolios, charges: orderedCharges };
 }
 
 /**
- * Checks that a trade history can be replayed: no portfolio's quantity ever
- * goes negative, every split covers every portfolio holding the instrument.
- * The API calls it with an account and instrument's whole history as it
- * would be after a change (see `applyTradeChanges`).
+ * Checks that a trade history can be replayed: every trade has the shape of
+ * its type, no portfolio's quantity ever goes negative, every split covers
+ * every portfolio holding the instrument, every transfer's legs match. The
+ * API calls it with the workspace's whole history of each instrument a
+ * change touches, as it would be after the change (see `applyTradeChanges`).
  *
  * @throws the same ValidationErrors as `computePositions`.
  */
@@ -735,6 +906,7 @@ function summarize<K extends string>(
     const found = entry(charge.key, charge.currency);
     add(found.totals, "standaloneFeesCents", charge.standaloneFeesCents);
     add(found.totals, "standaloneTaxesCents", charge.standaloneTaxesCents);
+    add(found.totals, "gainTaxCents", charge.gainTaxCents);
   }
   return [...byKey.values()]
     .sort((a, b) => compareIds(a.key, b.key) || compareIds(a.currency, b.currency))

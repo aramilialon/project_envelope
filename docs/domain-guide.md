@@ -196,10 +196,16 @@ price is quoted in percent or in hundredths of the currency. Each conversion rou
 
 #### Positions and cost basis
 
-A position is never typed in or stored: `packages/core` rebuilds it by replaying the trades of one
-account and instrument in a fixed order — by date, a split first on its date, then by time, by
-when the trade was recorded, and by id. Its cost `C` is the total paid, in whole cents, and its
-quantity `Q` the units held; the average cost is `C ÷ Q`, computed only to be shown.
+A position is never typed in or stored: `packages/core` rebuilds it by replaying the trades in a
+fixed order. Its cost `C` is the total paid, in whole cents, and its quantity `Q` the units held;
+the average cost is `C ÷ Q`, computed only to be shown.
+
+**The order of the replay.** Trades are replayed by their trade date — the date on the broker's
+statement, the same day the user enters — with a split first on its date, then by the time the
+trade occurred, by when it was recorded, and by id. A split is recorded on its ex-date (the day
+it takes effect), so a sale of the new units on that same day comes after it. Times are compared
+to the millisecond. Every trade of an instrument in the workspace is replayed together, because
+units moved between two accounts take their cost with them.
 
 **The average cost belongs to the account.** Every portfolio holding the instrument in the same
 account shares one average cost: portfolios split the account's *quantity*, not its cost. Moving
@@ -208,20 +214,51 @@ average. A portfolio's share of the cost is `C × its quantity ÷ Q`, rounded so
 add up to `C` exactly (the leftover cents go to the largest remainders). A sale realizes its gain
 at the account's average cost, and the gain belongs to the portfolio the sale is filed under.
 
+Because the average is shared, a portfolio's own realized and unrealized gains move with the other
+portfolios' trades: when B buys at a higher price than A paid, the account's average rises and A's
+unrealized gain falls, although A did no trade. The account's total is not affected. Each
+portfolio's own performance will come from its own cash flows instead (money-weighted, milestone
+0.2.1).
+
 The cost follows the Italian rules (art. 68 TUIR):
 
 | Trade | Cost `C` | Gain |
 | --- | --- | --- |
 | Buy | `+ gross + fees`; the financial transaction tax and accrued interest are not part of it | — |
 | Sell | `− C × sold ÷ Q` (the cost removed) | gross − fees − cost removed; gain tax, transaction tax and withholdings are not part of it |
-| Transfer in from another account | `+` the cost the units carry | — |
-| Transfer out to another account | `− C × moved ÷ Q` | — |
+| Transfer to another account of the workspace | the source loses `C × moved ÷ Q`; the destination gains exactly that | — |
+| Transfer in from outside the app | `+` the cost the units bring, entered with them | — |
+| Transfer out of the app | `− C × moved ÷ Q` | — |
 | Transfer between portfolios of the same account | unchanged | — |
 | Split | unchanged; each portfolio's quantity × the ratio, rounded down to 8 decimals | — |
 | Dividend, coupon, fee, tax | unchanged | — |
 
-Fees, transaction taxes, accrued interest, gain tax withheld, dividends and withholdings are each
-kept as their own total next to the position, so they can be shown as their own lines.
+The cost of units moved between two accounts is always worked out from the source account at the
+moment they leave, so a trade later backdated in the source account changes the destination's
+cost too. A transfer's own fees are never part of the cost.
+
+A split ratio is written from:to: 1:4 means 1 unit becomes 4, and a reverse split 10:1 means 10
+units become 1. Every split row of one account on one date must have the same ratio, and each
+portfolio has at most one. If a split rounds one portfolio's quantity down to zero, its share of
+the cost moves to the other portfolios of the account; the account's cost does not change.
+
+**What the totals mean.** Next to the cost and quantity, each position keeps its own totals, so
+they can be shown as their own lines:
+
+- **Income** = dividends and coupons (gross) − foreign and domestic withholding − income fees +
+  accrued interest received − accrued interest paid. Income fees are the fees of dividends and
+  coupons. A bond buy's domestic withholding, credited back with the accrued interest paid,
+  counts as negative withholding.
+- **Costs** = financial transaction tax + standalone fees + standalone taxes (stamp duty and the
+  like).
+- **Taxes on gains** = gain tax withheld on sales ± gain tax adjustments. An adjustment's amount
+  is positive when it is a refund (money back into the account), which lowers the total, and
+  negative when it is extra tax charged, which raises it.
+- **Net result** = realized + unrealized + income − costs − taxes on gains.
+
+The fees of buys and sells (trade fees) are already inside the cost and the gain, so they are
+shown for information and never subtracted again; the fees of transfers are a total of their own.
+The realized gain is economic, not taxable: what the tax rules count as taxable can differ.
 
 Worked examples, each one a test in `packages/core`:
 
@@ -233,31 +270,42 @@ Worked examples, each one a test in `packages/core`:
   (30 units).
 - **A split 1:4.** The same 35 units become 140 (A 20, B 120); the cost stays €4,033.75, so the
   average becomes €28.8125. Nothing is realized.
-- **A reverse split 1:10 and cash in lieu.** The same 35 units become 3.5 (A 0.5, B 3), still
+- **A reverse split 10:1 and cash in lieu.** The same 35 units become 3.5 (A 0.5, B 3), still
   for €4,033.75. Selling A's 0.5 for €650 (€1,300 per unit, no fee) removes
   4,033.75 × 0.5 ÷ 3.5 = €576.25 of cost and realizes €73.75.
+- **A split on its ex-date.** Holding 10 units, a 1:2 split and a sale of 20 units on the split's
+  ex-date are accepted: the split comes first, whatever the time recorded on each.
 - **No negative holdings.** If A, holding 5 units, tries to sell 10, the sale is refused
   (`insufficient_quantity`), even though the account as a whole holds 35. A trade backdated so that
   a later sale would sell more than its portfolio held at that point is refused the same way, at
   that later sale's date.
+- **The cost of a sale is exact.** 300,000 units bought for €100,000.00: selling 100,000 removes
+  exactly €33,333.33 and leaves €66,666.67, never a cost worked out from a rounded average.
 - **Selling everything starts again from zero.** After selling every unit, the cost is exactly
   zero; buying 10 at €90 with a €5 fee gives an average of €90.50.
 - **A transfer in is averaged in.** An account holds 10 units bought at €120 (€1,200). Ten more
-  arrive from another account carrying a cost of €1,000: 20 units for €2,200, an average of €110,
+  arrive from outside the app carrying a cost of €1,000: 20 units for €2,200, an average of €110,
   and no gain or loss.
+- **A transfer between accounts follows the source.** An account holds 10 units bought at €100
+  and moves 5 to another account: they carry €500. If a buy of 10 more at €130 is later recorded
+  in the source before that date, the source held 20 for €2,300 when the 5 left, and they carry
+  €575. A €25 fee on the transfer is shown on its own line and is part of neither cost.
 - **The financial transaction tax stays out of the cost.** 100 shares at €50, a €5 fee and €5 of
   transaction tax cost €5,005.00; the tax is shown on its own line. Buying 50 more at €62 with a
   €5 fee brings the cost to €8,110.00 for 150 shares. Selling 60 at €70 with a €5 fee removes
   8,110 × 60 ÷ 150 = €3,244.00 of cost and realizes 4,200 − 5 − 3,244 = €951.00; the €247.26 of
   gain tax the broker withholds (26%) is recorded as its own total, not subtracted from the gain.
-- **A split applies at the start of its day.** Holding 5 units, a 1:4 split and a buy of 10 on the
-  same day give 5 × 4 + 10 = 30 units, whatever the time recorded on each.
+  A later €100 gain tax adjustment refunded by the broker brings the taxes on gains to €147.26.
+- **A dividend's net income.** A €20.00 dividend with €3.00 of foreign withholding, €4.42 of
+  domestic withholding and a €2.00 fee is €10.58 of income; the €5 fee paid when the units were
+  bought is not subtracted again.
 - **A split covers every portfolio.** A split is recorded once per portfolio of the account
   holding the instrument. A trade that would make another portfolio hold the instrument on that
   date without its own split row is refused (`split_missing_for_portfolio`).
 
-Not handled yet: return of capital, amortizing bonds, spin-offs, mergers and rights issues, and
-the fiscal view in euros for instruments in other currencies.
+Not handled yet: return of capital, amortizing bonds, bonds issued at a discount, spin-offs,
+mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
+in other currencies.
 
 ### Target allocation and thresholds
 

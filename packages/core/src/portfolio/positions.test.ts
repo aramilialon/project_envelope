@@ -13,7 +13,7 @@ import {
   valuePosition,
 } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
-import { PRICE_FACTOR_ONE } from "./quantity.ts";
+import { amountOf, PRICE_FACTOR_ONE } from "./quantity.ts";
 
 /** Units as a Quantity: units(1.5) is 150000000. Only for readable test data. */
 function units(value: number): Quantity {
@@ -140,7 +140,7 @@ describe("computePositions: the A/B table", () => {
     assert.equal(position.costBasisCents, eur(4033.75));
     assert.equal(position.realizedCents, eur(68.75));
     assert.equal(position.costSoldCents, eur(576.25));
-    assert.equal(position.feesCents, eur(15));
+    assert.equal(position.tradeFeesCents, eur(15));
 
     const a = portfolio(positions, "A");
     const b = portfolio(positions, "B");
@@ -167,7 +167,7 @@ describe("computePositions: the A/B table", () => {
     assert.equal(portfolio(positions, "B").quantity, units(120));
   });
 
-  it("reverse splits 1:10 with a remainder of 0.5, then sells it for cash", () => {
+  it("reverse splits 10:1 with a remainder of 0.5, then sells it for cash", () => {
     const history = [...abHistory(), split("2026-03-01", "A", 10, 1), split("2026-03-01", "B", 10, 1)];
     const afterSplit = computePositions(history);
     assert.equal(portfolio(afterSplit, "A").quantity, units(0.5));
@@ -217,16 +217,10 @@ describe("computePositions: selling out and transfers", () => {
     assert.equal(position.realizedCents, eur(1100 - 5 - 1005));
   });
 
-  it("averages units transferred in from another account at the cost they carry", () => {
+  it("averages units transferred in from outside the app at the cost they carry", () => {
     const positions = computePositions([
       buy("2026-01-10", "A", 10, 120, 0),
-      trade({
-        date: "2026-02-01",
-        type: "transfer",
-        quantity: units(10),
-        costBasisCents: eur(1000),
-        transferTradeId: "elsewhere",
-      }),
+      trade({ date: "2026-02-01", type: "transfer", quantity: units(10), costBasisCents: eur(1000) }),
     ]);
     const position = account(positions);
     assert.equal(position.quantity, units(20));
@@ -248,7 +242,7 @@ describe("computePositions: selling out and transfers", () => {
         quantity: units(-1),
         transferTradeId: "in",
       }),
-      trade({ id: "in", date: "2026-02-01", type: "transfer", quantity: units(1), costBasisCents: eur(100), transferTradeId: "out" }),
+      trade({ id: "in", date: "2026-02-01", type: "transfer", quantity: units(1), transferTradeId: "out" }),
     ]);
     const source = account(positions, OTHER_ACCOUNT);
     assert.equal(source.quantity, units(2));
@@ -288,11 +282,96 @@ describe("computePositions: selling out and transfers", () => {
     );
   });
 
-  it("rejects a transfer in from another account without its cost", () => {
+  it("needs a cost on a transfer in from outside the app, and refuses one on a transfer with two legs", () => {
     assert.throws(
-      () => computePositions([trade({ date: "2026-02-01", type: "transfer", quantity: units(1), transferTradeId: "x" })]),
+      () => computePositions([trade({ date: "2026-02-01", type: "transfer", quantity: units(1) })]),
       (error) => isValidationError(error, "invalid_trade") && error.details.field === "costBasisCents",
     );
+    assert.throws(
+      () =>
+        computePositions([
+          buy("2026-01-10", "A", 2, 100, 0, { accountId: OTHER_ACCOUNT }),
+          trade({ id: "o", accountId: OTHER_ACCOUNT, date: "2026-02-01", type: "transfer", quantity: units(-1), transferTradeId: "i" }),
+          trade({ id: "i", date: "2026-02-01", type: "transfer", quantity: units(1), transferTradeId: "o", costBasisCents: eur(100) }),
+        ]),
+      (error) => isValidationError(error, "invalid_trade") && error.details.field === "costBasisCents",
+    );
+  });
+
+  it("refuses a transfer whose other leg is missing", () => {
+    assert.throws(
+      () => computePositions([trade({ date: "2026-02-01", type: "transfer", quantity: units(1), transferTradeId: "gone" })]),
+      (error) => isValidationError(error, "invalid_trade") && error.details.field === "transferTradeId",
+    );
+  });
+
+  it("refuses transfer legs with different quantities, dates or times", () => {
+    const legs = (outFields: Partial<PositionTrade>) => [
+      buy("2026-01-10", "A", 5, 100, 0, { accountId: OTHER_ACCOUNT }),
+      trade({
+        id: "o",
+        accountId: OTHER_ACCOUNT,
+        date: "2026-02-01",
+        type: "transfer",
+        quantity: units(-2),
+        transferTradeId: "i",
+        ...outFields,
+      }),
+      trade({ id: "i", date: "2026-02-01", type: "transfer", quantity: units(2), transferTradeId: "o" }),
+    ];
+    const cases: [Partial<PositionTrade>, string][] = [
+      [{ quantity: units(-1) }, "quantity"],
+      [{ quantity: units(2) }, "quantity"],
+      [{ date: "2026-02-02", occurredAt: "2026-02-01T10:00:00Z" }, "date"],
+      [{ occurredAt: "2026-02-01T11:00:00Z" }, "occurredAt"],
+    ];
+    for (const [fields, field] of cases) {
+      assert.throws(
+        () => computePositions(legs(fields)),
+        (error) => isValidationError(error, "invalid_trade") && error.details.field === field,
+        JSON.stringify(fields),
+      );
+    }
+  });
+
+  it("keeps a transfer's fees out of the cost, in their own total", () => {
+    const positions = computePositions([
+      buy("2026-01-10", "A", 10, 100, 0, { accountId: OTHER_ACCOUNT }),
+      trade({
+        id: "o",
+        accountId: OTHER_ACCOUNT,
+        date: "2026-02-01",
+        type: "transfer",
+        quantity: units(-10),
+        transferTradeId: "i",
+        feesCents: eur(25),
+      }),
+      trade({ id: "i", date: "2026-02-01", type: "transfer", quantity: units(10), transferTradeId: "o" }),
+    ]);
+    const source = account(positions, OTHER_ACCOUNT);
+    assert.equal(source.transferFeesCents, eur(25));
+    assert.equal(source.costBasisCents, 0);
+    assert.equal(source.tradeFeesCents, 0);
+    const target = account(positions);
+    assert.equal(target.costBasisCents, eur(1000));
+    assert.equal(target.averageCost, price(100));
+  });
+
+  it("carries a backdated buy in the source account through a transfer to the destination", () => {
+    const history = [
+      buy("2026-01-10", "A", 10, 100, 0, { accountId: OTHER_ACCOUNT }),
+      trade({ id: "o", accountId: OTHER_ACCOUNT, date: "2026-03-01", type: "transfer", quantity: units(-5), transferTradeId: "i" }),
+      trade({ id: "i", date: "2026-03-01", type: "transfer", quantity: units(5), transferTradeId: "o" }),
+    ];
+    assert.equal(account(computePositions(history)).costBasisCents, eur(500));
+    const changed = applyTradeChanges(history, [
+      { kind: "insert", trade: buy("2026-02-10", "A", 10, 130, 0, { accountId: OTHER_ACCOUNT }) },
+    ]);
+    const positions = computePositions(changed);
+    // The source holds 20 for €2,300 when the 5 units leave: they carry €575.
+    assert.equal(account(positions).costBasisCents, eur(575));
+    assert.equal(account(positions, OTHER_ACCOUNT).costBasisCents, eur(1725));
+    assert.equal(account(positions, OTHER_ACCOUNT).costTransferredOutCents, eur(575));
   });
 });
 
@@ -312,7 +391,7 @@ describe("computePositions: the Italian examples", () => {
     assert.equal(position.realizedCents, eur(951));
     assert.equal(position.gainTaxCents, eur(247.26));
     assert.equal(position.transactionTaxCents, eur(5));
-    assert.equal(position.feesCents, eur(15));
+    assert.equal(position.tradeFeesCents, eur(15));
     assert.equal(position.costBasisCents, eur(8110 - 3244));
     assert.equal(position.quantity, units(90));
   });
@@ -343,26 +422,27 @@ describe("computePositions: the Italian examples", () => {
       }),
       trade({ date: "2026-02-11", type: "fee", feesCents: eur(2) }),
       trade({ date: "2026-02-12", type: "tax", taxKind: "stamp_duty", grossCents: eur(2) }),
-      trade({ date: "2026-02-13", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(0.5) }),
+      trade({ date: "2026-02-13", type: "tax", taxKind: "other", grossCents: eur(0.5) }),
       trade({ date: "2026-02-14", type: "fee", portfolioId: "B", instrumentId: null, feesCents: eur(3) }),
       trade({ date: "2026-02-15", type: "tax", portfolioId: "A", instrumentId: null, taxKind: "stamp_duty", grossCents: eur(34.2) }),
     ]);
     const position = account(positions);
     assert.equal(position.costBasisCents, eur(1000));
     assert.equal(position.dividendsCents, eur(30));
-    assert.equal(position.feesCents, eur(1));
+    assert.equal(position.incomeFeesCents, eur(1));
+    assert.equal(position.tradeFeesCents, 0);
     assert.equal(position.withholdingForeignCents, eur(4.5));
     assert.equal(position.withholdingDomesticCents, eur(6.63));
     assert.equal(position.standaloneFeesCents, eur(2));
-    assert.equal(position.standaloneTaxesCents, eur(1.5));
+    assert.equal(position.standaloneTaxesCents, eur(2.5));
     assert.deepEqual(positions.charges, [
-      { accountId: ACCOUNT, portfolioId: "A", currency: "EUR", standaloneFeesCents: 0, standaloneTaxesCents: eur(34.2) },
-      { accountId: ACCOUNT, portfolioId: "B", currency: "EUR", standaloneFeesCents: eur(3), standaloneTaxesCents: 0 },
+      { accountId: ACCOUNT, portfolioId: "A", currency: "EUR", standaloneFeesCents: 0, standaloneTaxesCents: eur(34.2), gainTaxCents: 0 },
+      { accountId: ACCOUNT, portfolioId: "B", currency: "EUR", standaloneFeesCents: eur(3), standaloneTaxesCents: 0, gainTaxCents: 0 },
     ]);
 
     const [byAccount] = summarizeByAccount(positions);
     assert.equal(byAccount?.standaloneFeesCents, eur(5));
-    assert.equal(byAccount?.standaloneTaxesCents, eur(35.7));
+    assert.equal(byAccount?.standaloneTaxesCents, eur(36.7));
     assert.equal(byAccount?.costBasisCents, eur(1000));
     const byPortfolio = summarizeByPortfolio(positions);
     assert.deepEqual(
@@ -372,6 +452,69 @@ describe("computePositions: the Italian examples", () => {
         ["B", 0, eur(3)],
       ],
     );
+  });
+
+  it("nets gain tax adjustments into the gain tax: a refund lowers it, extra tax raises it", () => {
+    const history = [
+      buy("2026-01-10", "A", 100, 50, 5, { transactionTaxCents: eur(5) }),
+      buy("2026-02-10", "A", 50, 62, 5),
+      sell("2026-03-10", "A", 60, 70, 5, { gainTaxCents: eur(247.26) }),
+      trade({ date: "2026-04-10", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(100) }),
+    ];
+    const position = account(computePositions(history));
+    assert.equal(position.gainTaxCents, eur(147.26));
+    assert.equal(position.standaloneTaxesCents, 0);
+    assert.equal(position.realizedCents, eur(951), "taxes never change the gain");
+
+    const extra = trade({ date: "2026-05-10", type: "tax", taxKind: "gain_tax_adjustment", grossCents: eur(-10) });
+    assert.equal(account(computePositions([...history, extra])).gainTaxCents, eur(157.26));
+
+    const withoutInstrument = trade({
+      date: "2026-05-10",
+      type: "tax",
+      instrumentId: null,
+      taxKind: "gain_tax_adjustment",
+      grossCents: eur(20),
+    });
+    const positions = computePositions([...history, withoutInstrument]);
+    assert.equal(positions.charges[0]?.gainTaxCents, eur(-20));
+    assert.equal(summarizeByAccount(positions)[0]?.gainTaxCents, eur(127.26));
+  });
+
+  it("keeps a dividend's fee in income fees, apart from trade fees", () => {
+    const position = account(
+      computePositions([
+        buy("2026-01-10", "A", 10, 100, 5),
+        trade({
+          date: "2026-02-10",
+          type: "dividend",
+          grossCents: eur(20),
+          withholdingForeignCents: eur(3),
+          withholdingDomesticCents: eur(4.42),
+          feesCents: eur(2),
+        }),
+      ]),
+    );
+    const income =
+      position.dividendsCents -
+      position.withholdingForeignCents -
+      position.withholdingDomesticCents -
+      position.incomeFeesCents +
+      position.accruedInterestReceivedCents -
+      position.accruedInterestPaidCents;
+    assert.equal(income, eur(10.58));
+    assert.equal(position.tradeFeesCents, eur(5));
+    assert.equal(position.costBasisCents, eur(1005));
+  });
+
+  it("counts a bond buy's domestic withholding as credited back", () => {
+    const position = account(
+      computePositions([
+        buy("2026-01-10", "A", 10, 100, 0, { accruedInterestCents: eur(10), withholdingDomesticCents: eur(1.25) }),
+        sell("2026-02-10", "A", 10, 100, 0, { accruedInterestCents: eur(30), withholdingDomesticCents: eur(3.75) }),
+      ]),
+    );
+    assert.equal(position.withholdingDomesticCents, eur(2.5));
   });
 });
 
@@ -405,6 +548,39 @@ describe("computePositions: replay order", () => {
     assert.deepEqual(realized(history("2026-02-10T10:00:00Z", "a")), [-33, -34]);
     // Recorded at the same time, larger id: B's sale goes first.
     assert.deepEqual(realized(history("2026-02-10T10:00:00Z", "z")), [-34, -33]);
+  });
+
+  it("orders trades of one date by when they occurred before when they were recorded", () => {
+    const positions = computePositions([
+      buy("2026-01-10", "A", 2, 0.5, 0),
+      buy("2026-01-10", "B", 1, 0, 0),
+      sell("2026-02-10", "A", 1, 0, 0, { id: "x", occurredAt: "2026-02-10T09:00:00Z", createdAt: "2026-02-10T11:00:00Z" }),
+      sell("2026-02-10", "B", 1, 0, 0, { id: "y", occurredAt: "2026-02-10T10:00:00Z", createdAt: "2026-02-10T10:00:00Z" }),
+    ]);
+    // X occurred first, so it removes 33 cents of €1.00 on 3 units, and Y 34.
+    assert.equal(portfolio(positions, "A").realizedCents, -33);
+    assert.equal(portfolio(positions, "B").realizedCents, -34);
+  });
+
+  it("orders timestamps with offsets by the instant they name", () => {
+    const positions = computePositions([
+      buy("2026-01-10", "A", 2, 0.5, 0),
+      buy("2026-01-10", "B", 1, 0, 0),
+      sell("2026-02-10", "A", 1, 0, 0, { id: "y", occurredAt: "2026-02-10T10:30:00+02:00" }),
+      sell("2026-02-10", "B", 1, 0, 0, { id: "x", occurredAt: "2026-02-10T09:00:00.000001Z" }),
+    ]);
+    // 10:30+02:00 is 08:30Z: A's sale goes first although its id is larger.
+    assert.equal(portfolio(positions, "A").realizedCents, -33);
+  });
+
+  it("accepts a sale of post-split units on the split's ex-date", () => {
+    const positions = computePositions([
+      buy("2026-01-10", "A", 10, 100, 0),
+      split("2026-03-02", "A", 1, 2, { occurredAt: "2026-03-02T23:00:00Z" }),
+      sell("2026-03-02", "A", 20, 55, 0, { occurredAt: "2026-03-02T08:00:00Z" }),
+    ]);
+    assert.equal(account(positions).quantity, 0);
+    assert.equal(account(positions).realizedCents, eur(100));
   });
 
   it("gives the same result whatever the order of the input", () => {
@@ -479,6 +655,36 @@ describe("validatePositionHistory and applyTradeChanges", () => {
     );
   });
 
+  it("rejects split rows of one date with different ratios", () => {
+    assert.throws(
+      () => validatePositionHistory([...abHistory(), split("2026-03-01", "A", 1, 4), split("2026-03-01", "B", 1, 2)]),
+      (error) => {
+        assert.ok(isValidationError(error, "split_ratio_mismatch"));
+        assert.deepEqual(error.details, { accountId: ACCOUNT, instrumentId: ETF, date: "2026-03-01" });
+        return true;
+      },
+    );
+    // The same ratio written differently is the same ratio.
+    validatePositionHistory([...abHistory(), split("2026-03-01", "A", 1, 2), split("2026-03-01", "B", 2, 4)]);
+  });
+
+  it("rejects two split rows of one portfolio on one date", () => {
+    assert.throws(
+      () =>
+        validatePositionHistory([
+          ...abHistory(),
+          split("2026-03-01", "A", 1, 2),
+          split("2026-03-01", "B", 1, 2),
+          split("2026-03-01", "B", 1, 2),
+        ]),
+      (error) => {
+        assert.ok(isValidationError(error, "split_duplicate"));
+        assert.deepEqual(error.details, { accountId: ACCOUNT, instrumentId: ETF, date: "2026-03-01", portfolioId: "B" });
+        return true;
+      },
+    );
+  });
+
   it("rejects a split that rounds a position with a cost down to nothing", () => {
     assert.throws(
       () => validatePositionHistory([buy("2026-01-10", "A", 0.00000005, 100, 1), split("2026-03-01", "A", 10, 1)]),
@@ -491,7 +697,31 @@ describe("validatePositionHistory and applyTradeChanges", () => {
       [{ type: "buy", instrumentId: null }, "instrumentId"],
       [{ type: "sell", quantity: units(-1) }, "quantity"],
       [{ type: "split", splitFrom: 0, splitTo: 1 }, "splitFrom"],
-      [{ type: "transfer", quantity: units(1) }, "transferTradeId"],
+      [{ type: "buy", quantity: units(1), grossCents: -1 }, "grossCents"],
+      [{ type: "buy", quantity: units(1), gainTaxCents: 1 }, "gainTaxCents"],
+      [{ type: "buy", quantity: units(1), withholdingDomesticCents: 1 }, "withholdingDomesticCents"],
+      [{ type: "sell", quantity: units(1), feesCents: -1 }, "feesCents"],
+      [{ type: "dividend", withholdingDomesticCents: -1 }, "withholdingDomesticCents"],
+      [{ type: "dividend", transactionTaxCents: 1 }, "transactionTaxCents"],
+      [{ type: "dividend", quantity: units(1) }, "quantity"],
+      [{ type: "fee", grossCents: 1 }, "grossCents"],
+      [{ type: "fee", price: price(1) }, "price"],
+      [{ type: "tax", taxKind: "stamp_duty", grossCents: -1 }, "grossCents"],
+      [{ type: "tax" }, "taxKind"],
+      [{ type: "dividend", taxKind: "other" }, "taxKind"],
+      [{ type: "split", splitFrom: 1, splitTo: 2, grossCents: 1 }, "grossCents"],
+      [{ type: "dividend", splitFrom: 1, splitTo: 2 }, "splitFrom"],
+      [{ type: "transfer", quantity: units(1), transferTradeId: "x", grossCents: 1 }, "grossCents"],
+      [{ type: "transfer", quantity: units(-1), costBasisCents: 1 }, "costBasisCents"],
+      [{ type: "transfer", quantity: units(1), costBasisCents: -1 }, "costBasisCents"],
+      [{ type: "dividend", transferTradeId: "x" }, "transferTradeId"],
+      [{ type: "dividend", costBasisCents: 0 }, "costBasisCents"],
+      [{ type: "dividend", occurredAt: "yesterday" }, "occurredAt"],
+      [{ type: "dividend", occurredAt: "2026-01-01T10:00:00" }, "occurredAt"],
+      [{ type: "dividend", occurredAt: "2026-01-01 10:00:00Z" }, "occurredAt"],
+      [{ type: "dividend", occurredAt: "2026-02-30T10:00:00Z" }, "occurredAt"],
+      [{ type: "dividend", occurredAt: "2026-01-01T24:00:00Z" }, "occurredAt"],
+      [{ type: "dividend", createdAt: "1 January 2026" }, "createdAt"],
     ];
     for (const [fields, field] of cases) {
       assert.throws(
@@ -500,10 +730,6 @@ describe("validatePositionHistory and applyTradeChanges", () => {
         field,
       );
     }
-    assert.throws(
-      () => computePositions([trade({ date: "2026-01-01", occurredAt: "yesterday", quantity: units(1) })]),
-      (error) => isValidationError(error, "invalid_date"),
-    );
   });
 });
 
@@ -523,6 +749,29 @@ describe("portfolio cost and value", () => {
         ["C", 33],
       ],
     );
+  });
+
+  it("hands the leftover cent to the largest remainder", () => {
+    const positions = computePositions([buy("2026-01-10", "A", 1, 0.01, 0), buy("2026-01-10", "B", 2, 0, 0)]);
+    // 1 cent over 1 and 2 units: remainders of a third and two thirds, so B gets it.
+    assert.deepEqual(
+      positions.portfolios.map((p) => [p.portfolioId, p.costBasisCents]),
+      [
+        ["A", 0],
+        ["B", 1],
+      ],
+    );
+  });
+
+  it("removes the cost of a sale exactly, without a rounded average", () => {
+    const positions = computePositions([
+      trade({ date: "2026-01-10", type: "buy", quantity: units(300_000), price: price(0.333333), grossCents: eur(100_000) }),
+      sell("2026-02-10", "A", 100_000, 0.5, 0),
+    ]);
+    const position = account(positions);
+    assert.equal(position.costSoldCents, eur(33_333.33));
+    assert.equal(position.costBasisCents, eur(66_666.67));
+    assert.equal(position.averageCost, price(0.333333));
   });
 
   it("values a position at a price, rounded once", () => {
@@ -556,9 +805,11 @@ const INSTRUMENTS = ["etf", "bond"];
 const PORTFOLIOS = ["P1", "P2", "P3"];
 
 /**
- * A random valid history: buys, sells, dividends, fees, splits and transfers
- * (between portfolios and between accounts), never selling more than a
- * portfolio holds, with a split row for every portfolio holding the instrument.
+ * A random valid history: buys, sells, dividends, fees, taxes, splits and
+ * transfers (between portfolios, between accounts, from and to outside the
+ * app), never selling more than a portfolio holds, with a split row for every
+ * portfolio holding the instrument. Quantities run from 10^-8 to about 10^6
+ * units, log-uniformly.
  */
 function generateHistory(random: () => number): Generated {
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
@@ -576,7 +827,13 @@ function generateHistory(random: () => number): Generated {
     if (random() < 0.7) created += 1;
     return { date, occurredAt: `${date}T12:00:00Z`, createdAt: new Date(Date.UTC(2026, 0, 1) + created * 1000).toISOString() };
   };
-  const anyQuantity = () => 1 + Math.floor(random() * 5_000_000_000);
+  const anyQuantity = () => Math.max(1, Math.floor(10 ** (random() * 14)));
+  // Amounts follow quantity × a price between €0.01 and €10,000, as a broker's would.
+  const amountFor = (quantity: number) =>
+    amountOf(quantity as Quantity, Math.floor(10 ** (4 + random() * 6)) as Price, PRICE_FACTOR_ONE, "EUR");
+  // Keeps every account's quantity well inside the safe range, splits included.
+  const LIMIT = 1e15;
+  const accountTotal = (a: string, i: string) => PORTFOLIOS.reduce((sum, p) => sum + (held.get(key(a, i, p)) ?? 0), 0);
 
   const count = 10 + Math.floor(random() * 50);
   for (let n = 0; n < count; n++) {
@@ -591,6 +848,7 @@ function generateHistory(random: () => number): Generated {
 
     if (roll < 0.35) {
       const quantity = anyQuantity();
+      if (accountTotal(accountId, instrumentId) + quantity > LIMIT) continue;
       trades.push(
         trade({
           id: nextId(),
@@ -598,7 +856,7 @@ function generateHistory(random: () => number): Generated {
           ...base,
           type: "buy",
           quantity: quantity as Quantity,
-          grossCents: Math.floor(random() * 1_000_000),
+          grossCents: amountFor(quantity),
           feesCents: Math.floor(random() * 500),
           transactionTaxCents: Math.floor(random() * 50),
         }),
@@ -613,23 +871,25 @@ function generateHistory(random: () => number): Generated {
           ...base,
           type: "sell",
           quantity: quantity as Quantity,
-          grossCents: Math.floor(random() * 1_000_000),
+          grossCents: amountFor(quantity),
           feesCents: Math.floor(random() * 500),
           gainTaxCents: Math.floor(random() * 100),
         }),
       );
       held.set(k, have - quantity);
-    } else if (roll < 0.7 && have > 0) {
+    } else if (roll < 0.66 && have > 0) {
       // Between two portfolios of the same account, or to another account.
       const quantity = 1 + Math.floor(random() * have);
       const sameAccount = random() < 0.5;
       const toAccount = sameAccount ? accountId : pick(ACCOUNTS.filter((a) => a !== accountId));
       const toPortfolio = pick(PORTFOLIOS);
+      if (!sameAccount && accountTotal(toAccount, instrumentId) + quantity > LIMIT) continue;
       const out = nextId();
       const into = nextId();
       const when = stamp();
+      const fees = () => (random() < 0.3 ? Math.floor(random() * 3_000) : 0);
       trades.push(
-        trade({ id: out, ...when, ...base, type: "transfer", quantity: -quantity as Quantity, transferTradeId: into }),
+        trade({ id: out, ...when, ...base, type: "transfer", quantity: -quantity as Quantity, transferTradeId: into, feesCents: fees() }),
         trade({
           id: into,
           ...when,
@@ -639,12 +899,28 @@ function generateHistory(random: () => number): Generated {
           type: "transfer",
           quantity: quantity as Quantity,
           transferTradeId: out,
-          costBasisCents: sameAccount ? null : Math.floor(random() * 1_000_000),
+          feesCents: fees(),
         }),
       );
       held.set(k, have - quantity);
       const target = key(toAccount, instrumentId, toPortfolio);
       held.set(target, (held.get(target) ?? 0) + quantity);
+    } else if (roll < 0.7) {
+      // From or to outside the app: a single leg.
+      const outgoing = have > 0 && random() < 0.5;
+      const quantity = outgoing ? 1 + Math.floor(random() * have) : anyQuantity();
+      if (!outgoing && accountTotal(accountId, instrumentId) + quantity > LIMIT) continue;
+      trades.push(
+        trade({
+          id: nextId(),
+          ...stamp(),
+          ...base,
+          type: "transfer",
+          quantity: (outgoing ? -quantity : quantity) as Quantity,
+          costBasisCents: outgoing ? null : amountFor(quantity),
+        }),
+      );
+      held.set(k, outgoing ? have - quantity : have + quantity);
     } else if (roll < 0.78) {
       // A split on a new date, one row per portfolio of the account holding the instrument.
       day += 1;
@@ -653,7 +929,7 @@ function generateHistory(random: () => number): Generated {
       const holders = PORTFOLIOS.filter((p) => (held.get(key(accountId, instrumentId, p)) ?? 0) > 0);
       const after = (p: string) => Math.floor(((held.get(key(accountId, instrumentId, p)) ?? 0) * to) / from);
       const total = holders.reduce((sum, p) => sum + after(p), 0);
-      if (holders.length === 0 || total === 0) continue;
+      if (holders.length === 0 || total === 0 || total > LIMIT) continue;
       for (const p of holders) {
         const quantity = after(p);
         trades.push(
@@ -676,9 +952,13 @@ function generateHistory(random: () => number): Generated {
       );
     } else if (roll < 0.94) {
       trades.push(trade({ id: nextId(), ...stamp(), ...base, type: "fee", feesCents: Math.floor(random() * 1_000) }));
-    } else {
+    } else if (roll < 0.97) {
       const tax = { type: "tax", taxKind: "stamp_duty", grossCents: Math.floor(random() * 1_000) } as const;
-      trades.push(trade({ id: nextId(), ...stamp(), ...base, instrumentId: null, ...tax }));
+      trades.push(trade({ id: nextId(), ...stamp(), ...base, instrumentId: random() < 0.5 ? null : instrumentId, ...tax }));
+    } else {
+      // A gain tax adjustment: positive is a refund, negative is extra tax.
+      const tax = { type: "tax", taxKind: "gain_tax_adjustment", grossCents: Math.floor(random() * 2_000) - 1_000 } as const;
+      trades.push(trade({ id: nextId(), ...stamp(), ...base, instrumentId: random() < 0.5 ? null : instrumentId, ...tax }));
     }
   }
   return { trades, expected: held, hasSplit };
@@ -697,6 +977,8 @@ describe("computePositions: invariants on random histories", () => {
   it("keeps quantities and costs consistent on 500 seeded histories", () => {
     const random = randomGenerator(78);
     let splits = 0;
+    let crossAccount = 0;
+    let outside = 0;
     for (let run = 0; run < 500; run++) {
       const { trades, expected, hasSplit } = generateHistory(random);
       if (hasSplit) splits += 1;
@@ -724,17 +1006,45 @@ describe("computePositions: invariants on random histories", () => {
           const signed = own.reduce((sum, t) => sum + delta(t), 0);
           assert.equal(position.quantity, signed, `${label}: signed sum of quantities`);
         }
-        // I4: every cent of cost is accounted for, and nothing is left without units.
-        const costOut = position.costSoldCents + position.costTransferredOutCents;
-        assert.equal(position.costInCents, position.costBasisCents + costOut, `${label}: cost conservation`);
-        assert.equal(position.quantity === 0, position.costBasisCents === 0, `${label}: cost without units`);
+        // I4: every cent of cost is accounted for, per account, and nothing is left without units.
+        assert.equal(
+          position.costInCents - position.costSoldCents - position.costTransferredOutCents,
+          position.costBasisCents,
+          `${label}: cost conservation`,
+        );
+        // No cost is ever left without units. The converse does not hold: units whose amount
+        // rounds to €0.00, or that came free, are held at a cost of zero.
+        if (position.quantity === 0) assert.equal(position.costBasisCents, 0, `${label}: cost without units`);
         assert.ok(position.costBasisCents >= 0, `${label}: negative cost`);
+      }
+
+      // Across accounts: a transfer between two accounts carries exactly the cost it removes, so,
+      // per instrument and without transfers out of the app, the cost that entered the workspace
+      // from outside is the cost that entered all accounts minus what moved between them.
+      for (const instrumentId of INSTRUMENTS) {
+        const own = trades.filter((t) => t.instrumentId === instrumentId);
+        const linked = (t: PositionTrade) => t.type === "transfer" && t.transferTradeId !== null;
+        const byId = new Map(own.map((t) => [t.id, t]));
+        if (own.some((t) => linked(t) && byId.get(t.transferTradeId as string)?.accountId !== t.accountId)) crossAccount += 1;
+        if (own.some((t) => t.type === "transfer" && !linked(t))) outside += 1;
+        if (own.some((t) => t.type === "transfer" && !linked(t) && t.quantity < 0)) continue;
+        const fromOutside = own.reduce(
+          (sum, t) =>
+            sum + (t.type === "buy" ? t.grossCents + t.feesCents : t.type === "transfer" && !linked(t) ? (t.costBasisCents ?? 0) : 0),
+          0,
+        );
+        const rows = positions.accounts.filter((p) => p.instrumentId === instrumentId);
+        const costIn = rows.reduce((sum, p) => sum + p.costInCents, 0);
+        const movedOut = rows.reduce((sum, p) => sum + p.costTransferredOutCents, 0);
+        assert.equal(costIn - movedOut, fromOutside, `run ${run}, ${instrumentId}: cost carried between accounts`);
       }
 
       // Rebuildability: the order of the input changes nothing.
       assert.deepEqual(computePositions(shuffle(trades, random)), positions, `run ${run}: shuffled`);
     }
     assert.ok(splits > 50, `only ${splits} runs had a split`);
+    assert.ok(crossAccount > 100, `only ${crossAccount} instrument histories had a transfer between accounts`);
+    assert.ok(outside > 100, `only ${outside} instrument histories had a transfer from or to outside the app`);
   });
 
   it("rejects any sale of one unit more than a portfolio holds", () => {

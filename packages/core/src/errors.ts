@@ -43,7 +43,9 @@ export type ValidationErrorCode =
   | "unknown_trade"
   | "insufficient_quantity"
   | "split_missing_for_portfolio"
-  | "split_leaves_no_quantity";
+  | "split_leaves_no_quantity"
+  | "split_duplicate"
+  | "split_ratio_mismatch";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
