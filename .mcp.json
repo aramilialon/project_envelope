@@ -2,7 +2,7 @@
   "mcpServers": {
     "playwright": {
       "command": "sh",
-      "args": ["scripts/explore-env/playwright-mcp.sh"]
+      "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\""]
     }
   }
 }
