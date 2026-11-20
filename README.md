@@ -102,6 +102,16 @@ Every change reaches `main` through a pull request, with commit messages and tit
 
 Code, comments, documentation and commit messages are in English. The interface is translatable: English is the source language and Italian the first complete translation ([ADR 0004](docs/adr/0004-internationalization.md)).
 
+### Dependency overrides
+
+A security fix is taken by upgrading the direct dependency. Only when no release of it pulls the patched version does the root `package.json` force one through `pnpm.overrides`; JSON has no comments, so each override is explained here, and removed once its parent catches up:
+
+| Override | Why |
+| --- | --- |
+| `workbox-build>glob`: `^14.0.2` | `workbox-build` 7.4.1, the latest, used by `vite-plugin-pwa` to list the files the service worker precaches at build time, asks for `glob` 11, which is affected by an AbortSignal cancellation bypass (fixed in 14.0.2) and pulls `minimatch` 10, affected by a potential denial of service through pattern expansion ("globparts amplification") (fixed in 11.0.1). `glob` 14 depends on `minimatch` 11, so this one override fixes both. `workbox-build` only calls `globSync` with `cwd`, `follow` and `ignore`, which `glob` 14 keeps. Build-time only: nothing of it ships in the app. Remove it when `workbox-build` depends on `glob` 14.0.2 or later. |
+
+The npm `undici` package is only a test dependency (under `jsdom`). The API's outgoing HTTP (the JWKS fetch) uses the `undici` built into Node.js, so keeping Node.js 24 on its latest patch release is what covers `undici` fixes for the API, not the npm package.
+
 ## License
 
 [AGPL-3.0](LICENSE). Third-party fonts and other bundled assets keep their own licenses: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
