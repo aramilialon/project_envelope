@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 
@@ -285,27 +286,13 @@ describe("computeBudgetMonth", () => {
   });
 });
 
-/**
- * Pseudo-random number generator with a fixed seed (mulberry32): the same
- * numbers on every run, so a failing test can always be reproduced.
- */
-function randomGenerator(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 describe("budget invariant", () => {
   // Whatever happens, the books must balance:
   //   unassigned money + available of the month + assigned in future
   //   = income so far (as of the latest month with any data, #488) + activity so far (the
   //   requested month's own, that is, the account balance up to it)
   it("balances on 500 random budgets", () => {
-    const random = randomGenerator(42);
+    const random = mulberry32(42);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const months = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
     const categoryIds = ["groceries", "rent", "fun", "car"];

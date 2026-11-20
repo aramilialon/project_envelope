@@ -5,7 +5,10 @@
  * third client with the matching audience whose tokens live only
  * `SHORT_LIVED_TOKEN_SECONDS` (for the tests that wait for a token to expire, on
  * purpose), and one user. Nothing here is meant for anything but tests: the
- * realm is deleted in `teardown()`.
+ * realm is deleted in `teardown()`. The admin token lives a minute too, so every
+ * admin call made after the setup (a new user, the teardown) asks for a fresh one:
+ * a test file that runs longer, such as the random walk (#80), would otherwise
+ * get 401 from them.
  */
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -28,8 +31,15 @@ export interface KeycloakTestRealm {
   getTokenWithMismatchedAudience(): Promise<string>;
   /** A token for a brand-new user in the same realm — for tests needing several distinct local users (e.g. #24's per-role checks). */
   getTokenForNewUser(): Promise<string>;
+  /** A brand-new user whose token can be fetched again, for a run that outlives one token (the random walk, #80). */
+  createUser(): Promise<KeycloakTestUser>;
   updateUserEmail(email: string): Promise<void>;
   teardown(): Promise<void>;
+}
+
+export interface KeycloakTestUser {
+  /** A fresh access token for this user, valid for the realm's token lifespan. */
+  getToken(): Promise<string>;
 }
 
 export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
@@ -71,14 +81,20 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
     getTokenForNewUser: async () => {
       const otherUsername = `test-user-${randomUUID()}`;
       const otherPassword = randomUUID();
-      await createUser(adminToken, realm, otherUsername, otherPassword);
+      await createUser(await getAdminToken(adminPassword), realm, otherUsername, otherPassword);
       return getUserAccessToken(realm, "envelope-api", clientSecret, otherUsername, otherPassword);
     },
+    createUser: async () => {
+      const otherUsername = `test-user-${randomUUID()}`;
+      const otherPassword = randomUUID();
+      await createUser(await getAdminToken(adminPassword), realm, otherUsername, otherPassword);
+      return { getToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, otherUsername, otherPassword) };
+    },
     updateUserEmail: async (email: string) => {
-      await adminRequest(adminToken, "PUT", `/admin/realms/${realm}/users/${userId}`, { email });
+      await adminRequest(await getAdminToken(adminPassword), "PUT", `/admin/realms/${realm}/users/${userId}`, { email });
     },
     teardown: async () => {
-      await adminRequest(adminToken, "DELETE", `/admin/realms/${realm}`);
+      await adminRequest(await getAdminToken(adminPassword), "DELETE", `/admin/realms/${realm}`);
     },
   };
 }

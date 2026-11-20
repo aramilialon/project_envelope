@@ -1,0 +1,10 @@
+{
+ "version": 1,
+ "seed": 0,
+ "steps": 2,
+ "driver": "inject",
+ "ops": [
+  { "step": 1, "op": { "kind": "createAccount", "ws": "household", "actor": "owner", "params": { "type": "credit_card", "onBudget": true, "name": "card" } } },
+  { "step": 2, "op": { "kind": "income", "ws": "household", "actor": "owner", "params": { "account": "a2", "occurredAt": "2025-10-01", "splits": [{ "category": null, "amountCents": 5000 }] } } }
+ ]
+}
