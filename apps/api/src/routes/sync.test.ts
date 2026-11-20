@@ -268,34 +268,67 @@ describe("sync routes (#43, #44)", () => {
     assert.equal(response.statusCode, 200);
   });
 
-  it("rejects the whole batch when one change's text is over its limit, applying none of it (#507)", async () => {
-    const before = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM transactions WHERE id = $1", [transactionId]);
-    const response = await app.fastify.inject({
-      method: "POST",
-      url: `/workspaces/${workspaceId}/changes`,
-      headers: { authorization: `Bearer ${token}` },
-      payload: {
-        changes: [
-          {
+  describe("text fields (#507)", () => {
+    /** The transaction's own payee and memo, and how many change_log rows the workspace has. */
+    async function snapshot(): Promise<{ payee: string | null; memo: string | null; changeLogRows: number }> {
+      const row = await superuserPool.query<{ payee: string | null; memo: string | null }>(
+        "SELECT payee, memo FROM transactions WHERE id = $1",
+        [transactionId],
+      );
+      const log = await superuserPool.query<{ n: number }>("SELECT count(*)::int AS n FROM change_log WHERE workspace_id = $1", [workspaceId]);
+      return { payee: row.rows[0]!.payee, memo: row.rows[0]!.memo, changeLogRows: log.rows[0]!.n };
+    }
+
+    function upload(changes: { fieldName: string; value: unknown }[]) {
+      return app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/changes`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          changes: changes.map((change, counter) => ({
             id: randomUUID(),
             entityId: transactionId,
-            fieldName: "transactions.memo",
-            hlc: { physical: 9_000_000, counter: 0, deviceId: "device-a" },
-            value: "m".repeat(MAX_FREE_TEXT_LENGTH),
-          },
-          {
-            id: randomUUID(),
-            entityId: transactionId,
-            fieldName: "transactions.payee",
-            hlc: { physical: 9_000_000, counter: 1, deviceId: "device-a" },
-            value: "p".repeat(MAX_FREE_TEXT_LENGTH + 1),
-          },
-        ],
-      },
+            fieldName: change.fieldName,
+            hlc: { physical: 9_000_000, counter, deviceId: "device-a" },
+            value: change.value,
+          })),
+        },
+      });
+    }
+
+    it("rejects the whole batch when one change's text is over its limit, applying and recording none of it", async () => {
+      const before = await snapshot();
+      const response = await upload([
+        { fieldName: "transactions.memo", value: "m".repeat(MAX_FREE_TEXT_LENGTH) },
+        { fieldName: "transactions.payee", value: "p".repeat(MAX_FREE_TEXT_LENGTH + 1) },
+      ]);
+      assert.equal(response.statusCode, 400);
+      assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "transactions.payee", max: MAX_FREE_TEXT_LENGTH } });
+      assert.deepEqual(await snapshot(), before);
     });
-    assert.equal(response.statusCode, 400);
-    assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "transactions.payee", max: MAX_FREE_TEXT_LENGTH } });
-    const afterwards = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM transactions WHERE id = $1", [transactionId]);
-    assert.equal(afterwards.rows[0]!.memo, before.rows[0]!.memo);
+
+    it("rejects the whole batch when a text field's value is neither a string nor null, applying and recording none of it", async () => {
+      const before = await snapshot();
+      for (const value of [{ x: "m".repeat(MAX_FREE_TEXT_LENGTH + 1) }, ["m"], 42, true]) {
+        const response = await upload([
+          { fieldName: "transactions.payee", value: "Fine" },
+          { fieldName: "transactions.memo", value },
+        ]);
+        assert.equal(response.statusCode, 400, JSON.stringify(value).slice(0, 20));
+        assert.deepEqual(response.json(), { error: "invalid change: transactions.memo takes a string or null" });
+      }
+      assert.deepEqual(await snapshot(), before);
+    });
+
+    it("accepts null and a string at the limit for a text field", async () => {
+      const response = await upload([
+        { fieldName: "transactions.payee", value: null },
+        { fieldName: "transactions.memo", value: "m".repeat(MAX_FREE_TEXT_LENGTH) },
+      ]);
+      assert.equal(response.statusCode, 201);
+      const after = await snapshot();
+      assert.equal(after.payee, null);
+      assert.equal(after.memo, "m".repeat(MAX_FREE_TEXT_LENGTH));
+    });
   });
 });

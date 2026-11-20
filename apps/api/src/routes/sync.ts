@@ -72,8 +72,15 @@ export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
       await reply.code(400).send({ error: "changes must be a non-empty array of valid change records" });
       return;
     }
-    const textChecks = changes
-      .filter((change) => SYNC_TEXT_FIELD_LIMITS[change.fieldName] !== undefined)
+    // A text field takes a string or null, nothing else: an object or array would otherwise skip
+    // the length check below and be stored as its JSON text, of any size (#507).
+    const textChanges = changes.filter((change) => SYNC_TEXT_FIELD_LIMITS[change.fieldName] !== undefined);
+    const nonText = textChanges.find((change) => change.value !== null && typeof change.value !== "string");
+    if (nonText) {
+      await reply.code(400).send({ error: `invalid change: ${nonText.fieldName} takes a string or null` });
+      return;
+    }
+    const textChecks = textChanges
       .map((change): TextFieldCheck => [change.fieldName, change.value, SYNC_TEXT_FIELD_LIMITS[change.fieldName]!]);
     if (await sendIfTextTooLong(reply, textChecks)) {
       return;
