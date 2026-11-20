@@ -136,6 +136,124 @@ describe("aggregateTransactions", () => {
   });
 });
 
+describe("money coming back from an off-budget account (#598)", () => {
+  // The domain review's example: September 2026, checking holds €3,000, of which €200 is
+  // unassigned, €1,800 in Groceries and €1,000 in Rent; Investing holds nothing.
+  const categoryIds = ["groceries", "rent", "investing"];
+  const september: BudgetTransaction[] = [
+    { id: "salary", accountId: "checking", date: "2026-09-01", amount: 300000, categoryId: UNASSIGNED },
+  ];
+  const assignments = [
+    { categoryId: "groceries", month: "2026-09", amount: 180000 },
+    { categoryId: "rent", month: "2026-09", amount: 100000 },
+  ];
+  const budget = (transactions: readonly BudgetTransaction[], month: string, extra: BudgetInput["assignments"] = []) => {
+    const aggregated = aggregateTransactions(ACCOUNTS, transactions);
+    return computeBudgetMonth(
+      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregated, assignments: [...assignments, ...extra] },
+      month,
+    );
+  };
+  const available = (month: ReturnType<typeof computeBudgetMonth>, id: string) =>
+    month.categories.find((c) => c.categoryId === id)?.available;
+  const balance = (transactions: readonly BudgetTransaction[]) =>
+    transactions.filter((t) => t.accountId === "checking").reduce((sum, t) => sum + t.amount, 0);
+  const total = (month: ReturnType<typeof computeBudgetMonth>) =>
+    month.unassigned + month.categories.reduce((sum, c) => sum + c.available, 0);
+
+  it("counts an uncategorized incoming leg as income to assign (example 1)", () => {
+    const before = budget(september, "2026-09");
+    assert.equal(before.unassigned, 20000);
+
+    const transactions = [
+      ...september,
+      { id: "sale", accountId: "checking", date: "2026-09-15", amount: 500000, transferAccountId: "broker" },
+      { id: "sale-broker", accountId: "broker", date: "2026-09-15", amount: -500000, transferAccountId: "checking" },
+    ];
+    const aggregated = aggregateTransactions(ACCOUNTS, transactions);
+    assert.deepEqual(aggregated.income, [
+      { month: "2026-09", amount: 300000 },
+      { month: "2026-09", amount: 500000 },
+    ]);
+    assert.deepEqual(aggregated.activity, []);
+
+    const after = budget(transactions, "2026-09");
+    assert.equal(after.unassigned, 520000);
+    assert.equal(available(after, "groceries"), 180000);
+    assert.equal(available(after, "rent"), 100000);
+    assert.equal(available(after, "investing"), 0);
+    assert.equal(balance(transactions), 800000);
+    assert.equal(total(after), balance(transactions));
+  });
+
+  it("keeps an incoming leg with a real category as that category's activity (example 2)", () => {
+    const transactions = [
+      ...september,
+      { id: "sale", accountId: "checking", date: "2026-09-15", amount: 500000, transferAccountId: "broker", categoryId: "investing" },
+      { id: "sale-broker", accountId: "broker", date: "2026-09-15", amount: -500000, transferAccountId: "checking" },
+    ];
+    const after = budget(transactions, "2026-09");
+    assert.equal(after.unassigned, 20000);
+    assert.equal(available(after, "investing"), 500000);
+    assert.equal(total(after), balance(transactions));
+  });
+
+  it("leaves the month the money went out in unchanged when it comes back as income later (example 3)", () => {
+    const june: BudgetTransaction[] = [
+      { id: "june-salary", accountId: "checking", date: "2026-06-01", amount: 500000, categoryId: UNASSIGNED },
+      { id: "invest", accountId: "checking", date: "2026-06-10", amount: -500000, transferAccountId: "broker", categoryId: "investing" },
+      { id: "invest-broker", accountId: "broker", date: "2026-06-10", amount: 500000, transferAccountId: "checking" },
+    ];
+    const funding = [{ categoryId: "investing", month: "2026-06", amount: 500000 }];
+    const comeBack: BudgetTransaction[] = [
+      { id: "sale", accountId: "checking", date: "2026-09-15", amount: 500000, transferAccountId: "broker" },
+      { id: "sale-broker", accountId: "broker", date: "2026-09-15", amount: -500000, transferAccountId: "checking" },
+    ];
+    const without = [...june, ...september];
+    const withReturn = [...without, ...comeBack];
+
+    assert.deepEqual(budget(withReturn, "2026-06", funding).categories, budget(without, "2026-06", funding).categories);
+    assert.equal(budget(withReturn, "2026-06", funding).categories.find((c) => c.categoryId === "investing")?.activity, -500000);
+    const septemberWithout = budget(without, "2026-09", funding);
+    const septemberWith = budget(withReturn, "2026-09", funding);
+    assert.equal(septemberWith.unassigned - septemberWithout.unassigned, 500000);
+    assert.deepEqual(septemberWith.categories, septemberWithout.categories);
+    assert.equal(total(septemberWith), balance(withReturn));
+  });
+
+  it("refuses an outgoing leg without a real category, and a card leg without one (example 5)", () => {
+    const cases: [BudgetTransaction, string][] = [
+      // checking -> broker without a category, or with its outgoing leg edited to none
+      [tx({ accountId: "checking", date: "2026-09-15", amount: -500000, transferAccountId: "broker" }), "uncategorized_transaction"],
+      // the outgoing leg cannot be income to assign either: that would be negative income
+      [
+        tx({ accountId: "checking", date: "2026-09-15", amount: -500000, transferAccountId: "broker", categoryId: UNASSIGNED }),
+        "uncategorized_transaction",
+      ],
+      // broker -> Visa without a category
+      [tx({ accountId: "visa", date: "2026-09-15", amount: 500000, transferAccountId: "broker" }), "unsupported_transaction"],
+      [tx({ accountId: "visa", date: "2026-09-15", amount: 500000, transferAccountId: "broker", categoryId: UNASSIGNED }), "unsupported_transaction"],
+      // Visa -> broker without a category
+      [tx({ accountId: "visa", date: "2026-09-15", amount: -500000, transferAccountId: "broker" }), "unsupported_transaction"],
+    ];
+    for (const [transaction, code] of cases) {
+      assert.throws(
+        () => aggregateTransactions(ACCOUNTS, [transaction]),
+        (error) => isValidationError(error, code as never),
+        `expected ${code} for ${JSON.stringify(transaction)}`,
+      );
+    }
+  });
+
+  it("still reads a categorized incoming leg on a card as a refund on that card", () => {
+    const result = aggregateTransactions(ACCOUNTS, [
+      tx({ accountId: "visa", date: "2026-09-15", amount: 20000, transferAccountId: "broker", categoryId: "investing" }),
+    ]);
+    assert.deepEqual(result.activity, [{ categoryId: "investing", month: "2026-09", amount: 20000, paymentCategoryId: "visa-payment" }]);
+    assert.deepEqual(result.income, []);
+  });
+});
+
 describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
   //   unassigned money + available of every category and payment category
@@ -159,6 +277,10 @@ describe("budget invariant with accounts and credit cards", () => {
       { id: "broker", type: "cash", onBudget: false },
     ];
     const paymentCategoryIds = ["visa-payment", "amex-payment"];
+    // Income counts through `asOf` (see below): money in UNASSIGNED, and an uncategorized leg
+    // coming in from the off-budget broker (#598).
+    const isIncome = (t: BudgetTransaction) =>
+      t.categoryId === UNASSIGNED || (t.transferAccountId === "broker" && t.categoryId === undefined && t.amount > 0);
 
     for (let run = 0; run < 300; run++) {
       const transactions: BudgetTransaction[] = [];
@@ -167,7 +289,7 @@ describe("budget invariant with accounts and credit cards", () => {
 
       for (let i = 0; i < 40; i++) {
         const d = date();
-        switch (Math.floor(random() * 8)) {
+        switch (Math.floor(random() * 9)) {
           case 0: // income
             add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: UNASSIGNED });
             break;
@@ -217,11 +339,25 @@ describe("budget invariant with accounts and credit cards", () => {
             add({ accountId: destination, date: d, amount: a, transferAccountId: source });
             break;
           }
-          default: {
+          case 7: {
             // investment: from checking to the off-budget broker
             const a = amount(40000);
             add({ accountId: "checking", date: d, amount: -a, transferAccountId: "broker", categoryId: "investing" });
             add({ accountId: "broker", date: d, amount: a, transferAccountId: "checking" });
+            break;
+          }
+          default: {
+            // money back from the broker (#598): half of it as income to assign, half in a category
+            const a = amount(40000);
+            const destination = pick(["checking", "wallet"]);
+            add({
+              accountId: destination,
+              date: d,
+              amount: a,
+              transferAccountId: "broker",
+              ...(random() < 0.5 ? {} : { categoryId: pick(categoryIds) }),
+            });
+            add({ accountId: "broker", date: d, amount: -a, transferAccountId: destination });
           }
         }
       }
@@ -268,7 +404,7 @@ describe("budget invariant with accounts and credit cards", () => {
       ].reduce((latest, m) => (m > latest ? m : latest), month);
       const cashBalance = transactions
         .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
-        .filter((t) => t.date.slice(0, 7) <= (t.categoryId === UNASSIGNED ? asOf : month))
+        .filter((t) => t.date.slice(0, 7) <= (isIncome(t) ? asOf : month))
         .reduce((sum, t) => sum + t.amount, 0);
 
       assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);

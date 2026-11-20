@@ -10,7 +10,16 @@
  * Rules:
  * - Transactions of off-budget accounts are ignored. A transfer between an
  *   on-budget and an off-budget account is budget activity on the on-budget
- *   side, so it needs a category (for example "Investments").
+ *   side:
+ *   - with a category (for example "Investments") or splits, it is ordinary
+ *     activity of that category, whichever its direction;
+ *   - money coming in from the off-budget account with no category (or in
+ *     UNASSIGNED) is income to assign, in the month of its date, like any
+ *     other income (#598);
+ *   - money going out to the off-budget account needs a real category:
+ *     without one, or in UNASSIGNED, it is "uncategorized_transaction";
+ *   - on a credit card, with no category or in UNASSIGNED, either way, it is
+ *     "unsupported_transaction" (see the limitation below).
  * - A transaction in the UNASSIGNED category on a cash account is income.
  * - Every other transaction on an on-budget account needs a category, or
  *   splits whose amounts add up to the transaction amount.
@@ -146,7 +155,29 @@ export function aggregateTransactions(
         }
         continue; // cash to cash, or the cash side of a card payment
       }
-      // A transfer to an off-budget account is budget activity: continue with the category below.
+      // A transfer to or from an off-budget account is budget activity on the on-budget leg. With
+      // a real category (or splits) it is ordinary activity: continue with the category below.
+      // Without one, money coming in from the off-budget account is income to assign (#598);
+      // money going out to it needs a real category, and a card leg is not supported yet.
+      const hasSplits = t.splits !== undefined && t.splits.length > 0;
+      if (!hasSplits && (t.categoryId === undefined || t.categoryId === UNASSIGNED)) {
+        if (account.type === "credit") {
+          throw new ValidationError(
+            "unsupported_transaction",
+            `an uncategorized transfer between a credit card and an off-budget account is not supported yet (transaction "${t.id}")`,
+            { transactionId: t.id },
+          );
+        }
+        if (t.amount > 0) {
+          income.push({ month, amount: t.amount });
+          continue;
+        }
+        throw new ValidationError(
+          "uncategorized_transaction",
+          `transaction "${t.id}" moves money to an off-budget account and has no category`,
+          { transactionId: t.id },
+        );
+      }
     }
 
     const card = account.type === "credit" ? account.paymentCategoryId : undefined;
