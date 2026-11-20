@@ -24,8 +24,10 @@
  *     once, from the outflow (negative) leg.
  *
  * Limitation of this version: income on a credit card (for example cashback)
- * is not modeled as a transaction here; the API composes it from an income
- * transaction plus a card payment instead (design.md, "Credit cards"). A
+ * is not modeled as a transaction here, and is refused as
+ * "unsupported_transaction"; design.md ("Credit cards") plans it as an income
+ * transaction plus a card payment. The API refuses it at write time
+ * ("card_income_not_supported", #548) so a stored row cannot break the month. A
  * card's starting balance is not an Activity at all — see `CardBalance` in
  * budget-month.ts.
  */

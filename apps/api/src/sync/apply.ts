@@ -46,6 +46,9 @@ interface FieldApplier {
  * Scoped to `transactions.memo`/`transactions.payee` for now (#43): enough to prove the
  * protocol converges end to end (the milestone's own smoke test, #46). Every other editable
  * field, and every other entity, is added here only once something actually needs to sync it.
+ * Neither of these can store income on an on-budget credit card (#548). Wiring a field that can
+ * (a split's category or amount, a transaction's account) must refuse it the way
+ * `assertNotCardIncome` (transactions/repository.ts) does for the API's own writes.
  */
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {
