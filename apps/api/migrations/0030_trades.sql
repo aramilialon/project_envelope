@@ -74,11 +74,12 @@ CREATE TABLE trades (
   CONSTRAINT trades_amounts_not_negative_check CHECK (
     fees_cents >= 0 AND transaction_tax_cents >= 0 AND accrued_interest_cents >= 0
     AND withholding_foreign_cents >= 0 AND withholding_domestic_cents >= 0 AND gain_tax_cents >= 0
-    AND (gross_cents >= 0 OR tax_kind = 'gain_tax_adjustment')
+    AND (gross_cents >= 0 OR tax_kind IS NOT DISTINCT FROM 'gain_tax_adjustment')
     AND (cost_basis_cents IS NULL OR cost_basis_cents >= 0)
   ),
 
-  -- One CHECK per type: what it requires and what it forbids.
+  -- One CHECK per type: what it requires and what it forbids. A CHECK passes when it is null, so
+  -- every comparison with a nullable column is guarded by IS NOT NULL.
   CONSTRAINT trades_buy_check CHECK (type <> 'buy' OR (
     instrument_id IS NOT NULL AND quantity_e8 > 0
     AND withholding_foreign_cents = 0 AND gain_tax_cents = 0
@@ -114,7 +115,7 @@ CREATE TABLE trades (
     AND transfer_trade_id IS NULL
   )),
   CONSTRAINT trades_split_check CHECK (type <> 'split' OR (
-    instrument_id IS NOT NULL AND split_from > 0 AND split_to > 0
+    instrument_id IS NOT NULL AND split_from IS NOT NULL AND split_to IS NOT NULL AND split_from > 0 AND split_to > 0
     AND quantity_e8 = 0 AND price_e6 = 0 AND gross_cents = 0 AND fees_cents = 0
     AND transaction_tax_cents = 0 AND accrued_interest_cents = 0 AND withholding_foreign_cents = 0
     AND withholding_domestic_cents = 0 AND gain_tax_cents = 0

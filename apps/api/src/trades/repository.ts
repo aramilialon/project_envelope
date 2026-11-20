@@ -741,6 +741,7 @@ export async function createTrades(
   const rows =
     input.kind === "single" ? [singleRow(input, instrument)] : input.kind === "transfer" ? transferRows(input) : splitRows(input, history);
   const accounts = await checkReferences(db, workspaceId, rows, instrument);
+  await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
 
   for (const row of rows) {
     checkTradeEntry(row, instrument?.type ?? null);
@@ -780,8 +781,6 @@ export async function createTrades(
     }),
   );
   validatePositionHistory(applyTradeChanges(history, inserts.map((trade) => ({ kind: "insert", trade }))));
-
-  await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
 
   // The two legs of a transfer point at each other: the link is checked once both exist.
   const linked = rows.some((row) => row.transferTradeId !== null);
