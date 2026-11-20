@@ -387,7 +387,9 @@ export type PositionScope = { readonly portfolioId: string } | { readonly accoun
  * replay takes them: the workspace's whole history, in every account and portfolio, of each
  * instrument the portfolio or account has a trade of (the cost is per account, and a transfer
  * between two accounts carries it from one to the other), plus the scope's own fees and taxes
- * recorded without an instrument. One statement, so one snapshot.
+ * recorded without an instrument. One statement, so one snapshot; the instruments' histories are
+ * read through `trades_workspace_instrument_idx` (`= ANY(ARRAY(...))`), the charges by a second
+ * branch. The rows come back in no particular order: `computePositions` sorts them itself.
  */
 export async function loadPositionTrades(db: DbClient, workspaceId: string, scope: PositionScope): Promise<PositionTrade[]> {
   const portfolioId = "portfolioId" in scope ? scope.portfolioId : null;
@@ -396,22 +398,21 @@ export async function loadPositionTrades(db: DbClient, workspaceId: string, scop
     `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6
      FROM trades t
      JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
-     LEFT JOIN instruments i ON i.id = t.instrument_id
+     JOIN instruments i ON i.id = t.instrument_id
      WHERE t.workspace_id = $1
-       AND (
-         t.instrument_id IN (
-           SELECT s.instrument_id FROM trades s
-           WHERE s.workspace_id = $1 AND s.instrument_id IS NOT NULL
-             AND ($2::uuid IS NULL OR s.portfolio_id = $2)
-             AND ($3::uuid IS NULL OR s.account_id = $3)
-         )
-         OR (
-           t.instrument_id IS NULL
-           AND ($2::uuid IS NULL OR t.portfolio_id = $2)
-           AND ($3::uuid IS NULL OR t.account_id = $3)
-         )
-       )
-     ORDER BY ${REPLAY_ORDER}`,
+       AND t.instrument_id = ANY(ARRAY(
+         SELECT DISTINCT s.instrument_id FROM trades s
+         WHERE s.workspace_id = $1 AND s.instrument_id IS NOT NULL
+           AND ($2::uuid IS NULL OR s.portfolio_id = $2)
+           AND ($3::uuid IS NULL OR s.account_id = $3)
+       ))
+     UNION ALL
+     SELECT ${TRADE_COLUMNS}, a.currency, NULL::bigint AS price_factor_e6
+     FROM trades t
+     JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
+     WHERE t.workspace_id = $1 AND t.instrument_id IS NULL
+       AND ($2::uuid IS NULL OR t.portfolio_id = $2)
+       AND ($3::uuid IS NULL OR t.account_id = $3)`,
     [workspaceId, portfolioId, accountId],
   );
   return rows.map(toPositionTrade);

@@ -5,9 +5,11 @@ import { after, before, describe, it } from "node:test";
 import { decodeJwt } from "jose";
 
 import { type App } from "../app.ts";
-import { type DbPool } from "../db/pool.ts";
+import { createPool, type DbPool } from "../db/pool.ts";
+import { appConnectionString } from "../test-helpers/app-role.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
+import { loadPositionTrades } from "../trades/repository.ts";
 
 /** Units as quantityE8: units(1.5) is 150000000. */
 const units = (value: number): number => Math.round(value * 1e8);
@@ -20,7 +22,7 @@ interface PositionBody {
   readonly currency: string;
   readonly quantityE8: number;
   readonly costBasisCents: number;
-  readonly averageCostE6: number | null;
+  readonly accountAverageCostE6: number | null;
   readonly realizedCents: number;
   readonly costInCents: number;
   readonly costSoldCents: number;
@@ -31,15 +33,20 @@ interface PositionBody {
   readonly transactionTaxCents: number;
   readonly accruedInterestPaidCents: number;
   readonly accruedInterestReceivedCents: number;
-  readonly gainTaxCents: number;
-  readonly dividendsCents: number;
+  readonly gainTaxWithheldCents: number;
+  readonly gainTaxAdjustmentsCents: number;
+  readonly managedResultTaxCents: number;
+  readonly incomeGrossCents: number;
   readonly withholdingForeignCents: number;
   readonly withholdingDomesticCents: number;
   readonly standaloneFeesCents: number;
   readonly standaloneTaxesCents: number;
+  readonly incomeCents: number;
+  readonly costsCents: number;
+  readonly taxesOnGainsCents: number;
 }
 
-type SummaryBody = Omit<PositionBody, "accountId" | "instrument" | "quantityE8" | "averageCostE6">;
+type SummaryBody = Omit<PositionBody, "accountId" | "instrument" | "quantityE8" | "accountAverageCostE6">;
 
 interface PositionsBody {
   readonly positions: PositionBody[];
@@ -58,25 +65,18 @@ const NO_TOTALS = {
   transactionTaxCents: 0,
   accruedInterestPaidCents: 0,
   accruedInterestReceivedCents: 0,
-  gainTaxCents: 0,
-  dividendsCents: 0,
+  gainTaxWithheldCents: 0,
+  gainTaxAdjustmentsCents: 0,
+  managedResultTaxCents: 0,
+  incomeGrossCents: 0,
   withholdingForeignCents: 0,
   withholdingDomesticCents: 0,
   standaloneFeesCents: 0,
   standaloneTaxesCents: 0,
+  incomeCents: 0,
+  costsCents: 0,
+  taxesOnGainsCents: 0,
 };
-
-/** The domain guide's "Income": dividends − withholdings − income fees + accrued interest received − paid. */
-function incomeOf(totals: SummaryBody): number {
-  return (
-    totals.dividendsCents -
-    totals.withholdingForeignCents -
-    totals.withholdingDomesticCents -
-    totals.incomeFeesCents +
-    totals.accruedInterestReceivedCents -
-    totals.accruedInterestPaidCents
-  );
-}
 
 describe("positions routes (#79)", () => {
   let superuserPool: DbPool;
@@ -107,22 +107,22 @@ describe("positions routes (#79)", () => {
     return response.json();
   }
 
-  async function instrument(currency = "EUR"): Promise<string> {
+  async function instrument(currency = "EUR", type = "fund", priceFactorE6 = 1_000_000): Promise<string> {
     const ticker = `T${randomBytes(6).toString("hex").toUpperCase()}`;
     const { rows } = await superuserPool.query<{ id: string }>(
       `INSERT INTO instruments (isin, ticker, exchange, name, type, currency, price_factor_e6)
-       VALUES (NULL, $1, 'XMIL', 'Test fund', 'fund', $2, 1000000) RETURNING id`,
-      [ticker, currency],
+       VALUES (NULL, $1, 'XMIL', 'Test fund', $2, $3, $4) RETURNING id`,
+      [ticker, type, currency, priceFactorE6],
     );
     instrumentIds.push(rows[0]!.id);
     return rows[0]!.id;
   }
 
-  async function account(type = "brokerage", ws = workspaceId): Promise<string> {
+  async function account(type = "brokerage", ws = workspaceId, currency = "EUR"): Promise<string> {
     const { rows } = await superuserPool.query<{ id: string }>(
       `INSERT INTO accounts (workspace_id, name, type, currency, on_budget)
-       VALUES ($1, $2, $3, 'EUR', $4) RETURNING id`,
-      [ws, `Account ${randomUUID().slice(0, 8)}`, type, type !== "brokerage"],
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [ws, `Account ${randomUUID().slice(0, 8)}`, type, currency, type !== "brokerage"],
     );
     return rows[0]!.id;
   }
@@ -179,9 +179,11 @@ describe("positions routes (#79)", () => {
     await teardownIntegrationTest({ superuserPool, realm, app, workspaceId, token });
   });
 
-  it("rejects a request with no token", async () => {
-    const response = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/portfolios/${randomUUID()}/positions` });
-    assert.equal(response.statusCode, 401);
+  it("rejects a request with no token, on both routes", async () => {
+    for (const kind of ["portfolios", "accounts"]) {
+      const response = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/${kind}/${randomUUID()}/positions` });
+      assert.equal(response.statusCode, 401, kind);
+    }
   });
 
   it("splits one account's average between two portfolios and gives the gain to the seller", async () => {
@@ -206,7 +208,7 @@ describe("positions routes (#79)", () => {
         currency: "EUR",
         quantityE8: units(5),
         costBasisCents: 57_625, // A's share of €4,033.75: 5 of 35 units
-        averageCostE6: price(115.25), // the account's average, shared by both portfolios
+        accountAverageCostE6: price(115.25), // the account's average, shared by both portfolios
         realizedCents: 6_875, // 650 − 5 − 576.25
         costInCents: 100_500,
         costSoldCents: 57_625,
@@ -222,7 +224,7 @@ describe("positions routes (#79)", () => {
     assert.equal(ofB.positions.length, 1);
     assert.equal(ofB.positions[0]!.quantityE8, units(30));
     assert.equal(ofB.positions[0]!.costBasisCents, 345_750);
-    assert.equal(ofB.positions[0]!.averageCostE6, price(115.25));
+    assert.equal(ofB.positions[0]!.accountAverageCostE6, price(115.25));
     assert.equal(ofB.positions[0]!.realizedCents, 0);
 
     const ofAccount = await positionsOf("accounts", broker);
@@ -236,7 +238,7 @@ describe("positions routes (#79)", () => {
         currency: "EUR",
         quantityE8: units(35),
         costBasisCents: 403_375,
-        averageCostE6: price(115.25),
+        accountAverageCostE6: price(115.25),
         realizedCents: 6_875,
         costInCents: 461_000,
         costSoldCents: 57_625,
@@ -255,7 +257,7 @@ describe("positions routes (#79)", () => {
     const [ofB] = (await positionsOf("portfolios", b)).positions;
     const [ofAccount] = (await positionsOf("accounts", broker)).positions;
     assert.deepEqual(
-      [ofA, ofB, ofAccount].map((row) => [row!.quantityE8, row!.costBasisCents, row!.averageCostE6, row!.realizedCents]),
+      [ofA, ofB, ofAccount].map((row) => [row!.quantityE8, row!.costBasisCents, row!.accountAverageCostE6, row!.realizedCents]),
       [
         [units(20), 57_625, price(28.8125), 6_875],
         [units(120), 345_750, price(28.8125), 0],
@@ -300,7 +302,7 @@ describe("positions routes (#79)", () => {
           currency: "EUR",
           quantityE8: units(5),
           costBasisCents: 57_500,
-          averageCostE6: price(115),
+          accountAverageCostE6: price(115),
           costInCents: 57_500,
         },
       ],
@@ -316,7 +318,7 @@ describe("positions routes (#79)", () => {
 
     const ofTarget = await positionsOf("accounts", target);
     assert.deepEqual(
-      ofTarget.positions.map((row) => [row.quantityE8, row.costBasisCents, row.averageCostE6]),
+      ofTarget.positions.map((row) => [row.quantityE8, row.costBasisCents, row.accountAverageCostE6]),
       [[units(5), 57_500, price(115)]],
     );
   });
@@ -344,13 +346,16 @@ describe("positions routes (#79)", () => {
           currency: "EUR",
           quantityE8: units(90),
           costBasisCents: 486_600, // 8,110 − 3,244
-          averageCostE6: 54_066_667, // 4,866 ÷ 90, half to even at 6 decimals
+          accountAverageCostE6: 54_066_667, // 4,866 ÷ 90, half to even at 6 decimals
           realizedCents: 95_100, // 4,200 − 5 − 3,244
           costInCents: 811_000,
           costSoldCents: 324_400,
           tradeFeesCents: 1_500,
           transactionTaxCents: 500,
-          gainTaxCents: 14_726, // 247.26 withheld − 100 refunded
+          gainTaxWithheldCents: 24_726,
+          gainTaxAdjustmentsCents: 10_000, // a refund, positive as entered
+          costsCents: 500, // the transaction tax
+          taxesOnGainsCents: 14_726, // 247.26 withheld − 100 refunded
         },
       ],
     );
@@ -364,8 +369,11 @@ describe("positions routes (#79)", () => {
         costSoldCents: 324_400,
         tradeFeesCents: 1_500,
         transactionTaxCents: 500,
-        gainTaxCents: 14_726,
+        gainTaxWithheldCents: 24_726,
+        gainTaxAdjustmentsCents: 10_000,
         standaloneFeesCents: 300,
+        costsCents: 800, // the transaction tax and the custody fee
+        taxesOnGainsCents: 14_726,
       },
     ]);
 
@@ -392,14 +400,14 @@ describe("positions routes (#79)", () => {
 
     const { positions, summaries } = await positionsOf("portfolios", income);
     const [position] = positions;
-    assert.equal(position!.dividendsCents, 2_000);
+    assert.equal(position!.incomeGrossCents, 2_000);
     assert.equal(position!.withholdingForeignCents, 300);
     assert.equal(position!.withholdingDomesticCents, 442);
     assert.equal(position!.incomeFeesCents, 200);
     assert.equal(position!.costBasisCents, 40_500, "a dividend leaves the cost unchanged");
     // €10.58: the €5 fee paid on the buy is not subtracted again.
-    assert.equal(incomeOf(position!), 1_058);
-    assert.equal(incomeOf(summaries[0]!), 1_058);
+    assert.equal(position!.incomeCents, 1_058);
+    assert.equal(summaries[0]!.incomeCents, 1_058);
   });
 
   it("keeps a position sold out, for its totals, with no average cost", async () => {
@@ -411,7 +419,7 @@ describe("positions routes (#79)", () => {
     await trade({ ...common, type: "sell", tradeDate: "2026-01-06", quantityE8: units(2), priceE6: price(12) });
 
     const [position] = (await positionsOf("portfolios", trading)).positions;
-    assert.deepEqual([position!.quantityE8, position!.costBasisCents, position!.averageCostE6, position!.realizedCents], [0, 0, null, 400]);
+    assert.deepEqual([position!.quantityE8, position!.costBasisCents, position!.accountAverageCostE6, position!.realizedCents], [0, 0, null, 400]);
   });
 
   it("returns no positions for a portfolio without trades and for an account that is not a brokerage account", async () => {
@@ -452,7 +460,7 @@ describe("positions routes (#79)", () => {
     assert.equal((await get(`/portfolios/${theirPortfolio}/positions`, other)).statusCode, 200);
   });
 
-  it("leaves out another workspace's trades of the same catalog instrument", async () => {
+  it("loads only the session workspace's trades of a catalog instrument another workspace also trades", async () => {
     const { etf, a } = await twoPortfolios();
     const other = await addWorkspace("owner");
     const theirAccount = await account("brokerage", other);
@@ -461,17 +469,130 @@ describe("positions routes (#79)", () => {
       { type: "buy", accountId: theirAccount, portfolioId: theirPortfolio, instrumentId: etf, tradeDate: "2026-01-06", quantityE8: units(1), priceE6: price(500) },
       other,
     );
-    const [position] = (await positionsOf("portfolios", a)).positions;
-    assert.deepEqual([position!.costBasisCents, position!.averageCostE6], [57_625, price(115.25)]);
+    const ids = async (ws: string): Promise<string[]> => {
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM trades WHERE workspace_id = $1 AND instrument_id = $2", [ws, etf]);
+      return rows.map((row) => row.id).sort();
+    };
+    const ours = await ids(workspaceId);
+    const [theirs] = await ids(other);
+    assert.equal(ours.length, 3);
+    assert.ok(theirs);
+
+    // As the request runs it: envelope_app, Row-Level Security on, the session in workspace A.
+    const appPool = createPool(appConnectionString(process.env.DATABASE_URL!));
+    const client = await appPool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.user_id', $1, true)", [userId]);
+      await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+      const loaded = await loadPositionTrades(client, workspaceId, { portfolioId: a });
+      assert.deepEqual(loaded.map((row) => row.id).sort(), ours);
+      assert.ok(!loaded.some((row) => row.id === theirs));
+      // B's workspace id while the session is A's: Row-Level Security returns nothing.
+      assert.deepEqual(await loadPositionTrades(client, other, { portfolioId: theirPortfolio }), []);
+      assert.deepEqual(await loadPositionTrades(client, other, { accountId: theirAccount }), []);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+      await appPool.end();
+    }
   });
 
-  it("refuses a workspace the user is not a member of", async () => {
+  it("gives a bond's average cost in percent of nominal, its price unit", async () => {
+    const bond = await instrument("EUR", "government_bond", 10_000);
+    const broker = await account();
+    const savings = await portfolio();
+    await trade({ type: "buy", accountId: broker, portfolioId: savings, instrumentId: bond, tradeDate: "2026-03-02", quantityE8: units(10_000), priceE6: price(98.765432) });
+
+    const [position] = (await positionsOf("portfolios", savings)).positions;
+    assert.equal(position!.instrument.priceFactorE6, 10_000);
+    assert.equal(position!.costBasisCents, 987_654); // 10,000 × 98.765432 × 0.01 = €9,876.5432
+    assert.equal(position!.accountAverageCostE6, 98_765_400); // 9,876.54 ÷ (10,000 × 0.01): 98.7654
+  });
+
+  it("realizes a reverse split's cash in lieu at the account's average", async () => {
+    const { etf, broker, a, b } = await twoPortfolios();
+    await trade({ type: "split", instrumentId: etf, tradeDate: "2026-02-02", splitFrom: 10, splitTo: 1 });
+    // A's 0.5 units sold for €650 (€1,300 per unit), no fee.
+    await trade({ type: "sell", accountId: broker, portfolioId: a, instrumentId: etf, tradeDate: "2026-02-03", quantityE8: units(0.5), priceE6: price(1300) });
+
+    const [ofA] = (await positionsOf("portfolios", a)).positions;
+    assert.deepEqual(
+      [ofA!.quantityE8, ofA!.costBasisCents, ofA!.accountAverageCostE6, ofA!.costSoldCents, ofA!.realizedCents],
+      [0, 0, null, 57_625 + 57_625, 6_875 + 7_375], // 650 − 4,033.75 × 0.5 ÷ 3.5 = 73.75
+    );
+    const [ofB] = (await positionsOf("portfolios", b)).positions;
+    assert.deepEqual([ofB!.quantityE8, ofB!.costBasisCents], [units(3), 345_750]);
+  });
+
+  it("averages in a transfer from outside the app with the cost it carries", async () => {
+    const etf = await instrument();
+    const broker = await account();
+    const plan = await portfolio();
+    await trade({ type: "buy", accountId: broker, portfolioId: plan, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(10), priceE6: price(120) });
+    await trade({
+      type: "transfer",
+      instrumentId: etf,
+      tradeDate: "2026-02-10",
+      quantityE8: units(10),
+      to: { accountId: broker, portfolioId: plan, costBasisCents: 100_000 },
+    });
+    const [position] = (await positionsOf("portfolios", plan)).positions;
+    assert.deepEqual(
+      [position!.quantityE8, position!.costBasisCents, position!.accountAverageCostE6, position!.realizedCents],
+      [units(20), 220_000, price(110), 0],
+    );
+  });
+
+  it("leaves out another portfolio's and another account's fees recorded without an instrument", async () => {
+    const etf = await instrument();
+    const first = await account();
+    const second = await account();
+    const mine = await portfolio();
+    const theirs = await portfolio();
+    await trade({ type: "buy", accountId: first, portfolioId: mine, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(100) });
+    await trade({ type: "fee", accountId: first, portfolioId: theirs, instrumentId: null, tradeDate: "2026-01-31", feesCents: 300 });
+    await trade({ type: "fee", accountId: second, portfolioId: mine, instrumentId: null, tradeDate: "2026-01-31", feesCents: 100 });
+
+    const ofMine = await positionsOf("portfolios", mine);
+    assert.deepEqual(ofMine.summaries.map((row) => [row.standaloneFeesCents, row.costsCents]), [[100, 100]]);
+    assert.equal(ofMine.positions[0]!.standaloneFeesCents, 0);
+    const ofTheirs = await positionsOf("portfolios", theirs);
+    assert.deepEqual([ofTheirs.positions, ofTheirs.summaries.map((row) => row.standaloneFeesCents)], [[], [300]]);
+    assert.deepEqual((await positionsOf("accounts", first)).summaries.map((row) => row.standaloneFeesCents), [300]);
+    assert.deepEqual((await positionsOf("accounts", second)).summaries.map((row) => row.standaloneFeesCents), [100]);
+  });
+
+  it("gives a portfolio spanning two currencies one summary per currency, sorted", async () => {
+    const inEuro = await instrument("EUR");
+    const inDollars = await instrument("USD");
+    const euroBroker = await account("brokerage", workspaceId, "EUR");
+    const dollarBroker = await account("brokerage", workspaceId, "USD");
+    const global = await portfolio();
+    await trade({ type: "buy", accountId: dollarBroker, portfolioId: global, instrumentId: inDollars, tradeDate: "2026-01-10", quantityE8: units(2), priceE6: price(50), feesCents: 100 });
+    await trade({ type: "buy", accountId: euroBroker, portfolioId: global, instrumentId: inEuro, tradeDate: "2026-01-11", quantityE8: units(3), priceE6: price(10) });
+
+    const { positions, summaries } = await positionsOf("portfolios", global);
+    assert.deepEqual(positions.map((row) => row.currency).sort(), ["EUR", "USD"]);
+    assert.deepEqual(
+      summaries.map((row) => [row.currency, row.costBasisCents, row.tradeFeesCents]),
+      [
+        ["EUR", 3_000, 0],
+        ["USD", 10_100, 100],
+      ],
+    );
+  });
+
+  it("refuses a workspace the user is not a member of, on both routes", async () => {
     const stranger = randomUUID();
     otherWorkspaceIds.push(stranger);
     await superuserPool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Stranger', 'EUR', 'Europe/Rome')", [stranger]);
     const theirPortfolio = await portfolio(stranger);
-    const response = await get(`/portfolios/${theirPortfolio}/positions`, stranger);
-    assert.equal(response.statusCode, 403, response.body);
+    const theirAccount = await account("brokerage", stranger);
+    for (const path of [`/portfolios/${theirPortfolio}/positions`, `/accounts/${theirAccount}/positions`]) {
+      const response = await get(path, stranger);
+      assert.equal(response.statusCode, 403, `${path}: ${response.body}`);
+    }
   });
 
   it("lets a read_only member read positions", async () => {

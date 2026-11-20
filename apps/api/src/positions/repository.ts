@@ -9,13 +9,15 @@
  * kept. A portfolio gets its own quantity, its share of the account's cost, the account's average
  * cost and the totals of its own trades.
  *
- * No prices exist yet (milestone 0.2.1): no current value and no unrealized gain.
+ * No prices exist yet (milestone 0.2.1): no current value, no unrealized gain and no net result.
  */
 import {
   computePositions,
+  derivedResults,
   summarizeByAccount,
   summarizeByPortfolio,
   type AccountPosition,
+  type DerivedResults,
   type PortfolioPosition,
   type PositionSummary,
   type PositionTotals,
@@ -27,23 +29,36 @@ import { getInstruments, type Instrument } from "../instruments/repository.ts";
 import { loadPositionTrades } from "../trades/repository.ts";
 
 /** One position as the API returns it: per account and instrument, with the instrument's catalog fields. */
-export interface PositionRecord extends PositionTotals {
+export interface PositionRecord extends PositionTotals, DerivedResults {
   readonly accountId: string;
   readonly instrument: Instrument;
   /** The account's currency: every amount below is in it. */
   readonly currency: string;
   /** Units × 10^8. Zero for a position sold out, kept for its totals. */
   readonly quantityE8: number;
+  /**
+   * For a portfolio, its share of the account's cost, split by quantity. Never divide it by the
+   * portfolio's quantity: show `accountAverageCostE6`.
+   */
   readonly costBasisCents: number;
-  /** The account's average cost (C ÷ Q) × 10^6, half to even, for display only; null when nothing is held. */
-  readonly averageCostE6: number | null;
+  /**
+   * The account's average cost × 10^6 in the instrument's price unit: C ÷ (Q × price factor), half
+   * to even at 6 decimals (a bond in percent of nominal, a share quoted in pence in pence), shared by
+   * every portfolio of the account, for display only; null when nothing is held.
+   */
+  readonly accountAverageCostE6: number | null;
+}
+
+export interface SummaryRecord extends PositionTotals, DerivedResults {
+  readonly currency: string;
+  readonly costBasisCents: number;
 }
 
 export interface PositionsResult {
   /** Sorted by account, then instrument id. */
   readonly positions: PositionRecord[];
   /** One per currency, sorted by currency: amounts in different currencies are never added together. */
-  readonly summaries: PositionSummary[];
+  readonly summaries: SummaryRecord[];
 }
 
 /**
@@ -61,20 +76,23 @@ const TOTALS: Readonly<Record<keyof PositionTotals, true>> = {
   transactionTaxCents: true,
   accruedInterestPaidCents: true,
   accruedInterestReceivedCents: true,
-  gainTaxCents: true,
-  dividendsCents: true,
+  gainTaxWithheldCents: true,
+  gainTaxAdjustmentsCents: true,
+  managedResultTaxCents: true,
+  incomeGrossCents: true,
   withholdingForeignCents: true,
   withholdingDomesticCents: true,
   standaloneFeesCents: true,
   standaloneTaxesCents: true,
 };
 
-function totalsOf(row: PositionTotals): PositionTotals {
+/** The totals of a row, then the domain guide's income, costs and taxes on gains worked out from them. */
+function totalsOf(row: PositionTotals): PositionTotals & DerivedResults {
   const totals: Partial<Record<keyof PositionTotals, number>> = {};
   for (const key of Object.keys(TOTALS) as (keyof PositionTotals)[]) {
     totals[key] = row[key];
   }
-  return totals as PositionTotals;
+  return { ...(totals as PositionTotals), ...derivedResults(row) };
 }
 
 async function toRecords(db: DbClient, rows: readonly (AccountPosition | PortfolioPosition)[]): Promise<PositionRecord[]> {
@@ -91,14 +109,14 @@ async function toRecords(db: DbClient, rows: readonly (AccountPosition | Portfol
       currency: row.currency,
       quantityE8: row.quantity,
       costBasisCents: row.costBasisCents,
-      averageCostE6: row.averageCost,
+      accountAverageCostE6: row.averageCost,
       ...totalsOf(row),
     };
   });
 }
 
 /** A summary without its portfolio or account id: the route's path already names it. */
-function summaryOf(summary: PositionSummary): PositionSummary {
+function summaryOf(summary: PositionSummary): SummaryRecord {
   return { currency: summary.currency, costBasisCents: summary.costBasisCents, ...totalsOf(summary) };
 }
 
