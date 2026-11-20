@@ -25,15 +25,25 @@ export async function rejectMalformedIdParams(request: FastifyRequest, reply: Fa
       continue;
     }
     if (!isUuid(value)) {
-      await reply.code(404).send({ error: `${describeIdParam(name)} not found` });
+      await reply.code(404).send({ error: `${ID_PARAM_NAMES[name] ?? "resource"} not found` });
       return;
     }
   }
 }
 
-/** "scheduledTransactionId" → "scheduled transaction", matching the routes' own 404 messages. */
-function describeIdParam(name: string): string {
-  return name
-    .slice(0, -"Id".length)
-    .replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
-}
+/**
+ * What each id path parameter names, in the wording of its routes' own 404 messages ("category
+ * group not found", "assignment entry not found"). A new `…Id` parameter belongs here too; until
+ * then a malformed one still answers 404, as "resource not found".
+ */
+export const ID_PARAM_NAMES: Readonly<Record<string, string>> = {
+  accountId: "account",
+  batchId: "assignment batch",
+  categoryId: "category",
+  entryId: "assignment entry",
+  groupId: "category group",
+  instrumentId: "instrument",
+  portfolioId: "portfolio",
+  scheduledTransactionId: "scheduled transaction",
+  transactionId: "transaction",
+};

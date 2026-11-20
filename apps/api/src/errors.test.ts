@@ -1,10 +1,69 @@
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
 import { describe, it } from "node:test";
 
 import { ValidationError } from "@envelope/core";
+import Fastify from "fastify";
 
-import { toErrorReply } from "./errors.ts";
-import { isUuid } from "./ids.ts";
+import { LOG_REDACT_PATHS, registerErrorHandler, toErrorReply } from "./errors.ts";
+import { ID_PARAM_NAMES, isUuid } from "./ids.ts";
+
+describe("registerErrorHandler's logging (#512)", () => {
+  /** A bare app with the handler and the app's own redaction, whose log lines are kept for inspection. */
+  function appThrowing(error: Error) {
+    const lines: Record<string, unknown>[] = [];
+    const app = Fastify({
+      logger: {
+        level: "info",
+        redact: [...LOG_REDACT_PATHS],
+        stream: { write: (line: string) => void lines.push(JSON.parse(line) as Record<string, unknown>) },
+      },
+    });
+    registerErrorHandler(app);
+    app.get("/boom", async () => {
+      throw error;
+    });
+    return { app, lines };
+  }
+
+  async function logOf(error: Error): Promise<Record<string, unknown>> {
+    const { app, lines } = appThrowing(error);
+    await app.inject({ method: "GET", url: "/boom" });
+    await app.close();
+    const line = lines.find((entry) => entry.statusCode !== undefined || entry.err !== undefined);
+    assert.ok(line, "the error handler logged nothing");
+    return line;
+  }
+
+  it("logs a mapped client error's code and status only, never its message quoting request data", async () => {
+    const line = await logOf(databaseError("22P02", 'invalid input syntax for type uuid: "private request data"'));
+    assert.equal(line.level, 30);
+    assert.equal(line.code, "22P02");
+    assert.equal(line.statusCode, 400);
+    assert.equal(line.err, undefined);
+    assert.ok(!JSON.stringify(line).includes("private request data"));
+  });
+
+  it("logs a database permission refusal at warn, still answering 403", async () => {
+    const { app, lines } = appThrowing(databaseError("42501", "permission denied for table accounts"));
+    const response = await app.inject({ method: "GET", url: "/boom" });
+    await app.close();
+    assert.equal(response.statusCode, 403);
+    const line = lines.find((entry) => entry.code === "42501");
+    assert.equal(line?.level, 40);
+  });
+
+  it("logs a 500's whole error, with a database error's detail redacted", async () => {
+    const error = Object.assign(databaseError("23514", 'new row for relation "accounts" violates check constraint'), {
+      detail: "Failing row contains (private, row, values).",
+    });
+    const line = await logOf(error);
+    assert.equal(line.level, 50);
+    const err = line.err as Record<string, unknown>;
+    assert.match(String(err.message), /violates check constraint/);
+    assert.equal(err.detail, "[Redacted]");
+  });
+});
 
 /** Shaped like node-postgres' own `DatabaseError`: a message, a SQLSTATE `code` and a `severity`. */
 function databaseError(code: string, message: string): Error {
@@ -29,6 +88,16 @@ describe("toErrorReply (#512)", () => {
       statusCode: 403,
       body: { error: "forbidden" },
     });
+    // What PostgreSQL actually raises for a row a Row-Level Security policy refuses.
+    assert.deepEqual(
+      toErrorReply(databaseError("42501", 'new row violates row-level security policy for table "import_mappings"')),
+      { statusCode: 403, body: { error: "forbidden" } },
+    );
+  });
+
+  it("still maps a Row-Level Security refusal reported under another SQLSTATE to 403", () => {
+    // The message fallback: a refusal re-raised under another code (by a trigger or a function
+    // wrapping the statement, for instance) is still a refusal, never a 500 naming the table.
     assert.deepEqual(
       toErrorReply(databaseError("P0001", 'new row violates row-level security policy for table "import_mappings"')),
       { statusCode: 403, body: { error: "forbidden" } },
@@ -76,6 +145,21 @@ describe("toErrorReply (#512)", () => {
       statusCode: 500,
       body: { error: "internal_error" },
     });
+  });
+});
+
+describe("ID_PARAM_NAMES (#512)", () => {
+  it("names every id path parameter the routes declare", async () => {
+    const routesDir = new URL("./routes/", import.meta.url);
+    const sources = await Promise.all(
+      (await readdir(routesDir)).filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts")).map((file) => readFile(new URL(file, routesDir), "utf8")),
+    );
+    const params = new Set(sources.flatMap((source) => [...source.matchAll(/:([a-zA-Z]+Id)\b/g)].map((match) => match[1]!)));
+    params.delete("workspaceId");
+    assert.ok(params.size > 0);
+    for (const param of params) {
+      assert.ok(ID_PARAM_NAMES[param], `${param} has no name in ID_PARAM_NAMES`);
+    }
   });
 });
 

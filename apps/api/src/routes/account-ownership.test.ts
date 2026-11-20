@@ -47,6 +47,23 @@ describe("account ownership and error replies (#512)", () => {
     assert.equal(app.pool.totalCount - app.pool.idleCount, 0, "a connection is still checked out");
   }
 
+  /** How many times `run` asked the app's pool for a connection (`pool.query` goes through `connect` too). */
+  async function connectionsTakenBy(run: () => Promise<unknown>): Promise<number> {
+    const pool = app.pool;
+    const original = pool.connect;
+    let taken = 0;
+    pool.connect = function (this: DbPool, ...args: unknown[]) {
+      taken += 1;
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    } as typeof pool.connect;
+    try {
+      await run();
+    } finally {
+      pool.connect = original;
+    }
+    return taken;
+  }
+
   function assertNoLeak(body: string): void {
     for (const word of LEAKY_WORDS) {
       assert.ok(!body.toLowerCase().includes(word), `the reply leaks "${word}": ${body}`);
@@ -249,7 +266,17 @@ describe("account ownership and error replies (#512)", () => {
   });
 
   describe("a malformed id answers 404 without reaching the database", () => {
+    /**
+     * Every workspace route with an id in its path when #512 landed. The check is one global
+     * preHandler, so a route added later is covered without being listed here.
+     */
     const pathRoutes: [method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string][] = [
+      ["PATCH", `/accounts/${MALFORMED}`],
+      ["POST", `/accounts/${MALFORMED}/tax-regimes`],
+      ["PUT", `/accounts/${MALFORMED}/tax-regimes`],
+      ["PUT", `/categories/${MALFORMED}/goal`],
+      ["PUT", `/category-groups/${MALFORMED}/categories/reorder`],
+      ["PATCH", `/portfolios/${MALFORMED}`],
       ["PUT", `/accounts/${MALFORMED}/import-mapping`],
       ["GET", `/accounts/${MALFORMED}/import-mapping`],
       ["POST", `/accounts/${MALFORMED}/import`],
@@ -280,15 +307,39 @@ describe("account ownership and error replies (#512)", () => {
       ["DELETE", `/portfolios/${MALFORMED}`],
     ];
 
+    let baselineConnections: number;
+
+    before(async () => {
+      // A request with no workspace still takes the user mapper's own connection: the baseline.
+      baselineConnections = await connectionsTakenBy(() => inject("GET", "/me"));
+    });
+
     for (const [method, path] of pathRoutes) {
       it(`${method} ${path}`, async () => {
         const url = `/workspaces/${workspaceId}${path.replace("{ACCOUNT}", accountId)}`;
-        const response = await inject(method, url, method === "GET" || method === "DELETE" ? undefined : {});
-        assert.equal(response.statusCode, 404, response.body);
-        assert.match(response.json().error, / not found$/);
+        let response: Awaited<ReturnType<typeof inject>> | undefined;
+        const taken = await connectionsTakenBy(async () => {
+          response = await inject(method, url, method === "GET" || method === "DELETE" ? undefined : {});
+        });
+        assert.equal(response!.statusCode, 404, response!.body);
+        assert.match(response!.json().error, / not found$/);
+        assert.equal(taken, baselineConnections, "the route took a database connection of its own");
         assertNoConnectionCheckedOut();
       });
     }
+
+    it("counts connections usefully: a well-formed unknown id does take the route's own", async () => {
+      const taken = await connectionsTakenBy(() => inject("GET", `/workspaces/${workspaceId}/accounts/${randomUUID()}/transactions`));
+      assert.ok(taken > baselineConnections, `${taken} connection(s), baseline ${baselineConnections}`);
+    });
+
+    it("still answers 401 first to a request with no token (the check runs after authentication)", async () => {
+      const response = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/accounts/${MALFORMED}/transactions`,
+      });
+      assert.equal(response.statusCode, 401);
+    });
 
     it("GET /instruments/:instrumentId", async () => {
       const response = await inject("GET", `/instruments/${MALFORMED}`);

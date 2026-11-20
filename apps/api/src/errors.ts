@@ -129,9 +129,17 @@ export function toErrorReply(error: unknown): ErrorReply {
   return { statusCode: 500, body: { error: "internal_error" } };
 }
 
+/** Never logged (#512): a database error's `detail` can carry a whole row (a CHECK or NOT NULL failure). */
+export const LOG_REDACT_PATHS: readonly string[] = ["err.detail"];
+
 /**
  * Installs `toErrorReply` as the app's error handler (#512). A 500 logs the whole error
- * server-side, the only place its message and stack go; a mapped client error logs it at `info`.
+ * server-side, the only place its message and stack go (`buildApp` redacts `err.detail`, which for
+ * a CHECK or NOT NULL failure carries the whole row). A mapped client error logs only its `code`
+ * and status: a JSON parse error or an invalid-input message quotes the request's own data. A
+ * permission or Row-Level Security refusal from the database logs at `warn`, still answering 403,
+ * since a missing GRANT would otherwise go unnoticed at `info`.
+ *
  * The request's database transaction is rolled back either way: by `onError`, or by `onSend` for
  * any reply of 400 or more (`auth/workspace-membership.ts`), whichever runs first, the other
  * finding no connection left to release.
@@ -142,7 +150,14 @@ export function registerErrorHandler(app: FastifyInstance): void {
     if (statusCode >= 500) {
       request.log.error({ err: error }, "unhandled error");
     } else {
-      request.log.info({ err: error }, "request failed with a client error");
+      const sqlState = sqlStateOf(error);
+      const { code } = error as { code?: unknown };
+      const summary = { code: sqlState ?? (typeof code === "string" ? code : undefined), statusCode };
+      if (sqlState !== undefined && statusCode === 403) {
+        request.log.warn(summary, "the database refused a request: check its grants and Row-Level Security policies");
+      } else {
+        request.log.info(summary, "request failed with a client error");
+      }
     }
     await reply.code(statusCode).send(body);
   });

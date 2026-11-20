@@ -6,7 +6,7 @@ import { createUserMapperPreHandler } from "./auth/user-mapper.ts";
 import { registerWorkspaceScope } from "./auth/workspace-membership.ts";
 import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
-import { registerErrorHandler } from "./errors.ts";
+import { LOG_REDACT_PATHS, registerErrorHandler } from "./errors.ts";
 import { rejectMalformedIdParams } from "./ids.ts";
 import type { QueueDriver } from "./queue/index.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
@@ -50,9 +50,10 @@ export interface App {
  * already makes.
  */
 export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: string): App {
+  const redact = [...LOG_REDACT_PATHS];
   const loggerOptions = config.logPretty
-    ? { level: config.logLevel, transport: { target: "pino-pretty" } }
-    : { level: config.logLevel };
+    ? { level: config.logLevel, redact, transport: { target: "pino-pretty" } }
+    : { level: config.logLevel, redact };
 
   const fastify = Fastify({ logger: loggerOptions });
   const pool = createPool(config.databaseUrl);
