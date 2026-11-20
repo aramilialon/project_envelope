@@ -434,7 +434,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories, tick transactions as cleared, or work through the "Da fare" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories, record a transfer coming in from another account ("Trasferimento", then "Da un altro conto": from the off-budget "Broker ETF" the money lands in "Da assegnare" unless a category is chosen), tick transactions as cleared, or work through the "Da fare" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
     <div class="views" role="tablist" aria-label="Vista">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -566,7 +566,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var RTA_ID = 'rta';
   CAT[RTA_ID] = { id: RTA_ID, name: 'Da assegnare', avail: 31200, group: '' };
   var ACCOUNTS = [
-    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['broker', 'Broker ETF', 'cash', false]
+    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['broker', 'Broker ETF', 'cash', false], ['mutuo', 'Mutuo casa', 'loan', false]
   ];
   var ACC = {};
   ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3] }; });
@@ -602,6 +602,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (t.transfer) {
       var a = ACC[t.transfer];
       var label = a.type === 'credit' ? 'Pagamento carta: ' + a.name : (t.amount < 0 ? 'Verso ' : 'Da ') + a.name;
+      // An incoming transfer from an off-budget account shows where it landed: "Da assegnare" or its category.
       return '<span class="kind">' + (a.type === 'credit' ? 'Carta' : 'Trasferimento') + '</span>' + esc(label) + (t.cat ? ' <span class="muted">· ' + esc(CAT[t.cat].name) + '</span>' : '');
     }
     if (t.splits) return '<span class="kind">Divisa</span>' + t.splits.length + ' categorie ' + ICON.chev;
@@ -627,7 +628,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   ];
   var LABEL = { 'Banca, rata mutuo': 'mutuo', 'Operatore telefonico': 'telefono', 'Idraulico': 'idraulico', 'Fornitore energia': 'energia', 'Supermercato': 'spesa', 'Clinica veterinaria': 'veterinario', 'Grande magazzino': 'grande magazzino', 'Stipendio': 'stipendio', 'Stipendio di Anna': 'stipendio', 'Tecnico caldaia': 'caldaia' };
   function lab(t) {
-    if (t.transfer) return ACC[t.transfer].type === 'credit' ? ACC[t.transfer].name : 'piano di accumulo';
+    if (t.transfer) return ACC[t.transfer].type === 'credit' ? ACC[t.transfer].name : t.amount > 0 ? ACC[t.transfer].name.toLowerCase() : 'piano di accumulo';
     return LABEL[t.payee] || t.payee.toLowerCase();
   }
   function euros(c) { return (Math.abs(c) / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
@@ -752,7 +753,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<button type="button" class="open" data-open="' + t.id + '" aria-label="Apri ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
         '<span class="cell n">' + dLabel(t.date) + '</span>' +
         '<span class="cell"><b style="font-weight:500">' + esc(t.payee) + '</b>' + (t.memo ? '<small>' + esc(t.memo) + '</small>' : '') + '</span>' +
-        '<span class="cell">' + catText(t) + '</span>' +
+        '<span class="cell" title="' + esc(catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) + '">' + catText(t) + '</span>' +
         '<span class="cell r n">' + (t.amount < 0 ? plainN(-t.amount) : '') + '</span>' +
         '<span class="cell r n">' + (t.amount > 0 ? plainN(t.amount) : '') + '</span>' +
         '<span class="cell r n">' + plainN(r.bal) + '</span></button>';
@@ -784,9 +785,9 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     return d;
   }
   function draftFrom(t) {
-    if (!t) return { id: null, kind: 'out', date: '2026-09-25', payee: '', amountStr: '', cat: '', transfer: '', memo: '', cleared: false, split: false, lines: [] };
+    if (!t) return { id: null, kind: 'out', dir: 'out', date: '2026-09-25', payee: '', amountStr: '', cat: '', transfer: '', memo: '', cleared: false, split: false, lines: [] };
     return {
-      id: t.id, kind: t.transfer ? 'transfer' : t.amount > 0 ? 'in' : 'out', date: t.date, payee: t.payee,
+      id: t.id, kind: t.transfer ? 'transfer' : t.amount > 0 ? 'in' : 'out', dir: t.transfer && t.amount > 0 ? 'in' : 'out', date: t.date, payee: t.payee,
       amountStr: amountStr(Math.abs(t.amount)), cat: t.cat || '', transfer: t.transfer || '', memo: t.memo || '', cleared: t.status !== 'pending',
       split: !!t.splits, lines: (t.splits || []).map(function (s) { return { cat: s[0], amountStr: amountStr(Math.abs(s[1])) }; }), locked: t.status === 'locked'
     };
@@ -797,6 +798,19 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     state.draft.lines.forEach(function (l) { used += parseAmount(l.amountStr) || 0; });
     return total - used;
   }
+  // A transfer's other account is off budget (a brokerage account, or a loan such as the Mutuo casa:
+  // every off-budget source is covered): going out it needs a category; coming in to this account
+  // (a cash account) it lands in "Da assegnare" by default, or in a chosen category.
+  // If this account were a credit card, an incoming transfer from an off-budget account would not
+  // offer "Da assegnare" and would need a category, like an outgoing one (card income is not
+  // supported yet); the mockup only has the Conto corrente's register, so that case is not drawn.
+  // "Dal conto" leaves credit cards out: money coming from a card (a cash advance) is not covered by
+  // the rules for transfers from off-budget accounts, and an incoming transfer to a card with no
+  // category is refused, so the form does not offer a card as the source.
+  function sourceAccounts() {
+    return state.draft.dir === 'in' ? ACCOUNTS.filter(function (a) { return a[2] !== 'credit'; }) : ACCOUNTS;
+  }
+  function offBudgetIn() { var d = state.draft; return d.kind === 'transfer' && d.dir === 'in' && !!ACC[d.transfer] && !ACC[d.transfer].onBudget; }
   // Effect on the category's available money, the way the budget month would show it after saving.
   function impactLine() {
     var d = state.draft, a = draftAmount();
@@ -805,6 +819,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.kind === 'transfer') {
       var acc = ACC[d.transfer];
       if (!acc) return '';
+      if (d.dir === 'in') {
+        if (acc.onBudget) return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
+        var into = CAT[d.cat];
+        if (!into) return '';
+        return '<span class="hint">I soldi entrano nel budget: ' + (d.cat === RTA_ID ? '«Da assegnare»' : esc(into.name)) + ' passa da ' + f(into.avail) + ' a ' + f(into.avail + a) + '.</span>';
+      }
       if (acc.type === 'credit') return '<span class="hint">Paga la carta: scala dalla categoria di pagamento Visa, non tocca le altre categorie.</span>';
       if (!acc.onBudget) return d.cat ? '<span class="hint">I soldi escono dal budget: ' + esc(CAT[d.cat].name) + ' passa da ' + f(CAT[d.cat].avail) + ' a ' + f(CAT[d.cat].avail - a) + '.</span>' : '<span class="hint warn">Il conto è fuori budget: scegli la categoria da cui escono i soldi.</span>';
       return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
@@ -835,9 +855,13 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       '<div class="two"><div class="field"><label for="tx-date">Data</label><input type="date" id="tx-date" data-df="date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="tx-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="tx-amt" data-df="amountStr" value="' + esc(d.amountStr) + '" placeholder="0,00"><span>€</span></span></div></div>';
     if (d.kind === 'transfer') {
-      h += '<div class="field"><label for="tx-acc">' + 'Verso il conto' + '</label><select id="tx-acc" data-df="transfer"><option value="">Scegli un conto</option>' +
-        ACCOUNTS.map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (fuori budget)') + '</option>'; }).join('') + '</select></div>';
-      if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, false) + '</select></div>';
+      var dirs = [['out', 'Verso un altro conto'], ['in', 'Da un altro conto']];
+      h += '<div class="segs" role="radiogroup" aria-label="Direzione">' + dirs.map(function (k) {
+        return '<label><input type="radio" name="dir" value="' + k[0] + '" data-df="dir" id="dir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
+      }).join('') + '</div>';
+      h += '<div class="field"><label for="tx-acc">' + (d.dir === 'in' ? 'Dal conto' : 'Verso il conto') + '</label><select id="tx-acc" data-df="transfer"><option value="">Scegli un conto</option>' +
+        sourceAccounts().map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (fuori budget)') + '</option>'; }).join('') + '</select></div>';
+      if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.dir === 'in') + '</select></div>';
     } else {
       h += '<div class="field"><label for="tx-payee">' + (d.kind === 'in' ? 'Da chi' : 'Beneficiario') + '</label><input type="text" id="tx-payee" data-df="payee" list="payees" value="' + esc(d.payee) + '" autocomplete="off">' +
         '<datalist id="payees">' + Object.keys(LAST_CAT).map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('') + '</datalist>' +
@@ -870,8 +894,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var d = state.draft, errs = [], a = draftAmount();
     if (a === null || a <= 0) errs.push('Scrivi un importo maggiore di zero, per esempio 12,50.');
     if (d.kind === 'transfer') {
-      if (!d.transfer) errs.push('Scegli il conto di destinazione.');
-      else if (!ACC[d.transfer].onBudget && !d.cat) errs.push('Il conto è fuori budget: scegli la categoria da cui escono i soldi.');
+      if (!d.transfer) errs.push(d.dir === 'in' ? 'Scegli il conto di provenienza.' : 'Scegli il conto di destinazione.');
+      else if (d.dir === 'out' && !ACC[d.transfer].onBudget && !d.cat) errs.push('Il conto è fuori budget: scegli la categoria da cui escono i soldi.');
     } else {
       if (!d.payee.trim()) errs.push('Scrivi il beneficiario.');
       if (d.split) {
@@ -885,7 +909,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function save() {
     state.errors = validate();
     if (state.errors.length) return renderPanel();
-    var d = state.draft, a = draftAmount(), sign = d.kind === 'in' ? 1 : -1;
+    var d = state.draft, a = draftAmount(), sign = d.kind === 'in' || (d.kind === 'transfer' && d.dir === 'in') ? 1 : -1;
     var t = d.id ? TXS.filter(function (x) { return x.id === d.id; })[0] : tx({});
     t.date = d.date; t.amount = sign * a; t.memo = d.memo; t.status = d.cleared ? 'cleared' : 'pending';
     delete t.transfer; delete t.splits; delete t.cat;
@@ -1066,7 +1090,21 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (!state.draft) return;
-    if (t.dataset.df === 'kind') { state.draft.kind = t.value; state.draft.split = false; if (t.value === 'in') state.draft.cat = RTA_ID; else if (state.draft.cat === RTA_ID) state.draft.cat = ''; renderPanel(); var r = el('kind-' + t.value); if (r) r.focus(); return; }
+    if (t.dataset.df === 'kind') { state.draft.kind = t.value; state.draft.split = false; if (t.value === 'in') state.draft.cat = RTA_ID; else if (state.draft.cat === RTA_ID) state.draft.cat = ''; if (offBudgetIn()) state.draft.cat = RTA_ID; renderPanel(); var r = el('kind-' + t.value); if (r) r.focus(); return; }
+    if (t.dataset.df === 'dir') {
+      // Keep what was entered; only a card source is dropped, and the category is recomputed.
+      state.draft.dir = t.value;
+      if (t.value === 'in' && ACC[state.draft.transfer] && ACC[state.draft.transfer].type === 'credit') state.draft.transfer = '';
+      if (offBudgetIn()) { if (!state.draft.cat) state.draft.cat = RTA_ID; }
+      else if (state.draft.cat === RTA_ID) state.draft.cat = '';
+      renderPanel(); var rd = el('dir-' + t.value); if (rd) rd.focus(); return; }
+    if (t.dataset.df === 'transfer') {
+      // From an off-budget account "Da assegnare" is preselected; going out to one it is not offered.
+      state.draft.transfer = t.value;
+      if (offBudgetIn()) { if (!state.draft.cat) state.draft.cat = RTA_ID; }
+      else if (state.draft.cat === RTA_ID) state.draft.cat = '';
+      renderPanel(); var sa = el('tx-acc'); if (sa) sa.focus(); return;
+    }
     if (t.dataset.df === 'cleared') { state.draft.cleared = t.checked; return; }
     if (t.dataset.df === 'payee') {
       state.draft.payee = t.value;
