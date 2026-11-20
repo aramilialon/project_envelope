@@ -22,9 +22,13 @@ export function assertSafeToRun(urls: Readonly<Record<string, string>>): void {
     throw new Error("Refusing to run with NODE_ENV=production.");
   }
   for (const [name, url] of Object.entries(urls)) {
-    const { hostname } = new URL(url);
-    if (!LOCAL_HOSTNAMES.has(hostname)) {
-      throw new Error(`Refusing to run against a non-local ${name} (${url}). This script is for local development only.`);
+    const parsed = new URL(url);
+    if (!LOCAL_HOSTNAMES.has(parsed.hostname)) {
+      // The URL may carry a password (a connection string): never echo it.
+      if (parsed.password) {
+        parsed.password = "***";
+      }
+      throw new Error(`Refusing to run against a non-local ${name} (${parsed.toString()}). This script is for local development only.`);
     }
   }
 }
