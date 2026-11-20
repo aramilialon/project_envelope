@@ -178,7 +178,7 @@ $ WALK_REPLAY=/tmp/envelope-walk-seed4242-step812-….json node --test src/test-
 
 To report a bug, cut the log down by hand to the few steps that still fail (keep `version`, `seed` and `driver`; the setup of each workspace is not in the log, so a log can start from its first step), replay it to check, and attach it to the issue. `WALK_KEEP=1` leaves the workspaces in the database after the walk, to look at them with SQL.
 
-A bug the walk finds and that is not fixed yet is left out by a named entry in `EXCLUSIONS` (`src/test-helpers/walk/operations.ts`), saying what the bug is and where it is tracked. Remove the entry with the fix; `WALK_INCLUDE_EXCLUDED=1` puts every excluded case back, to reproduce one or check a fix.
+A bug the walk finds and that is not fixed yet is left out by a named entry in `EXCLUSIONS` (`src/test-helpers/walk/operations.ts`), saying what the bug is and where it is tracked. Remove the entry with the fix; `WALK_INCLUDE_EXCLUDED=1` puts every excluded case back, to reproduce one or check a fix. Two are excluded today: `transfer-leg-amount` (#547, editing the splits of one leg of a transfer leaves the other leg as it was) and `card-income` (#548, income on an on-budget credit card is accepted and then every budget month of the workspace answers 400). Each bug's minimal log is kept in `src/test-helpers/walk/regressions/`, named after its issue: replay it with `WALK_REPLAY` to see the bug, and it must pass once the bug is fixed.
 
 ### Adding a route to the walk
 

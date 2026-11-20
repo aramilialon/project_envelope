@@ -1,0 +1,11 @@
+{
+ "version": 1,
+ "seed": 20261120,
+ "steps": 3,
+ "driver": "inject",
+ "ops": [
+  { "step": 1, "op": { "kind": "createAccount", "ws": "household", "actor": "owner", "params": { "type": "savings", "onBudget": true, "name": "savings 2" } } },
+  { "step": 2, "op": { "kind": "transfer", "ws": "household", "actor": "owner", "params": { "source": "a1", "destination": "a2", "amountCents": 10000, "occurredAt": "2025-10-01" } } },
+  { "step": 3, "op": { "kind": "editTransaction", "ws": "household", "actor": "owner", "params": { "tx": "t1", "change": "amount", "value": -5000 } } }
+ ]
+}

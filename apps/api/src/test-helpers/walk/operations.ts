@@ -119,11 +119,11 @@ export const REFUSAL_ALLOWLIST: ReadonlySet<string> = new Set([
  */
 export const EXCLUSIONS: Readonly<Record<string, string>> = {
   "transfer-leg-amount":
-    "EXCLUDED, random walk finding 1 (#80, issue to be filed): PATCH .../transactions/:id with new splits on one leg of a " +
+    "EXCLUDED, random walk finding 1 (#547): PATCH .../transactions/:id with new splits on one leg of a " +
     "transfer is accepted and changes that leg only, so the two legs stop cancelling out and money appears in or " +
     "disappears from the accounts while the budget does not move (the budget invariant breaks).",
   "card-income":
-    "EXCLUDED, random walk finding 2 (#80, issue to be filed): POST .../transactions with an uncategorized split (income) " +
+    "EXCLUDED, random walk finding 2 (#548): POST .../transactions with an uncategorized split (income) " +
     "on an on-budget credit card is accepted, and from then on every GET .../budget-months/:month of the workspace " +
     "answers 400 unsupported_transaction until it is deleted. Income on a card is a known limitation of the core " +
     "(packages/core/README.md), but the API should refuse the write instead of accepting one that breaks every read.",
