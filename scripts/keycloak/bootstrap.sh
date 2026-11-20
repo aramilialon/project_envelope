@@ -4,13 +4,19 @@
 # apps/api/src/test-helpers/keycloak.ts provisions and tears down on every
 # test run. Safe to run again: an existing realm or client is left alone.
 #
-# KEYCLOAK_REALM names another realm instead of "envelope" (the disposable
-# environments of scripts/explore-env/ use "envelope-explore-<run>"), and
-# WEB_ORIGINS, a space-separated list of origins such as
-# "http://127.0.0.1:41234", replaces the default localhost redirect URIs and
-# web origins with exactly those origins (each one's redirect URIs are
-# "<origin>" and "<origin>/*"). Both are optional; without them the script
-# behaves as before.
+# ENVELOPE_BOOTSTRAP_REALM names another realm instead of "envelope" (the
+# disposable environments of scripts/explore-env/ use
+# "envelope-explore-<run>"), and ENVELOPE_BOOTSTRAP_WEB_ORIGINS, a
+# space-separated list of origins such as "http://127.0.0.1:41234", replaces
+# the default localhost redirect URIs and web origins with exactly those
+# origins (each one's redirect URIs are "<origin>" and "<origin>/*"). Each
+# origin must be a scheme and host (with an optional port) and nothing else:
+# no path, no wildcard. Custom origins are refused for the "envelope" realm
+# itself. Both are optional; without them the script behaves as before.
+#
+# The admin password never appears on a command line (where `ps` would show
+# it): curl reads it from standard input, and the admin token is passed to
+# curl as a header file through a process substitution.
 #
 # Requirements: Keycloak running and reachable at KEYCLOAK_URL (default
 # http://127.0.0.1:8080), KEYCLOAK_ADMIN_PASSWORD in the environment (the
@@ -52,7 +58,7 @@ set -euo pipefail
 command -v jq >/dev/null || { echo "jq is not installed" >&2; exit 1; }
 
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://127.0.0.1:8080}"
-REALM="${KEYCLOAK_REALM:-envelope}"
+REALM="${ENVELOPE_BOOTSTRAP_REALM:-envelope}"
 CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 : "${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env)}"
 
@@ -67,11 +73,19 @@ CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
 # (no leading ":") is a glob over the whole rest of the URL, so it still matches if the web
 # app is ever reached on a non-default port too.
 LAN_ORIGIN="${LAN_ORIGIN:-}"
-REQUESTED_ORIGINS="${WEB_ORIGINS:-}"
+REQUESTED_ORIGINS="${ENVELOPE_BOOTSTRAP_WEB_ORIGINS:-}"
 if [[ -n "$REQUESTED_ORIGINS" ]]; then
+  if [[ "$REALM" == "envelope" ]]; then
+    echo "Refusing ENVELOPE_BOOTSTRAP_WEB_ORIGINS for the shared \"envelope\" realm" >&2
+    exit 1
+  fi
   REDIRECT_URIS='[]'
   WEB_ORIGINS='[]'
   for origin in $REQUESTED_ORIGINS; do
+    if [[ ! "$origin" =~ ^https?://[^/*]+$ ]]; then
+      echo "Refusing origin \"$origin\": expected http(s)://host[:port], with no path or wildcard" >&2
+      exit 1
+    fi
     REDIRECT_URIS=$(jq -c --arg o "$origin" '. + [$o, $o + "/*"]' <<<"$REDIRECT_URIS")
     WEB_ORIGINS=$(jq -c --arg o "$origin" '. + [$o]' <<<"$WEB_ORIGINS")
   done
@@ -88,7 +102,7 @@ fi
 kc() {
   local method=$1 path=$2
   shift 2
-  curl -sS -X "$method" "$KEYCLOAK_URL$path" -H "Authorization: Bearer $TOKEN" "$@"
+  curl -sS -X "$method" "$KEYCLOAK_URL$path" -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") "$@"
 }
 
 echo "== Waiting for Keycloak at $KEYCLOAK_URL"
@@ -96,10 +110,12 @@ until curl -fsS "$KEYCLOAK_URL/realms/master" >/dev/null 2>&1; do
   sleep 1
 done
 
-TOKEN=$(curl -fsS -X POST "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
+# printf is a shell builtin, so the password goes to curl's standard input without ever being
+# an argument of a process.
+TOKEN=$(printf '%s' "$KEYCLOAK_ADMIN_PASSWORD" | curl -fsS -X POST "$KEYCLOAK_URL/realms/master/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=password" -d "client_id=admin-cli" \
-  -d "username=admin" -d "password=$KEYCLOAK_ADMIN_PASSWORD" | jq -r .access_token)
+  -d "username=admin" --data-urlencode "password@-" | jq -r .access_token)
 
 if [[ -z "$TOKEN" || "$TOKEN" == "null" ]]; then
   echo "Could not get an admin token: check KEYCLOAK_ADMIN_PASSWORD" >&2

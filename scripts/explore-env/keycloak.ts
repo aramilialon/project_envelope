@@ -80,6 +80,7 @@ export class KeycloakAdmin {
       registrationAllowed: false,
       verifyEmail: false,
       accessTokenLifespan: ACCESS_TOKEN_LIFESPAN_SECONDS,
+      bruteForceProtected: true,
       attributes: { [CREATED_AT_ATTRIBUTE]: createdAt.toISOString() },
     });
   }
@@ -92,9 +93,9 @@ export class KeycloakAdmin {
         PATH: process.env.PATH ?? "",
         KEYCLOAK_URL: this.url,
         KEYCLOAK_ADMIN_PASSWORD: this.adminPassword,
-        KEYCLOAK_REALM: realm,
+        ENVELOPE_BOOTSTRAP_REALM: realm,
         KEYCLOAK_AUDIENCE: WEB_CLIENT_ID,
-        WEB_ORIGINS: webOrigin,
+        ENVELOPE_BOOTSTRAP_WEB_ORIGINS: webOrigin,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
