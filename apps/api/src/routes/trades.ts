@@ -10,6 +10,7 @@ import {
   listTrades,
   TAX_KINDS,
   TRADE_TYPES,
+  ConcurrentTradeChangeError,
   TradeIdTakenError,
   updateTrade,
   type SingleTradeInput,
@@ -256,7 +257,7 @@ function parsePatch(body: Record<string, unknown>): TradePatchInput {
   const memo = clearable(body, "memo", stringField);
   const from = legPatchField(body, "from");
   const to = legPatchField(body, "to");
-  return {
+  const patch: TradePatchInput = {
     ...amountFields(body, AMOUNT_FIELDS),
     ...(type === undefined ? {} : { type }),
     ...(taxKind === undefined ? {} : { taxKind: taxKind as TaxKind }),
@@ -269,6 +270,29 @@ function parsePatch(body: Record<string, unknown>): TradePatchInput {
     ...(from === undefined ? {} : { from }),
     ...(to === undefined ? {} : { to }),
   };
+  // An edit that changes nothing (`{}`, `type` alone, or only `null` legs) is refused, so it
+  // writes no audit log entry.
+  if (Object.keys(patch).every((key) => key === "type")) {
+    throw new BadRequest("nothing to change");
+  }
+  return patch;
+}
+
+/**
+ * The request body as an object of fields.
+ *
+ * @throws BadRequest for anything but a plain JSON object: a missing body, an array, a string,
+ *   a number, `null`.
+ */
+function bodyObject(body: unknown): Record<string, unknown> {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new BadRequest("the body must be a JSON object");
+  }
+  return body as Record<string, unknown>;
+}
+
+async function sendConcurrentChange(reply: FastifyReply): Promise<void> {
+  await reply.code(409).send({ error: "the trade changed while this request ran; retry it", code: "concurrent_change" });
 }
 
 async function sendReconciled(reply: FastifyReply, action: "edited" | "deleted"): Promise<void> {
@@ -316,10 +340,9 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
   });
 
   app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
     let entry: TradeEntryInput;
     try {
-      entry = parseEntry(body);
+      entry = parseEntry(bodyObject(request.body));
     } catch (error) {
       if (error instanceof BadRequest) {
         await sendBadRequest(reply, error);
@@ -348,10 +371,9 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
 
   app.patch(`${base}/:tradeId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { tradeId } = request.params as { tradeId: string };
-    const body = (request.body ?? {}) as Record<string, unknown>;
     let patch: TradePatchInput;
     try {
-      patch = parsePatch(body);
+      patch = parsePatch(bodyObject(request.body));
     } catch (error) {
       if (error instanceof BadRequest) {
         await sendBadRequest(reply, error);
@@ -375,6 +397,10 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
       }
       return { trades: result };
     } catch (error) {
+      if (error instanceof ConcurrentTradeChangeError) {
+        await sendConcurrentChange(reply);
+        return;
+      }
       if (await sendIfValidationError(reply, error)) {
         return;
       }
@@ -396,6 +422,10 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
       }
       await reply.code(204).send();
     } catch (error) {
+      if (error instanceof ConcurrentTradeChangeError) {
+        await sendConcurrentChange(reply);
+        return;
+      }
       if (await sendIfValidationError(reply, error)) {
         return;
       }

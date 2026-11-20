@@ -254,7 +254,9 @@ export interface RewriteTradeCashLegInput extends CreateTradeCashLegInput {
  * when the trade moves cash and has none, deletes it when the trade no longer moves any, and
  * otherwise rewrites its amount (its one split), account and date, keeping its id, payee and memo.
  * A `cleared` leg whose amount, account or date changes goes back to `pending`: it no longer
- * matches what was ticked against the statement. A leg left unchanged keeps its status. The
+ * matches what was ticked against the statement. A leg left unchanged keeps its status. The date
+ * is midnight of the trade date in the workspace's time zone as it is now: after a time zone
+ * change, the next rewrite dates the leg again, which counts as a change. The
  * account already follows the trade through the foreign key's `ON UPDATE CASCADE` (migration
  * 0031), so the caller passes the account the leg was on before (`previousAccountId`); it is
  * written here too so the leg is right whatever the caller did first. The caller has already

@@ -144,12 +144,18 @@ export async function requireOwnerRole(request: FastifyRequest, reply: FastifyRe
   }
 }
 
+/**
+ * The workspace id of the request, from the path or the `x-workspace-id` header, in lower case: a
+ * uuid's canonical text form. PostgreSQL compares uuids whatever their case, but code that uses the
+ * id as text does not (#509: the trades' advisory lock key), so `request.workspace.id` is always
+ * the same string for the same workspace.
+ */
 function extractWorkspaceId(request: FastifyRequest): string | undefined {
   const params = request.params as Record<string, unknown> | undefined;
   const fromParams = params?.workspaceId;
   if (typeof fromParams === "string") {
-    return fromParams;
+    return fromParams.toLowerCase();
   }
   const header = request.headers["x-workspace-id"];
-  return typeof header === "string" ? header : undefined;
+  return typeof header === "string" ? header.toLowerCase() : undefined;
 }

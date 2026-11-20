@@ -1298,7 +1298,7 @@ describe("trades routes (#77)", () => {
       assert.equal((await refusedEdit(buy!.id, { feesCents: -1 }, "negative_amount_not_allowed")).field, "feesCents");
       await refusedEdit(buy!.id, { accruedInterestCents: 10 }, "accrued_interest_not_allowed");
       assert.equal((await refusedEdit(buy!.id, { gainTaxCents: 10 }, "invalid_trade")).field, "gainTaxCents");
-      assert.equal((await refusedEdit(buy!.id, { type: "sell" }, "invalid_trade")).field, "type");
+      assert.equal((await refusedEdit(buy!.id, { type: "sell", memo: "now a sale" }, "invalid_trade")).field, "type");
       assert.equal((await refusedEdit(buy!.id, { instrumentId: null }, "invalid_trade")).field, "instrumentId");
       assert.equal((await refusedEdit(buy!.id, { occurredAt: "2026-01-11T10:00:00+01:00" }, "invalid_trade")).field, "occurredAt");
       assert.equal((await edited(buy!.id, { type: "buy", instrumentId: stock }))[0]!.instrumentId, stock);
@@ -1378,6 +1378,106 @@ describe("trades routes (#77)", () => {
         // Back to an empty holding for the next round.
         await superuserPool.query("DELETE FROM trades WHERE account_id = $1", [broker]);
       }
+    });
+
+    it("clears the instrument of a fee and of a tax, keeping the trade's cash leg", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-05-01", feesCents: 250 });
+      const [tax] = await created({ type: "tax", taxKind: "other", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-05-01", grossCents: 340 });
+      for (const [trade, cash] of [[fee!, -250], [tax!, -340]] as const) {
+        const [cleared] = await edited(trade.id, { instrumentId: null });
+        assert.equal(cleared!.instrumentId, null);
+        assert.equal(cleared!.cashCents, cash);
+        assert.equal(cleared!.cashTransactionId, trade.cashTransactionId);
+        const leg = await legOf(cleared!);
+        assert.deepEqual([leg!.account_id, leg!.amount_cents, leg!.local_date], [broker, String(cash), "2026-05-01 00:00"]);
+        const { rows } = await superuserPool.query<{ instrument_id: string | null }>("SELECT instrument_id FROM trades WHERE id = $1", [trade.id]);
+        assert.equal(rows[0]!.instrument_id, null);
+        // And back onto the instrument.
+        assert.equal((await edited(trade.id, { instrumentId: etf }))[0]!.instrumentId, etf);
+      }
+    });
+
+    it("locks one history whatever the case of the workspace id, so an upper-case request cannot oversell", async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf, priceE6: price(10) };
+      for (let round = 0; round < 5; round++) {
+        const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(10) });
+        const sale = { ...base, type: "sell", tradeDate: "2026-02-10", quantityE8: units(6) };
+        const responses = await Promise.all([post(sale, workspaceId.toUpperCase()), post(sale, workspaceId)]);
+        assert.deepEqual(responses.map((response) => response.statusCode).sort(), [201, 400]);
+        // An edit through the upper-case id races a sale through the lower-case one.
+        await superuserPool.query("DELETE FROM trades WHERE account_id = $1 AND type = 'sell'", [broker]);
+        const raced = await Promise.all([patch(buy!.id, { quantityE8: units(4) }, workspaceId.toUpperCase()), post({ ...sale, quantityE8: units(7) })]);
+        assert.equal(raced.filter((response) => response.statusCode === 400).length, 1, raced.map((response) => response.statusCode).join());
+        await superuserPool.query("DELETE FROM trades WHERE account_id = $1", [broker]);
+      }
+    });
+
+    it("answers 409 concurrent_change when another request moved the trade to another instrument while it waited", async () => {
+      const [first, second] = [await instrument(), await instrument()];
+      const broker = await account();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), instrumentId: first, tradeDate: "2026-05-01", feesCents: 100 });
+
+      // Hold the first instrument's history lock, as a concurrent request would.
+      const holder = await superuserPool.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`trades:${workspaceId}:${first}`]);
+        const pending = patch(fee!.id, { memo: "waiting" });
+        // Once the edit waits on that lock, the trade moves to the second instrument and commits.
+        for (let attempt = 0; ; attempt++) {
+          const { rows } = await superuserPool.query(
+            `SELECT 1 FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'
+               AND query LIKE '%pg_advisory_xact_lock%'`,
+          );
+          if (rows.length > 0) break;
+          assert.ok(attempt < 200, "the edit never waited on the lock");
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        await superuserPool.query("UPDATE trades SET instrument_id = $1 WHERE id = $2", [second, fee!.id]);
+        await holder.query("COMMIT");
+        const response = await pending;
+        assert.equal(response.statusCode, 409, response.body);
+        assert.equal(response.json().code, "concurrent_change");
+      } finally {
+        holder.release();
+      }
+      // Nothing was written; a retry goes through.
+      const { rows } = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM trades WHERE id = $1", [fee!.id]);
+      assert.equal(rows[0]!.memo, null);
+      assert.equal((await edited(fee!.id, { memo: "retried" }))[0]!.memo, "retried");
+    });
+
+    it("refuses a body that is not a JSON object, and an edit that changes nothing, writing no audit entry", async () => {
+      const broker = await account();
+      const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), tradeDate: "2026-05-01", feesCents: 100 });
+      const json = { "content-type": "application/json" };
+      for (const raw of ["[]", '"a fee"', "123", "null"]) {
+        for (const [method, url] of [
+          ["POST", `/workspaces/${workspaceId}/trades`],
+          ["PATCH", `/workspaces/${workspaceId}/trades/${fee!.id}`],
+        ] as const) {
+          const response = await app.fastify.inject({ method, url, headers: { ...(await auth()), ...json }, payload: raw });
+          assert.equal(response.statusCode, 400, `${method} ${raw}: ${response.body}`);
+          assert.equal(response.json().error, "invalid trade: the body must be a JSON object", `${method} ${raw}`);
+        }
+      }
+
+      const audits = async () =>
+        Number((await superuserPool.query<{ count: string }>("SELECT count(*) FROM audit_log WHERE workspace_id = $1 AND action = 'trade.update'", [workspaceId])).rows[0]!.count);
+      const before = await audits();
+      for (const payload of [{}, { type: "fee" }, { from: null, to: null }]) {
+        const response = await patch(fee!.id, payload);
+        assert.equal(response.statusCode, 400, JSON.stringify(payload));
+        assert.equal(response.json().error, "invalid trade: nothing to change");
+      }
+      assert.equal(await audits(), before);
     });
   });
 });

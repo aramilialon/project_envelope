@@ -179,6 +179,20 @@ export class TradeIdTakenError extends Error {
   }
 }
 
+/**
+ * A trade that another request moved to another instrument while this one was taking its locks
+ * (#509): nothing is written, and the client can simply retry (409 `concurrent_change`).
+ */
+export class ConcurrentTradeChangeError extends Error {
+  readonly tradeId: string;
+
+  constructor(tradeId: string) {
+    super(`trade changed concurrently: ${tradeId}`);
+    this.name = "ConcurrentTradeChangeError";
+    this.tradeId = tradeId;
+  }
+}
+
 /** Whether `error` is the portfolio foreign key refusing to delete a portfolio that still has trades. */
 export function isPortfolioHasTradesViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
@@ -522,9 +536,16 @@ async function loadInstrument(db: DbClient, instrumentId: string): Promise<Instr
  * transaction, so the replay below always sees every committed row.
  */
 async function lockInstrumentHistory(db: DbClient, workspaceId: string, instrumentId: string | null): Promise<void> {
-  await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
-    `trades:${workspaceId}:${instrumentId ?? "account-charges"}`,
-  ]);
+  await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [historyLockKey(workspaceId, instrumentId)]);
+}
+
+/**
+ * The text an instrument history's lock is taken on. `workspaceId` is always lower case (the
+ * membership preHandler's `extractWorkspaceId`) and so is an instrument id read back from
+ * PostgreSQL: one history, one key.
+ */
+function historyLockKey(workspaceId: string, instrumentId: string | null): string {
+  return `trades:${workspaceId}:${instrumentId === null ? "account-charges" : instrumentId.toLowerCase()}`;
 }
 
 /** The ids a client generated that are already taken, by any workspace. */
@@ -1173,14 +1194,25 @@ async function lockTradeGroup(
   }
   const keys = new Set<string | null>([unlocked[0]!.instrumentId]);
   if (alsoLock !== undefined) keys.add(alsoLock);
-  const ordered = [...keys].sort((a, b) => (a ?? "").localeCompare(b ?? ""));
-  for (const key of ordered) {
+  // Why this cannot deadlock: a request takes every history lock it will ever hold here, at once,
+  // in one total order (the lock keys compared as plain strings, `<`, never by locale), and takes
+  // no other history lock afterwards; `createTrades` takes a single one. Two requests that want an
+  // overlapping set therefore always queue on the lowest key they share, and the one holding it
+  // never waits for a key the other holds. Row locks taken later (the cash legs, FOR UPDATE) are
+  // only ever taken after the history locks, and a reconciliation that holds a leg never waits
+  // for a history lock.
+  const ordered = [...keys]
+    .map((key) => ({ key, text: historyLockKey(workspaceId, key) }))
+    .sort((a, b) => (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
+  for (const { key } of ordered) {
     await lockInstrumentHistory(db, workspaceId, key);
   }
   const group = await loadTradeGroup(db, workspaceId, tradeId);
-  // Moved to another instrument by a request that committed before the locks were taken.
+  // Moved to another instrument by a request that committed between the first read and the
+  // locks: its history is not locked, and locking it now would break the order above. The client
+  // retries; the retry reads the new instrument first.
   if (group && !keys.has(group[0]!.instrumentId)) {
-    await lockInstrumentHistory(db, workspaceId, group[0]!.instrumentId);
+    throw new ConcurrentTradeChangeError(tradeId);
   }
   return group;
 }
@@ -1257,6 +1289,8 @@ async function updateTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  *   "reconciled" when a cash leg of the group is reconciled (ADR 0012), and nothing is written.
  * @throws ValidationError with `createTrades`'s codes, and "invalid_trade" (details: field) for a
  *   field the trade's type does not take in an edit; nothing is written then.
+ * @throws ConcurrentTradeChangeError when another request moved the trade to another instrument
+ *   while this one took its locks; nothing is written, and a retry can succeed.
  */
 export async function updateTrade(
   db: DbClient,
@@ -1288,7 +1322,11 @@ export async function updateTrade(
   for (const key of new Set([first.instrumentId, instrumentId])) {
     histories.set(
       key,
-      key === null ? await loadReplayRowsByIds(db, workspaceId, [...oldIds]) : await loadInstrumentHistory(db, workspaceId, key),
+      // Only the rows stored with no instrument: a fee whose instrument the edit clears is not in
+      // this history yet, it arrives in it (an insert below).
+      key === null
+        ? await loadReplayRowsByIds(db, workspaceId, group.filter((record) => record.instrumentId === null).map((record) => record.id))
+        : await loadInstrumentHistory(db, workspaceId, key),
     );
   }
 
@@ -1363,6 +1401,7 @@ export async function updateTrade(
  *   "reconciled" when a cash leg of the group is reconciled, and nothing is deleted.
  * @throws ValidationError with `validatePositionHistory`'s codes ("insufficient_quantity" and the
  *   others); nothing is deleted then.
+ * @throws ConcurrentTradeChangeError as `updateTrade` does.
  */
 export async function deleteTrade(
   db: DbClient,

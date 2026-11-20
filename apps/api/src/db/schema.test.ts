@@ -976,12 +976,33 @@ describe("apps/api/migrations, applied to a real database", () => {
         assert.equal(other.rowCount, 0);
         const otherDeleted = await client.query("DELETE FROM trades WHERE id = $1", [workspaceB.tradeId]);
         assert.equal(otherDeleted.rowCount, 0);
-        // An update cannot move a row into another workspace either.
-        await assert.rejects(() => client.query("UPDATE trades SET workspace_id = $1 WHERE id = $2", [workspaceB.workspaceId, workspaceA.tradeId]), /row-level security/);
       });
       await asWorkspaceA(async (client) => {
         const deleted = await client.query("DELETE FROM trades WHERE id = $1", [workspaceA.tradeId]);
         assert.equal(deleted.rowCount, 1);
+      });
+    });
+
+    it("lets envelope_app update only the columns an edit writes, never a trade's id, workspace, type, link or creation time (#509)", async () => {
+      for (const [column, value] of [
+        ["id", randomUUID()],
+        ["workspace_id", workspaceB.workspaceId],
+        ["type", "sell"],
+        ["transfer_trade_id", workspaceA.tradeId],
+        ["created_at", "2020-01-01T00:00:00Z"],
+      ] as const) {
+        await asWorkspaceA(async (client) => {
+          await assert.rejects(
+            () => client.query(`UPDATE trades SET ${column} = $1 WHERE id = $2`, [value, workspaceA.tradeId]),
+            /permission denied/,
+            column,
+          );
+        });
+      }
+      // The control: a column an edit writes.
+      await asWorkspaceA(async (client) => {
+        const updated = await client.query("UPDATE trades SET fees_cents = 10, memo = 'edited' WHERE id = $1", [workspaceA.tradeId]);
+        assert.equal(updated.rowCount, 1);
       });
     });
 

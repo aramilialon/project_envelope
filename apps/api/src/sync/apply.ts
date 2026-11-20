@@ -142,6 +142,22 @@ function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
   return recorded.sameChange ? recorded.outcome : "id_conflict";
 }
 
+/*
+ * Before wiring a `trades.*` field into FIELD_APPLIERS: a trade's field is not an ordinary column.
+ * Its applier must go through the same checks as `updateTrade` (trades/repository.ts), not a bare
+ * UPDATE: the advisory lock on the instrument's history (every instrument the change touches, in
+ * the same order), the replay of the workspace's whole history of the instrument
+ * (`insufficient_quantity` and the rest), the entry and regime checks, and the cash leg's status
+ * read `FOR UPDATE` (a reconciled leg locks its trade; `isLocked` above reads it without the row
+ * lock). `beforeApply`/`afterApply` only keep the cash leg derived from the trade; they check
+ * nothing.
+ *
+ * The leg's date is midnight of the trade date in the workspace's time zone, computed when it is
+ * written. After a change of the workspace's time zone, the next edit of the trade (or a synced
+ * change to it) dates the leg again in the new zone, and since its date then differs, a cleared
+ * leg goes back to pending (`rewriteTradeCashLeg`), to be ticked again.
+ */
+
 /**
  * What an applied change sets in motion beyond its own column. A change to a field of a trade
  * re-derives the trade's cash leg (its amount, account and date; ADR 0012), which are never sync
