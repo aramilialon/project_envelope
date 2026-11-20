@@ -103,6 +103,42 @@ describe("portfolios routes (#75)", () => {
     assert.equal(created.json().purpose, null);
   });
 
+  it("stores a whitespace-only purpose as none, on create and on update", async () => {
+    const created = await create({ name: "Blank purpose", purpose: "   " });
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json().purpose, null);
+
+    await patch(created.json().id, { purpose: "Something" });
+    const cleared = await patch(created.json().id, { purpose: " \t " });
+    assert.equal(cleared.statusCode, 200);
+    assert.equal(cleared.json().purpose, null);
+
+    const { rows } = await superuserPool.query("SELECT purpose FROM portfolios WHERE id = $1", [created.json().id]);
+    assert.deepEqual(rows, [{ purpose: null }]);
+  });
+
+  it("lists portfolios by name ignoring case, then by creation time", async () => {
+    const orderedWorkspace = await addWorkspace("owner");
+    const beta = (await create({ name: "beta" }, orderedWorkspace)).json();
+    const oldAlpha = (await create({ name: "alpha" }, orderedWorkspace)).json();
+    const charlie = (await create({ name: "Charlie" }, orderedWorkspace)).json();
+    await patch(oldAlpha.id, { archived: true }, orderedWorkspace);
+    // Same name ignoring case as the archived one, created later: sorts after it.
+    const newAlpha = (await create({ name: "ALPHA" }, orderedWorkspace)).json();
+
+    const active = await app.fastify.inject({ method: "GET", url: url("", orderedWorkspace), headers: auth() });
+    assert.deepEqual(
+      active.json().portfolios.map((p: { id: string }) => p.id),
+      [newAlpha.id, beta.id, charlie.id],
+    );
+
+    const all = await app.fastify.inject({ method: "GET", url: url("?includeArchived=true", orderedWorkspace), headers: auth() });
+    assert.deepEqual(
+      all.json().portfolios.map((p: { id: string }) => p.id),
+      [oldAlpha.id, newAlpha.id, beta.id, charlie.id],
+    );
+  });
+
   it("refuses an invalid body, and answers 404 for an unknown or malformed id", async () => {
     assert.equal((await create({ name: "   " })).statusCode, 400);
     assert.equal((await create({ purpose: "Only a purpose" })).statusCode, 400);

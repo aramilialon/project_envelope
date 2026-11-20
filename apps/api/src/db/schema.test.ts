@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { isPortfolioNameConflict } from "../portfolios/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "./migrate.ts";
 import { createPool, type DbClient, type DbPool } from "./pool.ts";
 
@@ -197,7 +198,14 @@ describe("apps/api/migrations, applied to a real database", () => {
       await asWorkspaceA(async (client) => {
         await assert.rejects(
           () => client.query("INSERT INTO portfolios (workspace_id, name) VALUES ($1, ' growth a ')", [workspaceA]),
-          /portfolios_active_name_idx/,
+          (error: unknown) => {
+            // The exact fields routes/portfolios.ts relies on to answer 409 name_taken for a race.
+            const { code, constraint } = error as { code?: unknown; constraint?: unknown };
+            assert.equal(code, "23505");
+            assert.equal(constraint, "portfolios_active_name_idx");
+            assert.equal(isPortfolioNameConflict(error), true);
+            return true;
+          },
         );
       });
       await asWorkspaceA(async (client) => {

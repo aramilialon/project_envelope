@@ -9,7 +9,7 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 ### Added
 
 - `apps/api`, `apps/web`: a `brokerage` account type (`#74`), always off budget — the portfolio connects to the budget through off-budget accounts, so money paid to the broker is a transfer that leaves the budget without showing up as spending. Creating one without `onBudget` defaults it to off budget; asking for it on budget is refused with the stable code `brokerage_on_budget`, and migration 0025's `CHECK` constraint enforces the same in the database. The "Add account" form lists it ("Brokerage" / "Conto titoli") with no "On budget" choice.
-- `apps/api`: portfolios (`#75`) — a `portfolios` table (migration 0027, workspace-scoped with Row-Level Security) and `/workspaces/:workspaceId/portfolios` endpoints to list, get, create, rename, change the free-text purpose of, archive, unarchive and delete a portfolio. Names are unique per workspace among non-archived portfolios, ignoring case (409 `name_taken`). A portfolio declares no accounts: the accounts it spans will come from its trades (`#77`).
+- `apps/api`: portfolios (`#75`) — a `portfolios` table (migration 0027, workspace-scoped with Row-Level Security) and `/workspaces/:workspaceId/portfolios` endpoints to list, get, create, rename, change the free-text purpose of, archive, unarchive and delete a portfolio. Names are unique per workspace among non-archived portfolios, ignoring case and surrounding spaces (409 `name_taken`). A portfolio declares no accounts: the accounts it spans will come from its trades (`#77`).
 
 ## [0.1.8] - 2026-11-19
 
