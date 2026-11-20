@@ -31,7 +31,14 @@ export type ValidationErrorCode =
   | "invalid_recurrence"
   | "invalid_currency"
   | "invalid_time_zone"
-  | "brokerage_on_budget";
+  | "brokerage_on_budget"
+  | "invalid_quantity"
+  | "invalid_quantity_format"
+  | "invalid_quantity_step"
+  | "invalid_price"
+  | "invalid_price_format"
+  | "invalid_price_factor"
+  | "invalid_sale_quantity";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
