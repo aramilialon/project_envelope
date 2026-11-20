@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 
 import { decodeJwt } from "jose";
 
@@ -22,7 +22,7 @@ import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-rol
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../test-helpers/vapid-keys.ts";
-import { startServer, type RunningServer } from "./support.ts";
+import { printServerOutputOnFailure, startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -43,6 +43,8 @@ describe("smoke: 0.1.5 Queue, against the real process", () => {
   let token: string;
   let workspaceId: string;
   let accountId: string;
+
+  afterEach(printServerOutputOnFailure(() => [server]));
 
   before(async () => {
     superuserPool = createPool(databaseUrl);
