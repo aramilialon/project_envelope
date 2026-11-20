@@ -38,7 +38,13 @@ const CI_SEEDS = [1, 20261120];
 const CI_STEPS = 300;
 /** The walk through the real process only proves the `fetch` driver and the process; it stays short. */
 const FETCH_STEPS = 60;
-/** Two walks of the same seed must give byte-identical logs; a short one is enough to show it. */
+/**
+ * Two walks of the same seed must give byte-identical logs; a short one is enough to show it, as
+ * long as it creates trades of more than one row, whose order ties on random ids. Seed 1 creates
+ * none in its first 60 steps; seed 20261120 splits at step 54 and transfers securities with a fee
+ * at step 60, whose cash leg's handle lands in the log after the outgoing leg's.
+ */
+const DETERMINISM_SEED = 20261120;
 const DETERMINISM_STEPS = 60;
 
 const { databaseUrl } = requireIntegrationTestEnv();
@@ -176,16 +182,20 @@ describe("random walk through the API (#80, ADR 0013)", () => {
     });
   }
 
-  it(`walks seed ${CI_SEEDS[0]} the same way twice, ${DETERMINISM_STEPS} steps (inject)`, async () => {
+  it(`walks seed ${DETERMINISM_SEED} the same way twice, ${DETERMINISM_STEPS} steps (inject)`, async () => {
     // A seed is a reproduction only if it gives the same walk every time: every operation, every
-    // status and every handle given out, whatever ids and creation times the API picks.
-    const first = await runWalk(env, { seed: CI_SEEDS[0]!, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
-    const second = await runWalk(env, { seed: CI_SEEDS[0]!, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
+    // status and every handle given out, whatever ids and creation times the API picks. The rows of
+    // one split or securities transfer come back in an order that ties on their random ids, so
+    // this seed also checks the order the model gives them handles in (`sortTradeRows`), though
+    // only when the two walks happen to get the rows back in different orders (about one run in
+    // two); model.test.ts checks that order every time.
+    const first = await runWalk(env, { seed: DETERMINISM_SEED, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
+    const second = await runWalk(env, { seed: DETERMINISM_SEED, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
     const firstLog = JSON.stringify(first.log.ops);
     const secondLog = JSON.stringify(second.log.ops);
     if (firstLog !== secondLog) {
       const step = first.log.ops.findIndex((op, index) => JSON.stringify(op) !== JSON.stringify(second.log.ops[index]));
-      assert.fail(`seed ${CI_SEEDS[0]} walked differently the second time, from step ${step + 1}:\n  ${JSON.stringify(first.log.ops[step])}\n  ${JSON.stringify(second.log.ops[step])}`);
+      assert.fail(`seed ${DETERMINISM_SEED} walked differently the second time, from step ${step + 1}:\n  ${JSON.stringify(first.log.ops[step])}\n  ${JSON.stringify(second.log.ops[step])}`);
     }
   });
 
