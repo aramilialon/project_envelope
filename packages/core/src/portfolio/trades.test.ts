@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
 import type { PositionTrade } from "./positions.ts";
-import { checkTradeEntry, tradeCashCents } from "./trades.ts";
+import { checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
 
 type Amounts = Pick<
   PositionTrade,
@@ -137,5 +137,57 @@ describe("checkTradeEntry", () => {
       () => checkTradeEntry(amounts({ type: "sell", grossCents: 10_000, accruedInterestCents: 100, withholdingDomesticCents: 101 }), "bond"),
       (error) => isValidationError(error, "withholding_exceeds_gross") && error.details.field === "withholdingDomesticCents",
     );
+  });
+});
+
+describe("checkTradeRegime (#508)", () => {
+  const regimeError = (field: string) => (error: unknown) =>
+    isValidationError(error, "tax_kind_not_allowed_in_regime") && error.details.field === field;
+  const sellWithGainTax = amounts({ type: "sell", grossCents: 10_000, gainTaxCents: 260 });
+  const refund = amounts({ type: "tax", taxKind: "gain_tax_adjustment", grossCents: 100 });
+
+  it("refuses gain tax in managed, on a sale or as an adjustment", () => {
+    const context = { regime: "managed", domesticWithholdingAgent: true, instrumentType: "fund" } as const;
+    assert.throws(() => checkTradeRegime(sellWithGainTax, context), regimeError("gainTaxCents"));
+    assert.throws(() => checkTradeRegime(refund, context), regimeError("taxKind"));
+  });
+
+  it("allows gain tax in administered", () => {
+    checkTradeRegime(sellWithGainTax, { regime: "administered", domesticWithholdingAgent: true, instrumentType: "stock" });
+  });
+
+  it("allows gain tax in self_declared only on a fund at a domestic withholding agent", () => {
+    checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "fund" });
+    assert.throws(
+      () => checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "stock" }),
+      regimeError("gainTaxCents"),
+    );
+    assert.throws(
+      () => checkTradeRegime(sellWithGainTax, { regime: "self_declared", domesticWithholdingAgent: false, instrumentType: "fund" }),
+      regimeError("gainTaxCents"),
+    );
+  });
+
+  it("allows managed_result_tax in managed only", () => {
+    const tax = amounts({ type: "tax", taxKind: "managed_result_tax", grossCents: 500 });
+    checkTradeRegime(tax, { regime: "managed", domesticWithholdingAgent: true, instrumentType: null });
+    for (const regime of ["administered", "self_declared"] as const) {
+      assert.throws(() => checkTradeRegime(tax, { regime, domesticWithholdingAgent: true, instrumentType: null }), regimeError("taxKind"));
+    }
+  });
+
+  it("refuses a domestic withholding unless the broker is a domestic withholding agent", () => {
+    const dividend = amounts({ type: "dividend", grossCents: 1_000, withholdingDomesticCents: 260 });
+    checkTradeRegime(dividend, { regime: "self_declared", domesticWithholdingAgent: true, instrumentType: "stock" });
+    assert.throws(
+      () => checkTradeRegime(dividend, { regime: "self_declared", domesticWithholdingAgent: false, instrumentType: "stock" }),
+      (error) => isValidationError(error, "domestic_withholding_requires_agent"),
+    );
+  });
+
+  it("accepts an ordinary buy in every regime", () => {
+    for (const regime of ["administered", "self_declared", "managed"] as const) {
+      checkTradeRegime(amounts({ type: "buy", grossCents: 1_000 }), { regime, domesticWithholdingAgent: null, instrumentType: "stock" });
+    }
   });
 });

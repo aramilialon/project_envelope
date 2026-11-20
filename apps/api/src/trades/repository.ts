@@ -20,8 +20,11 @@ import {
   amountOf,
   applyTradeChanges,
   checkTradeEntry,
+  checkTradeRegime,
   computePositions,
   PRICE_FACTOR_ONE,
+  regimeAt,
+  TAX_REGIME_COUNTRY,
   toPriceFactor,
   tradeCashCents,
   validatePositionHistory,
@@ -35,6 +38,7 @@ import {
   type TradeType,
 } from "@envelope/core";
 
+import { listTaxRegimes } from "../accounts/tax-regimes.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient } from "../db/pool.ts";
 import { createTradeCashLeg } from "../transactions/repository.ts";
@@ -407,6 +411,7 @@ interface NewTradeRow {
 interface AccountRef {
   readonly type: string;
   readonly currency: string;
+  readonly domesticWithholdingAgent: boolean | null;
 }
 
 interface InstrumentRef {
@@ -440,11 +445,16 @@ function rowFromAmounts(
 }
 
 async function loadAccounts(db: DbClient, workspaceId: string, ids: readonly string[]): Promise<Map<string, AccountRef>> {
-  const { rows } = await db.query<{ id: string; type: string; currency: string }>(
-    "SELECT id, type, currency FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+  const { rows } = await db.query<{ id: string; type: string; currency: string; domestic_withholding_agent: boolean | null }>(
+    "SELECT id, type, currency, domestic_withholding_agent FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [workspaceId, ids],
   );
-  return new Map(rows.map((row) => [row.id, { type: row.type, currency: row.currency }]));
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      { type: row.type, currency: row.currency, domesticWithholdingAgent: row.domestic_withholding_agent },
+    ]),
+  );
 }
 
 async function loadPortfolioIds(db: DbClient, workspaceId: string, ids: readonly string[]): Promise<Set<string>> {
@@ -617,6 +627,42 @@ async function checkReferences(
   return accounts;
 }
 
+/**
+ * The tax regime rules (#508), only in a workspace whose tax country has them (`IT`): every
+ * brokerage account there needs a regime history (`tax_regime_required`; its first period also
+ * covers earlier dates), and each row is checked against the regime in force on its trade date
+ * (`checkTradeRegime`). Elsewhere there is no regime and nothing to check.
+ */
+async function checkRegimes(
+  db: DbClient,
+  workspaceId: string,
+  rows: readonly NewTradeRow[],
+  accounts: ReadonlyMap<string, AccountRef>,
+  instrument: InstrumentRef | undefined,
+): Promise<void> {
+  const { rows: workspace } = await db.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [
+    workspaceId,
+  ]);
+  if (workspace[0]?.tax_country !== TAX_REGIME_COUNTRY) {
+    return;
+  }
+  for (const accountId of new Set(rows.map((row) => row.accountId))) {
+    const history = (await listTaxRegimes(db, workspaceId, accountId)) ?? [];
+    if (history.length === 0) {
+      throw new ValidationError("tax_regime_required", "a brokerage account in this workspace needs a tax regime before its trades", {
+        accountId,
+      });
+    }
+    for (const row of rows.filter((candidate) => candidate.accountId === accountId)) {
+      checkTradeRegime(row, {
+        regime: regimeAt(history, row.tradeDate)!,
+        domesticWithholdingAgent: accounts.get(accountId)!.domesticWithholdingAgent,
+        instrumentType: instrument?.type ?? null,
+      });
+    }
+  }
+}
+
 async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRow): Promise<void> {
   try {
     await db.query(
@@ -670,8 +716,8 @@ async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * a transaction: the request's own.
  *
  * @throws ValidationError "unknown_account", "account_not_brokerage", "unknown_portfolio",
- *   "unknown_instrument", "currency_mismatch", "split_without_holdings", the codes of
- *   `checkTradeEntry` and of `validatePositionHistory` ("insufficient_quantity",
+ *   "unknown_instrument", "currency_mismatch", "split_without_holdings", "tax_regime_required",
+ *   the codes of `checkTradeEntry`, of `checkTradeRegime` and of `validatePositionHistory` ("insufficient_quantity",
  *   "split_missing_for_portfolio", "split_duplicate", "split_ratio_mismatch",
  *   "split_leaves_no_quantity", "invalid_trade", "invalid_date", "invalid_amount",
  *   "invalid_quantity", "invalid_price"); nothing is written then.
@@ -696,16 +742,10 @@ export async function createTrades(
     input.kind === "single" ? [singleRow(input, instrument)] : input.kind === "transfer" ? transferRows(input) : splitRows(input, history);
   const accounts = await checkReferences(db, workspaceId, rows, instrument);
 
-  // TODO(#508): once tax regimes exist, refuse a trade on an IT brokerage account with an empty
-  // tax-regime history (`tax_regime_required`; the first regime applies to earlier dates too), and
-  // a tax kind or a gain tax the account's regime on the trade date does not allow
-  // (`tax_kind_not_allowed_in_regime`: gain tax in `managed`; `managed_result_tax` outside
-  // `managed`; gain tax in `self_declared` unless the instrument is a `fund` and the broker is a
-  // domestic withholding agent).
-
   for (const row of rows) {
     checkTradeEntry(row, instrument?.type ?? null);
   }
+  await checkRegimes(db, workspaceId, rows, accounts, instrument);
 
   // The rows as the replay sees them once written: created now (the transaction's timestamp, the
   // same `now()` the created_at column defaults to), in the account's currency.

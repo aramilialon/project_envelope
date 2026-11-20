@@ -50,6 +50,8 @@ export type ValidationErrorCode =
   | "tax_kind_not_allowed_for_trade_type"
   | "accrued_interest_not_allowed"
   | "withholding_exceeds_gross"
+  | "tax_kind_not_allowed_in_regime"
+  | "domestic_withholding_requires_agent"
   | "account_not_brokerage"
   | "currency_mismatch"
   | "unknown_portfolio"

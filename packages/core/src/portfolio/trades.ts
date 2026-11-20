@@ -17,6 +17,7 @@ import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
 import type { InstrumentType } from "./instrument.ts";
 import type { PositionTrade } from "./positions.ts";
+import type { TaxRegime } from "./tax-regime.ts";
 
 /** Instrument types that pay accrued interest when they change hands. */
 const INTEREST_BEARING: ReadonlySet<InstrumentType> = new Set<InstrumentType>(["government_bond", "bond"]);
@@ -158,5 +159,63 @@ export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentT
       withheld: trade.withholdingDomesticCents,
       gross: trade.accruedInterestCents,
     });
+  }
+}
+
+/** What the regime check needs to know about the account and the instrument of a trade. */
+export interface TradeRegimeContext {
+  /** The account's regime in force on the trade date (`regimeAt`). */
+  readonly regime: TaxRegime;
+  /** Whether the broker is a domestic (Italian) withholding agent. */
+  readonly domesticWithholdingAgent: boolean | null;
+  /** The instrument's type, or null for a fee or a tax without one. */
+  readonly instrumentType: InstrumentType | null;
+}
+
+/**
+ * Checks a trade on a brokerage account of an `IT` workspace against the account's tax regime on
+ * the trade date (#508). Outside such a workspace there is no regime, and nothing to check.
+ *
+ * - Gain tax (a sale's `gainTaxCents`, or a `gain_tax_adjustment`) is settled by the mandate in
+ *   `managed`, so it cannot appear there; in `self_declared` the investor declares gains, so it
+ *   can appear only where a domestic withholding agent still withholds it: on a `fund`.
+ * - `managed_result_tax` exists only in `managed`.
+ * - A domestic withholding needs a broker that is a domestic withholding agent.
+ *
+ * @throws ValidationError "tax_kind_not_allowed_in_regime" (details: regime, field — "gainTaxCents"
+ *   or "taxKind" —, and taxKind for a tax); "domestic_withholding_requires_agent" (details: field).
+ */
+export function checkTradeRegime(trade: TradeAmounts, context: TradeRegimeContext): void {
+  const { regime } = context;
+  const refuse = (field: string): never => {
+    throw new ValidationError("tax_kind_not_allowed_in_regime", `the ${regime} regime does not allow this ${field}`, {
+      regime,
+      field,
+      ...(trade.taxKind === null ? {} : { taxKind: trade.taxKind }),
+    });
+  };
+
+  const gainTaxField =
+    trade.type === "sell" && trade.gainTaxCents !== 0
+      ? "gainTaxCents"
+      : trade.type === "tax" && trade.taxKind === "gain_tax_adjustment"
+        ? "taxKind"
+        : null;
+  if (gainTaxField !== null) {
+    if (regime === "managed") refuse(gainTaxField);
+    if (regime === "self_declared" && !(context.instrumentType === "fund" && context.domesticWithholdingAgent === true)) {
+      refuse(gainTaxField);
+    }
+  }
+  if (trade.type === "tax" && trade.taxKind === "managed_result_tax" && regime !== "managed") {
+    refuse("taxKind");
+  }
+
+  if (trade.withholdingDomesticCents !== 0 && context.domesticWithholdingAgent !== true) {
+    throw new ValidationError(
+      "domestic_withholding_requires_agent",
+      "only a broker that is a domestic withholding agent withholds domestic tax",
+      { field: "withholdingDomesticCents" },
+    );
   }
 }
