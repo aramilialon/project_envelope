@@ -15,6 +15,7 @@ import { compareHlc, MAX_FREE_TEXT_LENGTH, type Hlc } from "@envelope/core";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { workspaceRowExists, type WorkspaceTable } from "../db/workspace-row.ts";
 import { isUuid } from "../ids.ts";
+import { rederiveTradeCashLeg } from "../trades/repository.ts";
 import { findRecordedChange, getLatestChange, recordChange, type RecordedChange } from "./repository.ts";
 
 export interface IncomingChange {
@@ -108,10 +109,24 @@ async function isTradeOwned(db: DbPool | DbClient, workspaceId: string, fieldNam
 /**
  * "Reconciled transactions carry a plaintext 'locked' flag: the server rejects later changes"
  * (design.md) — a rule of the protocol itself, checked before clock resolution even runs, not
- * a per-field concern. Every field currently wired up belongs to `transactions`; extend this
- * once another entity gains a lock of its own.
+ * a per-field concern. A field of `transactions` is locked by the transaction's own status; a
+ * field of `trades` by its cash leg's (ADR 0012, #509): a reconciled leg locks its trade, and a
+ * transfer's two legs go together, so the other leg's cash leg locks it too, as the trades API
+ * refuses to edit either. Extend this once another entity gains a lock of its own.
  */
-async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+export async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+  if (fieldName.startsWith("trades.")) {
+    if (!isUuid(entityId)) {
+      return false;
+    }
+    const { rows } = await db.query(
+      `SELECT 1 FROM trades t
+       JOIN transactions c ON c.workspace_id = t.workspace_id AND c.trade_id IN (t.id, t.transfer_trade_id)
+       WHERE t.id = $1 AND t.workspace_id = $2 AND c.status = 'reconciled'`,
+      [entityId, workspaceId],
+    );
+    return rows.length > 0;
+  }
   if (!fieldName.startsWith("transactions.")) {
     return false;
   }
@@ -125,6 +140,18 @@ async function isLocked(db: DbPool | DbClient, workspaceId: string, fieldName: s
 /** What a change already recorded under the same id answers (#513): its own outcome, if it is the same change. */
 function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
   return recorded.sameChange ? recorded.outcome : "id_conflict";
+}
+
+/**
+ * What an applied change sets in motion beyond its own column. A change to a field of a trade
+ * re-derives the trade's cash leg (its amount, account and date; ADR 0012), which are never sync
+ * fields themselves. No field of `trades` is wired into `FIELD_APPLIERS` yet, so this runs for
+ * none today; it is here so that wiring one cannot leave the leg behind its trade.
+ */
+export async function afterApply(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<void> {
+  if (fieldName.startsWith("trades.")) {
+    await rederiveTradeCashLeg(db, workspaceId, entityId);
+  }
 }
 
 /**
@@ -192,6 +219,7 @@ export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: st
 
   if (outcome === "applied") {
     await applier.apply(db, workspaceId, change.entityId, change.value);
+    await afterApply(db, workspaceId, change.fieldName, change.entityId);
   }
   return outcome;
 }

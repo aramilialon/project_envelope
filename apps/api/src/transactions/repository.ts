@@ -241,6 +241,48 @@ export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTra
   return id;
 }
 
+/**
+ * Brings a trade's cash leg in line with the trade as it now stands (ADR 0012, #509): creates it
+ * when the trade moves cash and has none, deletes it when the trade no longer moves any, and
+ * otherwise rewrites its amount (its one split), account and date, keeping its id, payee, memo and
+ * status. The account already follows the trade through the foreign key's `ON UPDATE CASCADE`
+ * (migration 0031); it is written here too so the leg is right whatever the caller did first. The
+ * caller has already refused a reconciled leg, and writes this in the same database transaction as
+ * the trade.
+ *
+ * @returns the leg's id, or null when the trade moves no cash.
+ */
+export async function rewriteTradeCashLeg(db: DbPool | DbClient, input: CreateTradeCashLegInput): Promise<string | null> {
+  assertCents(input.amountCents);
+  const { rows } = await db.query<{ id: string }>("SELECT id FROM transactions WHERE workspace_id = $1 AND trade_id = $2", [
+    input.workspaceId,
+    input.tradeId,
+  ]);
+  const existing = rows[0]?.id;
+  if (input.amountCents === 0) {
+    if (existing !== undefined) {
+      await db.query("DELETE FROM transactions WHERE id = $1 AND workspace_id = $2", [existing, input.workspaceId]);
+    }
+    return null;
+  }
+  if (existing === undefined) {
+    return await createTradeCashLeg(db, input);
+  }
+  await db.query(
+    `UPDATE transactions
+     SET account_id = $3,
+         occurred_at = $4::date::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $2)
+     WHERE id = $1 AND workspace_id = $2`,
+    [existing, input.workspaceId, input.accountId, input.tradeDate],
+  );
+  await db.query("UPDATE splits SET amount_cents = $1 WHERE transaction_id = $2 AND workspace_id = $3", [
+    input.amountCents,
+    existing,
+    input.workspaceId,
+  ]);
+  return existing;
+}
+
 export interface CreateTransferInput {
   readonly workspaceId: string;
   readonly sourceAccountId: string;

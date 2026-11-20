@@ -45,5 +45,6 @@ export const ID_PARAM_NAMES: Readonly<Record<string, string>> = {
   instrumentId: "instrument",
   portfolioId: "portfolio",
   scheduledTransactionId: "scheduled transaction",
+  tradeId: "trade",
   transactionId: "transaction",
 };
