@@ -4,7 +4,7 @@ From a freshly installed Debian 13 ("trixie") virtual machine to a working check
 
 > **Development only.** This guide prepares a development machine: Keycloak runs in development mode, certificates come from a local CA, and nothing here is meant to face the internet. A production install (Docker images, an install guide, Keycloak in production mode with multi-factor authentication, backups) is planned for milestone 0.4.0, "Self-hosting packaging" ([docs/design.md](design.md#roadmap)).
 
- All development happens on the VM; your laptop only needs an SSH client and a browser. Expect about an hour the first time.
+All development happens on the VM; your laptop only needs an SSH client and a browser. Expect about an hour the first time.
 
 Conventions: `$` commands run as your normal user, `#` commands as root. Replace `dev` with your user name and `envelope-dev` with the VM's host name or IP address.
 
