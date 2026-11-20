@@ -7,10 +7,14 @@
  *
  * The server listens on port 0 unless a test says otherwise, so the operating
  * system picks a free port and two runs on one machine never collide (#519).
+ * A production server refuses PORT=0, so for NODE_ENV=production this asks the
+ * system for a free port first and passes it explicitly (a port another
+ * process could take in between, a far smaller window than a fixed one).
  * main.ts prints one `{"msg":"listening","address":…,"port":…}` line once it
  * is listening, whatever LOG_LEVEL says; this resolves on that line.
  */
 import { type ChildProcess, spawn } from "node:child_process";
+import { createServer, type AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const MAIN_TS = fileURLToPath(new URL("../main.ts", import.meta.url));
@@ -26,9 +30,10 @@ export interface RunningServer {
 }
 
 export async function startServer(env: Record<string, string>): Promise<RunningServer> {
+  const port = env.NODE_ENV === "production" ? String(await freePort()) : "0";
   const child = spawn(process.execPath, [MAIN_TS], {
     cwd: APPS_API_DIR,
-    env: { ...process.env, PORT: "0", ...env },
+    env: { ...process.env, PORT: port, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -83,6 +88,17 @@ function waitUntilListening(child: ChildProcess): Promise<string> {
     child.stdout?.on("data", onStdout);
     child.stderr?.on("data", onStderr);
     child.once("exit", onExit);
+  });
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      server.close(() => resolve(port));
+    });
   });
 }
 

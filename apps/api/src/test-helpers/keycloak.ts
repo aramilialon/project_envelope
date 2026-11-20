@@ -127,7 +127,7 @@ async function getUserAccessToken(
 }
 
 async function postForm(url: string, fields: Record<string, string>): Promise<Record<string, unknown>> {
-  const response = await fetch(url, {
+  const response = await fetchRetryingServerErrors(url, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields),
@@ -144,7 +144,7 @@ async function adminRequest(
   path: string,
   body?: unknown,
 ): Promise<Response> {
-  const response = await fetch(`${KEYCLOAK_URL}${path}`, {
+  const response = await fetchRetryingServerErrors(`${KEYCLOAK_URL}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${adminToken}`,
@@ -156,6 +156,26 @@ async function adminRequest(
     throw new Error(`${method} ${path} responded ${response.status}: ${await response.text()}`);
   }
   return response;
+}
+
+/**
+ * Keycloak answers 500 now and then when several test runs create and delete realms at the same
+ * time (#519): a realm deleted by one run can still be in the role cache another run's admin
+ * request walks ("Not found in database", a NullPointerException), and the request is rolled
+ * back. Such a request succeeds when sent again a moment later, so a 5xx is retried a few times
+ * before it counts as a failure; any other status is returned as is.
+ */
+const SERVER_ERROR_ATTEMPTS = 5;
+
+async function fetchRetryingServerErrors(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const response = await fetch(url, init);
+    if (response.status < 500 || attempt === SERVER_ERROR_ATTEMPTS) {
+      return response;
+    }
+    await response.body?.cancel();
+    await sleep(250 * attempt);
+  }
 }
 
 function createdEntityId(response: Response): string {
