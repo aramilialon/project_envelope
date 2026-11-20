@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 import type { BudgetAccount, BudgetTransaction } from "./transactions.ts";
@@ -135,17 +136,6 @@ describe("aggregateTransactions", () => {
   });
 });
 
-/** Pseudo-random numbers with a fixed seed (mulberry32), so failures are reproducible. */
-function randomGenerator(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
   //   unassigned money + available of every category and payment category
@@ -155,7 +145,7 @@ describe("budget invariant with accounts and credit cards", () => {
   // debt. Reserved is added back for the same reason: a scheduled item not yet recorded has
   // not moved any real cash either, only reduced a category's own reported available.
   it("balances on 300 random histories", () => {
-    const random = randomGenerator(7);
+    const random = mulberry32(7);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
     const months = ["2026-01", "2026-02", "2026-03", "2026-04"];

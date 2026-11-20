@@ -20,6 +20,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { mulberry32 } from "@envelope/core/testing";
 import { decodeJwt } from "jose";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
@@ -39,17 +40,6 @@ if (!databaseUrl) {
 }
 if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
   throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
-}
-
-/** Pseudo-random numbers with a fixed seed (mulberry32), so a failure is reproducible. */
-function randomGenerator(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 const MONTHS = ["2026-06", "2026-07", "2026-08"];
@@ -152,7 +142,7 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
   }
 
   it("holds on real, randomly generated data: unassigned + every category's available + assigned in future + credit overspending equals the on-budget accounts' balance", async () => {
-    const random = randomGenerator(19);
+    const random = mulberry32(19);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
     const day = (month: string) => `${month}-${String(amount(27)).padStart(2, "0")}`;
@@ -255,7 +245,7 @@ describe("smoke: 0.1.3 Budget API, against the real process", () => {
   });
 
   it("rejects every randomly generated invalid operation with the correct status and error code", async () => {
-    const random = randomGenerator(23);
+    const random = mulberry32(23);
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
 

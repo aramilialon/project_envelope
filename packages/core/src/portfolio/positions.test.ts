@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
+import { mulberry32 } from "../testing/random.ts";
 import type { AccountPosition, PortfolioPosition, Positions, PositionTrade } from "./positions.ts";
 import {
   applyTradeChanges,
@@ -865,17 +866,6 @@ describe("portfolio cost and value", () => {
 
 // --- Property test ------------------------------------------------------------
 
-/** Pseudo-random numbers with a fixed seed (mulberry32), so failures are reproducible. */
-function randomGenerator(seed: number): () => number {
-  let state = seed;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 interface Generated {
   readonly trades: PositionTrade[];
   /** The quantity each (account, instrument, portfolio) should end with. */
@@ -1062,7 +1052,7 @@ function shuffle<T>(items: readonly T[], random: () => number): T[] {
 
 describe("computePositions: invariants on random histories", () => {
   it("keeps quantities and costs consistent on 500 seeded histories", () => {
-    const random = randomGenerator(78);
+    const random = mulberry32(78);
     let splits = 0;
     let crossAccount = 0;
     let outside = 0;
@@ -1135,7 +1125,7 @@ describe("computePositions: invariants on random histories", () => {
   });
 
   it("rejects any sale of one unit more than a portfolio holds", () => {
-    const random = randomGenerator(7878);
+    const random = mulberry32(7878);
     let checked = 0;
     for (let run = 0; run < 200; run++) {
       const { trades } = generateHistory(random);
