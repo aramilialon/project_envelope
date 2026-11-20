@@ -28,6 +28,8 @@
  *   - split (on its ex-date): each portfolio's quantity × to ÷ from, toward
  *     zero to 8 decimals, C unchanged, no gain;
  *   - dividends, coupons, standalone fees and taxes: C unchanged.
+ * - A split affects every holding: every portfolio holding the instrument at
+ *   the start of the split's date, in any account, needs its own split row.
  * - Replay order: `(date, split first, occurredAt, createdAt, id)`. `date` is
  *   the trade date on the broker's statement; a split applies at the start of
  *   its date, before every other trade of that date. Timestamps are compared
@@ -495,25 +497,28 @@ function removeCost(state: AccountState, moved: Quantity): Cents {
   return removed;
 }
 
-/** Applies the split rows of one account on one date. */
-function applySplits(state: AccountState, splits: readonly PositionTrade[]): void {
-  const first = splits[0];
-  if (first === undefined) return;
-  const where = { accountId: state.accountId, instrumentId: state.instrumentId, date: first.date };
+/**
+ * Applies the split rows of one account on a split's date. `splits` may be
+ * empty: a split affects every holding, so an account holding the instrument
+ * without any split row on that date is rejected too.
+ */
+function applySplits(state: AccountState, date: LocalDate, splits: readonly PositionTrade[]): void {
+  const where = { accountId: state.accountId, instrumentId: state.instrumentId, date };
   const covered = new Set<string>();
   for (const split of splits) {
     if (covered.has(split.portfolioId)) {
-      throw new ValidationError("split_duplicate", `portfolio ${split.portfolioId} has two split rows on ${first.date}`, {
+      throw new ValidationError("split_duplicate", `portfolio ${split.portfolioId} has two split rows on ${date}`, {
         ...where,
         portfolioId: split.portfolioId,
       });
     }
     covered.add(split.portfolioId);
+    const first = splits[0] as PositionTrade;
     // Same ratio: from₁ × to₂ = from₂ × to₁ (ratios checked positive by checkTrade).
     if (BigInt(split.splitFrom ?? 1) * BigInt(first.splitTo ?? 1) !== BigInt(first.splitFrom ?? 1) * BigInt(split.splitTo ?? 1)) {
       throw new ValidationError(
         "split_ratio_mismatch",
-        `the split rows of instrument ${state.instrumentId} on ${first.date} have different ratios`,
+        `the split rows of instrument ${state.instrumentId} on ${date} have different ratios`,
         where,
       );
     }
@@ -525,7 +530,7 @@ function applySplits(state: AccountState, splits: readonly PositionTrade[]): voi
   if (missing !== undefined) {
     throw new ValidationError(
       "split_missing_for_portfolio",
-      `portfolio ${missing} holds instrument ${state.instrumentId} on ${first.date} but has no split row`,
+      `portfolio ${missing} holds instrument ${state.instrumentId} on ${date} but has no split row`,
       { ...where, portfolioId: missing },
     );
   }
@@ -538,7 +543,7 @@ function applySplits(state: AccountState, splits: readonly PositionTrade[]): voi
   if (state.quantity === 0 && state.cost !== 0) {
     throw new ValidationError(
       "split_leaves_no_quantity",
-      `the split on ${first.date} rounds the whole position in instrument ${state.instrumentId} down to zero`,
+      `the split on ${date} rounds the whole position in instrument ${state.instrumentId} down to zero`,
       where,
     );
   }
@@ -583,7 +588,8 @@ function replayInstrument(
     if (done.has(trade.id)) continue;
 
     if (trade.type === "split") {
-      // Every split row of this date (they sort first), applied per account.
+      // Every split row of this date (they sort first), applied per account. Every account
+      // already holding the instrument is checked, rows or not: a split affects every holding.
       const byAccount = new Map<string, PositionTrade[]>();
       for (let j = i; j < sorted.length; j++) {
         const other = sorted[j] as PositionTrade;
@@ -593,9 +599,11 @@ function replayInstrument(
         byAccount.set(other.accountId, rows);
         done.add(other.id);
       }
-      for (const accountId of [...byAccount.keys()].sort(compareIds)) {
-        const rows = byAccount.get(accountId) as PositionTrade[];
-        applySplits(accountOf(rows[0] as PositionTrade), rows);
+      const accountIds = new Set([...accounts.keys(), ...byAccount.keys()]);
+      for (const accountId of [...accountIds].sort(compareIds)) {
+        const rows = byAccount.get(accountId) ?? [];
+        const state = rows[0] === undefined ? (accounts.get(accountId) as AccountState) : accountOf(rows[0]);
+        applySplits(state, trade.date, rows);
       }
       continue;
     }
@@ -731,8 +739,8 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
  * @throws ValidationError "insufficient_quantity" if a portfolio's quantity
  *   would go negative at any point (details: tradeId, accountId, portfolioId,
  *   instrumentId, date, available, requested, quantities in units × 10^8);
- *   "split_missing_for_portfolio" if a portfolio holds the instrument at the
- *   start of a split's date but has no split row for it, "split_duplicate"
+ *   "split_missing_for_portfolio" if a portfolio, in any account, holds the
+ *   instrument at the start of a split's date but has no split row for it, "split_duplicate"
  *   for two split rows of one portfolio on one date, "split_ratio_mismatch"
  *   for split rows of one account and date with different ratios (details:
  *   accountId, instrumentId, date, and portfolioId where one is concerned);

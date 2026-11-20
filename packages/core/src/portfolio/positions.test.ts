@@ -655,6 +655,31 @@ describe("validatePositionHistory and applyTradeChanges", () => {
     );
   });
 
+  it("rejects a split recorded in one account while another account also holds the instrument", () => {
+    const holdings = [buy("2026-01-10", "A", 10, 100, 0), buy("2026-01-10", "B", 4, 100, 0, { accountId: OTHER_ACCOUNT })];
+    assert.throws(
+      () => validatePositionHistory([...holdings, split("2026-03-01", "A", 1, 2)]),
+      (error) => {
+        assert.ok(isValidationError(error, "split_missing_for_portfolio"));
+        assert.deepEqual(error.details, { accountId: OTHER_ACCOUNT, instrumentId: ETF, date: "2026-03-01", portfolioId: "B" });
+        return true;
+      },
+    );
+    const positions = computePositions([
+      ...holdings,
+      split("2026-03-01", "A", 1, 2),
+      split("2026-03-01", "B", 1, 2, { accountId: OTHER_ACCOUNT }),
+    ]);
+    assert.equal(account(positions).quantity, units(20));
+    assert.equal(account(positions, OTHER_ACCOUNT).quantity, units(8));
+    // An account that no longer holds the instrument needs no row.
+    validatePositionHistory([
+      ...holdings,
+      sell("2026-02-01", "B", 4, 100, 0, { accountId: OTHER_ACCOUNT }),
+      split("2026-03-01", "A", 1, 2),
+    ]);
+  });
+
   it("rejects split rows of one date with different ratios", () => {
     assert.throws(
       () => validatePositionHistory([...abHistory(), split("2026-03-01", "A", 1, 4), split("2026-03-01", "B", 1, 2)]),
@@ -922,20 +947,24 @@ function generateHistory(random: () => number): Generated {
       );
       held.set(k, outgoing ? have - quantity : have + quantity);
     } else if (roll < 0.78) {
-      // A split on a new date, one row per portfolio of the account holding the instrument.
+      // A split on a new date, one row per portfolio holding the instrument, in every account.
       day += 1;
       const [from, to] = pick([[1, 2], [1, 3], [2, 1], [3, 2], [10, 1]] as const);
       const when = stamp();
-      const holders = PORTFOLIOS.filter((p) => (held.get(key(accountId, instrumentId, p)) ?? 0) > 0);
-      const after = (p: string) => Math.floor(((held.get(key(accountId, instrumentId, p)) ?? 0) * to) / from);
-      const total = holders.reduce((sum, p) => sum + after(p), 0);
-      if (holders.length === 0 || total === 0 || total > LIMIT) continue;
-      for (const p of holders) {
-        const quantity = after(p);
+      const holders = ACCOUNTS.flatMap((a) =>
+        PORTFOLIOS.filter((p) => (held.get(key(a, instrumentId, p)) ?? 0) > 0).map((p) => [a, p] as const),
+      );
+      const after = (a: string, p: string) => Math.floor(((held.get(key(a, instrumentId, p)) ?? 0) * to) / from);
+      const totals = ACCOUNTS.filter((a) => holders.some(([h]) => h === a)).map((a) =>
+        holders.filter(([h]) => h === a).reduce((sum, [, p]) => sum + after(a, p), 0),
+      );
+      if (holders.length === 0 || totals.some((total) => total === 0 || total > LIMIT)) continue;
+      for (const [a, p] of holders) {
+        const quantity = after(a, p);
         trades.push(
-          trade({ id: nextId(), ...when, accountId, instrumentId, portfolioId: p, type: "split", splitFrom: from, splitTo: to }),
+          trade({ id: nextId(), ...when, accountId: a, instrumentId, portfolioId: p, type: "split", splitFrom: from, splitTo: to }),
         );
-        held.set(key(accountId, instrumentId, p), quantity);
+        held.set(key(a, instrumentId, p), quantity);
       }
       hasSplit = true;
       day += 1;

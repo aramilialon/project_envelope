@@ -299,9 +299,12 @@ Worked examples, each one a test in `packages/core`:
 - **A dividend's net income.** A €20.00 dividend with €3.00 of foreign withholding, €4.42 of
   domestic withholding and a €2.00 fee is €10.58 of income; the €5 fee paid when the units were
   bought is not subtracted again.
-- **A split covers every portfolio.** A split is recorded once per portfolio of the account
-  holding the instrument. A trade that would make another portfolio hold the instrument on that
-  date without its own split row is refused (`split_missing_for_portfolio`).
+- **A split covers every holding.** A corporate split affects every unit of the instrument, so it
+  is recorded once per portfolio holding it, in every account of the workspace. If two accounts
+  hold the instrument and the split is recorded in only one, it is refused
+  (`split_missing_for_portfolio`); so is a trade that would make another portfolio hold the
+  instrument on that date without its own split row. An account that no longer holds the
+  instrument on that date needs no row.
 
 Not handled yet: return of capital, amortizing bonds, bonds issued at a discount, spin-offs,
 mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
