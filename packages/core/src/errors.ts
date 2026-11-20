@@ -45,7 +45,15 @@ export type ValidationErrorCode =
   | "split_missing_for_portfolio"
   | "split_leaves_no_quantity"
   | "split_duplicate"
-  | "split_ratio_mismatch";
+  | "split_ratio_mismatch"
+  | "invalid_isin"
+  | "invalid_instrument_type"
+  | "invalid_instrument_field"
+  | "missing_instrument_identifier"
+  | "missing_exchange"
+  | "invalid_ticker"
+  | "invalid_exchange"
+  | "search_query_too_short";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
