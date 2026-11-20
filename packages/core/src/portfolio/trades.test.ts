@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
 import type { PositionTrade } from "./positions.ts";
+import type { Price, Quantity } from "./quantity.ts";
+import { amountOf, PRICE_FACTOR_HUNDREDTH } from "./quantity.ts";
 import { checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
 
 type Amounts = Pick<
@@ -90,29 +92,43 @@ describe("tradeCashCents (ADR 0012)", () => {
 });
 
 describe("tradeCashCents, worked examples (domain expert)", () => {
-  // A BTP: 10,000 nominal at 98.765432 (percent), a €5.00 fee, €34.90 of accrued interest paid and
-  // €3.75 of domestic withholding on it credited back.
+  // A BTP paying a 2% coupon every six months, 10,000 nominal (the quantity) quoted in percent
+  // (price factor 0.01).
+  const nominal = (10_000 * 100_000_000) as Quantity;
+
   it("takes a bond buy's gross, fee and accrued interest out, net of the withholding credited back", () => {
-    const buy = amounts({ type: "buy", grossCents: 987_654, feesCents: 500, accruedInterestCents: 3_490, withholdingDomesticCents: 375 });
+    // Bought at 98.50, 60 days into a 182-day coupon period.
+    const grossCents = amountOf(nominal, 98_500_000 as Price, PRICE_FACTOR_HUNDREDTH, "EUR");
+    assert.equal(grossCents, 985_000);
+    const buy = amounts({
+      type: "buy",
+      grossCents,
+      feesCents: 500,
+      accruedInterestCents: 6_593, // 10,000 × 2% × 60/182
+      withholdingDomesticCents: 824, // 12.5% of it, credited back
+    });
+    assert.equal(tradeCashCents(buy), -(985_000 + 500 + 6_593 - 824));
     assert.equal(tradeCashCents(buy), -991_269);
   });
 
-  // The same nominal sold at 100.00: €40.00 of accrued interest received, €5.00 withheld on it, a
-  // €5.00 fee and €7.11 of gain tax.
   it("puts a bond sale's gross and accrued interest in, net of fee, gain tax and withholding", () => {
+    // Sold at 99.20: the €60 gain is taxed at 12.5%.
+    const grossCents = amountOf(nominal, 99_200_000 as Price, PRICE_FACTOR_HUNDREDTH, "EUR");
+    assert.equal(grossCents, 992_000);
     const sell = amounts({
       type: "sell",
-      grossCents: 1_000_000,
-      accruedInterestCents: 4_000,
+      grossCents,
+      accruedInterestCents: 13_187,
       feesCents: 500,
-      gainTaxCents: 711,
-      withholdingDomesticCents: 500,
+      gainTaxCents: 750,
+      withholdingDomesticCents: 1_648, // 12.5% of the accrued interest
     });
+    assert.equal(tradeCashCents(sell), 992_000 + 13_187 - 500 - 750 - 1_648);
     assert.equal(tradeCashCents(sell), 1_002_289);
   });
 
   it("puts a coupon in net of its domestic withholding", () => {
-    // €200.00 gross on the nominal, 12.5% withheld.
+    // €200.00 gross on the nominal, €25.00 (12.5%) withheld.
     assert.equal(tradeCashCents(amounts({ type: "dividend", grossCents: 20_000, withholdingDomesticCents: 2_500 })), 17_500);
   });
 
