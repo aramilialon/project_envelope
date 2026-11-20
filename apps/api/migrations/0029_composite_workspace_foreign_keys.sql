@@ -42,6 +42,12 @@
 -- SET NULL actions name their column, `ON DELETE SET NULL (transfer_id)`, so that deleting the
 -- referenced row clears only the id and never the NOT NULL workspace_id beside it.
 -- Each constraint keeps its previous name.
+--
+-- row_security is turned off for this migration's transaction (ADR 0006): under FORCE ROW LEVEL
+-- SECURITY a migrating role that is neither superuser nor BYPASSRLS would otherwise see no rows,
+-- so the guard below and the validation done by ADD CONSTRAINT would silently check nothing.
+-- With it off, such a role gets an error instead.
+SET LOCAL row_security = off;
 
 -- 1. Refuse to run on data that already crosses workspaces, with a message naming every
 --    offending column, rather than failing on the first ADD CONSTRAINT with a generic error.
@@ -118,82 +124,82 @@ $$;
 
 -- 3. Replace each foreign key with its composite form, same name, same ON DELETE.
 ALTER TABLE categories
-  DROP CONSTRAINT IF EXISTS categories_group_id_fkey,
+  DROP CONSTRAINT categories_group_id_fkey,
   ADD CONSTRAINT categories_group_id_fkey FOREIGN KEY (workspace_id, group_id)
     REFERENCES category_groups (workspace_id, id) ON DELETE CASCADE;
 
 ALTER TABLE accounts
-  DROP CONSTRAINT IF EXISTS accounts_payment_category_id_fkey,
+  DROP CONSTRAINT accounts_payment_category_id_fkey,
   ADD CONSTRAINT accounts_payment_category_id_fkey FOREIGN KEY (workspace_id, payment_category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE;
 
 ALTER TABLE transactions
-  DROP CONSTRAINT IF EXISTS transactions_account_id_fkey,
+  DROP CONSTRAINT transactions_account_id_fkey,
   ADD CONSTRAINT transactions_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE,
-  DROP CONSTRAINT IF EXISTS transactions_transfer_id_fkey,
+  DROP CONSTRAINT transactions_transfer_id_fkey,
   ADD CONSTRAINT transactions_transfer_id_fkey FOREIGN KEY (workspace_id, transfer_id)
     REFERENCES transactions (workspace_id, id) MATCH SIMPLE ON DELETE SET NULL (transfer_id),
-  DROP CONSTRAINT IF EXISTS transactions_reconciliation_id_fkey,
+  DROP CONSTRAINT transactions_reconciliation_id_fkey,
   ADD CONSTRAINT transactions_reconciliation_id_fkey FOREIGN KEY (workspace_id, reconciliation_id)
     REFERENCES reconciliations (workspace_id, id) MATCH SIMPLE ON DELETE SET NULL (reconciliation_id);
 
 ALTER TABLE splits
-  DROP CONSTRAINT IF EXISTS splits_transaction_id_fkey,
+  DROP CONSTRAINT splits_transaction_id_fkey,
   ADD CONSTRAINT splits_transaction_id_fkey FOREIGN KEY (workspace_id, transaction_id)
     REFERENCES transactions (workspace_id, id) ON DELETE CASCADE,
-  DROP CONSTRAINT IF EXISTS splits_category_id_fkey,
+  DROP CONSTRAINT splits_category_id_fkey,
   ADD CONSTRAINT splits_category_id_fkey FOREIGN KEY (workspace_id, category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE ON DELETE RESTRICT;
 
 ALTER TABLE assignment_ledger
-  DROP CONSTRAINT IF EXISTS assignment_ledger_source_category_id_fkey,
+  DROP CONSTRAINT assignment_ledger_source_category_id_fkey,
   ADD CONSTRAINT assignment_ledger_source_category_id_fkey FOREIGN KEY (workspace_id, source_category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE ON DELETE RESTRICT,
-  DROP CONSTRAINT IF EXISTS assignment_ledger_destination_category_id_fkey,
+  DROP CONSTRAINT assignment_ledger_destination_category_id_fkey,
   ADD CONSTRAINT assignment_ledger_destination_category_id_fkey FOREIGN KEY (workspace_id, destination_category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE ON DELETE RESTRICT,
-  DROP CONSTRAINT IF EXISTS assignment_ledger_reverses_fkey,
+  DROP CONSTRAINT assignment_ledger_reverses_fkey,
   ADD CONSTRAINT assignment_ledger_reverses_fkey FOREIGN KEY (workspace_id, reverses)
     REFERENCES assignment_ledger (workspace_id, id) MATCH SIMPLE ON DELETE RESTRICT;
 
 ALTER TABLE goals
-  DROP CONSTRAINT IF EXISTS goals_category_id_fkey,
+  DROP CONSTRAINT goals_category_id_fkey,
   ADD CONSTRAINT goals_category_id_fkey FOREIGN KEY (workspace_id, category_id)
     REFERENCES categories (workspace_id, id) ON DELETE CASCADE;
 
 ALTER TABLE import_mappings
-  DROP CONSTRAINT IF EXISTS import_mappings_account_id_fkey,
+  DROP CONSTRAINT import_mappings_account_id_fkey,
   ADD CONSTRAINT import_mappings_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE;
 
 ALTER TABLE staged_transactions
-  DROP CONSTRAINT IF EXISTS staged_transactions_account_id_fkey,
+  DROP CONSTRAINT staged_transactions_account_id_fkey,
   ADD CONSTRAINT staged_transactions_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE,
-  DROP CONSTRAINT IF EXISTS staged_transactions_duplicate_of_fkey,
+  DROP CONSTRAINT staged_transactions_duplicate_of_fkey,
   ADD CONSTRAINT staged_transactions_duplicate_of_fkey FOREIGN KEY (workspace_id, duplicate_of)
     REFERENCES transactions (workspace_id, id) MATCH SIMPLE ON DELETE SET NULL (duplicate_of);
 
 ALTER TABLE reconciliations
-  DROP CONSTRAINT IF EXISTS reconciliations_account_id_fkey,
+  DROP CONSTRAINT reconciliations_account_id_fkey,
   ADD CONSTRAINT reconciliations_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE;
 
 ALTER TABLE notified_budget_problems
-  DROP CONSTRAINT IF EXISTS notified_budget_problems_category_id_fkey,
+  DROP CONSTRAINT notified_budget_problems_category_id_fkey,
   ADD CONSTRAINT notified_budget_problems_category_id_fkey FOREIGN KEY (workspace_id, category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE ON DELETE CASCADE;
 
 ALTER TABLE scheduled_transactions
-  DROP CONSTRAINT IF EXISTS scheduled_transactions_account_id_fkey,
+  DROP CONSTRAINT scheduled_transactions_account_id_fkey,
   ADD CONSTRAINT scheduled_transactions_account_id_fkey FOREIGN KEY (workspace_id, account_id)
     REFERENCES accounts (workspace_id, id) ON DELETE CASCADE;
 
 ALTER TABLE scheduled_transaction_splits
-  DROP CONSTRAINT IF EXISTS scheduled_transaction_splits_scheduled_transaction_id_fkey,
+  DROP CONSTRAINT scheduled_transaction_splits_scheduled_transaction_id_fkey,
   ADD CONSTRAINT scheduled_transaction_splits_scheduled_transaction_id_fkey FOREIGN KEY (workspace_id, scheduled_transaction_id)
     REFERENCES scheduled_transactions (workspace_id, id) ON DELETE CASCADE,
-  DROP CONSTRAINT IF EXISTS scheduled_transaction_splits_category_id_fkey,
+  DROP CONSTRAINT scheduled_transaction_splits_category_id_fkey,
   ADD CONSTRAINT scheduled_transaction_splits_category_id_fkey FOREIGN KEY (workspace_id, category_id)
     REFERENCES categories (workspace_id, id) MATCH SIMPLE ON DELETE RESTRICT;

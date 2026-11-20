@@ -474,10 +474,10 @@ describe("apps/api/migrations, applied to a real database", () => {
         await client.query("DELETE FROM transactions WHERE id = $1", [workspaceA.transactionId]);
         await client.query("DELETE FROM reconciliations WHERE id = $1", [workspaceA.reconciliationId]);
 
-        const after = await client.query("SELECT workspace_id, transfer_id, reconciliation_id FROM transactions WHERE id = $1", [
+        const partnerAfter = await client.query("SELECT workspace_id, transfer_id, reconciliation_id FROM transactions WHERE id = $1", [
           partner.rows[0]!.id,
         ]);
-        assert.deepEqual(after.rows, [
+        assert.deepEqual(partnerAfter.rows, [
           { workspace_id: workspaceA.workspaceId, transfer_id: null, reconciliation_id: null },
         ]);
         const stagedAfter = await client.query("SELECT workspace_id, duplicate_of FROM staged_transactions WHERE id = $1", [
