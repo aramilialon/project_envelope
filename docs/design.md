@@ -407,6 +407,17 @@ Keycloak is the main identity provider. The app speaks standard OpenID Connect o
 
 **Why OpenID Connect and not SAML.** OpenID Connect adds authentication on top of OAuth 2.0 and is the standard designed for mobile apps and single-page apps, with the Authorization Code + PKCE flow. It also provides tokens ready to call the API. SAML was designed for browser sign-in between websites and has no standard way to serve native apps or protect an API; many consumer identity providers do not support it either. If a SAML provider is ever needed, such as a company directory, Keycloak connects it as a secondary provider and the app keeps speaking OpenID Connect only.
 
+### Assistant access (MCP)
+
+A member can let an AI assistant read their workspace through an MCP server, `apps/mcp`, a separate process that reaches data only through the API, with no database credentials of its own ([ADR 0014](adr/0014-assistant-access-through-mcp.md)).
+
+- **Off by default.** The owner sets `assistant_access` per workspace: off, owner only, or all members.
+- **Local first, read-only** (milestone 0.2.8): over stdio, signed in with the device authorization grant, tokens kept in memory only.
+- **Remote** (milestone 0.4.1): over Streamable HTTP, behind an internet-facing Keycloak with multi-factor authentication for every user, pre-registered clients only, token exchange to a reduced-scope token for the API, an IP allowlist, and every new connection approved from the web app on the LAN. How the server is exposed to the internet is still open (ADR 0014, D9).
+- **Writes only as drafts** (milestone 0.4.2): an assistant proposes transaction and trade drafts that a member confirms in the web app; a restrictive policy in the database refuses every other write made on an assistant's behalf.
+- **Encrypted workspaces** are never reachable remotely, and locally only if the owner opts in (milestone 0.8.0).
+- **No advice.** Tools return the engine's own figures in neutral wording; what the assistant then says is its own.
+
 ### GDPR, for a hosted version
 
 - Full data export (JSON and CSV) and account deletion, including from backups within a stated period.
@@ -605,9 +616,9 @@ Work starts from the domain core and the web app for a single workspace, already
 | --- | --- | --- |
 | 0. Foundations | Monorepo, CI, database, Keycloak, workspaces, domain core with tests | Sign-up, sign-in with 2FA, green CI |
 | 1. Budget MVP (web) | Accounts, categories, assignment, transactions, credit cards, targets, moving money between categories, days of buffer, CSV/OFX/QIF/CAMT.053 import, reconciliation, i18n library with English and Italian | A real month of a household budget can be run with the app alone |
-| 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing; private instruments scoped to one workspace (no ISIN and no ticker) follow the shared catalog in milestone 0.2.1 (#505) | The dashboard reproduces the results of an existing spreadsheet-based tracker |
+| 2. Portfolio MVP (web) | Instruments, trades, positions, historical prices, monthly performance, target allocation, thresholds, rebalancing; private instruments scoped to one workspace (no ISIN and no ticker) follow the shared catalog in milestone 0.2.1 (#505); local, read-only assistant access over MCP in milestone 0.2.8 (see "Assistant access (MCP)") | The dashboard reproduces the results of an existing spreadsheet-based tracker |
 | 3. Mobile and offline | Expo app, local database, sync, quick entry, notifications | One week of use on two devices without loss or duplicates |
-| 4. Public open-source beta | Docker, documentation | A self-hosted install works in under 10 minutes |
+| 4. Public open-source beta | Docker, documentation; rate limiting and an internet-ready Keycloak (upgrade, production mode, brute-force protection, multi-factor authentication) in milestone 0.4.0; remote assistant access in 0.4.1 and assistant drafts in 0.4.2 (see "Assistant access (MCP)") | A self-hosted install works in under 10 minutes |
 | 5. Hosted version (optional) | End-to-end encryption module, subscriptions, licensed market data, managed backups, external security test, legal and GDPR review | Security test passed and legal documents ready |
 | 6. Evolutions | PSD2 bank connection, shared budgets, widgets | Driven by actual needs |
 
@@ -651,3 +662,4 @@ The field-level sync protocol is designed here (this section) but only ships, as
 | Scheduled transactions | Reserve money ahead of being recorded; reservations never carry over to the next month (see "Scheduled transactions") |
 | Import | Staged until every row is categorized, a transfer or income; unconfirmed staging expires after 7 days (see "Import and reconciliation") |
 | Foreign-currency budget accounts | After 1.0.0 (see "After 1.0.0") |
+| Assistant access | An MCP server that reaches data only through the API, off by default per workspace; local and read-only first, remote later behind a hardened Keycloak, writes only as drafts a member confirms ([ADR 0014](adr/0014-assistant-access-through-mcp.md)) |
