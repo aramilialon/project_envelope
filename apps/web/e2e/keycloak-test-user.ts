@@ -3,11 +3,11 @@
  * `scripts/keycloak/bootstrap.sh`), for an e2e test to sign in as — mirroring the "create a
  * throwaway identity through the admin API, never by hand" approach `apps/api`'s own
  * `test-helpers/keycloak.ts` uses for its throwaway realms. Self-registration is disabled on
- * this realm by design, so a test cannot create its own user any other way.
+ * this realm by design, so a test cannot create its own user any other way. With `E2E_MANIFEST`
+ * set, the user goes in the disposable environment's realm instead (`environment.ts`, #536).
  */
 
-const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://127.0.0.1:8080";
-const REALM = "envelope";
+import { KEYCLOAK_URL, REALM } from "./environment.ts";
 
 export interface KeycloakTestUser {
   readonly username: string;

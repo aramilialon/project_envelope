@@ -13,7 +13,7 @@ test.describe("accounts (#51)", () => {
   async function signIn(page: import("@playwright/test").Page, user: Awaited<ReturnType<typeof createTestUser>>) {
     await page.goto("/");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(/\/realms\/envelope\/protocol\/openid-connect\/auth/);
+    await page.waitForURL(/\/realms\/[^/]+\/protocol\/openid-connect\/auth/);
     await page.getByLabel("Username or email").fill(user.username);
     await page.getByLabel("Password", { exact: true }).fill(user.password);
     await page.getByRole("button", { name: "Sign In" }).click();
