@@ -636,14 +636,19 @@ function sumOfSplits(splits: readonly { readonly amountCents: number }[]): numbe
  * A transfer's two legs always cancel out (#547): new splits that change one leg's amount give
  * the other leg the opposite amount, in the same database transaction. The other leg keeps its
  * own split — its id, memo and category, if it has one (the on-budget leg of a transfer to or
- * from an off-budget account) — and its payee, memo and status; only its amount follows. Both
- * legs are locked first, so the reconciliation flow cannot reconcile the other one in between.
- * The edit is refused as `reconciled` when the other leg is reconciled, and as `trade_owned` when
- * it is a trade's cash leg, as for the leg itself, and with a `ValidationError`
- * (`unsupported_transaction`) when the other leg has several splits, since nothing says which of
- * them the difference belongs to. New splits with the same total (a different category on the
- * leg) leave the other leg alone. The payee, memo and status of a leg stay its own: they never
- * reach the other leg.
+ * from an off-budget account) — and its payee and memo; a `cleared` other leg goes back to
+ * `pending`, since it no longer matches what was ticked against the statement. Both legs are
+ * locked first, so the reconciliation flow cannot reconcile the other one in between.
+ *
+ * A transfer leg holds exactly one split: new splits for it are refused with a `ValidationError`
+ * (`unsupported_transaction`) unless there is one, and (`invalid_amount`) when it would make the
+ * leg's amount zero or flip its sign — changing a transfer's direction means deleting and
+ * recreating it. The edit is refused as `reconciled` when the other leg is reconciled, as
+ * `trade_owned` when it is a trade's cash leg, as for the leg itself, and with
+ * `unsupported_transaction` when the other leg has several splits (written before #547), since
+ * nothing says which of them the difference belongs to. Every refusal comes before anything is
+ * written. A new split with the same amount (a different category on the leg) leaves the other leg
+ * alone. The payee, memo and status the request gives stay the edited leg's own.
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -684,10 +689,22 @@ export async function updateTransaction(
   }
 
   // The other leg of a transfer, and its one split, when this edit changes the leg's amount (#547).
-  let partnerSplit: { readonly id: string; readonly amountCents: number } | undefined;
+  let partnerSplit: { readonly id: string; readonly amountCents: number; readonly status: TransactionStatus } | undefined;
   if (patch.splits !== undefined && existing.transferId !== null) {
+    if (patch.splits.length !== 1) {
+      throw new ValidationError("unsupported_transaction", "a transfer leg holds exactly one split", {
+        transactionId: existing.id,
+      });
+    }
     const newTotal = sumOfSplits(patch.splits);
-    const partner = newTotal === sumOfSplits(existing.splits) ? undefined : await getTransaction(db, workspaceId, existing.transferId);
+    const oldTotal = sumOfSplits(existing.splits);
+    // A transfer's direction is set when it is created: changing it means deleting and recreating it.
+    if (newTotal === 0 || Math.sign(newTotal) !== Math.sign(oldTotal)) {
+      throw new ValidationError("invalid_amount", "a transfer leg keeps its direction and a non-zero amount", {
+        amount: newTotal,
+      });
+    }
+    const partner = newTotal === oldTotal ? undefined : await getTransaction(db, workspaceId, existing.transferId);
     if (partner) {
       if (partner.status === "reconciled") {
         return "reconciled";
@@ -701,7 +718,9 @@ export async function updateTransaction(
           transactionId: partner.id,
         });
       }
-      partnerSplit = { id: onlySplit.id, amountCents: -newTotal };
+      // A cleared leg whose amount moves no longer matches what was ticked against the statement,
+      // as with a trade's cash leg (`rewriteTradeCashLeg`): it goes back to pending.
+      partnerSplit = { id: onlySplit.id, amountCents: -newTotal, status: partner.status === "cleared" ? "pending" : partner.status };
     }
   }
 
@@ -724,6 +743,11 @@ export async function updateTransaction(
     await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [
       partnerSplit.amountCents,
       partnerSplit.id,
+      workspaceId,
+    ]);
+    await db.query("UPDATE transactions SET status = $1 WHERE id = $2 AND workspace_id = $3", [
+      partnerSplit.status,
+      existing.transferId,
       workspaceId,
     ]);
   }

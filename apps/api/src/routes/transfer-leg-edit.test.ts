@@ -213,16 +213,45 @@ describe("editing one leg of a transfer (#547)", () => {
     await assertBudgetInvariant();
   });
 
-  it("keeps the payee, memo and status of each leg its own", async () => {
+  it("sends a cleared other leg back to pending when its amount moves, and keeps each leg's payee its own", async () => {
     const { source, destination } = await transfer(checkingId, savingsId, 1_000, { payee: "Move", status: "cleared" });
 
-    const edited = await patchLeg(source, { payee: "Renamed", status: "pending", splits: [{ categoryId: null, amountCents: -1_100 }] });
+    const edited = await patchLeg(source, { payee: "Renamed", splits: [{ categoryId: null, amountCents: -1_100 }] });
     assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    assert.equal(edited.body.status, "cleared", "the edited leg keeps the status the request leaves it");
     const other = await reread(destination);
     assert.equal(total(other), 1_100);
     assert.equal(other.payee, "Move");
-    assert.equal(other.status, "cleared");
+    assert.equal(other.status, "pending");
+    await assertBudgetInvariant();
   });
+
+  it("keeps a cleared other leg cleared when only the leg's category changes", async () => {
+    const { source, destination } = await transfer(checkingId, offBudgetId, 1_300, { categoryId, status: "cleared" });
+
+    const edited = await patchLeg(source, { splits: [{ categoryId: otherCategoryId, amountCents: -1_300 }] });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    assert.equal((await reread(destination)).status, "cleared");
+  });
+
+  // Amounts of the source leg (always negative) of a 500 transfer; "category" stands for a real category id.
+  const refusals: readonly (readonly [string, readonly (readonly ["category" | null, number])[], string])[] = [
+    ["several splits", [["category", -200], ["category", -300]], "unsupported_transaction"],
+    ["a zero amount", [[null, 0]], "invalid_amount"],
+    ["a flipped sign", [[null, 500]], "invalid_amount"],
+  ];
+  for (const [title, splits, code] of refusals) {
+    it(`refuses ${title} on a transfer leg with 400 ${code}, changing neither leg`, async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 500);
+      const payload = splits.map(([category, amountCents]) => ({ categoryId: category === null ? null : categoryId, amountCents }));
+
+      const refused = await patchLeg(source, { payee: "Changed", splits: payload });
+      assert.equal(refused.status, 400, JSON.stringify(refused.body));
+      assert.equal(refused.body.error, code);
+      assert.deepEqual(await reread(source), source);
+      assert.deepEqual(await reread(destination), destination);
+    });
+  }
 
   it("refuses with 409 when the other leg is reconciled, and changes neither leg", async () => {
     const { source, destination } = await transfer(checkingId, savingsId, 750);

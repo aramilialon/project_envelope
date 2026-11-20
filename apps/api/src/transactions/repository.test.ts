@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
-import { isValidationError } from "@envelope/core";
+import { isValidationError, type ValidationErrorCode } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
@@ -317,14 +317,13 @@ describe("transactions repository", () => {
       amountCents: 1000,
       categoryId,
     });
-    // Same total, so the other leg is untouched; the on-budget leg now has two splits.
-    const split = await updateTransaction(pool, workspaceId, transfer.source.id, {
-      splits: [
-        { categoryId, amountCents: -400 },
-        { categoryId: otherCategoryId, amountCents: -600 },
-      ],
-    });
-    assert.ok(typeof split !== "string");
+    // A leg with two splits, as a PATCH could still write before #547.
+    await pool.query("UPDATE splits SET amount_cents = -400 WHERE transaction_id = $1", [transfer.source.id]);
+    await pool.query("INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents) VALUES ($1, $2, $3, -600)", [
+      workspaceId,
+      transfer.source.id,
+      otherCategoryId,
+    ]);
 
     await assert.rejects(
       () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 1500 }] }),
@@ -332,6 +331,39 @@ describe("transactions repository", () => {
     );
     const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
     assert.equal(destination?.splits[0]?.amountCents, 1000);
+  });
+
+  it("refuses several splits, a zero amount or a flipped sign on a transfer leg, writing nothing (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 1000,
+      categoryId,
+      payee: "Before",
+    });
+    const refusals: [readonly { categoryId: string | null; amountCents: number }[], ValidationErrorCode][] = [
+      [
+        [
+          { categoryId, amountCents: -400 },
+          { categoryId: otherCategoryId, amountCents: -600 },
+        ],
+        "unsupported_transaction",
+      ],
+      [[{ categoryId, amountCents: 0 }], "invalid_amount"],
+      [[{ categoryId, amountCents: 1000 }], "invalid_amount"],
+    ];
+    for (const [splits, code] of refusals) {
+      await assert.rejects(
+        () => updateTransaction(pool, workspaceId, transfer.source.id, { payee: "After", splits }),
+        (error: unknown) => isValidationError(error, code),
+      );
+    }
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.deepEqual(source, transfer.source);
+    assert.deepEqual(destination, transfer.destination);
   });
 
   it("creates a cash-to-card transfer the same way, no special-casing", async () => {
