@@ -12,6 +12,7 @@ import { after, before, describe, it } from "node:test";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "./migrate.ts";
 import { createPool, type DbPool } from "./pool.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -24,18 +25,13 @@ if (!databaseUrl) {
 const MIGRATION = "0032_change_log_workspace_key.sql";
 
 describe("migration 0032 on a database with existing change_log rows", () => {
-  const scratchUrl = new URL(databaseUrl);
-  const scratchName = `${scratchUrl.pathname.slice(1)}_m0032`;
-  scratchUrl.pathname = `/${scratchName}`;
-  let adminPool: DbPool;
+  let scratch: IsolatedDatabase;
   let scratchPool: DbPool;
   let migrationsDir: string;
 
   before(async () => {
-    adminPool = createPool(databaseUrl);
-    await adminPool.query(`DROP DATABASE IF EXISTS "${scratchName}" WITH (FORCE)`);
-    await adminPool.query(`CREATE DATABASE "${scratchName}"`);
-    scratchPool = createPool(scratchUrl.toString());
+    scratch = await createIsolatedDatabase(databaseUrl);
+    scratchPool = createPool(scratch.databaseUrl);
 
     migrationsDir = await mkdtemp(path.join(tmpdir(), "envelope-m0032-"));
     for (const file of await readdir(DEFAULT_MIGRATIONS_DIR)) {
@@ -47,8 +43,7 @@ describe("migration 0032 on a database with existing change_log rows", () => {
 
   after(async () => {
     await scratchPool.end();
-    await adminPool.query(`DROP DATABASE IF EXISTS "${scratchName}" WITH (FORCE)`);
-    await adminPool.end();
+    await scratch.drop();
     await rm(migrationsDir, { recursive: true, force: true });
   });
 
