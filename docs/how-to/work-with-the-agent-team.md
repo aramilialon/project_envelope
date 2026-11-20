@@ -6,13 +6,14 @@ Besides the maintainer, work on `envelope` uses a small team of AI agents, each 
 
 | Role | Agent | Writes code | When it works |
 | --- | --- | --- | --- |
-| Coordinator | the main session | only when it keeps an issue itself | throughout: briefs, branches, pull requests, merges after green CI |
+| Coordinator | the main session | only when it keeps an issue itself | throughout: briefs, branches, routing findings and decisions |
 | Developer | `developer` | yes, on its branch | implements one issue from a written brief |
 | Architect | `architect` | no | before coding, on issues that touch schema, API, isolation, queue or sync |
 | Domain expert | `domain-expert` | no | on financial rules and calculations, before and after they are built |
 | UX reviewer | `ux-reviewer` | no | on a mockup before approval, and on a built screen before merge |
 | QA | `qa` | no | on every branch before its pull request is merged |
 | Security reviewer | `security-reviewer` | no | on changes to auth, permissions, isolation, SQL, imports or dependencies |
+| Integrator | `integrator` | only mechanical merge resolutions | once branches have passed their reviews: orders them, brings each up to date with `main`, pushes, opens the pull request, squash-merges after green CI |
 
 The automatic review workflow on GitHub (`.github/workflows/claude-code-review.yml`) adds one more independent read of every pull request.
 
@@ -23,7 +24,7 @@ The automatic review workflow on GitHub (`.github/workflows/claude-code-review.y
 3. **Build.** When the brief is clear (plan and mockup agreed), the `developer` builds it on its branch and reports. Exploratory issues, where the brief would cost as much as the work, stay with the coordinator.
 4. **Verify.** On the finished branch: `qa` always; the `ux-reviewer` if a screen changed; the `security-reviewer` if the change matches its scope; the `domain-expert` again if a calculation was built. Reviewers run independently of each other and of the developer's report.
 5. **Fix and decide.** The coordinator sends must-fix findings back to the developer, and brings to the maintainer any disagreement between roles and any finding that needs a decision.
-6. **Merge.** The coordinator opens the pull request, says in its description which reviews ran and what they found, and squash-merges after green CI.
+6. **Integrate.** The coordinator hands the reviewed branches to the `integrator`, with each one's issue, worktree, review summary and developer. The integrator decides the order (issue dependencies, migration numbers, files several branches change), brings each branch up to date with `main` (a rebase only before the branch is first pushed, a merge of `main` afterwards; never a force-push), resolves only mechanical conflicts such as two entries added to the same changelog or list, and sends every other conflict back to the developer with the files and what changed on `main`. It then pushes, opens the pull request saying which reviews ran and what they found, waits for CI, squash-merges, and re-checks the branches still waiting, since `main` has moved.
 
 Small changes (a typo, a dependency bump with no code change, a release changelog) skip the team: the coordinator handles them directly.
 
