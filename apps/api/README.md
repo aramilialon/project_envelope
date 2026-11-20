@@ -9,7 +9,8 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 to 4 of the
 | `src/config.ts` | Reads and validates environment variables once at startup |
 | `src/db/pool.ts` | The only file that imports `pg` directly; everything else gets a connection pool from here |
 | `src/db/migrate.ts` | Applies pending SQL files from `migrations/`, also runnable as `pnpm --filter @envelope/api migrate` |
-| `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006) |
+| `migrations/` | Plain SQL migration files (ADR 0005): the domain schema and its Row-Level Security policies (ADR 0006), with composite `(workspace_id, …)` foreign keys between workspace tables, since foreign keys are checked without Row-Level Security (migration 0029) |
+| `src/db/schema.test.ts` | Checks the migrated schema: Row-Level Security forced on every table with a `workspace_id` column (read from the catalog, not a hand-kept list), every foreign key between two such tables composite on `workspace_id`, and, as `envelope_app`, that a row of workspace A cannot reference workspace B's rows |
 | `src/routes/health.ts` | `GET /health`: reports whether the database is reachable |
 | `src/routes/me.ts` | `GET /me`: returns the caller's local user id; registered only outside production, to give the global auth preHandlers a real route to protect ahead of the Budget API's own routes |
 | `src/routes/my-workspaces.ts` | `GET /me/workspaces` (#50): every workspace the signed-in user belongs to, with their own role, `baseCurrency` (`#51`, for the web app's account-creation form) and `timeZone` (`#326`: so the web app's own "today"/"this month" agree with the same time zone every budget-date conversion on the server already uses) in each — a real, always-registered route, unlike `/me` |

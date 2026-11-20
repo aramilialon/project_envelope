@@ -359,7 +359,7 @@ The queue module prevents duplicate effects by itself, without relying on whoeve
 The app handles personal financial data, so security is designed in from the start and verified by third parties before any hosted launch.
 
 - **Access.** Managed by Keycloak: passkeys and 2FA, rate limiting, alerts for sign-ins from new devices, revocable sessions.
-- **Isolation.** Row-Level Security in PostgreSQL on top of the API checks: a bug in the code must never expose another user's data.
+- **Isolation.** Row-Level Security in PostgreSQL on top of the API checks: a bug in the code must never expose another user's data. Foreign keys are checked without Row-Level Security, so every reference between two workspace tables includes `workspace_id` and cannot point at another workspace's row ([ADR 0006](adr/0006-row-level-security.md)).
 - **Encryption.** TLS everywhere; encrypted database and backups; secrets (for example bank tokens) encrypted at field level with separately managed keys.
 - **End-to-end encryption.** A future, optional module, per workspace. Details below.
 - **API protection.** Validation of every input, CSRF protection, security headers, rate limits, no sensitive data in logs.
