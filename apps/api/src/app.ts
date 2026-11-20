@@ -27,6 +27,7 @@ import { registerReconciliationRoutes } from "./routes/reconciliation.ts";
 import { registerScheduledTransactionsRoutes } from "./routes/scheduled-transactions.ts";
 import { registerSyncRoutes } from "./routes/sync.ts";
 import { registerTransactionsRoutes } from "./routes/transactions.ts";
+import { registerTradesRoutes } from "./routes/trades.ts";
 import { registerWorkspacesRoutes } from "./routes/workspaces.ts";
 
 /**
@@ -100,6 +101,7 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   registerScheduledTransactionsRoutes(fastify, pool, queue);
   registerSyncRoutes(fastify, pool);
   registerTransactionsRoutes(fastify, pool, queue);
+  registerTradesRoutes(fastify, pool);
   registerWorkspacesRoutes(fastify, pool);
   // Not a committed product feature yet, only a real route for #10's global
   // preHandlers to protect ahead of the Budget API's own routes (#235).

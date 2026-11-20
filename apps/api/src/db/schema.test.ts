@@ -36,6 +36,7 @@ const EXPECTED_TABLES = [
   "change_log",
   "scheduled_transactions",
   "scheduled_transaction_splits",
+  "trades",
 ];
 
 /**
@@ -77,7 +78,7 @@ describe("apps/api/migrations, applied to a real database", () => {
   it("forces row-level security on every workspace-scoped table", async () => {
     const workspaceTables = await loadWorkspaceTables(pool);
     // Guards against the query above silently returning nothing, which would make this test pass vacuously.
-    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios"]) {
+    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios", "trades"]) {
       assert.ok(workspaceTables.includes(known), `expected "${known}" among the workspace-scoped tables`);
     }
 
@@ -860,6 +861,251 @@ describe("apps/api/migrations, applied to a real database", () => {
         second.release();
         await pool.query("DELETE FROM accounts WHERE id = $1", [accountId]);
       }
+    });
+  });
+
+  describe("trades (#77), as the envelope_app role", () => {
+    interface TradeRows {
+      readonly workspaceId: string;
+      readonly accountId: string;
+      readonly portfolioId: string;
+      readonly tradeId: string;
+    }
+
+    let instrumentId: string;
+    let workspaceA: TradeRows;
+    let workspaceB: TradeRows;
+
+    async function createTradeRows(name: string): Promise<TradeRows> {
+      const workspaceId = randomUUID();
+      await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, $2, 'EUR', 'Europe/Rome')", [
+        workspaceId,
+        name,
+      ]);
+      const accountId = (
+        await pool.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Broker', 'brokerage', 'EUR', false) RETURNING id",
+          [workspaceId],
+        )
+      ).rows[0]!.id;
+      const portfolioId = (
+        await pool.query<{ id: string }>("INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Growth') RETURNING id", [workspaceId])
+      ).rows[0]!.id;
+      const tradeId = (
+        await pool.query<{ id: string }>(
+          `INSERT INTO trades (workspace_id, account_id, portfolio_id, instrument_id, type, trade_date, quantity_e8, price_e6, gross_cents)
+           VALUES ($1, $2, $3, $4, 'buy', '2026-01-10', 1000000000, 100000000, 100000) RETURNING id`,
+          [workspaceId, accountId, portfolioId, instrumentId],
+        )
+      ).rows[0]!.id;
+      return { workspaceId, accountId, portfolioId, tradeId };
+    }
+
+    before(async () => {
+      instrumentId = (
+        await pool.query<{ id: string }>(
+          "INSERT INTO instruments (ticker, exchange, name, type, currency) VALUES ($1, 'XMIL', 'Schema test fund', 'fund', 'EUR') RETURNING id",
+          [`S${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`],
+        )
+      ).rows[0]!.id;
+      workspaceA = await createTradeRows("Trades A");
+      workspaceB = await createTradeRows("Trades B");
+    });
+
+    after(async () => {
+      await pool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceA.workspaceId, workspaceB.workspaceId]]);
+      await pool.query("DELETE FROM instruments WHERE id = $1", [instrumentId]);
+    });
+
+    async function asWorkspaceA<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET LOCAL ROLE envelope_app");
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceA.workspaceId]);
+        return await fn(client);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    }
+
+    /** Inserts a trade into workspace A with `columns` over a valid buy's, as envelope_app. */
+    async function insertTrade(client: DbClient, columns: Record<string, unknown>): Promise<string> {
+      const row: Record<string, unknown> = {
+        workspace_id: workspaceA.workspaceId,
+        account_id: workspaceA.accountId,
+        portfolio_id: workspaceA.portfolioId,
+        instrument_id: instrumentId,
+        type: "buy",
+        trade_date: "2026-02-01",
+        quantity_e8: 100000000,
+        price_e6: 1000000,
+        gross_cents: 100,
+        ...columns,
+      };
+      const names = Object.keys(row);
+      const { rows } = await client.query<{ id: string }>(
+        `INSERT INTO trades (${names.join(", ")}) VALUES (${names.map((_, index) => `$${index + 1}`).join(", ")}) RETURNING id`,
+        Object.values(row),
+      );
+      return rows[0]!.id;
+    }
+
+    async function rejectsWith(fn: () => Promise<unknown>, code: string, constraint: string): Promise<void> {
+      await assert.rejects(fn, (error: { code?: string; constraint?: string }) => {
+        assert.equal(error.code, code, `expected ${code}, got ${String(error.code)}`);
+        assert.equal(error.constraint, constraint);
+        return true;
+      });
+    }
+
+    it("only shows the selected workspace's trades, and inserts only into it", async () => {
+      await asWorkspaceA(async (client) => {
+        const visible = await client.query("SELECT id FROM trades");
+        assert.deepEqual(visible.rows, [{ id: workspaceA.tradeId }]);
+        await assert.rejects(() => insertTrade(client, { workspace_id: workspaceB.workspaceId, account_id: workspaceB.accountId, portfolio_id: workspaceB.portfolioId }), /row-level security/);
+      });
+    });
+
+    it("gives envelope_app no UPDATE or DELETE on trades yet (#509 grants them)", async () => {
+      for (const sql of ["UPDATE trades SET memo = 'x' WHERE id = $1", "DELETE FROM trades WHERE id = $1"]) {
+        await asWorkspaceA(async (client) => {
+          await assert.rejects(() => client.query(sql, [workspaceA.tradeId]), /permission denied/);
+        });
+      }
+    });
+
+    it("does not let a trade or a cash leg reference another workspace's rows", async () => {
+      for (const [columns, constraint] of [
+        [{ account_id: workspaceB.accountId }, "trades_account_id_fkey"],
+        [{ portfolio_id: workspaceB.portfolioId }, "trades_portfolio_id_fkey"],
+      ] as const) {
+        await asWorkspaceA(async (client) => {
+          await rejectsWith(() => insertTrade(client, columns), "23503", constraint);
+        });
+      }
+      await asWorkspaceA(async (client) => {
+        // The control: the link to workspace A's own trade is accepted.
+        await insertTrade(client, { type: "transfer", quantity_e8: -1, price_e6: 0, gross_cents: 0, transfer_trade_id: workspaceA.tradeId });
+      });
+      await asWorkspaceA(async (client) => {
+        await rejectsWith(
+          () => insertTrade(client, { type: "transfer", quantity_e8: -1, price_e6: 0, gross_cents: 0, transfer_trade_id: workspaceB.tradeId }),
+          "23503",
+          "trades_transfer_trade_id_fkey",
+        );
+      });
+      for (const target of [workspaceA, workspaceB]) {
+        const insertLeg = () =>
+          asWorkspaceA((client) =>
+            client.query(
+              "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'cleared', $3)",
+              [workspaceA.workspaceId, workspaceA.accountId, target.tradeId],
+            ),
+          );
+        if (target === workspaceA) await insertLeg();
+        else await rejectsWith(insertLeg, "23503", "transactions_trade_id_fkey");
+      }
+    });
+
+    it("enforces each type's columns and the sign rules", async () => {
+      const cases: ReadonlyArray<readonly [Record<string, unknown>, string]> = [
+        [{ gain_tax_cents: 5 }, "trades_buy_check"],
+        [{ quantity_e8: 0 }, "trades_buy_check"],
+        [{ instrument_id: null }, "trades_buy_check"],
+        [{ withholding_domestic_cents: 5 }, "trades_buy_check"],
+        [{ type: "sell", tax_kind: "other" }, "trades_sell_check"],
+        [{ type: "dividend", price_e6: 0, quantity_e8: 5 }, "trades_dividend_check"],
+        [{ type: "fee", quantity_e8: 0, price_e6: 0, gross_cents: 5 }, "trades_fee_check"],
+        [{ type: "tax", quantity_e8: 0, price_e6: 0 }, "trades_tax_check"],
+        [{ type: "split", quantity_e8: 0, price_e6: 0, gross_cents: 0, split_from: 1 }, "trades_split_check"],
+        [{ type: "transfer", price_e6: 0, gross_cents: 0 }, "trades_transfer_check"],
+        [{ type: "transfer", price_e6: 0, gross_cents: 0, cost_basis_cents: 5, transfer_trade_id: workspaceA.tradeId }, "trades_transfer_check"],
+        [{ type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_fee_check"],
+        [{ type: "tax", tax_kind: "stamp_duty", quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_tax_check"],
+        [{ type: "tax", tax_kind: "gain_tax_adjustment", quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_tax_check"],
+        [{ fees_cents: -1 }, "trades_amounts_not_negative_check"],
+        [{ gross_cents: -1 }, "trades_amounts_not_negative_check"],
+        [{ type: "tax", tax_kind: "other", quantity_e8: 0, price_e6: 0, gross_cents: -1 }, "trades_amounts_not_negative_check"],
+        [{ price_e6: -1 }, "trades_price_e6_range_check"],
+        [{ quantity_e8: "9007199254740992" }, "trades_quantity_e8_range_check"],
+        [{ memo: "x".repeat(501) }, "trades_memo_check"],
+      ];
+      for (const [columns, constraint] of cases) {
+        await asWorkspaceA(async (client) => {
+          await assert.rejects(
+            () => insertTrade(client, columns),
+            (error: { code?: string; constraint?: string }) => {
+              assert.equal(error.code, "23514", JSON.stringify(columns));
+              assert.equal(error.constraint, constraint, JSON.stringify(columns));
+              return true;
+            },
+            JSON.stringify(columns),
+          );
+        });
+      }
+      await asWorkspaceA(async (client) => {
+        await insertTrade(client, { type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0, fees_cents: 100 });
+        await insertTrade(client, { type: "tax", tax_kind: "gain_tax_adjustment", quantity_e8: 0, price_e6: 0, gross_cents: -100 });
+        await insertTrade(client, { type: "transfer", quantity_e8: 5, price_e6: 0, gross_cents: 0, cost_basis_cents: 100 });
+        await insertTrade(client, { type: "split", quantity_e8: 0, price_e6: 0, gross_cents: 0, split_from: 1, split_to: 4 });
+      });
+    });
+
+    it("deletes a cash leg with its trade, keeps a portfolio with trades, and lets a workspace with trades go", async () => {
+      await asWorkspaceA(async (client) => {
+        const tradeId = await insertTrade(client, { type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0, fees_cents: 100 });
+        const insertLeg = () =>
+          client.query("INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'cleared', $3)", [
+            workspaceA.workspaceId,
+            workspaceA.accountId,
+            tradeId,
+          ]);
+        await insertLeg();
+        // One cash leg per trade.
+        await rejectsWith(insertLeg, "23505", "transactions_trade_id_key");
+      });
+
+      await asWorkspaceA(async (client) => {
+        // A cash leg sits on its trade's own account.
+        const otherAccount = await client.query<{ id: string }>(
+          "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Other broker', 'brokerage', 'EUR', false) RETURNING id",
+          [workspaceA.workspaceId],
+        );
+        await rejectsWith(
+          () =>
+            client.query("INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'pending', $3)", [
+              workspaceA.workspaceId,
+              otherAccount.rows[0]!.id,
+              workspaceA.tradeId,
+            ]),
+          "23503",
+          "transactions_trade_id_fkey",
+        );
+      });
+
+      await asWorkspaceA(async (client) => {
+        const tradeId = await insertTrade(client, { type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0, fees_cents: 100 });
+        const leg = await client.query<{ id: string }>(
+          "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, trade_id) VALUES ($1, $2, now(), 'cleared', $3) RETURNING id",
+          [workspaceA.workspaceId, workspaceA.accountId, tradeId],
+        );
+        // envelope_app may not delete a trade yet (#509): the owner does, here.
+        await client.query("RESET ROLE");
+        await client.query("DELETE FROM trades WHERE id = $1", [tradeId]);
+        const left = await client.query("SELECT 1 FROM transactions WHERE id = $1", [leg.rows[0]!.id]);
+        assert.equal(left.rowCount, 0);
+      });
+
+      await asWorkspaceA(async (client) => {
+        await rejectsWith(() => client.query("DELETE FROM portfolios WHERE id = $1", [workspaceA.portfolioId]), "23503", "trades_portfolio_id_fkey");
+      });
+
+      const doomed = await createTradeRows("Trades doomed");
+      await pool.query("DELETE FROM workspaces WHERE id = $1", [doomed.workspaceId]);
+      const { rowCount } = await pool.query("SELECT 1 FROM trades WHERE workspace_id = $1", [doomed.workspaceId]);
+      assert.equal(rowCount, 0);
     });
   });
 

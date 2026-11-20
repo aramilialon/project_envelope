@@ -144,9 +144,9 @@ export async function updatePortfolio(
 }
 
 /**
- * Deletes a portfolio outright. There is no trades table yet, so nothing can refer to one: once
- * trades exist (#77), their `portfolio_id` foreign key is `ON DELETE RESTRICT`, and deleting a
- * portfolio that still has trades will fail with `portfolio_has_trades` instead of here.
+ * Deletes a portfolio outright. The `trades.portfolio_id` foreign key is `ON DELETE RESTRICT`
+ * (#77): deleting a portfolio that still has trades throws a foreign key violation, which the route
+ * answers as 409 `portfolio_has_trades` (it checks `portfolioHasTrades` first).
  * Returns whether a row was deleted.
  */
 export async function deletePortfolio(db: DbPool | DbClient, workspaceId: string, portfolioId: string): Promise<boolean> {

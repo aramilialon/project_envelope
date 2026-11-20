@@ -156,7 +156,7 @@ missed case would be worst to find in production.
 ## Portfolios and rebalancing
 
 Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
-are already computed in `packages/core`, though nothing records trades yet; the rest are the rules
+are already computed in `packages/core`, and the API records trades (#77); the rest are the rules
 the engine will follow once it exists, not a description of something already running.
 
 ### Positions and returns
@@ -308,7 +308,65 @@ Worked examples, each one a test in `packages/core`:
   instrument on that date without its own split row. An account that no longer holds the
   instrument on that date needs no row.
 
-Not handled yet: return of capital, amortizing bonds, bonds issued at a discount, spin-offs,
+#### The cash a trade moves
+
+Every trade that moves money writes it on the brokerage account as one transaction, its cash leg
+([ADR 0012](adr/0012-trade-cash-legs.md)), so the account's cash balance is the money transferred
+in from the budget, minus what was transferred out, plus every cash leg. The leg is positive when
+cash comes in:
+
+| Trade | Cash |
+| --- | --- |
+| Buy | −(gross + fees + transaction tax + accrued interest − domestic withholding) |
+| Sell | gross + accrued interest − fees − transaction tax − gain tax − domestic withholding |
+| Dividend or coupon | gross − fees − foreign withholding − domestic withholding |
+| Fee | −fees |
+| Tax | −amount; a gain tax adjustment +amount (a refund is positive, extra tax negative) |
+| Transfer of securities | −fees (nothing without fees) |
+| Split | nothing |
+
+The worked example on the financial transaction tax, followed through the account's cash:
+
+| Step | Cash | Balance |
+| --- | --- | --- |
+| Transfer in from the checking account | +9,000.00 | 9,000.00 |
+| Buy 100 at €50, €5 fee, €5 transaction tax | −5,010.00 | 3,990.00 |
+| Buy 50 at €62, €5 fee | −3,105.00 | 885.00 |
+| Sell 60 at €70, €5 fee, €247.26 gain tax | +3,947.74 | 4,832.74 |
+| Gain tax adjustment refunded by the broker | +100.00 | 4,932.74 |
+| The €20.00 dividend of the next example, paid into the same account (20 − 3 − 4.42 − 2) | +10.58 | 4,943.32 |
+
+The leg's amount, account and date come from the trade; only its memo, payee and cleared status
+are edited on the transaction. The budget never sees any of it: a brokerage account is off budget,
+and the money left the budget once, when it was transferred to the broker.
+
+**Dates and clearing.** The leg is dated on the trade date, and starts uncleared like any new
+transaction: the user marks it cleared when it appears on the broker's statement. Cash moves on
+the settlement date, usually two business days later (T+2), so a statement dated inside that
+window does not show the trade yet: reconcile after settlement. A dividend or a coupon is entered
+on its payment date, the day the cash arrives, not on its ex-date.
+
+**What is not a trade.** A refund of a fee or of stamp duty is entered as a plain transaction on
+the brokerage account, not as a negative fee or tax. The tax on financial assets held abroad
+(IVAFE) is paid through the tax return, not from the foreign account, so it is not a tax trade
+either.
+
+**Taxes and the regime.** In an `IT` workspace each trade is checked against the account's tax
+regime on its trade date. A gain tax adjustment corrects tax withheld earlier, possibly under
+another regime: an administered sale in December, a switch to self-declared from 1 January and a
+refund in February are accepted, because a regime in force on or before the refund allowed gain
+tax. In the self-declared regime only a domestic withholding agent withholds gain tax, and only on
+funds, so an adjustment there names the fund it adjusts. A dividend's or a coupon's domestic
+withholding can appear at any broker, since Italian tax may have been taken upstream before a
+foreign broker paid it; the withholding on the accrued interest of a bond buy or sale is computed
+only by a domestic withholding agent.
+
+Not handled yet: return of capital, amortizing bonds, bonds issued at a discount — among them
+zero-coupon government bills (BOT) and zero-coupon notes (CTZ) traded before maturity, where the
+withholding agent settles tax on the part of the issue discount accrued while they were held: a
+BOT bought at issue for €9,850 per €10,000 nominal and sold after half its life for €9,960 carries
+about €75 of accrued discount (taxed at 12.5%) and €35 of capital gain (taxed at 26%), which the
+fields of a trade cannot keep apart yet —, spin-offs,
 mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
 in other currencies. Until exchange rates exist, a transfer between two accounts in different
 currencies is refused (`invalid_trade`, field `currency`), because its cost cannot be converted;
