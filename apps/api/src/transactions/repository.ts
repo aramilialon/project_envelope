@@ -64,6 +64,12 @@ export interface TransactionRecord {
   readonly transferId: string | null;
   /** The bank's own transaction id, kept from a confirmed import row that carried one (OFX's FITID, #29), for a later re-import's duplicate detection. */
   readonly externalId: string | null;
+  /**
+   * The trade this transaction is the cash leg of (ADR 0012), or null. A trade-owned transaction's
+   * amount, account and date belong to the trade: its splits cannot be replaced and it cannot be
+   * deleted through this module (`trade_owned`); its payee, memo and status stay its own.
+   */
+  readonly tradeId: string | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
 }
@@ -93,7 +99,7 @@ export interface UpdateTransactionInput {
 const TRANSACTION_COLUMNS = `
   t.id, t.workspace_id, t.account_id, t.occurred_at,
   to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS budget_date,
-  t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.created_at
+  t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.trade_id, t.created_at
 `;
 
 interface TransactionRow {
@@ -108,6 +114,7 @@ interface TransactionRow {
   readonly status: TransactionStatus;
   readonly transfer_id: string | null;
   readonly external_id: string | null;
+  readonly trade_id: string | null;
   readonly created_at: Date;
 }
 
@@ -133,6 +140,7 @@ interface InsertTransactionRowInput {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly externalId: string | null;
+  readonly tradeId?: string;
 }
 
 /**
@@ -146,16 +154,26 @@ async function insertTransactionRow(db: DbPool | DbClient, input: InsertTransact
   // silently anchor a naive timestamp to its own session time zone.
   const anchored = HAS_EXPLICIT_OFFSET.test(input.occurredAt);
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO transactions (workspace_id, account_id, occurred_at, payee, memo, status, external_id)
+    `INSERT INTO transactions (workspace_id, account_id, occurred_at, payee, memo, status, external_id, trade_id)
      VALUES (
        $1, $2,
        CASE WHEN $7 THEN $3::timestamptz
             ELSE $3::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $1)
        END,
-       $4, $5, $6, $8
+       $4, $5, $6, $8, $9
      )
      RETURNING id`,
-    [input.workspaceId, input.accountId, input.occurredAt, input.payee, input.memo, input.status, anchored, input.externalId],
+    [
+      input.workspaceId,
+      input.accountId,
+      input.occurredAt,
+      input.payee,
+      input.memo,
+      input.status,
+      anchored,
+      input.externalId,
+      input.tradeId ?? null,
+    ],
   );
   const row = rows[0];
   if (!row) {
@@ -188,6 +206,37 @@ export async function createTransaction(
   }
   await enqueueBudgetRecompute(queue, db, record);
   return record;
+}
+
+export interface CreateTradeCashLegInput {
+  readonly workspaceId: string;
+  readonly accountId: string;
+  readonly tradeId: string;
+  /** The trade date, "YYYY-MM-DD": the leg is dated at midnight of it in the workspace's time zone. */
+  readonly tradeDate: string;
+  /** `@envelope/core`'s `tradeCashCents` of the trade: positive is cash into the account. */
+  readonly amountCents: number;
+}
+
+/**
+ * Writes a trade's cash leg (ADR 0012): one transaction on the trade's account, `cleared` (the
+ * trade comes from the broker's statement), with one split and no category, linked to the trade
+ * through `trade_id`. The caller writes it in the same database transaction as the trade.
+ */
+export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTradeCashLegInput): Promise<string> {
+  assertCents(input.amountCents);
+  const id = await insertTransactionRow(db, {
+    workspaceId: input.workspaceId,
+    accountId: input.accountId,
+    occurredAt: input.tradeDate,
+    payee: null,
+    memo: null,
+    status: "cleared",
+    externalId: null,
+    tradeId: input.tradeId,
+  });
+  await insertSplits(db, input.workspaceId, id, [{ categoryId: null, amountCents: input.amountCents }]);
+  return id;
 }
 
 export interface CreateTransferInput {
@@ -474,7 +523,8 @@ export async function listTransactionEventsForMonth(
 }
 
 /**
- * Updates payee/memo/status and, if given, replaces every split. Refuses a
+ * Updates payee/memo/status and, if given, replaces every split. Refuses to replace the splits of
+ * a trade's cash leg (`trade_owned`, ADR 0012). Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be
  * edited or deleted" — unlocking one is #32's own explicit, audited action).
  */
@@ -483,13 +533,17 @@ export async function updateTransaction(
   workspaceId: string,
   transactionId: string,
   patch: UpdateTransactionInput,
-): Promise<TransactionRecord | "not_found" | "reconciled"> {
+): Promise<TransactionRecord | "not_found" | "reconciled" | "trade_owned"> {
   const existing = await getTransaction(db, workspaceId, transactionId);
   if (!existing) {
     return "not_found";
   }
   if (existing.status === "reconciled") {
     return "reconciled";
+  }
+  // A trade's cash leg (ADR 0012): its amount comes from the trade, so its splits stay as written.
+  if (existing.tradeId !== null && (patch.splits !== undefined || patch.amountCents !== undefined)) {
+    return "trade_owned";
   }
   if (patch.status === "reconciled") {
     // Reconciled is only ever reached through the dedicated reconciliation flow (#32),
@@ -530,20 +584,25 @@ export async function updateTransaction(
  * already follows (design.md: "Reconciled transactions cannot be edited or deleted" — unlocking
  * one is #32's own explicit, audited action) — checked on both legs of a transfer, since one
  * side being reconciled must block deleting the pair even if the other side is not. Recorded in
- * the audit log, the same way unlocking a reconciliation is.
+ * the audit log, the same way unlocking a reconciliation is. Refuses a trade's cash leg
+ * (`trade_owned`, ADR 0012): it is deleted with its trade.
  */
 export async function deleteTransaction(
   db: DbPool | DbClient,
   workspaceId: string,
   transactionId: string,
   userId: string | null,
-): Promise<"deleted" | "not_found" | "reconciled"> {
+): Promise<"deleted" | "not_found" | "reconciled" | "trade_owned"> {
   const existing = await getTransaction(db, workspaceId, transactionId);
   if (!existing) {
     return "not_found";
   }
   if (existing.status === "reconciled") {
     return "reconciled";
+  }
+  // A trade's cash leg goes only with its trade (ADR 0012; deleting the trade cascades to it).
+  if (existing.tradeId !== null) {
+    return "trade_owned";
   }
 
   const other = existing.transferId ? await getTransaction(db, workspaceId, existing.transferId) : undefined;
@@ -609,6 +668,7 @@ function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]
     status: row.status,
     transferId: row.transfer_id,
     externalId: row.external_id,
+    tradeId: row.trade_id,
     createdAt: row.created_at.toISOString(),
     splits,
   };
