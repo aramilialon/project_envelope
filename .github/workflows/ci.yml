@@ -1,9 +1,12 @@
 # Continuous integration: on every push to main and every pull request,
-# install dependencies, check types and run the tests. Split into two jobs that
-# run in parallel: "unit" needs no services and covers packages/core, apps/web
-# and packages/i18n; "integration" starts a real PostgreSQL and Keycloak for
-# apps/api's own integration and smoke tests. Neither job waits on the other,
-# so a push is not held up by services that most of the test suite does not need.
+# install dependencies, check types and run the tests. Split into three jobs that
+# run in parallel: "unit" needs no services and covers packages/core, apps/web,
+# packages/i18n and the development scripts; "integration" starts a real
+# PostgreSQL and Keycloak for apps/api's own integration and smoke tests; "e2e"
+# brings up a disposable environment (scripts/explore-env/, #536) on the same
+# services and runs apps/web's Playwright suite against it. No job waits on
+# another, so a push is not held up by services that most of the test suite does
+# not need.
 name: CI
 
 on:
@@ -57,12 +60,17 @@ jobs:
         id: i18n_complete
         if: always()
         run: pnpm --filter @envelope/i18n test
+      - name: Run pnpm test - scripts - unit
+        id: scripts_unit
+        if: always()
+        run: pnpm --filter @envelope/scripts test
       - name: Check test results
         if: always()
         run: |
           if [ "${{ steps.core_unit.outcome }}" != "success" ] ||
              [ "${{ steps.web_unit.outcome }}" != "success" ] ||
-             [ "${{ steps.i18n_complete.outcome }}" != "success" ]; then
+             [ "${{ steps.i18n_complete.outcome }}" != "success" ] ||
+             [ "${{ steps.scripts_unit.outcome }}" != "success" ]; then
             echo "::error::At least one test step failed; see above."
             exit 1
           fi
@@ -150,3 +158,89 @@ jobs:
             echo "::error::At least one test step failed; see above."
             exit 1
           fi
+
+  # The Playwright suite (apps/web/e2e) against a disposable environment: its own database,
+  # Keycloak realm, API and built web app (scripts/explore-env/, #536). Non-blocking for now
+  # (continue-on-error): a failure shows on the run but does not fail the pull request, until
+  # the job has proved stable on CI's runners.
+  e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: envelope_test
+          POSTGRES_PASSWORD: envelope_test
+          POSTGRES_DB: envelope_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U envelope_test -d envelope_test"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    env:
+      # The superuser the environment is created with; the environment's own API gets
+      # envelope_app/envelope_queue connections to its own database only.
+      DATABASE_URL: postgres://envelope_test:envelope_test@localhost:5432/envelope_test
+      KEYCLOAK_ADMIN_PASSWORD: envelope_test
+    steps:
+      - uses: actions/checkout@v7
+
+      # Keycloak needs an explicit "start-dev" command, which the "services:" block cannot
+      # pass, so it is started as a plain container instead of a service.
+      - name: Start Keycloak
+        run: |
+          docker run -d --name keycloak -p 8080:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+            quay.io/keycloak/keycloak:26.0 start-dev
+
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
+              echo "Keycloak is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Keycloak did not become ready in time"
+          docker logs keycloak
+          exit 1
+
+      # Reads the pnpm version from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: ${{ hashFiles('pnpm-lock.yaml') != '' && 'pnpm' || '' }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install the Playwright browser
+        run: pnpm --filter @envelope/web exec playwright install --with-deps chromium
+
+      - name: Bring up a disposable environment
+        run: |
+          pnpm --filter @envelope/scripts explore:up -- --root "$RUNNER_TEMP/explore"
+          echo "E2E_MANIFEST=$(ls "$RUNNER_TEMP"/explore/*/manifest.json)" >> "$GITHUB_ENV"
+
+      - name: Run pnpm test:e2e - apps/web - against the disposable environment
+        run: pnpm --filter @envelope/web test:e2e
+
+      - name: Show the environment's logs
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/explore/*/*.log; do
+            echo "::group::$log"
+            tail -n 200 "$log"
+            echo "::endgroup::"
+          done
+
+      - name: Bring the environment down
+        if: always() && env.E2E_MANIFEST != ''
+        run: pnpm --filter @envelope/scripts explore:down -- "$E2E_MANIFEST"
