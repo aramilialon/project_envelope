@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
-import { isValidationError } from "@envelope/core";
+import { isValidationError, type ValidationErrorCode } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
@@ -288,6 +288,82 @@ describe("transactions repository", () => {
     assert.equal(transfer.destination.accountId, savingsAccountId);
     assert.equal(transfer.destination.transferId, transfer.source.id);
     assert.equal(transfer.destination.splits[0]?.amountCents, 5000);
+  });
+
+  it("gives the other leg of a transfer the opposite amount when one leg's splits change (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: creditCardAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 5000,
+    });
+
+    const updated = await updateTransaction(pool, workspaceId, transfer.destination.id, {
+      splits: [{ categoryId: null, amountCents: 6500 }],
+    });
+    assert.ok(typeof updated !== "string", `expected a record, got "${String(updated)}"`);
+    assert.equal(updated.splits[0]?.amountCents, 6500);
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    assert.deepEqual(source?.splits, [{ ...transfer.source.splits[0], amountCents: -6500 }]);
+  });
+
+  it("refuses to change a transfer leg's amount when the other leg has several splits, changing neither (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 1000,
+      categoryId,
+    });
+    // A leg with two splits, as a PATCH could still write before #547.
+    await pool.query("UPDATE splits SET amount_cents = -400 WHERE transaction_id = $1", [transfer.source.id]);
+    await pool.query("INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents) VALUES ($1, $2, $3, -600)", [
+      workspaceId,
+      transfer.source.id,
+      otherCategoryId,
+    ]);
+
+    await assert.rejects(
+      () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 1500 }] }),
+      (error: unknown) => isValidationError(error, "unsupported_transaction"),
+    );
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.equal(destination?.splits[0]?.amountCents, 1000);
+  });
+
+  it("refuses several splits, a zero amount or a flipped sign on a transfer leg, writing nothing (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 1000,
+      categoryId,
+      payee: "Before",
+    });
+    const refusals: [readonly { categoryId: string | null; amountCents: number }[], ValidationErrorCode][] = [
+      [
+        [
+          { categoryId, amountCents: -400 },
+          { categoryId: otherCategoryId, amountCents: -600 },
+        ],
+        "unsupported_transaction",
+      ],
+      [[{ categoryId, amountCents: 0 }], "invalid_amount"],
+      [[{ categoryId, amountCents: 1000 }], "invalid_amount"],
+    ];
+    for (const [splits, code] of refusals) {
+      await assert.rejects(
+        () => updateTransaction(pool, workspaceId, transfer.source.id, { payee: "After", splits }),
+        (error: unknown) => isValidationError(error, code),
+      );
+    }
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.deepEqual(source, transfer.source);
+    assert.deepEqual(destination, transfer.destination);
   });
 
   it("creates a cash-to-card transfer the same way, no special-casing", async () => {

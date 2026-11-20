@@ -62,9 +62,10 @@ function centsToInput(cents: number, locale: string): string {
  * The register's "+ New transaction" / "edit a row" side panel (#54): outflow, inflow or
  * transfer, splitting an outflow across categories. `apps/api`'s `updateTransaction` has no
  * `occurredAt` field, so an existing transaction's date cannot be changed here, only at
- * creation; a transfer's amount and destination account are the same way (`createTransfer` is
- * the only atomic, two-legs-at-once write) — editing an existing transfer is limited to its
- * payee, memo and cleared status. "Delete" (`#403`, the mockup's own `data-delete`) removes an
+ * creation. Editing an existing transfer is limited to its payee, memo and cleared status, which
+ * stay the leg's own: the form never sends a transfer leg's splits, so its amount and destination
+ * account are set only at creation (the API would move the other leg's amount too, #547, but the
+ * mockup has no amount edit for a transfer). "Delete" (`#403`, the mockup's own `data-delete`) removes an
  * existing transaction outright — both legs together for a transfer, `apps/api`'s own
  * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
  * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
