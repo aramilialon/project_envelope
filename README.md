@@ -64,14 +64,17 @@
 | 0.1.6 | Offline sync | Released |
 | 0.1.7 | Web app | Released |
 | 0.1.8 | A real month of a household budget run with the app alone | Released |
-| 0.2.x | Portfolios, prices, allocation and rebalancing | Planned |
+| 0.2.x | Portfolios, prices, allocation and rebalancing | In progress |
+| 0.2.8 | AI assistants through a local, read-only MCP server ([ADR 0014](docs/adr/0014-assistant-access-through-mcp.md)) | Planned |
 | 0.3.x | Mobile app | Planned |
+| 0.4.0 | Self-hosting packaging: Docker images, a production install guide, Keycloak in production mode with multi-factor authentication, rate limiting, backups | Planned |
+| 0.4.1 – 0.4.2 | Remote assistant access over the internet, assistant drafts confirmed in the app | Planned |
 
 The complete roadmap, including what comes after 1.0.0, is in the [design document](docs/design.md#roadmap); changes are listed in the [changelog](CHANGELOG.md).
 
 ## Getting started
 
-Everything from a fresh Debian 13 virtual machine to the first test run is in [docs/getting-started.md](docs/getting-started.md), with an Ansible playbook that prepares the machine for you. With the tools already installed:
+Everything from a fresh Debian 13 virtual machine to the first test run is in [docs/getting-started.md](docs/getting-started.md), with an Ansible playbook that prepares the machine for you. That setup is for development only: there is no production install yet. Docker images, a production install guide and an internet-ready Keycloak come with milestone 0.4.0 (issues [#153](https://github.com/aramilialon/project_envelope/issues/153) and [#157](https://github.com/aramilialon/project_envelope/issues/157)). With the tools already installed:
 
 ```bash
 pnpm install
