@@ -51,10 +51,15 @@ async function releaseRequestTransaction(request: FastifyRequest, finish: "COMMI
   delete request.db;
   try {
     await client.query(finish);
-  } finally {
     client.release();
+  } catch (error) {
+    // A connection whose COMMIT/ROLLBACK failed may be broken: discard it instead of pooling it.
+    client.release(error instanceof Error ? error : true);
+    throw error;
   }
 }
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createWorkspaceMembershipPreHandler(pool: DbPool) {
   return async function workspaceMembershipPreHandler(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -67,24 +72,39 @@ export function createWorkspaceMembershipPreHandler(pool: DbPool) {
       throw new Error("workspaceMembershipPreHandler requires request.userId to already be set");
     }
 
-    const client = await pool.connect();
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.user_id', $1, true)", [request.userId]);
-
-    const { rows } = await client.query<{ role: WorkspaceRole }>(
-      "SELECT role FROM memberships WHERE user_id = $1 AND workspace_id = $2",
-      [request.userId, workspaceId],
-    );
-    const membership = rows[0];
-
-    if (!membership) {
-      await client.query("ROLLBACK");
-      client.release();
+    // A malformed id cannot be a workspace the caller belongs to: answer like a non-member,
+    // before taking a connection (a failing query below would otherwise leak it).
+    if (!UUID_PATTERN.test(workspaceId)) {
       await reply.code(403).send({ error: "forbidden" });
       return;
     }
 
-    await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+    const client = await pool.connect();
+    let membership: { role: WorkspaceRole } | undefined;
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT set_config('app.user_id', $1, true)", [request.userId]);
+      const { rows } = await client.query<{ role: WorkspaceRole }>(
+        "SELECT role FROM memberships WHERE user_id = $1 AND workspace_id = $2",
+        [request.userId, workspaceId],
+      );
+      membership = rows[0];
+      if (membership) {
+        await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+      } else {
+        await client.query("ROLLBACK");
+      }
+    } catch (error) {
+      // Never leave a checked-out connection behind: the hooks only release request.db.
+      client.release(error instanceof Error ? error : true);
+      throw error;
+    }
+
+    if (!membership) {
+      client.release();
+      await reply.code(403).send({ error: "forbidden" });
+      return;
+    }
 
     request.db = client;
     request.workspace = { id: workspaceId, role: membership.role };

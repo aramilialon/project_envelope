@@ -149,6 +149,23 @@ describe("workspace membership, chained after auth and user mapping", () => {
     });
     assert.equal(response.statusCode, 400);
   });
+
+  it("answers 403 to a malformed workspace id without holding a connection", async () => {
+    const token = await realm.getUserToken();
+    for (const [url, headers] of [
+      ["/workspaces/not-a-uuid/ping", {}],
+      ["/workspace-ping-by-header", { "x-workspace-id": "not-a-uuid" }],
+    ] as const) {
+      const response = await app.inject({
+        method: "GET",
+        url,
+        headers: { authorization: `Bearer ${token}`, ...headers },
+      });
+      assert.equal(response.statusCode, 403);
+    }
+    // Before #515's fix the failing membership query left its client checked out.
+    assert.equal(pool.totalCount - pool.idleCount, 0, "no connection may stay checked out");
+  });
 });
 
 /**
