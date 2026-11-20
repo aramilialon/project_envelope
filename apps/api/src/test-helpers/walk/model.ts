@@ -18,6 +18,8 @@ import {
   type Quantity,
 } from "@envelope/core";
 
+import { localMidnight } from "./generator.ts";
+
 export type Persona = "household" | "investor" | "mixed";
 export type Role = "owner" | "editor" | "read_only";
 export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
@@ -293,9 +295,27 @@ export class WorkspaceModel {
     return [...this.transactions.values()].find((entity) => entity.record.tradeId === trade.record.id);
   }
 
+  /**
+   * Trade rows in an order that does not depend on their ids: the rows of one request (a
+   * transfer's two legs, a split's rows) come back in an order that ties on random UUIDs, and
+   * handles given out in that order would differ between two runs of the same seed. A transfer's
+   * outgoing leg comes first; a split's rows go by account, then portfolio handle.
+   */
+  sortTradeRows(records: readonly TradeJson[]): TradeJson[] {
+    const key = (record: TradeJson): string =>
+      [
+        record.type,
+        record.type === "transfer" && record.quantityE8 < 0 ? "0" : "1",
+        sortableHandle(this.handleOf(record.accountId)),
+        sortableHandle(this.handleOf(record.portfolioId)),
+        sortableHandle(record.instrumentId === null ? undefined : this.instruments.byId.get(record.instrumentId)?.handle),
+      ].join("|");
+    return [...records].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  }
+
   /** Records trades the API created, each with the cash leg ADR 0012 says it owns. */
   addTrades(records: readonly TradeJson[]): TradeEntity[] {
-    return records.map((record) => {
+    return this.sortTradeRows(records).map((record) => {
       const handle = this.nextHandle("tr", record.id);
       const entity: TradeEntity = { handle, record };
       this.trades.set(handle, entity);
@@ -311,7 +331,7 @@ export class WorkspaceModel {
    * split's rows become exactly the ones returned.
    */
   applyTradeEdit(group: readonly TradeEntity[], records: readonly TradeJson[]): void {
-    for (const record of records) {
+    for (const record of this.sortTradeRows(records)) {
       const entity = this.tradeById(record.id);
       if (!entity) {
         if (record.type !== "split") throw new Error(`an edit returned trade ${record.id}, which the model does not have`);
@@ -382,7 +402,8 @@ export class WorkspaceModel {
     const leg: TransactionJson = {
       id: record.cashTransactionId,
       accountId: record.accountId,
-      occurredAt: existing?.record.occurredAt ?? "",
+      // Midnight of the trade date in the workspace's time zone (ADR 0012), moved with the trade.
+      occurredAt: localMidnight(record.tradeDate),
       budgetDate: record.tradeDate,
       payee: existing?.record.payee ?? null,
       memo: existing?.record.memo ?? null,
@@ -449,6 +470,16 @@ export class WorkspaceModel {
   balanceOf(account: AccountEntity): number {
     return this.transactionsOf(account).reduce((sum, entity) => sum + amountOf(entity.record), 0);
   }
+}
+
+/**
+ * A handle that sorts by its number ("a2" before "a10"); a missing one sorts last. Anything the
+ * generator picks from, or hands out handles in, is ordered by handles, never by ids.
+ */
+export function sortableHandle(handle: string | undefined): string {
+  if (handle === undefined) return "~";
+  const match = /^([a-z]+)(\d+)$/.exec(handle);
+  return match ? `${match[1]}${match[2]!.padStart(6, "0")}` : handle;
 }
 
 /** A transaction's amount: the sum of its splits. */

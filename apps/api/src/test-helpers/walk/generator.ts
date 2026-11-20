@@ -44,6 +44,20 @@ export function localDateOf(instant: string): string {
   return localDateFormat.format(new Date(instant));
 }
 
+const localTimeFormat = new Intl.DateTimeFormat("en-GB", { timeZone: WALK_TIME_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/**
+ * Midnight of a date in `Europe/Rome`, as an ISO instant: where a cash leg is dated (ADR 0012).
+ * It is 23:00 UTC of the day before in winter, 22:00 UTC in summer.
+ */
+export function localMidnight(date: string): string {
+  const previous = addDays(date, -1);
+  for (const candidate of [`${previous}T23:00:00.000Z`, `${previous}T22:00:00.000Z`]) {
+    if (localDateOf(candidate) === date && localTimeFormat.format(new Date(candidate)) === "00:00") return candidate;
+  }
+  throw new Error(`no midnight found for ${date} in ${WALK_TIME_ZONE}`);
+}
+
 function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }

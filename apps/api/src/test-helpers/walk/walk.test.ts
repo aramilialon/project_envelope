@@ -9,7 +9,10 @@
  *
  * A failure prints the seed, the step and the path of the operation log it wrote.
  */
-import { readFileSync } from "node:fs";
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 
 import { buildApp, type App } from "../../app.ts";
@@ -27,13 +30,16 @@ import { createWalkUsers, runWalk, type WalkEnvironment, type WalkLog, type Walk
 
 /**
  * The seeds CI walks every time; a seed that once failed joins them once its bug is fixed. Two
- * seeds of 300 steps and the short walk through the real process take about 55 s on a
- * development machine (#80): a third seed would take the file past a minute.
+ * seeds of 300 steps (about 22–33 s each), the determinism check and the short walk through the
+ * real process take the file to about 60–85 s on a development machine, depending on its load
+ * (#80): a third seed would add another 25 s or so.
  */
 const CI_SEEDS = [1, 20261120];
 const CI_STEPS = 300;
 /** The walk through the real process only proves the `fetch` driver and the process; it stays short. */
 const FETCH_STEPS = 60;
+/** Two walks of the same seed must give byte-identical logs; a short one is enough to show it. */
+const DETERMINISM_STEPS = 60;
 
 const { databaseUrl } = requireIntegrationTestEnv();
 
@@ -151,6 +157,12 @@ describe("random walk through the API (#80, ADR 0013)", () => {
           ...(logDir ? { logDir } : {}),
         });
         report(result, chosen.driver.name);
+        if (process.env.WALK_SAVE_LOG === "1") {
+          // A walk that passed keeps its log too, to compare two runs of one seed (they must match).
+          const file = join(logDir ?? tmpdir(), `envelope-walk-seed${result.seed}-passed-${process.pid}-${Date.now()}.json`);
+          writeFileSync(file, `${JSON.stringify(result.log, null, 1)}\n`);
+          console.log(`operation log: ${file}`);
+        }
       } finally {
         await stopRealServer();
       }
@@ -163,6 +175,19 @@ describe("random walk through the API (#80, ADR 0013)", () => {
       report(await runWalk(env, { seed: ciSeed, steps: CI_STEPS, ...(logDir ? { logDir } : {}) }), "inject");
     });
   }
+
+  it(`walks seed ${CI_SEEDS[0]} the same way twice, ${DETERMINISM_STEPS} steps (inject)`, async () => {
+    // A seed is a reproduction only if it gives the same walk every time: every operation, every
+    // status and every handle given out, whatever ids and creation times the API picks.
+    const first = await runWalk(env, { seed: CI_SEEDS[0]!, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
+    const second = await runWalk(env, { seed: CI_SEEDS[0]!, steps: DETERMINISM_STEPS, ...(logDir ? { logDir } : {}) });
+    const firstLog = JSON.stringify(first.log.ops);
+    const secondLog = JSON.stringify(second.log.ops);
+    if (firstLog !== secondLog) {
+      const step = first.log.ops.findIndex((op, index) => JSON.stringify(op) !== JSON.stringify(second.log.ops[index]));
+      assert.fail(`seed ${CI_SEEDS[0]} walked differently the second time, from step ${step + 1}:\n  ${JSON.stringify(first.log.ops[step])}\n  ${JSON.stringify(second.log.ops[step])}`);
+    }
+  });
 
   it(`keeps every invariant through the real process, seed ${CI_SEEDS[0]}, ${FETCH_STEPS} steps (fetch)`, async () => {
     const fetchEnv = await fetchEnvironment();

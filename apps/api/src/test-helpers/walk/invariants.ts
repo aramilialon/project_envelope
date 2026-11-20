@@ -32,7 +32,7 @@ import {
 
 import type { DbPool } from "../../db/pool.ts";
 import type { WalkDriver } from "./driver.ts";
-import { LAST_MONTH, localDateOf, WINDOW_MONTHS } from "./generator.ts";
+import { LAST_MONTH, localDateOf, localMidnight, WINDOW_MONTHS } from "./generator.ts";
 import { amountOf, type AccountEntity, type TradeJson, type TransactionJson, type WorkspaceModel } from "./model.ts";
 
 /** A broken invariant or an unexpected answer: the walk stops and reports the seed and the step. */
@@ -63,6 +63,34 @@ export function expectEqual(actual: unknown, expected: unknown, what: string): v
   }
 }
 
+/**
+ * The model stores what the API returned, so each accepted step first checks that the API kept
+ * what was sent: a field the API silently changed (a fee dropped, a split's category lost) would
+ * otherwise become the model's truth and go unnoticed. Each check is [field, sent, returned].
+ */
+export function expectEcho(what: string, checks: readonly (readonly [field: string, sent: unknown, returned: unknown])[]): void {
+  const changed = checks.filter(([, sent, returned]) => canonical(sent) !== canonical(returned));
+  if (changed.length > 0) {
+    fail(`${what}: the API did not keep what was sent:\n${changed.map(([field, sent, returned]) => `  ${field}: sent ${canonical(sent)}, got ${canonical(returned)}`).join("\n")}`);
+  }
+}
+
+const romeTime = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+/**
+ * What an `occurredAt` that was sent must come back as, compared as instants: a full timestamp is
+ * the same instant whatever its format; a plain date is midnight of that date in the workspace's
+ * time zone (design.md, "Accounting rules").
+ */
+export function instantEcho(field: string, sent: string, returned: string | null): readonly [string, unknown, unknown] {
+  if (returned === null) return [field, sent, null];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(sent)) {
+    const time = romeTime.format(new Date(returned));
+    return [field, `${sent} 00:00`, `${localDateOf(returned)} ${time}`];
+  }
+  return [field, new Date(sent).toISOString(), new Date(returned).toISOString()];
+}
+
 export interface CheckContext {
   readonly driver: WalkDriver;
   /** Every reply the walk ever sees goes through here: none may be a 5xx. */
@@ -87,6 +115,7 @@ function normalizeTransaction(record: TransactionJson): unknown {
   return {
     id: record.id,
     accountId: record.accountId,
+    occurredAt: new Date(record.occurredAt).toISOString(),
     budgetDate: record.budgetDate,
     status: record.status,
     transferId: record.transferId,
@@ -109,6 +138,7 @@ function expectedTransaction(model: WorkspaceModel, record: TransactionJson): un
   return normalizeTransaction({
     ...record,
     accountId: trade.record.accountId,
+    occurredAt: localMidnight(trade.record.tradeDate),
     budgetDate: trade.record.tradeDate,
     splits: [{ categoryId: null, amountCents: tradeCashCents(trade.record), memo: null }],
   });
@@ -333,6 +363,10 @@ export function checkBrokerageAccount(
   if (positions.summaries.length > 1) fail(`${what}: more than one currency on a EUR account: ${show(positions.summaries)}`);
   const s = (key: string): number => summary?.[key] ?? 0;
   const boughtCost = own.filter((t) => t.type === "buy").reduce((sum, t) => sum + t.grossCents + t.feesCents, 0);
+  // The cost securities brought in by transfers, taken from the API's own cost in: this check is
+  // model-free on purpose. That cost in is not trusted blindly: every position and summary,
+  // `costInCents` included, is compared with the core's replay of the model's trades (the
+  // positions oracle) on the same step, so a wrong figure fails there.
   const costInByTransfers = s("costInCents") - boughtCost;
   const left = s("realizedCents") + s("incomeCents") - s("costsCents") - s("taxesOnGainsCents");
   const right = cash + s("costBasisCents") - moneyIn - costInByTransfers + s("costTransferredOutCents");

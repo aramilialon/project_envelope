@@ -90,6 +90,8 @@ export interface WalkResult {
   readonly durationMs: number;
   /** Per operation kind: [accepted, refused]. */
   readonly byKind: Record<string, [number, number]>;
+  /** The operation log, as a failure would have written it: two runs of one seed must give the same. */
+  readonly log: WalkLog;
 }
 
 /** Keycloak users for every persona and role, each with a token renewed before it expires. */
@@ -138,11 +140,11 @@ async function expectCreated(driver: WalkDriver, method: "POST", path: string, b
 
 /**
  * The fixed start of every walk, not part of the log: the shared instruments, and per persona a
- * workspace (with an editor and a read-only member) holding what it starts from.
+ * workspace (with an editor and a read-only member) holding what it starts from. It fills the
+ * caller's `models` and `instruments` as it goes, so a setup that fails halfway is still torn down.
  */
-async function setUp(env: WalkEnvironment): Promise<{ models: Map<Persona, WorkspaceModel>; instruments: InstrumentCatalog }> {
+async function setUp(env: WalkEnvironment, models: Map<Persona, WorkspaceModel>, instruments: InstrumentCatalog): Promise<void> {
   const { driver, superuserPool } = env;
-  const instruments = new InstrumentCatalog();
   const creator = await env.users.mixed.owner.token();
   const listings: readonly { handle: string; type: "stock" | "fund" | "government_bond"; priceFactorE6: number }[] = [
     { handle: "i1", type: "stock", priceFactorE6: 1_000_000 },
@@ -162,7 +164,6 @@ async function setUp(env: WalkEnvironment): Promise<{ models: Map<Persona, Works
     instruments.add({ handle: listing.handle, id: created.id as string, type: listing.type, currency: "EUR", priceFactorE6: listing.priceFactorE6 });
   }
 
-  const models = new Map<Persona, WorkspaceModel>();
   for (const persona of PERSONAS) {
     const users = env.users[persona];
     const token = await users.owner.token();
@@ -191,7 +192,6 @@ async function setUp(env: WalkEnvironment): Promise<{ models: Map<Persona, Works
       model.addPortfolio(portfolio.id as string);
     }
   }
-  return { models, instruments };
 }
 
 async function tearDown(env: WalkEnvironment, models: ReadonlyMap<Persona, WorkspaceModel>, instruments: InstrumentCatalog): Promise<void> {
@@ -380,36 +380,40 @@ function writeLog(log: WalkLog, dir: string, step: number): string {
  */
 export async function runWalk(env: WalkEnvironment, options: WalkOptions): Promise<WalkResult> {
   const started = Date.now();
-  const { models, instruments } = await setUp(env);
-  const digest = await WorkspaceDigest.prepare(env.superuserPool);
-  const walk = new Walk(env, models, digest);
-  const random = new WalkRandom(options.seed);
+  const models = new Map<Persona, WorkspaceModel>();
+  const instruments = new InstrumentCatalog();
   const steps = options.replay ? options.replay.ops.length : options.steps;
-  const fullEvery = options.fullEvery ?? 100;
   const log: WalkLog = { version: 1, seed: options.seed, steps, driver: env.driver.name, ops: [] };
-  let current = 0;
   try {
-    for (let step = 1; step <= steps; step++) {
-      current = step;
-      const op = options.replay ? options.replay.ops[step - 1]!.op : generateOp(random, step / steps, models);
-      const logged: LoggedStep = { step, op };
-      log.ops.push(logged);
-      await walk.step(logged);
-      if (step % fullEvery === 0) await walk.fullCheck();
+    // Inside the try: a setup that fails halfway still leaves no workspace or instrument behind.
+    await setUp(env, models, instruments);
+    const walk = new Walk(env, models, await WorkspaceDigest.prepare(env.superuserPool));
+    const random = new WalkRandom(options.seed);
+    const fullEvery = options.fullEvery ?? 100;
+    let current = 0;
+    try {
+      for (let step = 1; step <= steps; step++) {
+        current = step;
+        const op = options.replay ? options.replay.ops[step - 1]!.op : generateOp(random, step / steps, models);
+        const logged: LoggedStep = { step, op };
+        log.ops.push(logged);
+        await walk.step(logged);
+        if (step % fullEvery === 0) await walk.fullCheck();
+      }
+      current = steps + 1;
+      await walk.fullCheck();
+    } catch (error) {
+      const file = writeLog(log, options.logDir ?? tmpdir(), current);
+      const reason = error instanceof WalkFailure ? error.message : error instanceof Error ? (error.stack ?? error.message) : String(error);
+      const op = log.ops.at(-1)?.op;
+      throw new Error(
+        `random walk failed: seed ${options.seed}, step ${current > steps ? "final check" : current} of ${steps}` +
+          `${op ? `, operation ${JSON.stringify(op)}` : ""}\n${reason}\n` +
+          `operation log: ${file}\nreplay: WALK_REPLAY=${file} pnpm --filter @envelope/api exec node --test src/test-helpers/walk/walk.test.ts`,
+      );
     }
-    current = steps + 1;
-    await walk.fullCheck();
-  } catch (error) {
-    const file = writeLog(log, options.logDir ?? tmpdir(), current);
-    const reason = error instanceof WalkFailure ? error.message : error instanceof Error ? (error.stack ?? error.message) : String(error);
-    const op = log.ops.at(-1)?.op;
-    throw new Error(
-      `random walk failed: seed ${options.seed}, step ${current > steps ? "final check" : current} of ${steps}` +
-        `${op ? `, operation ${JSON.stringify(op)}` : ""}\n${reason}\n` +
-        `operation log: ${file}\nreplay: WALK_REPLAY=${file} pnpm --filter @envelope/api exec node --test src/test-helpers/walk/walk.test.ts`,
-    );
+    return { seed: options.seed, steps, ...walk.counts, durationMs: Date.now() - started, byKind: walk.byKind, log };
   } finally {
     if (process.env.WALK_KEEP !== "1") await tearDown(env, models, instruments);
   }
-  return { seed: options.seed, steps, ...walk.counts, durationMs: Date.now() - started, byKind: walk.byKind };
 }

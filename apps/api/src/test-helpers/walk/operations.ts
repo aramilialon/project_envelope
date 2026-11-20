@@ -27,9 +27,11 @@ import {
 } from "@envelope/core";
 
 import type { HttpMethod } from "./driver.ts";
+import { expectEcho, instantEcho } from "./invariants.ts";
 import type { WalkRandom } from "./generator.ts";
 import {
   amountOf as transactionAmount,
+  sortableHandle,
   type AccountEntity,
   type AccountType,
   type Persona,
@@ -190,8 +192,15 @@ const createAccount: OperationSpec<CreateAccountParams> = {
   },
   request: (model, p) => ({ method: "POST", path: ws(model, "/accounts"), body: { name: p.name, type: p.type, currency: "EUR", onBudget: p.onBudget } }),
   predict: () => ACCEPT,
-  accept(model, _p, body) {
-    const account = model.addAccount(body as Parameters<WorkspaceModel["addAccount"]>[0]);
+  accept(model, p, body) {
+    const record = body as Parameters<WorkspaceModel["addAccount"]>[0] & { name: string };
+    expectEcho("createAccount", [
+      ["name", p.name, record.name],
+      ["type", p.type, record.type],
+      ["currency", "EUR", record.currency],
+      ["onBudget", p.onBudget, record.onBudget],
+    ]);
+    const account = model.addAccount(record);
     return touched({ accounts: [account.handle], budget: true, created: [{ kind: "account", id: account.id }] });
   },
 };
@@ -202,8 +211,9 @@ const createPortfolio: OperationSpec<CreatePortfolioParams> = {
   generate: (model, { random }) => (model.portfolios.size >= 3 ? undefined : { name: `Portfolio ${random.int(1, 1_000_000_000)}` }),
   request: (model, p) => ({ method: "POST", path: ws(model, "/portfolios"), body: { name: p.name } }),
   predict: () => ACCEPT,
-  accept(model, _p, body) {
-    const { id } = body as { id: string };
+  accept(model, p, body) {
+    const { id, name } = body as { id: string; name: string };
+    expectEcho("createPortfolio", [["name", p.name, name]]);
     const portfolio = model.addPortfolio(id);
     return touched({ portfolios: [portfolio.handle], created: [{ kind: "portfolio", id }] });
   },
@@ -248,8 +258,36 @@ function transactionRequest(model: WorkspaceModel, p: TransactionParams): WalkRe
   };
 }
 
-function acceptTransaction(model: WorkspaceModel, _p: TransactionParams, body: unknown): Touched {
-  const entity = model.addTransaction(body as TransactionJson);
+/** Splits as compared in an echo check: category id and amount, in a stable order. */
+function echoSplits(splits: readonly { readonly categoryId: string | null; readonly amountCents: number }[]): unknown {
+  return splits
+    .map((s) => ({ categoryId: s.categoryId, amountCents: s.amountCents }))
+    .sort((a, b) => a.amountCents - b.amountCents || String(a.categoryId).localeCompare(String(b.categoryId)));
+}
+
+/** A transaction the API created or rewrote kept the account, time, splits, payee and memo that were sent. */
+function echoTransaction(
+  model: WorkspaceModel,
+  what: string,
+  sent: { account: string; occurredAt: string; payee?: string | undefined; memo?: string | undefined; splits: readonly { categoryId: string | null; amountCents: number }[] },
+  record: TransactionJson,
+): void {
+  expectEcho(what, [
+    ["accountId", model.account(sent.account).id, record.accountId],
+    instantEcho("occurredAt", sent.occurredAt, record.occurredAt),
+    ...(sent.payee === undefined ? [] : [["payee", sent.payee, record.payee] as const]),
+    ...(sent.memo === undefined ? [] : [["memo", sent.memo, record.memo] as const]),
+    ["splits", echoSplits(sent.splits), echoSplits(record.splits)],
+  ]);
+}
+
+function acceptTransaction(model: WorkspaceModel, p: TransactionParams, body: unknown): Touched {
+  const record = body as TransactionJson;
+  echoTransaction(model, "the created transaction", {
+    ...p,
+    splits: p.splits.map((s) => ({ categoryId: s.category === null ? null : model.category(s.category).id, amountCents: s.amountCents })),
+  }, record);
+  const entity = model.addTransaction(record);
   return touched({ accounts: [model.accountById(entity.record.accountId).handle], budget: true, created: [{ kind: "transaction", id: entity.record.id }] });
 }
 
@@ -330,6 +368,17 @@ function transferSpec(choose: (model: WorkspaceModel, random: WalkRandom) => { s
     predict: () => ACCEPT,
     accept(model, p, body) {
       const { source, destination } = body as { source: TransactionJson; destination: TransactionJson };
+      // The category goes on the on-budget leg when exactly one of the two accounts is off budget.
+      const sourceOn = model.account(p.source).onBudget;
+      const destinationOn = model.account(p.destination).onBudget;
+      const categoryId = p.category === undefined ? null : model.category(p.category).id;
+      const categoryOf = (on: boolean): string | null => (sourceOn !== destinationOn && on ? categoryId : null);
+      echoTransaction(model, "the transfer's outgoing leg", { account: p.source, occurredAt: p.occurredAt, splits: [{ categoryId: categoryOf(sourceOn), amountCents: -p.amountCents }] }, source);
+      echoTransaction(model, "the transfer's incoming leg", { account: p.destination, occurredAt: p.occurredAt, splits: [{ categoryId: categoryOf(destinationOn), amountCents: p.amountCents }] }, destination);
+      expectEcho("the transfer's legs", [
+        ["source.transferId", destination.id, source.transferId],
+        ["destination.transferId", source.id, destination.transferId],
+      ]);
       model.addTransaction(source);
       model.addTransaction(destination);
       return touched({
@@ -436,12 +485,42 @@ const editTransaction: OperationSpec<EditTransactionParams> = {
   predict: (model, p) => (model.transaction(p.tx).record.status === "reconciled" ? RECONCILED_TRANSACTION : ACCEPT),
   accept(model, p, body) {
     const entity = model.transaction(p.tx);
+    const split = entity.record.splits[0]!;
+    echoEdit(
+      `the edited transaction (${p.change})`,
+      entity.record,
+      body as TransactionJson,
+      p.change === "amount"
+        ? { splits: [{ categoryId: split.categoryId, amountCents: p.value as number, memo: null }] }
+        : { [p.change]: p.value },
+    );
     entity.record = body as TransactionJson;
     return touched({ accounts: accountsTouchedBy(model, [entity, model.transferPartner(entity)]), budget: true });
   },
 };
 
 type TxParams = { tx: string };
+
+/**
+ * An edited transaction came back as it was, with only `changes` applied: the field the request
+ * sent, and nothing else moved. For a cash leg, "as it was" is what the model works out from its
+ * trade (amount, account, midnight of the trade date), not what the API last answered.
+ */
+function echoEdit(what: string, before: TransactionJson, after: TransactionJson, changes: Partial<Pick<TransactionJson, "payee" | "memo" | "status" | "splits">>): void {
+  const view = (r: TransactionJson) => ({
+    accountId: r.accountId,
+    occurredAt: new Date(r.occurredAt).toISOString(),
+    payee: r.payee,
+    memo: r.memo,
+    status: r.status,
+    transferId: r.transferId,
+    tradeId: r.tradeId,
+    splits: echoSplits(r.splits),
+  });
+  const expected = view({ ...before, ...changes });
+  const actual = view(after);
+  expectEcho(what, Object.keys(expected).map((key) => [key, expected[key as keyof typeof expected], actual[key as keyof typeof actual]] as const));
+}
 
 const clearTransaction: OperationSpec<TxParams> = {
   generate(model, { random }) {
@@ -455,6 +534,7 @@ const clearTransaction: OperationSpec<TxParams> = {
   predict: () => ACCEPT,
   accept(model, p, body) {
     const entity = model.transaction(p.tx);
+    echoEdit("the cleared transaction", entity.record, body as TransactionJson, { status: "cleared" });
     entity.record = body as TransactionJson;
     return touched({ accounts: accountsTouchedBy(model, [entity]) });
   },
@@ -503,6 +583,7 @@ const editLeg: OperationSpec<LegEditParams> = {
   predict: (model, p) => (model.transaction(p.tx).record.status === "reconciled" ? RECONCILED_TRANSACTION : ACCEPT),
   accept(model, p, body) {
     const entity = model.transaction(p.tx);
+    echoEdit(`the edited cash leg (${p.change})`, entity.record, body as TransactionJson, { [p.change]: p.value });
     entity.record = body as TransactionJson;
     return touched({ accounts: accountsTouchedBy(model, [entity]) });
   },
@@ -637,6 +718,7 @@ const unlock: OperationSpec<TxParams> = {
     const entity = model.transaction(p.tx);
     if (entity.reconciliationId) model.breakReconciliation(entity.reconciliationId);
     entity.reconciliationId = null;
+    echoEdit("the unlocked transaction", entity.record, body as TransactionJson, { status: "cleared" });
     entity.record = body as TransactionJson;
     return touched({ accounts: accountsTouchedBy(model, [entity]) });
   },
@@ -671,6 +753,44 @@ function tradeBody(model: WorkspaceModel, p: TradeFields): Record<string, unknow
     ...(p.memo === undefined ? {} : { memo: p.memo }),
     ...p.amounts,
   };
+}
+
+/** One trade row as it was sent: by handle, its amounts as in the request body. */
+type SentTradeRow = {
+  type: TradeJson["type"];
+  account: string;
+  portfolio: string;
+  instrument: string | null;
+  tradeDate: string;
+  occurredAt?: string | undefined;
+  amounts: Record<string, number>;
+  taxKind?: string | undefined;
+  memo?: string | undefined;
+};
+
+/**
+ * A trade row the API stored kept what was sent: type, account, portfolio, instrument, trade date,
+ * time, every amount, the tax kind and the memo. A buy or a sell sent without a gross gets
+ * quantity × price × price factor, rounded once (ADR 0011).
+ */
+function echoTradeRow(model: WorkspaceModel, what: string, sent: SentTradeRow, record: TradeJson): void {
+  const instrument = sent.instrument === null ? undefined : model.instruments.get(sent.instrument);
+  const derivedGross =
+    (sent.type === "buy" || sent.type === "sell") && sent.amounts.grossCents === undefined && instrument
+      ? [["grossCents (quantity × price)", amountOf(sent.amounts.quantityE8! as Quantity, sent.amounts.priceE6! as Price, toPriceFactor(instrument.priceFactorE6), instrument.currency), record.grossCents] as const]
+      : [];
+  expectEcho(what, [
+    ["type", sent.type, record.type],
+    ["accountId", model.account(sent.account).id, record.accountId],
+    ["portfolioId", model.portfolio(sent.portfolio).id, record.portfolioId],
+    ["instrumentId", instrument?.id ?? null, record.instrumentId],
+    ["tradeDate", sent.tradeDate, record.tradeDate],
+    sent.occurredAt === undefined ? (["occurredAt", null, record.occurredAt] as const) : instantEcho("occurredAt", sent.occurredAt, record.occurredAt),
+    ...Object.entries(sent.amounts).map(([field, value]) => [field, value, (record as unknown as Record<string, unknown>)[field]] as const),
+    ...derivedGross,
+    ...(sent.taxKind === undefined ? [] : [["taxKind", sent.taxKind, record.taxKind] as const]),
+    ...(sent.memo === undefined ? [] : [["memo", sent.memo, record.memo] as const]),
+  ]);
 }
 
 function candidateRow(model: WorkspaceModel, id: string, row: { type: PositionTrade["type"]; account: string; portfolio: string; instrument: string | null; tradeDate: string; occurredAt?: string | undefined; amounts: Record<string, number>; taxKind?: string | undefined; transferTradeId?: string | null }): PositionTrade {
@@ -730,8 +850,21 @@ function acceptTrades(model: WorkspaceModel, body: unknown): Touched {
   });
 }
 
+/**
+ * What each portfolio holds now, ordered by account, portfolio and instrument handle: the core
+ * orders its rows by id, which differs between two runs of the same seed, and the generator picks
+ * from this list.
+ */
 function holdings(model: WorkspaceModel): PortfolioPosition[] {
-  return computePositions(model.positionTrades()).portfolios.filter((p) => p.quantity > 0 && model.handleOf(p.portfolioId) !== undefined);
+  const key = (p: PortfolioPosition): string =>
+    [
+      sortableHandle(model.handleOf(p.accountId)),
+      sortableHandle(model.handleOf(p.portfolioId)),
+      sortableHandle(model.instruments.byId.get(p.instrumentId)?.handle),
+    ].join("|");
+  return computePositions(model.positionTrades())
+    .portfolios.filter((p) => p.quantity > 0 && model.handleOf(p.portfolioId) !== undefined)
+    .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
 function instrumentHandle(model: WorkspaceModel, id: string): string {
@@ -758,7 +891,12 @@ function singleTradeSpec(generate: OperationSpec<TradeFields>["generate"]): Oper
     generate,
     request: (model, p) => ({ method: "POST", path: ws(model, "/trades"), body: tradeBody(model, p) }),
     predict: (model, p) => predictHistory(model, [candidateRow(model, "candidate", p)]),
-    accept: (model, _p, body) => acceptTrades(model, body),
+    accept(model, p, body) {
+      const { trades } = body as { trades: TradeJson[] };
+      expectEcho(`the recorded ${p.type}`, [["rows", 1, trades.length]]);
+      echoTradeRow(model, `the recorded ${p.type}`, p, trades[0]!);
+      return acceptTrades(model, body);
+    },
   };
 }
 
@@ -877,7 +1015,22 @@ const split: OperationSpec<SplitParams> = {
   }),
   // The rows a split stands for are the API's to work out (every holding at the start of its date).
   predict: () => ANY,
-  accept: (model, _p, body) => acceptTrades(model, body),
+  accept(model, p, body) {
+    // Which holdings the rows cover is checked by the positions oracle; each row keeps what was sent.
+    const { trades } = body as { trades: TradeJson[] };
+    for (const row of trades) {
+      echoTradeRow(model, "a recorded split row", {
+        type: "split",
+        account: model.accountById(row.accountId).handle,
+        portfolio: model.handleOf(row.portfolioId) ?? "<unknown portfolio>",
+        instrument: p.instrument,
+        tradeDate: p.tradeDate,
+        occurredAt: p.occurredAt,
+        amounts: { splitFrom: p.splitFrom, splitTo: p.splitTo },
+      }, row);
+    }
+    return acceptTrades(model, body);
+  },
 };
 
 type LegParams = { account: string; portfolio: string; feesCents?: number; costBasisCents?: number };
@@ -957,7 +1110,35 @@ const transferSecurities: OperationSpec<TransferSecuritiesParams> = {
     if (p.to) rows.push(legRow("candidate-to", p.to, p.quantityE8, p.from ? "candidate-from" : null));
     return predictHistory(model, rows);
   },
-  accept: (model, _p, body) => acceptTrades(model, body),
+  accept(model, p, body) {
+    const { trades } = body as { trades: TradeJson[] };
+    const legs = [...(p.from ? [{ leg: p.from, quantityE8: -p.quantityE8 }] : []), ...(p.to ? [{ leg: p.to, quantityE8: p.quantityE8 }] : [])];
+    const rows = [...trades].sort((a, b) => a.quantityE8 - b.quantityE8); // the outgoing leg, negative, first
+    expectEcho("the recorded transfer", [["rows", legs.length, rows.length]]);
+    legs.forEach(({ leg, quantityE8 }, index) => {
+      const row = rows[index]!;
+      echoTradeRow(model, `the transfer's ${quantityE8 < 0 ? "outgoing" : "incoming"} leg`, {
+        type: "transfer",
+        account: leg.account,
+        portfolio: leg.portfolio,
+        instrument: p.instrument,
+        tradeDate: p.tradeDate,
+        occurredAt: p.occurredAt,
+        amounts: {
+          quantityE8,
+          ...(leg.feesCents === undefined ? {} : { feesCents: leg.feesCents }),
+          ...(leg.costBasisCents === undefined ? {} : { costBasisCents: leg.costBasisCents }),
+        },
+      }, row);
+    });
+    if (rows.length === 2) {
+      expectEcho("the transfer's legs", [
+        ["from.transferTradeId", rows[1]!.id, rows[0]!.transferTradeId],
+        ["to.transferTradeId", rows[0]!.id, rows[1]!.transferTradeId],
+      ]);
+    }
+    return acceptTrades(model, body);
+  },
 };
 
 /** `move` names, by handle, the account or portfolio a trade moves to; `patch` holds only plain values. */
@@ -1033,6 +1214,7 @@ const editTrade: OperationSpec<EditTradeParams> = {
     const accountsBefore = group.map((t) => model.accountById(t.record.accountId).handle);
     const portfoliosBefore = group.map((t) => model.handleOf(t.record.portfolioId));
     const { trades } = body as { trades: TradeJson[] };
+    echoTradeEdit(model, p, group, trades);
     model.applyTradeEdit(group, trades);
     return touched({
       accounts: [...accountsBefore, ...trades.map((t) => model.accountById(t.accountId).handle)],
@@ -1040,6 +1222,48 @@ const editTrade: OperationSpec<EditTradeParams> = {
     });
   },
 };
+
+/** What a trade's edit may change on its own: the leg the trade owns, rewritten from it. */
+const DERIVED_TRADE_FIELDS: ReadonlySet<string> = new Set(["cashCents", "cashTransactionId", "locked"]);
+
+/**
+ * Every row an edit returned is the row as it was with the patch applied, and nothing else
+ * changed: the edited trade takes the whole patch (and a move to another account or portfolio);
+ * a transfer's two legs and a split's rows take it together, a transfer's quantity with each
+ * leg's own sign. A buy or a sell whose quantity changes without a gross gets its gross worked
+ * out again. A split row the edit added is checked by the positions oracle.
+ */
+function echoTradeEdit(model: WorkspaceModel, p: EditTradeParams, group: readonly { record: TradeJson }[], rows: readonly TradeJson[]): void {
+  const editedId = model.trade(p.trade).record.id;
+  for (const row of rows) {
+    const before = group.find((member) => member.record.id === row.id)?.record;
+    if (!before) continue;
+    const together = before.type === "transfer" || before.type === "split";
+    const expected: Record<string, unknown> = { ...before };
+    if (row.id === editedId || together) {
+      for (const [field, value] of Object.entries(p.patch)) {
+        expected[field] = field === "quantityE8" && before.type === "transfer" ? Math.sign(before.quantityE8) * (value as number) : value;
+      }
+    }
+    if (row.id === editedId && p.move?.account) expected.accountId = model.account(p.move.account).id;
+    if (row.id === editedId && p.move?.portfolio) expected.portfolioId = model.portfolio(p.move.portfolio).id;
+    if ((before.type === "buy" || before.type === "sell") && row.id === editedId && "quantityE8" in p.patch && !("grossCents" in p.patch) && before.instrumentId) {
+      const instrument = model.instruments.byId.get(before.instrumentId)!;
+      expected.grossCents = amountOf(expected.quantityE8 as Quantity, expected.priceE6 as Price, toPriceFactor(instrument.priceFactorE6), instrument.currency);
+    }
+    const instant = (value: unknown): unknown => (typeof value === "string" ? new Date(value).toISOString() : value);
+    expectEcho(
+      `the edited ${before.type} ${model.handleOf(before.id) ?? before.id}`,
+      Object.keys(expected)
+        .filter((field) => !DERIVED_TRADE_FIELDS.has(field))
+        .map((field) => {
+          const sent = field === "occurredAt" ? instant(expected[field]) : expected[field];
+          const returned = (row as unknown as Record<string, unknown>)[field];
+          return [field, sent, field === "occurredAt" ? instant(returned) : returned] as const;
+        }),
+    );
+  }
+}
 
 type TradeParams = { trade: string };
 const deleteTrade: OperationSpec<TradeParams> = {
@@ -1193,7 +1417,9 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     createAccount: 2,
     income: 6,
     spend: 14,
-    transfer: 3,
+    // Transfers between budget accounts are weighted up while #547 (one leg edited alone) is open,
+    // so the walk keeps building the pairs that bug lives in.
+    transfer: 6,
     cardPayment: 4,
     offBudgetSavings: 2,
     cardToCard: 1,
@@ -1233,7 +1459,7 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     deletePortfolio: 1,
     income: 4,
     spend: 6,
-    transfer: 1,
+    transfer: 3,
     cardPayment: 1,
     fundBroker: 7,
     withdrawBroker: 2,
