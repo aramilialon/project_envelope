@@ -30,3 +30,6 @@ infra/ansible/vars.yml
 .idea/
 *.log
 .aider*
+
+# Playwright MCP output, if the server ever runs without its confined wrapper
+.playwright-mcp/

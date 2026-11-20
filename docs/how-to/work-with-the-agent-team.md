@@ -14,6 +14,7 @@ Besides the maintainer, work on `envelope` uses a small team of AI agents, each 
 | QA | `qa` | no | on every branch before its pull request is merged |
 | Security reviewer | `security-reviewer` | no | on changes to auth, permissions, isolation, SQL, imports or dependencies |
 | Integrator | `integrator` | only mechanical merge resolutions | once branches have passed their reviews: orders them, brings each up to date with `main`, pushes, opens the pull request, squash-merges after green CI |
+| Explorer | `explorer` | no (a browser only) | before a release, once the milestone's issues are merged: uses the app as a household, an investor or a mixed household on a disposable environment and reports reproducible findings |
 
 The automatic review workflow on GitHub (`.github/workflows/claude-code-review.yml`) adds one more independent read of every pull request.
 
@@ -25,6 +26,15 @@ The automatic review workflow on GitHub (`.github/workflows/claude-code-review.y
 4. **Verify.** On the finished branch: `qa` always; the `ux-reviewer` if a screen changed; the `security-reviewer` if the change matches its scope; the `domain-expert` again if a calculation was built. Reviewers run independently of each other and of the developer's report.
 5. **Fix and decide.** The coordinator sends must-fix findings back to the developer, and brings to the maintainer any disagreement between roles and any finding that needs a decision.
 6. **Integrate.** The coordinator hands the reviewed branches to the `integrator`, with each one's issue, worktree, review summary and developer. The integrator decides the order (issue dependencies, migration numbers, files several branches change), brings each branch up to date with `main` (a rebase only before the branch is first pushed, a merge of `main` afterwards; never a force-push), resolves only mechanical conflicts such as two entries added to the same changelog or list, and sends every other conflict back to the developer with the files and what changed on `main`. It then pushes, opens the pull request saying which reviews ran and what they found, waits for CI, squash-merges, and re-checks the branches still waiting, since `main` has moved.
+
+## Exploratory runs before a release
+
+Once a milestone's issues are merged, and before its release, the coordinator runs the `explorer` on a disposable environment ([scripts/README.md](../../scripts/README.md), "Disposable environments"): one session per persona (household, investor, mixed household), each with a charter (what the release changed, the flows to cover, the odd cases to try) and a step budget, and the reference material the explorer's expectations must come from (the design document's user-interface section and mockups, and the API documentation for features with no screen yet).
+
+- The explorer has a browser and nothing else: no shell, no source code, no credentials beyond the environment's own personas. The browser is the Playwright MCP server, a pinned devDependency of `@envelope/scripts` started by [`scripts/explore-env/playwright-mcp.sh`](../../scripts/explore-env/playwright-mcp.sh) (configured in [`.mcp.json`](../../.mcp.json)): headless, an in-memory profile, `file://` blocked, ordinary requests kept on loopback, and every file its tools write (snapshots, screenshots, script results) confined to a throwaway temporary directory, never the repository. Install its browser once with `pnpm --filter @envelope/scripts exec playwright-mcp install-browser chrome-for-testing`. The server tools nobody needs (running arbitrary code, uploading or dropping files, reading full request headers) are denied in `.claude/settings.json`.
+- Keep the web app's Vite dev server stopped during a run: it serves repository files to any local page.
+- The coordinator brings the environment up and down with `explore:up` and `explore:down`, and never hands the explorer the manifest file itself, only the URLs, the persona credentials and the workspace ids from it.
+- Every finding must name the source of its expectation. The coordinator (or `qa`) reproduces each one on a fresh environment; only reproduced findings become issues, and spec gaps and product questions go to the maintainer. Every bug that gets fixed gets a deterministic test (an integration test, an e2e spec or a random-walk seed): explorer runs never gate a merge.
 
 Small changes (a typo, a dependency bump with no code change, a release changelog) skip the team: the coordinator handles them directly.
 
