@@ -320,7 +320,15 @@ describe("income on an on-budget credit card (#548)", () => {
     await assertBudgetMonthReads();
   });
 
-  it("gives sync uploads no field that could turn a card transaction into income", async () => {
+  it("gives sync uploads no field that could turn a card transaction into income (existing behaviour, guarded)", async () => {
+    const refundResponse = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${cardId}/transactions`,
+      headers: auth,
+      payload: { occurredAt: "2026-09-16", payee: "Sync test refund", splits: [{ categoryId, amountCents: 700 }] },
+    });
+    assert.equal(refundResponse.statusCode, 201, refundResponse.body);
+    const refundTransactionId = refundResponse.json().id as string;
     const created = await app.fastify.inject({
       method: "POST",
       url: `/workspaces/${workspaceId}/accounts/${checkingId}/transactions`,
@@ -331,8 +339,8 @@ describe("income on an on-budget credit card (#548)", () => {
     const income = created.json() as { id: string };
     const refund = (
       await superuserPool.query<{ id: string }>(
-        "SELECT s.id FROM splits s JOIN transactions t ON t.id = s.transaction_id WHERE t.account_id = $1 AND s.category_id IS NOT NULL LIMIT 1",
-        [cardId],
+        "SELECT id FROM splits WHERE transaction_id = $1",
+        [refundTransactionId],
       )
     ).rows[0]!;
     const hlc = { physical: Date.now(), counter: 0, deviceId: "device-548" };

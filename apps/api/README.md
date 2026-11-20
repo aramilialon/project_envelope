@@ -179,6 +179,8 @@ Before #548 the API accepted such a transaction, and one of them makes every `GE
 
 ```bash
 $ psql "$DATABASE_URL" -f scripts/dev/find-card-income.sql
+# or, on a host without psql, through the PostgreSQL container:
+$ docker exec -i envelope-postgres-1 psql -U envelope -d envelope < scripts/dev/find-card-income.sql
 ```
 
 No rows means nothing to fix. No migration changes them, because only the user knows what each one was. Fix each one by hand, through the API or the web app (as a member of the workspace with the `owner` or `editor` role), choosing what it really was:
