@@ -236,6 +236,8 @@ Roles are cluster-wide, not per-database, so the tests log in as `envelope_app` 
 
 Two test runs can share this machine at the same time, as long as each has a database of its own (another `createdb`, and its name in `DATABASE_URL`): the smoke tests listen on ports the operating system picks, test tokens live a minute, and the tests of the scheduled-transactions job create and drop a throwaway database of their own, so the `envelope` user needs to be allowed to create databases (it is, as the superuser `infra/docker-compose.yml` creates).
 
+The integration tests include a seeded random walk through the whole API, which takes about a minute on its own; running it longer, with another seed, or replaying a failure is in [`apps/api/README.md`](../apps/api/README.md), "The random walk".
+
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
 
 ## 10. The web app (`apps/web`)

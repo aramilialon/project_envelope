@@ -34,6 +34,7 @@
 | [0010](adr/0010-system-job-workspace-enumeration.md) | A third RLS session variable for periodic jobs that must enumerate every workspace |
 | [0011](adr/0011-quantities-and-prices-as-scaled-integers.md) | Quantities and prices as scaled integers |
 | [0012](adr/0012-trade-cash-legs.md) | A trade owns its cash leg |
+| [0013](adr/0013-model-based-random-walk-tests.md) | Model-based random walk tests for the API |
 
 ## Rule
 
