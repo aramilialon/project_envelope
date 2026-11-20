@@ -11,14 +11,23 @@
  * random hex digits; a run killed before `drop()` leaves one behind (apps/api/README.md shows how
  * to remove them). Needs the `DATABASE_URL` user to be allowed to create databases (the superuser
  * it already is in development and in CI).
+ *
+ * `pool.end()` resolves as soon as the pool has asked its clients to close, before their server
+ * processes have exited. `WITH (FORCE)` would terminate such a process, and the client still
+ * closing gets "terminating connection due to administrator command" as an error its pool has no
+ * listener for: an uncaught exception that fails the test file. So `drop()` first waits until
+ * no session is connected to the database any more, and only then drops it.
  */
 import { randomBytes } from "node:crypto";
 
-import { createPool } from "../db/pool.ts";
+import { createPool, type DbPool } from "../db/pool.ts";
 
 export interface IsolatedDatabase {
   readonly databaseUrl: string;
-  /** Close every pool on `databaseUrl` first: `WITH (FORCE)` would cut them off anyway. */
+  /**
+   * Close every pool on `databaseUrl` first. Waits until their connections are gone (up to a few
+   * seconds), then drops the database `WITH (FORCE)`, which ends any session still left.
+   */
   drop(): Promise<void>;
 }
 
@@ -33,14 +42,36 @@ export async function createIsolatedDatabase(databaseUrl: string): Promise<Isola
   url.pathname = `/${encodeURIComponent(name)}`;
   return {
     databaseUrl: url.toString(),
-    drop: () => onServer(databaseUrl, `DROP DATABASE IF EXISTS ${identifier} WITH (FORCE)`),
+    drop: () =>
+      onServer(databaseUrl, async (pool) => {
+        await waitForNoSessions(pool, name);
+        await pool.query(`DROP DATABASE IF EXISTS ${identifier} WITH (FORCE)`);
+      }),
   };
 }
 
-async function onServer(databaseUrl: string, statement: string): Promise<void> {
+const SESSION_WAIT_MS = 5_000;
+
+/** Until no session is connected to `name`, or `SESSION_WAIT_MS` has passed. */
+async function waitForNoSessions(pool: DbPool, name: string): Promise<void> {
+  const deadline = Date.now() + SESSION_WAIT_MS;
+  while (Date.now() < deadline) {
+    const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1", [name]);
+    if (rows[0]!.n === 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+async function onServer(databaseUrl: string, statement: string | ((pool: DbPool) => Promise<void>)): Promise<void> {
   const pool = createPool(databaseUrl);
   try {
-    await pool.query(statement);
+    if (typeof statement === "string") {
+      await pool.query(statement);
+    } else {
+      await statement(pool);
+    }
   } finally {
     await pool.end();
   }
