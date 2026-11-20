@@ -628,6 +628,21 @@ function sumOfSplits(splits: readonly { readonly amountCents: number }[]): numbe
 }
 
 /**
+ * Whether `legId` is the on-budget leg of a transfer whose other leg (`partnerId`) is off-budget:
+ * the one transfer leg that carries a category (`createTransfer`).
+ */
+async function isCategorizedTransferLeg(db: DbPool | DbClient, workspaceId: string, legId: string, partnerId: string): Promise<boolean> {
+  const { rows } = await db.query<{ id: string; on_budget: boolean }>(
+    `SELECT t.id, a.on_budget FROM transactions t
+       JOIN accounts a ON a.id = t.account_id AND a.workspace_id = t.workspace_id
+      WHERE t.workspace_id = $1 AND t.id = ANY($2)`,
+    [workspaceId, [legId, partnerId]],
+  );
+  const onBudgetById = new Map(rows.map((row) => [row.id, row.on_budget]));
+  return onBudgetById.get(legId) === true && onBudgetById.get(partnerId) === false;
+}
+
+/**
  * Updates payee/memo/status and, if given, replaces every split. Refuses to replace the splits of
  * a trade's cash leg (`trade_owned`, ADR 0012). Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be
@@ -649,6 +664,12 @@ function sumOfSplits(splits: readonly { readonly amountCents: number }[]): numbe
  * nothing says which of them the difference belongs to. Every refusal comes before anything is
  * written. A new split with the same amount (a different category on the leg) leaves the other leg
  * alone. The payee, memo and status the request gives stay the edited leg's own.
+ *
+ * A leg's category follows `createTransfer` (#552): the on-budget leg of a transfer to or from an
+ * off-budget account needs one, and a new split without one is refused with
+ * `uncategorized_transaction` (otherwise every budget-month read of the workspace would fail); on
+ * any other leg (both accounts on-budget, both off-budget, or the off-budget leg) a category in
+ * the new split is ignored and the leg stays categoryless, as creating the transfer ignores it.
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -690,11 +711,26 @@ export async function updateTransaction(
 
   // The other leg of a transfer, and its one split, when this edit changes the leg's amount (#547).
   let partnerSplit: { readonly id: string; readonly amountCents: number; readonly status: TransactionStatus } | undefined;
+  let newSplits = patch.splits;
   if (patch.splits !== undefined && existing.transferId !== null) {
-    if (patch.splits.length !== 1) {
+    const [legSplit, ...extraSplits] = patch.splits;
+    if (legSplit === undefined || extraSplits.length > 0) {
       throw new ValidationError("unsupported_transaction", "a transfer leg holds exactly one split", {
         transactionId: existing.id,
       });
+    }
+    // The category rule `createTransfer` applies (#552): only the on-budget leg of a transfer to or
+    // from an off-budget account carries a category, and it needs one; any other leg has none.
+    if (await isCategorizedTransferLeg(db, workspaceId, existing.id, existing.transferId)) {
+      if (legSplit.categoryId === null) {
+        throw new ValidationError(
+          "uncategorized_transaction",
+          "a transfer between an on-budget and an off-budget account needs a category on its on-budget leg",
+          { transactionId: existing.id },
+        );
+      }
+    } else {
+      newSplits = [{ ...legSplit, categoryId: null }];
     }
     const newTotal = sumOfSplits(patch.splits);
     const oldTotal = sumOfSplits(existing.splits);
@@ -735,9 +771,9 @@ export async function updateTransaction(
     workspaceId,
   ]);
 
-  if (patch.splits !== undefined) {
+  if (newSplits !== undefined) {
     await db.query("DELETE FROM splits WHERE transaction_id = $1 AND workspace_id = $2", [transactionId, workspaceId]);
-    await insertSplits(db, workspaceId, transactionId, patch.splits);
+    await insertSplits(db, workspaceId, transactionId, newSplits);
   }
   if (partnerSplit !== undefined) {
     await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [

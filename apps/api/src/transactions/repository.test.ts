@@ -308,6 +308,83 @@ describe("transactions repository", () => {
     assert.deepEqual(source?.splits, [{ ...transfer.source.splits[0], amountCents: -6500 }]);
   });
 
+  it("keeps both legs of a transfer balanced when each leg is edited at the same time from its own session (#553)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 5000,
+    });
+    const first = await pool.connect();
+    const second = await pool.connect();
+    let firstOpen = false;
+    let secondOpen = false;
+    try {
+      // A safety net, never reached when the test passes: a session that waits this long fails instead of hanging the run.
+      await first.query("SET lock_timeout = '30s'");
+      await second.query("SET lock_timeout = '30s'");
+      const firstPid = (await first.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+      const secondPid = (await second.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]!.pid;
+
+      // The first session edits the source leg and keeps its transaction open.
+      await first.query("BEGIN");
+      firstOpen = true;
+      const firstEdit = await updateTransaction(first, workspaceId, transfer.source.id, { splits: [{ categoryId: null, amountCents: -8000 }] });
+      assert.ok(typeof firstEdit !== "string", `expected a record, got "${String(firstEdit)}"`);
+
+      // The second session edits the destination leg meanwhile: it must wait for the first one.
+      await second.query("BEGIN");
+      secondOpen = true;
+      const secondEdit = updateTransaction(second, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 3000 }] });
+      // Settled into a result either way, so a rejection while the first session is still open is reported, not left unhandled.
+      const secondOutcome = secondEdit.then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const { rows } = await pool.query<{ blocked: boolean }>(
+          "SELECT wait_event_type = 'Lock' AND $2::int = ANY(pg_blocking_pids(pid)) AS blocked FROM pg_stat_activity WHERE pid = $1",
+          [secondPid, firstPid],
+        );
+        if (rows[0]?.blocked === true) break;
+        const settled = await Promise.race([secondOutcome, new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 20))]);
+        if (settled !== undefined) {
+          assert.fail(`the second session finished without waiting for the first one: ${JSON.stringify(settled.ok ? settled.value : String(settled.error))}`);
+        }
+        if (Date.now() > deadline) {
+          assert.fail("the second session never waited on a lock held by the first one");
+        }
+      }
+
+      await first.query("COMMIT");
+      firstOpen = false;
+      const outcome = await secondOutcome;
+      if (!outcome.ok) throw outcome.error;
+      assert.ok(typeof outcome.value !== "string", `expected a record, got "${String(outcome.value)}"`);
+      await second.query("COMMIT");
+      secondOpen = false;
+    } finally {
+      if (firstOpen) await first.query("ROLLBACK");
+      if (secondOpen) await second.query("ROLLBACK");
+      first.release();
+      second.release();
+    }
+
+    const sums = await pool.query<{ transaction_id: string; total: string }>(
+      "SELECT transaction_id, sum(amount_cents) AS total FROM splits WHERE transaction_id = ANY($1) GROUP BY transaction_id",
+      [[transfer.source.id, transfer.destination.id]],
+    );
+    const totals = new Map(sums.rows.map((row) => [row.transaction_id, Number(row.total)]));
+    assert.equal(totals.get(transfer.destination.id), 3000, "the later edit wins on the leg it edited");
+    assert.equal(
+      totals.get(transfer.source.id)! + totals.get(transfer.destination.id)!,
+      0,
+      `the two legs no longer cancel out: ${totals.get(transfer.source.id)} and ${totals.get(transfer.destination.id)}`,
+    );
+  });
+
   it("refuses to change a transfer leg's amount when the other leg has several splits, changing neither (#547)", async () => {
     const transfer = await createTransfer(pool, {
       workspaceId,
@@ -364,6 +441,75 @@ describe("transactions repository", () => {
     const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
     assert.deepEqual(source, transfer.source);
     assert.deepEqual(destination, transfer.destination);
+  });
+
+  it("refuses to clear the category of the on-budget leg of a transfer to an off-budget account, writing nothing (#552)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 2500,
+      categoryId,
+    });
+
+    for (const amountCents of [-2500, -3000]) {
+      await assert.rejects(
+        () => updateTransaction(pool, workspaceId, transfer.source.id, { payee: "After", splits: [{ categoryId: null, amountCents }] }),
+        (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+      );
+    }
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.deepEqual(source, transfer.source);
+    assert.deepEqual(destination, transfer.destination);
+  });
+
+  it("refuses to clear the category of the on-budget leg of a transfer from an off-budget account (#552)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: accountId,
+      occurredAt: "2026-09-10",
+      amountCents: 900,
+      categoryId,
+    });
+
+    await assert.rejects(
+      () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 900 }] }),
+      (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+    );
+  });
+
+  it("ignores a category given to a leg that carries none, as creating the transfer does (#552)", async () => {
+    const onBudget = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: savingsAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 700,
+    });
+    const toOffBudget = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 700,
+      categoryId,
+    });
+    // Both legs on-budget, either leg; the off-budget leg of a transfer to an off-budget account.
+    const legs = [onBudget.source, onBudget.destination, toOffBudget.destination];
+    for (const leg of legs) {
+      const amountCents = leg.splits[0]!.amountCents * 2;
+      const updated = await updateTransaction(pool, workspaceId, leg.id, { splits: [{ categoryId: otherCategoryId, amountCents }] });
+      assert.ok(typeof updated !== "string", `expected a record, got "${String(updated)}"`);
+      assert.deepEqual(
+        updated.splits.map((split) => [split.categoryId, split.amountCents]),
+        [[null, amountCents]],
+      );
+    }
+    const [onBudgetLeg] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === toOffBudget.source.id);
+    assert.equal(onBudgetLeg?.splits[0]?.categoryId, categoryId, "the on-budget leg keeps its own category");
   });
 
   it("creates a cash-to-card transfer the same way, no special-casing", async () => {

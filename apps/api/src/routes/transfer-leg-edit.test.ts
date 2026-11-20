@@ -253,6 +253,45 @@ describe("editing one leg of a transfer (#547)", () => {
     });
   }
 
+  for (const [direction, from, to] of [
+    ["to", "on", "off"],
+    ["from", "off", "on"],
+  ] as const) {
+    it(`refuses to clear the category of the on-budget leg of a transfer ${direction} an off-budget account with 400 uncategorized_transaction (#552)`, async () => {
+      const { source, destination } = await transfer(from === "on" ? checkingId : offBudgetId, to === "on" ? checkingId : offBudgetId, 2_500, {
+        categoryId,
+      });
+      const onBudgetLeg = from === "on" ? source : destination;
+
+      for (const amountCents of [total(onBudgetLeg), total(onBudgetLeg) * 2]) {
+        const refused = await patchLeg(onBudgetLeg, { payee: "Changed", splits: [{ categoryId: null, amountCents }] });
+        assert.equal(refused.status, 400, JSON.stringify(refused.body));
+        assert.equal(refused.body.error, "uncategorized_transaction");
+      }
+      assert.deepEqual(await reread(source), source);
+      assert.deepEqual(await reread(destination), destination);
+      await assertBudgetInvariant();
+    });
+  }
+
+  it("ignores a category sent on a leg of a transfer between two on-budget accounts, as creating it does (#552)", async () => {
+    const { source, destination } = await transfer(checkingId, savingsId, 800, { categoryId });
+    assert.equal(source.splits[0]!.categoryId, null, "creating the transfer ignores the category");
+
+    const edited = await patchLeg(source, { splits: [{ categoryId: otherCategoryId, amountCents: -1_000 }] });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    assert.equal(edited.body.splits[0]!.categoryId, null);
+    assert.equal(total(edited.body), -1_000);
+    const other = await reread(destination);
+    assert.equal(other.splits[0]!.categoryId, null);
+    assert.equal(total(other), 1_000);
+
+    const sameAmount = await patchLeg(destination, { splits: [{ categoryId, amountCents: 1_000 }] });
+    assert.equal(sameAmount.status, 200, JSON.stringify(sameAmount.body));
+    assert.equal(sameAmount.body.splits[0]!.categoryId, null);
+    await assertBudgetInvariant();
+  });
+
   it("refuses with 409 when the other leg is reconciled, and changes neither leg", async () => {
     const { source, destination } = await transfer(checkingId, savingsId, 750);
     await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [destination.id]);
@@ -330,5 +369,29 @@ describe("editing one leg of a transfer (#547)", () => {
     );
     assert.deepEqual(await reread(source), source);
     assert.deepEqual(await reread(destination), destination);
+  });
+
+  it("refuses a synced change to a transfer leg's category as unsupported, changing neither leg (#552)", async () => {
+    const { source, destination } = await transfer(checkingId, offBudgetId, 610, { categoryId });
+
+    const uploaded = await request<{ results: { outcome: string }[] }>("POST", "/changes", {
+      changes: [
+        {
+          id: randomUUID(),
+          entityId: source.splits[0]!.id,
+          fieldName: "splits.category_id",
+          hlc: { physical: Date.now(), counter: 0, deviceId: "phone" },
+          value: null,
+        },
+      ],
+    });
+    assert.equal(uploaded.status, 201, JSON.stringify(uploaded.body));
+    assert.deepEqual(
+      uploaded.body.results.map((result) => result.outcome),
+      ["unsupported_field"],
+    );
+    assert.deepEqual(await reread(source), source);
+    assert.deepEqual(await reread(destination), destination);
+    await assertBudgetInvariant();
   });
 });
