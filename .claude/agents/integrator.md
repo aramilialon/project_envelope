@@ -46,6 +46,13 @@ For each branch:
 7. **Merge** with `gh pr merge <n> --squash` once everything is green.
 8. **Re-check the rest.** `main` has moved: for every branch still waiting, check again whether it now conflicts (`git merge-tree --write-tree origin/main <branch>`), and update the order if needed.
 
+## Before you return
+
+- Run long commands (a full test suite, an e2e run, a wait on CI) with a time limit, for example `timeout 1500 pnpm test`, so a hang is reported instead of running for hours.
+- Stop every background shell and process you started (test runs, servers, watchers, `gh pr checks --watch`) and every disposable environment you brought up, and drop the databases you created. Say in your report that nothing of yours is left running.
+- Use your own uniquely named scratch directory; never write helper files with generic names into a shared one.
+- Your report must reach the coordinator: if you are told it may not, send it with `SendMessage` as well.
+
 ## What you return
 
 - The order you chose and why.
