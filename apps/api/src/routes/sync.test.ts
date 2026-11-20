@@ -12,6 +12,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import { MAX_CHANGES_PER_UPLOAD, MAX_SYNC_NAME_LENGTH } from "./sync.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -492,6 +493,73 @@ describe("sync routes (#43, #44)", () => {
       assert.equal(await memoOf(mine), "later");
       assert.equal((await changeLogRows(later.id)).length, 1);
       assert.equal((await changeLogRows(earlier.id)).length, 1);
+    });
+
+    it("answers invalid for a clock or a name change_log cannot store, and still applies the rest of the batch", async () => {
+      const mine = await newTransaction();
+      const withClock = (physical: number, counter: number, deviceId = "device-513") => ({
+        ...memoChange(randomUUID(), mine, "bad"),
+        hlc: { physical, counter, deviceId },
+      });
+      const bad = [
+        withClock(-1, 0),
+        withClock(1.5, 0),
+        withClock(2 ** 53, 0),
+        withClock(1000, -1),
+        withClock(1000, 0.5),
+        withClock(1000, 2 ** 31),
+        withClock(1000, 0, ""),
+        withClock(1000, 0, "d".repeat(MAX_SYNC_NAME_LENGTH + 1)),
+        { ...memoChange(randomUUID(), mine, "bad"), fieldName: `transactions.memo${"x".repeat(MAX_SYNC_NAME_LENGTH)}` },
+      ];
+      const fine = withClock(Number.MAX_SAFE_INTEGER, 2 ** 31 - 1, "d".repeat(MAX_SYNC_NAME_LENGTH));
+      fine.value = "fine";
+
+      const response = await upload([...bad, fine]);
+
+      assert.equal(response.statusCode, 201);
+      const { results } = response.json() as { results: { id: string; outcome: string }[] };
+      assert.deepEqual(
+        results.map((r) => r.outcome),
+        [...bad.map(() => "invalid"), "applied"],
+      );
+      assert.equal(await memoOf(mine), "fine");
+      for (const change of bad) {
+        assert.deepEqual(await changeLogRows(change.id), []);
+      }
+    });
+
+    it("answers unsupported_field for an inherited property name or a value no query could take, without a 500", async () => {
+      const mine = await newTransaction();
+      const changes = [
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "constructor" },
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "toString" },
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "transactions.notes", value: { text: "nul \u0000 inside" } },
+      ];
+
+      const response = await upload(changes);
+
+      assert.equal(response.statusCode, 201);
+      const { results } = response.json() as { results: { outcome: string }[] };
+      assert.deepEqual(
+        results.map((r) => r.outcome),
+        ["unsupported_field", "unsupported_field", "unsupported_field"],
+      );
+    });
+
+    it(`refuses an upload of more than ${MAX_CHANGES_PER_UPLOAD} changes, applying none of it, and takes exactly that many`, async () => {
+      const mine = await newTransaction();
+      const tooMany = Array.from({ length: MAX_CHANGES_PER_UPLOAD + 1 }, (_, i) => memoChange(randomUUID(), mine, `v${i}`, 60_000_000 + i));
+
+      const refused = await upload(tooMany);
+
+      assert.equal(refused.statusCode, 400);
+      assert.deepEqual(refused.json(), { error: "too_many_changes", details: { max: MAX_CHANGES_PER_UPLOAD } });
+      assert.equal(await memoOf(mine), null);
+
+      const accepted = await upload(tooMany.slice(0, MAX_CHANGES_PER_UPLOAD));
+      assert.equal(accepted.statusCode, 201);
+      assert.equal(await memoOf(mine), `v${MAX_CHANGES_PER_UPLOAD - 1}`);
     });
 
     it("refuses a different change sent under a change id this workspace already used, as id_conflict", async () => {
