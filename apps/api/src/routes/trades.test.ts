@@ -650,6 +650,11 @@ describe("trades routes (#77)", () => {
     const removed = await app.fastify.inject({ method: "DELETE", url: legUrl, headers: await auth() });
     assert.equal(removed.statusCode, 409);
     assert.equal(removed.json().code, "trade_owned_transaction");
+
+    // A reconciled leg locks its trade (editing and deleting trades are #509).
+    await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [fee!.cashTransactionId]);
+    const [locked] = (await list(`?accountId=${broker}`)).json().trades as TradeBody[];
+    assert.equal(locked!.locked, true);
   });
 
   it("refuses a synced change to a cash leg's account, date or amount, but applies its memo", async () => {
