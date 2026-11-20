@@ -237,4 +237,20 @@ describe("smoke: 0.1.6 Sync, against the real process", () => {
     );
     assert.equal(afterRetry[0]?.memo, "from B", "the real column must be unaffected by a resend that changes nothing new");
   });
+
+  it("answers not_found for a change to an entity outside the workspace, recording nothing (#513)", async () => {
+    const change = {
+      id: randomUUID(),
+      entityId: randomUUID(),
+      fieldName: "transactions.memo",
+      hlc: { physical: Date.now(), counter: 0, deviceId: "smoke-device-a" },
+      value: "nowhere",
+    };
+
+    const response = await api<{ results: { id: string; outcome: string }[] }>("POST", "/changes", { changes: [change] });
+
+    assert.deepEqual(response.results, [{ id: change.id, outcome: "not_found" }]);
+    const { rows } = await superuserPool.query("SELECT 1 FROM change_log WHERE id = $1", [change.id]);
+    assert.equal(rows.length, 0);
+  });
 });

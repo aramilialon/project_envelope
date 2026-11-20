@@ -267,4 +267,29 @@ describe("listChangesSince (#44)", () => {
     assert.deepEqual(await findRecordedChange(pool, workspaceId, { ...change, value: "mine" }), { outcome: "applied", sameChange: true });
     assert.equal(await findRecordedChange(pool, await newWorkspace(), { ...change, value: "theirs" }), undefined);
   });
+
+  it("hides another workspace's change_log rows from envelope_app by Row-Level Security alone (#513)", async () => {
+    const workspaceId = await newWorkspace();
+    const otherWorkspaceId = await newWorkspace();
+    const sharedId = randomUUID();
+    const change = { id: sharedId, entityId: randomUUID(), fieldName: "transactions.memo", hlc: hlc(1000) };
+    await recordChange(pool, { ...change, workspaceId, value: "mine", outcome: "applied" });
+    await recordChange(pool, { ...change, workspaceId: otherWorkspaceId, value: "theirs", outcome: "applied" });
+    await recordChange(pool, { ...change, id: randomUUID(), workspaceId: otherWorkspaceId, value: "theirs too", outcome: "applied" });
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SET LOCAL ROLE envelope_app");
+      await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+      // No workspace_id filter at all: only the policy stands between this query and other workspaces.
+      const { rows } = await client.query<{ workspace_id: string; value: unknown }>("SELECT workspace_id, value FROM change_log");
+      assert.deepEqual(rows, [{ workspace_id: workspaceId, value: "mine" }]);
+      const byId = await client.query("SELECT value FROM change_log WHERE id = $1", [sharedId]);
+      assert.deepEqual(byId.rows, [{ value: "mine" }]);
+    } finally {
+      await client.query("ROLLBACK");
+      client.release();
+    }
+  });
 });

@@ -7,7 +7,7 @@ import type { Hlc } from "@envelope/core";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { createTransaction } from "../transactions/repository.ts";
-import { applyIncomingChange } from "./apply.ts";
+import { applyIncomingChange, type IncomingChange } from "./apply.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -374,6 +374,64 @@ describe("applyIncomingChange (#43)", () => {
         ].sort(),
         "each workspace keeps its own change under the shared id",
       );
+    });
+
+    describe("two requests sending the same change id at once", () => {
+      /**
+       * A records the change in an open transaction; B, on another connection, gets past every
+       * check (A's row is not committed yet) and its insert waits on A's. Once A commits, B's
+       * insert does nothing and B must answer from A's recorded change, applying nothing itself.
+       */
+      async function race(changeA: IncomingChange, changeB: IncomingChange): Promise<{ a: string; b: string }> {
+        const clientA = await pool.connect();
+        const clientB = await pool.connect();
+        try {
+          await clientA.query("BEGIN");
+          await clientB.query("BEGIN");
+          const { rows } = await clientB.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+          const pidB = rows[0]!.pid;
+
+          const a = await applyIncomingChange(clientA, workspaceId, changeA);
+          let settledB = false;
+          const pendingB = applyIncomingChange(clientB, workspaceId, changeB).finally(() => {
+            settledB = true;
+          });
+          for (;;) {
+            const waiting = await pool.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'", [pidB]);
+            if (waiting.rows.length > 0) {
+              break;
+            }
+            // B must block on A's row; if it finished instead, the race this test needs never happened.
+            assert.equal(settledB, false, "B's insert was expected to wait on A's open transaction");
+            await new Promise((resolve) => setImmediate(resolve));
+          }
+          await clientA.query("COMMIT");
+          const b = await pendingB;
+          await clientB.query("COMMIT");
+          return { a, b };
+        } finally {
+          clientA.release();
+          clientB.release();
+        }
+      }
+
+      it("answers the second with the first one's outcome when it is the same change", async () => {
+        const transactionId = await createTestTransaction();
+        const change = { id: randomUUID(), entityId: transactionId, fieldName: "transactions.memo", hlc: hlc(1000), value: "same" };
+
+        assert.deepEqual(await race(change, change), { a: "applied", b: "applied" });
+        assert.equal(await memoOf(transactionId), "same");
+        assert.equal((await changeLogRows(change.id)).length, 1);
+      });
+
+      it("answers the second with id_conflict, applying nothing, when it is a different change", async () => {
+        const transactionId = await createTestTransaction();
+        const change = { id: randomUUID(), entityId: transactionId, fieldName: "transactions.memo", hlc: hlc(1000), value: "first" };
+
+        assert.deepEqual(await race(change, { ...change, hlc: hlc(2000), value: "second" }), { a: "applied", b: "id_conflict" });
+        assert.equal(await memoOf(transactionId), "first", "the losing request must not apply its value");
+        assert.deepEqual(await changeLogRows(change.id), [{ workspace_id: workspaceId, value: "first", outcome: "applied" }]);
+      });
     });
   });
 });
