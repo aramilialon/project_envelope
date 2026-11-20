@@ -156,8 +156,9 @@ missed case would be worst to find in production.
 ## Portfolios and rebalancing
 
 Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
-are already computed in `packages/core`, and the API records trades (#77); the rest are the rules
-the engine will follow once it exists, not a description of something already running.
+are already computed in `packages/core`, the API records trades (#77) and returns positions,
+without prices yet (#79); the rest are the rules the engine will follow once it exists, not a
+description of something already running.
 
 ### Positions and returns
 
@@ -251,12 +252,32 @@ result below is only ever added up within one currency.
   coupons. The domestic withholding is entered as a positive amount and the trade's type gives its
   direction: withheld on a sale, a dividend or a coupon; credited back on a bond buy with accrued
   interest, where it counts as negative withholding.
-- **Costs** = financial transaction tax + transfer fees + standalone fees + standalone taxes
-  (stamp duty and the like).
-- **Taxes on gains** = gain tax withheld on sales ± gain tax adjustments. An adjustment's amount
-  is positive when it is a refund (money back into the account), which lowers the total, and
-  negative when it is extra tax charged, which raises it.
-- **Net result** = realized + unrealized + income − costs − taxes on gains.
+- **Costs** = financial transaction tax + transfer fees + standalone fees + stamp duty and other
+  taxes.
+- **Taxes on gains** = gain tax withheld on sales − gain tax adjustments + managed result tax.
+  An adjustment's amount is kept as entered: positive when it is a refund (money back into the
+  account), which lowers the total, and negative when it is extra tax charged, which raises it.
+  The tax withheld and the adjustments are separate totals, so they can be compared with the
+  broker's tax statement. The tax on the result of a managed account is a tax on gains, not a
+  cost.
+- **Net result** = realized + unrealized + income − costs − taxes on gains. It needs prices
+  (milestone 0.2.1); `derivedResults` in `packages/core` gives the first three already.
+
+Because of the credit on a bond buy with accrued interest, the domestic withholding total can be
+negative. The cost that came in (buys and transfers in) minus the cost transferred out is the
+*net cost in*, not the money invested: a transfer in from outside the app brings the cost it
+carries, not money paid through the account.
+
+**A portfolio's cost is a share, not a running sum.** A portfolio's cost in − cost sold − cost
+transferred out does not equal its cost: cost shifts between the portfolios of an account through
+the shared average. In the example below, A paid €1,005.00 and its sale removed €576.25, which
+leaves €428.75, yet A's cost is €576.25: when B bought at €120 the account's average rose to
+€115.25, and A's share of the cost rose with it. Never divide a portfolio's cost by its quantity
+to show an average: show the account's average cost. The account's figures always reconcile.
+
+**The account adds up.** For an account whose securities all came in through buys, realized +
+income − costs − taxes on gains = (cash balance + cost) − money transferred in: every cent that
+left the cash either sits in the cost or is one of those results.
 
 The fees of buys and sells (trade fees) are already inside the cost and the gain, so they are
 shown for information and never subtracted again; the fees of transfers are a total of their own.
@@ -298,6 +319,10 @@ Worked examples, each one a test in `packages/core`:
   8,110 × 60 ÷ 150 = €3,244.00 of cost and realizes 4,200 − 5 − 3,244 = €951.00; the €247.26 of
   gain tax the broker withholds (26%) is recorded as its own total, not subtracted from the gain.
   A later €100 gain tax adjustment refunded by the broker brings the taxes on gains to €147.26.
+  With a €3.00 custody fee as well, the account adds up: 951 − (5 + 3) − 147.26 = €795.74, and
+  the €9,000.00 transferred in became €4,929.74 of cash and €4,866.00 of cost, €9,795.74.
+- **A managed account's tax.** A managed account whose result for the year is €1,000.00 pays
+  €260.00 of managed result tax (26%): €260.00 of taxes on gains, no cost.
 - **A dividend's net income.** A €20.00 dividend with €3.00 of foreign withholding, €4.42 of
   domestic withholding and a €2.00 fee is €10.58 of income; the €5 fee paid when the units were
   bought is not subtracted again.

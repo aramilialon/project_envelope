@@ -126,6 +126,15 @@ export async function getInstrument(db: DbPool | DbClient, id: string): Promise<
   return rows[0] ? toInstrument(rows[0]) : undefined;
 }
 
+/** The instruments with these ids, by id; an unknown id is left out. */
+export async function getInstruments(db: DbPool | DbClient, ids: readonly string[]): Promise<Map<string, Instrument>> {
+  if (ids.length === 0) {
+    return new Map();
+  }
+  const { rows } = await db.query<InstrumentRow>(`SELECT ${COLUMNS} FROM instruments WHERE id = ANY($1)`, [ids]);
+  return new Map(rows.map((row) => [row.id, toInstrument(row)]));
+}
+
 /** `LIKE`'s own wildcards, escaped so a typed `%` or `_` matches itself. */
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);

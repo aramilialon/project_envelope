@@ -30,6 +30,7 @@ export type {
   AccountCharge,
   AccountPosition,
   AccountSummary,
+  DerivedResults,
   PortfolioPosition,
   PortfolioSummary,
   Positions,
@@ -43,6 +44,7 @@ export type {
 export {
   applyTradeChanges,
   computePositions,
+  derivedResults,
   summarizeByAccount,
   summarizeByPortfolio,
   validatePositionHistory,
