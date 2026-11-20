@@ -5,14 +5,17 @@
  * (`scripts/explore-env/`, `pnpm --filter @envelope/scripts explore:up`), its web app, realm and
  * database instead: the web app is already running, and the fixtures connect as the superuser of
  * the disposable environments' own PostgreSQL server (never the shared one), read from
- * `EXPLORE_DATABASE_URL` (CI) or from that server's 0600 `postgres.env`
- * (`~/.config/envelope-explore/`, or under `$XDG_CONFIG_HOME`). `KEYCLOAK_ADMIN_PASSWORD` is still
- * needed for the throwaway users.
+ * `EXPLORE_DATABASE_URL` (CI) or from that server's `postgres-password` file
+ * (`~/.config/envelope-explore/`, or under `$XDG_CONFIG_HOME`). The server must be on 127.0.0.1 or
+ * localhost and not on port 5432, and the manifest's own directory must be private (ours, not a
+ * symbolic link, no group or other permission bits). `KEYCLOAK_ADMIN_PASSWORD` is still needed for
+ * the throwaway users.
  */
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { parseEnv } from "node:util";
+
+const LOCAL_HOSTNAMES = new Set(["127.0.0.1", "localhost"]);
 
 interface DisposableManifest {
   readonly database: string;
@@ -22,6 +25,11 @@ interface DisposableManifest {
 }
 
 function readManifest(file: string): DisposableManifest {
+  const dir = lstatSync(path.dirname(file));
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (dir.isSymbolicLink() || !dir.isDirectory() || (uid !== undefined && dir.uid !== uid) || (dir.mode & 0o077) !== 0) {
+    throw new Error(`${file}: its directory must be ours, not a symbolic link, with no group or other permission bits`);
+  }
   const manifest = JSON.parse(readFileSync(file, "utf8")) as DisposableManifest;
   if (!/^envelope_explore_[0-9a-f]{8}$/.test(manifest.database) || !/^envelope-explore-[0-9a-f]{8}$/.test(manifest.keycloak.realm)) {
     throw new Error(`${file} is not a disposable environment's manifest`);
@@ -47,13 +55,16 @@ function disposableServerUrl(environment: DisposableManifest): string {
     url = new URL(override);
   } else {
     const configDir = path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "envelope-explore");
-    const secrets = parseEnv(readFileSync(path.join(configDir, "postgres.env"), "utf8"));
-    if (!secrets.POSTGRES_USER || !secrets.POSTGRES_PASSWORD) {
-      throw new Error(`${configDir}/postgres.env is incomplete`);
+    const password = readFileSync(path.join(configDir, "postgres-password"), "utf8").trim();
+    if (!password) {
+      throw new Error(`${configDir}/postgres-password is empty`);
     }
     url = new URL(`postgres://${environment.postgres.host}:${environment.postgres.port}/`);
-    url.username = encodeURIComponent(secrets.POSTGRES_USER);
-    url.password = encodeURIComponent(secrets.POSTGRES_PASSWORD);
+    url.username = "explore_admin";
+    url.password = encodeURIComponent(password);
+  }
+  if (!LOCAL_HOSTNAMES.has(url.hostname)) {
+    throw new Error(`Refusing to run e2e fixtures against a non-local PostgreSQL server (${url.hostname})`);
   }
   if (url.port === "" || url.port === "5432") {
     throw new Error("Refusing to run e2e fixtures against PostgreSQL on port 5432: a disposable environment lives on its own server");

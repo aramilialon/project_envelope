@@ -4,7 +4,7 @@
  * `apps/api`'s own runner, plus the one step done with direct SQL — giving the editor and
  * read-only personas their membership, since no API adds a member to a workspace yet. Everything
  * here connects as that server's superuser, which stays in this process: the environment's API
- * gets `envelope_app`/`envelope_queue` connections to its own database only.
+ * gets connections as the run's own two roles (`createRunRoles`), to its own database only.
  */
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import pg from "pg";
 
 import { assertExploreServerUrl } from "./instance.ts";
-import { assertExploreDatabase, DATABASE_PREFIX } from "./names.ts";
+import { assertExploreDatabase, DATABASE_PREFIX, RUN_ROLE, runRoleName } from "./names.ts";
 
 const MIGRATE_TS = fileURLToPath(new URL("../../apps/api/src/db/migrate.ts", import.meta.url));
 const COMMENT_PREFIX = "envelope-explore created=";
@@ -107,34 +107,87 @@ export async function migrate(databaseUrl: string, log: (line: string) => void, 
 }
 
 /**
- * Makes sure `role` can log in to `database` with `password`, the instance's own password for it
- * (`instance.ts`). The server is dedicated to disposable environments, so setting it is safe;
- * another run setting the same value at the same moment is not an error.
+ * Gives a run its own two login roles, `envelope_app_<run>` and `envelope_queue_<run>`, members of
+ * `envelope_app`/`envelope_queue` so every grant and Row-Level Security policy for those applies,
+ * and lets them (and only them, besides the superuser) connect to the run's database. One run's
+ * credentials therefore open no other run's database.
  */
-export async function ensureRoleLogin(superuserUrl: string, database: string, role: "envelope_app" | "envelope_queue", password: string): Promise<void> {
-  const roleUrl = connectionTo(superuserUrl, database, { user: role, password });
-  if (await canLogIn(roleUrl)) {
-    return;
-  }
+export async function createRunRoles(
+  superuserUrl: string,
+  database: string,
+  run: string,
+  passwords: { readonly app: string; readonly queue: string },
+): Promise<{ app: string; queue: string }> {
+  assertExploreDatabase(database);
+  const app = runRoleName("envelope_app", run);
+  const queue = runRoleName("envelope_queue", run);
+  const literal = (value: string): string => `'${value.replaceAll("'", "''")}'`;
   await withPool(superuserUrl, async (pool) => {
-    try {
-      // ALTER ROLE's PASSWORD clause takes no bind parameter; the password is quoted as a literal.
-      await pool.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${password.replaceAll("'", "''")}'`);
-    } catch (error) {
-      if (!(await canLogIn(roleUrl))) {
-        throw error;
+    // CREATE ROLE's PASSWORD clause takes no bind parameter; the passwords are quoted as literals.
+    await pool.query(`CREATE ROLE ${identifier(app)} LOGIN PASSWORD ${literal(passwords.app)} IN ROLE envelope_app`);
+    await pool.query(`CREATE ROLE ${identifier(queue)} LOGIN PASSWORD ${literal(passwords.queue)} IN ROLE envelope_queue`);
+    await pool.query(`REVOKE CONNECT, TEMPORARY ON DATABASE ${identifier(database)} FROM PUBLIC`);
+    await pool.query(`GRANT CONNECT ON DATABASE ${identifier(database)} TO ${identifier(app)}, ${identifier(queue)}`);
+  });
+  return { app, queue };
+}
+
+/**
+ * Closes everything on the server a run's roles have no business opening: `envelope_app` and
+ * `envelope_queue` themselves cannot log in (an instance set up before per-run roles gave them a
+ * password), and no database but the runs' own lets PUBLIC connect — `postgres`, the superuser's
+ * own and `template1` included. Idempotent; another run doing the same at the same moment is not
+ * an error.
+ */
+export async function closeSharedAccess(superuserUrl: string): Promise<void> {
+  await withPool(superuserUrl, async (pool) => {
+    const statements: string[] = [];
+    const { rows: roles } = await pool.query<{ rolname: string }>(
+      "SELECT rolname FROM pg_authid WHERE rolname IN ('envelope_app', 'envelope_queue') AND (rolcanlogin OR rolpassword IS NOT NULL)",
+    );
+    for (const { rolname } of roles) {
+      statements.push(`ALTER ROLE ${identifier(rolname)} NOLOGIN PASSWORD NULL`);
+    }
+    const { rows: databases } = await pool.query<{ datname: string }>(
+      `SELECT datname FROM pg_database
+        WHERE datallowconn AND NOT starts_with(datname, $1)
+          AND (datacl IS NULL OR EXISTS (SELECT 1 FROM aclexplode(datacl) a WHERE a.grantee = 0 AND a.privilege_type = 'CONNECT'))`,
+      [DATABASE_PREFIX],
+    );
+    for (const { datname } of databases) {
+      statements.push(`REVOKE CONNECT, TEMPORARY ON DATABASE ${identifier(datname)} FROM PUBLIC`);
+    }
+    for (const statement of statements) {
+      try {
+        await pool.query(statement);
+      } catch (error) {
+        // "tuple concurrently updated": another run is closing the same thing right now.
+        if ((error as { code?: string }).code !== "XX000") {
+          throw error;
+        }
       }
     }
   });
 }
 
-async function canLogIn(connectionString: string): Promise<boolean> {
-  try {
-    await withPool(connectionString, (pool) => pool.query("SELECT 1"));
-    return true;
-  } catch {
-    return false;
-  }
+/** Drops a run's two roles, once its database (which their objects lived in) is gone. True if any existed. */
+export async function dropRunRoles(superuserUrl: string, run: string): Promise<boolean> {
+  const roles = [runRoleName("envelope_app", run), runRoleName("envelope_queue", run)];
+  return withPool(superuserUrl, async (pool) => {
+    const { rowCount } = await pool.query("SELECT 1 FROM pg_roles WHERE rolname = ANY($1)", [roles]);
+    for (const role of roles) {
+      await pool.query(`DROP ROLE IF EXISTS ${identifier(role)}`);
+    }
+    return (rowCount ?? 0) > 0;
+  });
+}
+
+/** Runs that still have a role on the server (for `sweep`, whose database may already be gone). */
+export async function listRunsWithRoles(superuserUrl: string): Promise<string[]> {
+  return withPool(superuserUrl, async (pool) => {
+    const { rows } = await pool.query<{ rolname: string }>("SELECT rolname FROM pg_roles WHERE rolname ~ '^envelope_(app|queue)_[0-9a-f]{8}$'");
+    return [...new Set(rows.map((row) => RUN_ROLE.exec(row.rolname)?.[2]).filter((run): run is string => run !== undefined))];
+  });
 }
 
 /** Adds `userId` to `workspaceId` with `role`: the one step no API offers yet. */

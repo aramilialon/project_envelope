@@ -145,8 +145,16 @@ describe("scripts/keycloak/bootstrap.sh origins", () => {
     });
   }
 
-  it("refuses an origin with a path, a wildcard or no scheme", async () => {
-    for (const origin of ["http://127.0.0.1:4000/app", "http://127.0.0.1:*", "127.0.0.1:4000", "javascript:alert(1)"]) {
+  it("refuses an origin with a path, a wildcard, a query, a user or no scheme", async () => {
+    for (const origin of [
+      "http://127.0.0.1:4000/app",
+      "http://127.0.0.1:*",
+      "127.0.0.1:4000",
+      "javascript:alert(1)",
+      "http://b?x",
+      "http://127.0.0.1@evil.example",
+      "http://127.0.0.1:123456",
+    ]) {
       const { result, output } = await bootstrap({ ENVELOPE_BOOTSTRAP_REALM: "envelope-explore-0a1b2c3d", ENVELOPE_BOOTSTRAP_WEB_ORIGINS: origin });
       assert.equal(result, 1, origin);
       assert.match(output, /Refusing origin/);
@@ -159,10 +167,25 @@ describe("scripts/keycloak/bootstrap.sh origins", () => {
     assert.match(output, /shared "envelope" realm/);
   });
 
+  it("refuses any realm but envelope or a disposable one", async () => {
+    for (const realm of ["master", "envelope-test", "envelope-explore-0A1B2C3D", "envelope-explore-0a1b2c3d9"]) {
+      const { result, output } = await bootstrap({ ENVELOPE_BOOTSTRAP_REALM: realm });
+      assert.equal(result, 1, realm);
+      assert.match(output, /Refusing realm/);
+    }
+  });
+
+  it("never glob-expands an origin", async () => {
+    // "*" would expand to the names of the files in the current directory if it were globbed.
+    const { result, output } = await bootstrap({ ENVELOPE_BOOTSTRAP_REALM: "envelope-explore-0a1b2c3d", ENVELOPE_BOOTSTRAP_WEB_ORIGINS: "*" });
+    assert.equal(result, 1);
+    assert.match(output, /Refusing origin "\*"/);
+  });
+
   it("accepts plain origins for another realm", async () => {
     const { result } = await bootstrap({
       ENVELOPE_BOOTSTRAP_REALM: "envelope-explore-0a1b2c3d",
-      ENVELOPE_BOOTSTRAP_WEB_ORIGINS: "http://127.0.0.1:4000 https://localhost:4443",
+      ENVELOPE_BOOTSTRAP_WEB_ORIGINS: "http://127.0.0.1:4000 https://localhost:4443 http://[::1]:4000",
     });
     assert.equal(result, "waiting");
   });

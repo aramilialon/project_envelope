@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { Api } from "../lib/api.ts";
 import { assertSafeToRun, requireEnv } from "../lib/env.ts";
-import { instanceSecrets, instanceUrl } from "./instance.ts";
+import { instanceUrl } from "./instance.ts";
 import { API_CLIENT_ID, KeycloakAdmin, personaToken, WEB_CLIENT_ID } from "./keycloak.ts";
 import {
   createRunDir,
@@ -37,7 +37,18 @@ import {
   writeManifest,
 } from "./manifest.ts";
 import { assertEnvTargetsRun, assertRunId, databaseName, newRunId, REALM_PREFIX, realmName, realmOfIssuer, runOf } from "./names.ts";
-import { addMembership, connectionTo, createDatabase, dropDatabase, ensureRoleLogin, listExploreDatabases, migrate } from "./postgres.ts";
+import {
+  addMembership,
+  closeSharedAccess,
+  connectionTo,
+  createDatabase,
+  createRunRoles,
+  dropDatabase,
+  dropRunRoles,
+  listExploreDatabases,
+  listRunsWithRoles,
+  migrate,
+} from "./postgres.ts";
 import { assertPrivate } from "./private-dir.ts";
 import { findRunProcesses, runToLog, startDetached, stopProcess, waitForListening } from "./processes.ts";
 import { generateVapidKeys } from "./vapid.ts";
@@ -138,7 +149,6 @@ async function up(root: string): Promise<void> {
   const { keycloak } = config;
   const superuserUrl = config.superuserUrl!;
   signal.throwIfAborted();
-  const secrets = await instanceSecrets();
   const run = newRunId();
   const database = databaseName(run);
   const realm = realmName(run);
@@ -154,8 +164,10 @@ async function up(root: string): Promise<void> {
     await createDatabase(superuserUrl, database, createdAt);
     const databaseUrl = connectionTo(superuserUrl, database);
     await migrate(databaseUrl, (line) => log(`   ${line}`), signal);
-    await ensureRoleLogin(superuserUrl, database, "envelope_app", secrets.appPassword);
-    await ensureRoleLogin(superuserUrl, database, "envelope_queue", secrets.queuePassword);
+    // The run's own login roles, with passwords that exist only in its API's environment.
+    const rolePasswords = { app: randomBytes(24).toString("base64url"), queue: randomBytes(24).toString("base64url") };
+    const roles = await createRunRoles(superuserUrl, database, run, rolePasswords);
+    await closeSharedAccess(superuserUrl);
     signal.throwIfAborted();
 
     log("== Starting the web server");
@@ -183,9 +195,9 @@ async function up(root: string): Promise<void> {
       PORT: "0",
       LOG_LEVEL: "info",
       LOG_PRETTY: "false",
-      APP_DATABASE_URL: connectionTo(superuserUrl, database, { user: "envelope_app", password: secrets.appPassword }),
+      APP_DATABASE_URL: connectionTo(superuserUrl, database, { user: roles.app, password: rolePasswords.app }),
       QUEUE_DRIVER: "postgres",
-      QUEUE_DATABASE_URL: connectionTo(superuserUrl, database, { user: "envelope_queue", password: secrets.queuePassword }),
+      QUEUE_DATABASE_URL: connectionTo(superuserUrl, database, { user: roles.queue, password: rolePasswords.queue }),
       VAPID_SUBJECT: "mailto:explore@example.invalid",
       VAPID_PUBLIC_KEY: vapid.publicKey,
       VAPID_PRIVATE_KEY: vapid.privateKey,
@@ -327,6 +339,7 @@ async function teardown(
     log(`   database ${database}: no disposable PostgreSQL instance, nothing to drop`);
   } else {
     log(`   database ${database}: ${(await dropDatabase(superuserUrl, database)) ? "dropped" : "already gone"}`);
+    log(`   roles envelope_app_${run}, envelope_queue_${run}: ${(await dropRunRoles(superuserUrl, run)) ? "dropped" : "already gone"}`);
   }
   log(`   realm ${realm}: ${(await keycloak.deleteRealm(realm)) ? "deleted" : "already gone"}`);
   if (removeRunDir && runDir && path.basename(runDir) === run && existsSync(runDir)) {
@@ -407,8 +420,18 @@ async function sweep(root: string, olderThanHours: number): Promise<void> {
     }
   };
   if (config.superuserUrl !== undefined) {
-    for (const db of await listExploreDatabases(config.superuserUrl)) {
+    // Roles are listed before databases: a run's roles are created after its database, so a run
+    // being brought up right now never shows roles without its database here.
+    const runsWithRoles = await listRunsWithRoles(config.superuserUrl);
+    const databases = await listExploreDatabases(config.superuserUrl);
+    for (const db of databases) {
       consider("database", db.name, db.createdAt);
+    }
+    // Roles whose database is already gone (a teardown stopped between the two).
+    for (const run of runsWithRoles) {
+      if (!removed.has(run) && !databases.some((db) => runOf(db.name) === run)) {
+        log(`   roles of run ${run}: their database is gone, ${(await dropRunRoles(config.superuserUrl, run)) ? "dropped" : "already gone"}`);
+      }
     }
   }
   for (const realm of await config.keycloak.listExploreRealms()) {

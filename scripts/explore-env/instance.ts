@@ -2,14 +2,16 @@
  * The PostgreSQL server disposable environments use (#536): a server of their own, never the
  * shared development one. `envelope_app` and `envelope_queue` are cluster-wide roles, so a run's
  * API credentials on the shared server would also open the shared `envelope` database; on a
- * dedicated server they open nothing but disposable databases.
+ * dedicated server they open nothing but that run's own database (`postgres.ts`: per-run login
+ * roles, CONNECT granted only on their own database).
  *
  * Locally that server is a container this tool manages, `envelope-explore-postgres` (postgres:17,
  * bound to 127.0.0.1 on port 55432 by default, `EXPLORE_POSTGRES_PORT` to change it, data in the
- * `envelope-explore-postgres-data` volume). Its superuser password and the two roles' passwords
- * are generated once and kept in `~/.config/envelope-explore/` (`$XDG_CONFIG_HOME` if set), a
- * 0700 directory with 0600 files, outside the repository. In CI, `EXPLORE_DATABASE_URL` names a
- * server the workflow provides instead, and no container is managed.
+ * `envelope-explore-postgres-data` volume). Its superuser password is generated once into
+ * `~/.config/envelope-explore/postgres-password` (`$XDG_CONFIG_HOME` if set), outside the
+ * repository, and reaches the container as `POSTGRES_PASSWORD_FILE` through a read-only bind
+ * mount, so `docker inspect` never shows it. In CI, `EXPLORE_DATABASE_URL` names a server the
+ * workflow provides instead, and no container is managed.
  *
  * Whatever names the server, it must be local, on an explicit port other than 5432, and must not
  * hold an `envelope` or `keycloak` database: the shared server is refused however it is reached.
@@ -17,32 +19,27 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { chmod, lstat, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { parseEnv, promisify } from "node:util";
 
 import pg from "pg";
 
-import { assertPrivate, ensurePrivateDir } from "./private-dir.ts";
+import { ensurePrivateDir } from "./private-dir.ts";
 
 const run = promisify(execFile);
 
 export const CONTAINER = "envelope-explore-postgres";
 export const VOLUME = "envelope-explore-postgres-data";
 export const DEFAULT_PORT = 55432;
+export const SUPERUSER = "explore_admin";
+export const PASSWORD_FILE = "postgres-password";
+const SECRET_IN_CONTAINER = "/run/secrets/envelope-explore-postgres-password";
 const IMAGE = "postgres:17";
-const SUPERUSER = "explore_admin";
 const SHARED_PORT = "5432";
 const LOCAL_HOSTNAMES = new Set(["127.0.0.1", "localhost"]);
 const READY_TIMEOUT_MS = 60_000;
-
-export interface InstanceSecrets {
-  readonly superuser: string;
-  readonly superuserPassword: string;
-  readonly appPassword: string;
-  readonly queuePassword: string;
-}
 
 export function configDir(): string {
   return path.join(process.env.XDG_CONFIG_HOME || path.join(homedir(), ".config"), "envelope-explore");
@@ -50,7 +47,7 @@ export function configDir(): string {
 
 /**
  * Refuses a server URL that is not local, has no explicit port, or uses 5432 (the shared
- * server's port). Pure, so it is tested on its own (`instance.test.ts`).
+ * server's port). Pure, so it is tested on its own (`guards.test.ts`).
  */
 export function assertExploreServerUrl(url: string): void {
   const parsed = new URL(url);
@@ -64,47 +61,47 @@ export function assertExploreServerUrl(url: string): void {
   }
 }
 
-async function readEnvFile(file: string): Promise<Record<string, string | undefined>> {
-  await assertPrivate(file, "file");
-  return parseEnv(await readFile(file, "utf8"));
-}
-
-async function writeEnvFile(file: string, values: Record<string, string>): Promise<void> {
-  const text = Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join("");
-  try {
-    // "wx": never overwrite; another run may have just written the same file.
-    await writeFile(file, text, { mode: 0o600, flag: "wx" });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw error;
-    }
+/**
+ * The password file is read-only (0444) rather than 0600: the container's entrypoint reads it as
+ * the image's own `postgres` user, not as its owner. Nobody else on the host can reach it, because
+ * its directory is 0700 and ours (`ensurePrivateDir`); here it must be ours, a regular file, and
+ * not writable by anyone.
+ */
+async function assertPasswordFile(file: string): Promise<void> {
+  const info = await lstat(file);
+  const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  if (!info.isFile() || (uid !== undefined && info.uid !== uid) || (info.mode & 0o777) !== 0o444) {
+    throw new Error(`Refusing ${file}: expected a regular file of ours with mode 444`);
   }
 }
 
-function secret(): string {
-  return randomBytes(24).toString("base64url");
-}
-
-/** The instance's passwords, generated on first use. `postgres.env` doubles as the container's `--env-file`. */
-export async function instanceSecrets(): Promise<InstanceSecrets> {
+/** The superuser password, generated on first use (or carried over from an earlier `postgres.env`). */
+export async function superuserPassword(): Promise<string> {
   const dir = configDir();
   await ensurePrivateDir(dir);
-  const postgresFile = path.join(dir, "postgres.env");
-  const rolesFile = path.join(dir, "roles.env");
-  if (!existsSync(postgresFile)) {
-    await writeEnvFile(postgresFile, { POSTGRES_USER: SUPERUSER, POSTGRES_PASSWORD: secret() });
+  const file = path.join(dir, PASSWORD_FILE);
+  if (!existsSync(file)) {
+    // An instance set up before #536's re-review kept the password in postgres.env, read by
+    // `docker run --env-file`; it carries over, so the existing volume still opens.
+    const legacy = path.join(dir, "postgres.env");
+    const carried = existsSync(legacy) ? parseEnv(await readFile(legacy, "utf8")).POSTGRES_PASSWORD : undefined;
+    try {
+      await writeFile(file, carried ?? randomBytes(24).toString("base64url"), { mode: 0o444, flag: "wx" });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+    }
+    await chmod(file, 0o444);
   }
-  if (!existsSync(rolesFile)) {
-    await writeEnvFile(rolesFile, { ENVELOPE_APP_PASSWORD: secret(), ENVELOPE_QUEUE_PASSWORD: secret() });
+  await assertPasswordFile(file);
+  await rm(path.join(dir, "postgres.env"), { force: true });
+  await rm(path.join(dir, "roles.env"), { force: true });
+  const password = (await readFile(file, "utf8")).trim();
+  if (!password) {
+    throw new Error(`${file} is empty; remove the directory and the container to start over (scripts/README.md)`);
   }
-  const postgres = await readEnvFile(postgresFile);
-  const roles = await readEnvFile(rolesFile);
-  const values = [postgres.POSTGRES_USER, postgres.POSTGRES_PASSWORD, roles.ENVELOPE_APP_PASSWORD, roles.ENVELOPE_QUEUE_PASSWORD];
-  if (values.some((value) => !value)) {
-    throw new Error(`${dir}: postgres.env or roles.env is incomplete; remove the directory and the container to start over (scripts/README.md)`);
-  }
-  const [superuser, superuserPassword, appPassword, queuePassword] = values as [string, string, string, string];
-  return { superuser, superuserPassword, appPassword, queuePassword };
+  return password;
 }
 
 async function docker(args: readonly string[]): Promise<string> {
@@ -120,6 +117,12 @@ async function containerState(): Promise<"running" | "stopped" | "missing"> {
   }
 }
 
+/** True when the container still carries its password as a plain environment variable (the old `--env-file` setup). */
+async function containerHasPasswordInEnv(): Promise<boolean> {
+  const env = JSON.parse(await docker(["inspect", "--format", "{{json .Config.Env}}", CONTAINER])) as string[];
+  return env.some((entry) => entry.startsWith("POSTGRES_PASSWORD="));
+}
+
 /** The host port the container publishes 5432 on, checked to be 127.0.0.1 and not 5432. */
 async function containerPort(): Promise<string> {
   const binding = (await docker(["port", CONTAINER, "5432/tcp"])).split("\n")[0] ?? "";
@@ -130,10 +133,35 @@ async function containerPort(): Promise<string> {
   return match[1];
 }
 
+async function createContainer(port: string): Promise<void> {
+  if (!/^\d+$/.test(port) || port === SHARED_PORT) {
+    throw new Error(`EXPLORE_POSTGRES_PORT must be a port number other than 5432, got "${port}"`);
+  }
+  try {
+    await docker([
+      "run", "-d",
+      "--name", CONTAINER,
+      "--label", "envelope-explore=instance",
+      "-e", `POSTGRES_USER=${SUPERUSER}`,
+      "-e", `POSTGRES_PASSWORD_FILE=${SECRET_IN_CONTAINER}`,
+      "-v", `${path.join(configDir(), PASSWORD_FILE)}:${SECRET_IN_CONTAINER}:ro`,
+      "-p", `127.0.0.1:${port}:5432`,
+      "-v", `${VOLUME}:/var/lib/postgresql/data`,
+      IMAGE,
+    ]);
+  } catch (error) {
+    // Another `up` may have created it at the same moment.
+    if ((await containerState()) === "missing") {
+      throw error;
+    }
+  }
+}
+
 /**
  * The superuser connection (to its `postgres` database) of the server disposable environments
- * use. With `create`, starts the managed container, creating it first if needed; otherwise
- * returns undefined when there is no container to talk to.
+ * use. With `create`, starts the managed container, creating it first if needed (and recreating
+ * one from the old `--env-file` setup on its same volume and port); otherwise returns undefined
+ * when there is no container to talk to.
  */
 export async function instanceUrl(mode: "create" | "existing"): Promise<string | undefined> {
   const override = process.env.EXPLORE_DATABASE_URL;
@@ -142,32 +170,19 @@ export async function instanceUrl(mode: "create" | "existing"): Promise<string |
     await assertDedicated(override);
     return override;
   }
-  const secrets = await instanceSecrets();
+  const password = await superuserPassword();
   let state = await containerState();
+  if (state !== "missing" && (await containerHasPasswordInEnv())) {
+    const port = await containerPort();
+    await docker(["rm", "-f", CONTAINER]);
+    await createContainer(port);
+    state = await containerState();
+  }
   if (state === "missing") {
     if (mode === "existing") {
       return undefined;
     }
-    const port = process.env.EXPLORE_POSTGRES_PORT ?? String(DEFAULT_PORT);
-    if (!/^\d+$/.test(port) || port === SHARED_PORT) {
-      throw new Error(`EXPLORE_POSTGRES_PORT must be a port number other than 5432, got "${port}"`);
-    }
-    try {
-      await docker([
-        "run", "-d",
-        "--name", CONTAINER,
-        "--label", "envelope-explore=instance",
-        "--env-file", path.join(configDir(), "postgres.env"),
-        "-p", `127.0.0.1:${port}:5432`,
-        "-v", `${VOLUME}:/var/lib/postgresql/data`,
-        IMAGE,
-      ]);
-    } catch (error) {
-      // Another `up` may have created it at the same moment.
-      if ((await containerState()) === "missing") {
-        throw error;
-      }
-    }
+    await createContainer(process.env.EXPLORE_POSTGRES_PORT ?? String(DEFAULT_PORT));
     state = await containerState();
   }
   if (state === "stopped") {
@@ -178,8 +193,8 @@ export async function instanceUrl(mode: "create" | "existing"): Promise<string |
     });
   }
   const url = new URL(`postgres://127.0.0.1:${await containerPort()}/postgres`);
-  url.username = encodeURIComponent(secrets.superuser);
-  url.password = encodeURIComponent(secrets.superuserPassword);
+  url.username = encodeURIComponent(SUPERUSER);
+  url.password = encodeURIComponent(password);
   const connection = url.toString();
   assertExploreServerUrl(connection);
   await assertDedicated(connection);

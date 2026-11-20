@@ -159,10 +159,23 @@ their own:
 - **In CI**, `EXPLORE_DATABASE_URL` names a server the workflow provides (a second service on its
   own port), and no container is managed.
 
-Its superuser (`explore_admin`) password and the `envelope_app`/`envelope_queue` passwords are
-generated the first time and kept in `~/.config/envelope-explore/` (under `$XDG_CONFIG_HOME` if
-set): `postgres.env` (also the container's `--env-file`) and `roles.env`, files of mode `0600` in
-a directory of mode `0700`, outside the repository, never in `infra/.env` or a manifest.
+Its superuser (`explore_admin`) password is generated the first time and kept in
+`~/.config/envelope-explore/postgres-password` (under `$XDG_CONFIG_HOME` if set), outside the
+repository, never in `infra/.env` or a manifest. The container reads it as `POSTGRES_PASSWORD_FILE`
+through a read-only bind mount, so `docker inspect` shows only the file's path. The file is mode
+`0444`, because the image's own `postgres` user reads it inside the container; the directory is
+`0700` and ours, so nobody else on the host can reach it. A container from before this layout
+(password in `--env-file`, so visible in `docker inspect`) is recreated on the next `up`, on the
+same volume and port, with its password carried over.
+
+Each run gets two login roles of its own, `envelope_app_<run>` and `envelope_queue_<run>`, with
+random passwords that exist only in its API's environment. They are members of `envelope_app` and
+`envelope_queue`, so every grant and Row-Level Security policy for those roles applies, but only
+they (and the superuser) may connect to the run's database: `CONNECT` is revoked from `PUBLIC` on
+it. `envelope_app` and `envelope_queue` themselves cannot log in, and `PUBLIC` may not connect to
+`postgres`, `template1` or the superuser's own database either, so one run's credentials open its
+own database and nothing else. `down` drops the run's roles with its database; `sweep` drops roles
+whose database is gone.
 
 Whatever names the server, it must be local, on an explicit port other than `5432`, and must not
 hold an `envelope` or `keycloak` database: the shared server is refused however it is reached.
@@ -183,8 +196,8 @@ old volume.
 `up` picks a run id (8 random hex digits) and, in order:
 
 1. starts the server above, and creates the database `envelope_explore_<run>` on it (its
-   creation time in the database's comment), migrated with `apps/api`'s own runner; makes sure
-   `envelope_app` and `envelope_queue` log in with the server's own passwords;
+   creation time in the database's comment), migrated with `apps/api`'s own runner; creates the
+   run's two login roles and closes the database to everyone else (above);
 2. starts a small static file server (`explore-env/static-server.ts`) for the web app, so its
    origin is known before anything else needs it;
 3. creates the realm `envelope-explore-<run>` (its creation time in a realm attribute, brute-force
@@ -261,7 +274,9 @@ $ jq -j '.users[] | select(.username == "investor") | .password' manifest.json |
   manifest's own directory (or `<root>/<run>`), never a path read from the manifest.
 - The root and the configuration directory must be directories (not symbolic links) owned by the
   current user, with no group or other permission bits; the same goes for the 0600 files.
-- `keycloak/bootstrap.sh` accepts only `http(s)://host[:port]` origins, refuses custom origins for
+- `keycloak/bootstrap.sh` accepts only `envelope` or `envelope-explore-<8 hex digits>` as a realm,
+  splits the origins without glob expansion and accepts only a scheme with a host name, IPv4 or
+  bracketed IPv6 address and optional port (no path, user, query or wildcard), refuses custom origins for
   the shared `envelope` realm, and never puts the admin password or token on a command line.
 - `explore-env/guards.test.ts` covers the process check, the manifest checks, the web server's
   path traversal guard, the server URL check, the private directories and the bootstrap origins.
@@ -304,7 +319,7 @@ watch when running several; restarting Keycloak gives the memory back.
 | `explore-env/names.ts` | Run ids, database and realm names, and the checks that refuse anything else (`explore-env/names.test.ts`) |
 | `explore-env/manifest.ts` | The manifest's shape, the run directory, and reading a manifest back with its names checked |
 | `explore-env/instance.ts` | The disposable environments' own PostgreSQL server: the managed container, its secrets in `~/.config/envelope-explore/`, `EXPLORE_DATABASE_URL`, and the refusal of the shared server |
-| `explore-env/postgres.ts` | Creating, migrating, listing and dropping a run's database on that server; the `envelope_app`/`envelope_queue` logins; the editor and reader memberships |
+| `explore-env/postgres.ts` | Creating, migrating, listing and dropping a run's database on that server; the run's own login roles and who may connect where; the editor and reader memberships |
 | `explore-env/private-dir.ts` | Checks that a directory or file holding secrets is ours, not a symbolic link, and closed to other users |
 | `explore-env/keycloak.ts` | Creating a run's realm (through `keycloak/bootstrap.sh`), its password-grant client and users; listing and deleting realms; a persona's token |
 | `explore-env/processes.ts` | Starting the API and web server detached with their logs, reading their `listening` line, finding and stopping a run's processes |

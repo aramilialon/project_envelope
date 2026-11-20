@@ -70,8 +70,8 @@ describe("assertEnvTargetsRun", () => {
   const run = "0a1b2c3d";
   const ok = {
     KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope-explore-0a1b2c3d",
-    APP_DATABASE_URL: "postgres://envelope_app:pw@127.0.0.1:5432/envelope_explore_0a1b2c3d",
-    QUEUE_DATABASE_URL: "postgres://envelope_queue:pw@127.0.0.1:5432/envelope_explore_0a1b2c3d",
+    APP_DATABASE_URL: "postgres://envelope_app_0a1b2c3d:pw@127.0.0.1:55432/envelope_explore_0a1b2c3d",
+    QUEUE_DATABASE_URL: "postgres://envelope_queue_0a1b2c3d:pw@127.0.0.1:55432/envelope_explore_0a1b2c3d",
   };
 
   it("accepts an environment that names only this run's realm and database", () => {
@@ -94,6 +94,11 @@ describe("assertEnvTargetsRun", () => {
     assert.throws(() => assertEnvTargetsRun({ ...ok, KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope-explore-ffffffff" }, run), /KEYCLOAK_ISSUER/);
     assert.throws(() => assertEnvTargetsRun({ ...ok, APP_DATABASE_URL: "postgres://envelope_app:pw@127.0.0.1:5432/envelope" }, run), /APP_DATABASE_URL names database "envelope"/);
     assert.throws(() => assertEnvTargetsRun({ ...ok, QUEUE_DATABASE_URL: "postgres://q:pw@127.0.0.1:5432/envelope_explore_ffffffff" }, run), /QUEUE_DATABASE_URL/);
+  });
+
+  it("refuses the shared roles or another run's role", () => {
+    assert.throws(() => assertEnvTargetsRun({ ...ok, APP_DATABASE_URL: "postgres://envelope_app:pw@127.0.0.1:55432/envelope_explore_0a1b2c3d" }, run), /logs in as "envelope_app"/);
+    assert.throws(() => assertEnvTargetsRun({ ...ok, QUEUE_DATABASE_URL: "postgres://envelope_queue_ffffffff:pw@127.0.0.1:55432/envelope_explore_0a1b2c3d" }, run), /QUEUE_DATABASE_URL logs in/);
   });
 
   it("reads the realm out of an issuer", () => {

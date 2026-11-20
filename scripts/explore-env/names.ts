@@ -37,6 +37,18 @@ export function realmName(run: string): string {
   return `${REALM_PREFIX}${run}`;
 }
 
+/**
+ * The run's own login roles: members of `envelope_app`/`envelope_queue` (so every grant and
+ * Row-Level Security policy for those roles applies), allowed to connect to this run's database
+ * only (`postgres.ts`).
+ */
+export function runRoleName(base: "envelope_app" | "envelope_queue", run: string): string {
+  assertRunId(run);
+  return `${base}_${run}`;
+}
+
+export const RUN_ROLE = /^envelope_(app|queue)_([0-9a-f]{8})$/;
+
 /** The run id a database or realm name belongs to, or undefined when the name is not one of ours. */
 export function runOf(name: string): string | undefined {
   for (const prefix of [DATABASE_PREFIX, REALM_PREFIX]) {
@@ -92,6 +104,13 @@ export function assertEnvTargetsRun(env: Readonly<Record<string, string | undefi
     const value = env[name];
     if (value !== undefined && databaseOf(value) !== database) {
       throw new Error(`Refusing to start: ${name} names database "${databaseOf(value)}", not this run's "${database}"`);
+    }
+  }
+  const roles = { APP_DATABASE_URL: runRoleName("envelope_app", run), QUEUE_DATABASE_URL: runRoleName("envelope_queue", run) } as const;
+  for (const [name, role] of Object.entries(roles)) {
+    const value = env[name];
+    if (value !== undefined && decodeURIComponent(new URL(value).username) !== role) {
+      throw new Error(`Refusing to start: ${name} logs in as "${decodeURIComponent(new URL(value).username)}", not this run's "${role}"`);
     }
   }
 }

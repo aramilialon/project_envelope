@@ -10,9 +10,11 @@
 # space-separated list of origins such as "http://127.0.0.1:41234", replaces
 # the default localhost redirect URIs and web origins with exactly those
 # origins (each one's redirect URIs are "<origin>" and "<origin>/*"). Each
-# origin must be a scheme and host (with an optional port) and nothing else:
-# no path, no wildcard. Custom origins are refused for the "envelope" realm
-# itself. Both are optional; without them the script behaves as before.
+# origin must be a scheme and a host name, IPv4 address or bracketed IPv6
+# address, with an optional port, and nothing else: no path, user, query or
+# wildcard. The realm must be "envelope" or "envelope-explore-<8 hex digits>",
+# and custom origins are refused for the "envelope" realm itself. Both are
+# optional; without them the script behaves as before.
 #
 # The admin password never appears on a command line (where `ps` would show
 # it): curl reads it from standard input, and the admin token is passed to
@@ -60,6 +62,11 @@ command -v jq >/dev/null || { echo "jq is not installed" >&2; exit 1; }
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://127.0.0.1:8080}"
 REALM="${ENVELOPE_BOOTSTRAP_REALM:-envelope}"
 CLIENT_ID="${KEYCLOAK_AUDIENCE:-envelope-api}"
+# Only the shared realm or a disposable one: never "master" or anything else.
+if [[ "$REALM" != "envelope" && ! "$REALM" =~ ^envelope-explore-[0-9a-f]{8}$ ]]; then
+  echo "Refusing realm \"$REALM\": expected \"envelope\" or \"envelope-explore-<8 hex digits>\"" >&2
+  exit 1
+fi
 : "${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env)}"
 
 # Set to this machine's own LAN address (e.g. "10.0.0.11") to let another device on the same
@@ -81,9 +88,12 @@ if [[ -n "$REQUESTED_ORIGINS" ]]; then
   fi
   REDIRECT_URIS='[]'
   WEB_ORIGINS='[]'
-  for origin in $REQUESTED_ORIGINS; do
-    if [[ ! "$origin" =~ ^https?://[^/*]+$ ]]; then
-      echo "Refusing origin \"$origin\": expected http(s)://host[:port], with no path or wildcard" >&2
+  # Split on whitespace only, never glob-expanded.
+  read -ra ORIGINS <<<"$REQUESTED_ORIGINS"
+  ORIGIN_PATTERN='^https?://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?$'
+  for origin in "${ORIGINS[@]}"; do
+    if [[ ! "$origin" =~ $ORIGIN_PATTERN ]]; then
+      echo "Refusing origin \"$origin\": expected http(s)://host[:port], with no path, user, query or wildcard" >&2
       exit 1
     fi
     REDIRECT_URIS=$(jq -c --arg o "$origin" '. + [$o, $o + "/*"]' <<<"$REDIRECT_URIS")
