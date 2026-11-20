@@ -12,6 +12,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
+import { MAX_CHANGES_PER_UPLOAD, MAX_SYNC_NAME_LENGTH } from "./sync.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -31,7 +32,18 @@ describe("sync routes (#43, #44)", () => {
   let workspaceId: string;
   let accountId: string;
   let transactionId: string;
+  let otherWorkspaceId: string;
+  let otherTransactionId: string;
   let token: string;
+
+  /** A new transaction of the selected workspace, for a test whose changes must not touch another test's. */
+  async function newTransaction(): Promise<string> {
+    const { rows } = await superuserPool.query<{ id: string }>(
+      "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, now(), 'pending') RETURNING id",
+      [workspaceId, accountId],
+    );
+    return rows[0]!.id;
+  }
 
   async function tokenFor(role: "owner" | "editor" | "read_only"): Promise<string> {
     const t = role === "owner" ? await realm.getUserToken() : await realm.getTokenForNewUser();
@@ -78,12 +90,27 @@ describe("sync routes (#43, #44)", () => {
     );
     transactionId = transaction.rows[0]!.id;
 
+    otherWorkspaceId = randomUUID();
+    await superuserPool.query(
+      "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Not mine', 'EUR', 'Europe/Rome')",
+      [otherWorkspaceId],
+    );
+    const otherAccount = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Checking', 'checking', 'EUR') RETURNING id",
+      [otherWorkspaceId],
+    );
+    const otherTransaction = await superuserPool.query<{ id: string }>(
+      "INSERT INTO transactions (workspace_id, account_id, occurred_at, status, memo) VALUES ($1, $2, now(), 'pending', 'theirs') RETURNING id",
+      [otherWorkspaceId, otherAccount.rows[0]!.id],
+    );
+    otherTransactionId = otherTransaction.rows[0]!.id;
+
     token = await tokenFor("owner");
   });
 
   after(async () => {
     await app.close();
-    await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+    await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceId, otherWorkspaceId]]);
     await realm.teardown();
     await superuserPool.end();
   });
@@ -195,7 +222,7 @@ describe("sync routes (#43, #44)", () => {
   });
 
   it("downloads every change when given no since, in clock order", async () => {
-    const entityId = randomUUID();
+    const entityId = await newTransaction();
     await app.fastify.inject({
       method: "POST",
       url: `/workspaces/${workspaceId}/changes`,
@@ -223,7 +250,7 @@ describe("sync routes (#43, #44)", () => {
   });
 
   it("downloads only changes later than the given since clock", async () => {
-    const entityId = randomUUID();
+    const entityId = await newTransaction();
     await app.fastify.inject({
       method: "POST",
       url: `/workspaces/${workspaceId}/changes`,
@@ -329,6 +356,222 @@ describe("sync routes (#43, #44)", () => {
       const after = await snapshot();
       assert.equal(after.payee, null);
       assert.equal(after.memo, "m".repeat(MAX_FREE_TEXT_LENGTH));
+    });
+  });
+
+  describe("entities and change ids outside the workspace (#513)", () => {
+    function upload(changes: unknown[]) {
+      return app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/changes`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { changes },
+      });
+    }
+
+    function memoChange(id: string, entityId: string, value: string, physical = 20_000_000) {
+      return { id, entityId, fieldName: "transactions.memo", hlc: { physical, counter: 0, deviceId: "device-513" }, value };
+    }
+
+    async function changeLogRows(changeId: string): Promise<{ workspace_id: string; value: unknown }[]> {
+      const { rows } = await superuserPool.query<{ workspace_id: string; value: unknown }>(
+        "SELECT workspace_id, value FROM change_log WHERE id = $1",
+        [changeId],
+      );
+      return rows;
+    }
+
+    async function memoOf(id: string): Promise<string | null> {
+      const { rows } = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM transactions WHERE id = $1", [id]);
+      return rows[0]!.memo;
+    }
+
+    it("answers not_found for another workspace's transaction and for a random uuid, applying and recording neither", async () => {
+      const foreign = memoChange(randomUUID(), otherTransactionId, "overwritten");
+      const nowhere = memoChange(randomUUID(), randomUUID(), "nowhere");
+      const mine = await newTransaction();
+      const fine = memoChange(randomUUID(), mine, "fine");
+
+      const response = await upload([foreign, nowhere, fine]);
+
+      assert.equal(response.statusCode, 201);
+      assert.deepEqual(response.json(), {
+        results: [
+          { id: foreign.id, outcome: "not_found" },
+          { id: nowhere.id, outcome: "not_found" },
+          { id: fine.id, outcome: "applied" },
+        ],
+      });
+      assert.equal(await memoOf(otherTransactionId), "theirs");
+      assert.equal(await memoOf(mine), "fine");
+      assert.deepEqual(await changeLogRows(foreign.id), []);
+      assert.deepEqual(await changeLogRows(nowhere.id), []);
+    });
+
+    it("answers invalid for a change with a malformed id or entity id, and still applies the rest of the batch", async () => {
+      const mine = await newTransaction();
+      const badId = memoChange("not-a-uuid", mine, "bad id");
+      const badEntity = memoChange(randomUUID(), "42", "bad entity");
+      const fine = memoChange(randomUUID(), mine, "fine");
+
+      const response = await upload([badId, badEntity, fine]);
+
+      assert.equal(response.statusCode, 201);
+      assert.deepEqual(response.json(), {
+        results: [
+          { id: "not-a-uuid", outcome: "invalid" },
+          { id: badEntity.id, outcome: "invalid" },
+          { id: fine.id, outcome: "applied" },
+        ],
+      });
+      assert.equal(await memoOf(mine), "fine");
+      assert.deepEqual(await changeLogRows(badEntity.id), []);
+    });
+
+    it("still refuses the whole batch when a malformed change also carries a non-text value for a text field (#507)", async () => {
+      const response = await upload([{ ...memoChange("not-a-uuid", transactionId, "x"), value: { too: "long" } }]);
+      assert.equal(response.statusCode, 400);
+    });
+
+    it("records a change reusing another workspace's change id as this workspace's own, and never shows the other one", async () => {
+      const sharedId = randomUUID();
+      await superuserPool.query(
+        `INSERT INTO change_log (id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value, outcome)
+         VALUES ($1, $2, $3, 'transactions.memo', 1, 0, 'their-device', '"theirs"', 'applied')`,
+        [sharedId, otherWorkspaceId, otherTransactionId],
+      );
+      const mine = await newTransaction();
+
+      const response = await upload([memoChange(sharedId, mine, "mine", 30_000_000)]);
+
+      assert.equal(response.statusCode, 201);
+      assert.deepEqual(response.json(), { results: [{ id: sharedId, outcome: "applied" }] }, "the same answer as a fresh id");
+      assert.equal(await memoOf(mine), "mine");
+      assert.equal(await memoOf(otherTransactionId), "theirs");
+      assert.deepEqual(
+        (await changeLogRows(sharedId)).map((row) => [row.workspace_id, row.value]).sort(),
+        [
+          [otherWorkspaceId, "theirs"],
+          [workspaceId, "mine"],
+        ].sort(),
+      );
+
+      const download = await app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${workspaceId}/changes`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const listed = (download.json() as { changes: { id: string; entityId: string; value: unknown }[] }).changes.filter(
+        (c) => c.id === sharedId,
+      );
+      assert.deepEqual(listed, [
+        {
+          id: sharedId,
+          entityId: mine,
+          fieldName: "transactions.memo",
+          hlc: { physical: 30_000_000, counter: 0, deviceId: "device-513" },
+          value: "mine",
+        },
+      ]);
+    });
+
+    it("answers a retried upload with each change's original outcome, recording and applying nothing new", async () => {
+      const mine = await newTransaction();
+      const later = memoChange(randomUUID(), mine, "later", 40_000_002);
+      const earlier = memoChange(randomUUID(), mine, "earlier", 40_000_001);
+
+      const first = await upload([later, earlier]);
+      const retried = await upload([later, earlier]);
+
+      assert.deepEqual(first.json(), {
+        results: [
+          { id: later.id, outcome: "applied" },
+          { id: earlier.id, outcome: "stale" },
+        ],
+      });
+      assert.deepEqual(retried.json(), first.json());
+      assert.equal(await memoOf(mine), "later");
+      assert.equal((await changeLogRows(later.id)).length, 1);
+      assert.equal((await changeLogRows(earlier.id)).length, 1);
+    });
+
+    it("answers invalid for a clock or a name change_log cannot store, and still applies the rest of the batch", async () => {
+      const mine = await newTransaction();
+      const withClock = (physical: number, counter: number, deviceId = "device-513") => ({
+        ...memoChange(randomUUID(), mine, "bad"),
+        hlc: { physical, counter, deviceId },
+      });
+      const bad = [
+        withClock(-1, 0),
+        withClock(1.5, 0),
+        withClock(2 ** 53, 0),
+        withClock(1000, -1),
+        withClock(1000, 0.5),
+        withClock(1000, 2 ** 31),
+        withClock(1000, 0, ""),
+        withClock(1000, 0, "d".repeat(MAX_SYNC_NAME_LENGTH + 1)),
+        { ...memoChange(randomUUID(), mine, "bad"), fieldName: `transactions.memo${"x".repeat(MAX_SYNC_NAME_LENGTH)}` },
+      ];
+      const fine = withClock(Number.MAX_SAFE_INTEGER, 2 ** 31 - 1, "d".repeat(MAX_SYNC_NAME_LENGTH));
+      fine.value = "fine";
+
+      const response = await upload([...bad, fine]);
+
+      assert.equal(response.statusCode, 201);
+      const { results } = response.json() as { results: { id: string; outcome: string }[] };
+      assert.deepEqual(
+        results.map((r) => r.outcome),
+        [...bad.map(() => "invalid"), "applied"],
+      );
+      assert.equal(await memoOf(mine), "fine");
+      for (const change of bad) {
+        assert.deepEqual(await changeLogRows(change.id), []);
+      }
+    });
+
+    it("answers unsupported_field for an inherited property name or a value no query could take, without a 500", async () => {
+      const mine = await newTransaction();
+      const changes = [
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "constructor" },
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "toString" },
+        { ...memoChange(randomUUID(), mine, "x"), fieldName: "transactions.notes", value: { text: "nul \u0000 inside" } },
+      ];
+
+      const response = await upload(changes);
+
+      assert.equal(response.statusCode, 201);
+      const { results } = response.json() as { results: { outcome: string }[] };
+      assert.deepEqual(
+        results.map((r) => r.outcome),
+        ["unsupported_field", "unsupported_field", "unsupported_field"],
+      );
+    });
+
+    it(`refuses an upload of more than ${MAX_CHANGES_PER_UPLOAD} changes, applying none of it, and takes exactly that many`, async () => {
+      const mine = await newTransaction();
+      const tooMany = Array.from({ length: MAX_CHANGES_PER_UPLOAD + 1 }, (_, i) => memoChange(randomUUID(), mine, `v${i}`, 60_000_000 + i));
+
+      const refused = await upload(tooMany);
+
+      assert.equal(refused.statusCode, 400);
+      assert.deepEqual(refused.json(), { error: "too_many_changes", details: { max: MAX_CHANGES_PER_UPLOAD } });
+      assert.equal(await memoOf(mine), null);
+
+      const accepted = await upload(tooMany.slice(0, MAX_CHANGES_PER_UPLOAD));
+      assert.equal(accepted.statusCode, 201);
+      assert.equal(await memoOf(mine), `v${MAX_CHANGES_PER_UPLOAD - 1}`);
+    });
+
+    it("refuses a different change sent under a change id this workspace already used, as id_conflict", async () => {
+      const mine = await newTransaction();
+      const original = memoChange(randomUUID(), mine, "original", 50_000_000);
+      await upload([original]);
+
+      const response = await upload([{ ...original, value: "replaced", hlc: { ...original.hlc, physical: 50_000_001 } }]);
+
+      assert.deepEqual(response.json(), { results: [{ id: original.id, outcome: "id_conflict" }] });
+      assert.equal(await memoOf(mine), "original");
+      assert.deepEqual(await changeLogRows(original.id), [{ workspace_id: workspaceId, value: "original" }]);
     });
   });
 });

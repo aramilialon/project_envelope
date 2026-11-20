@@ -1,8 +1,9 @@
 /**
  * The field-level change log (design.md, "Field-level change protocol"; #42): every write goes
- * through `recordChange`, idempotent on the change's own id — a repeated network retry of the
- * same change is a safe no-op, never a duplicate record ("sending it again never creates
- * duplicates", design.md).
+ * through `recordChange`, idempotent on the change's own id within its workspace — a repeated
+ * network retry of the same change is a safe no-op, never a duplicate record ("sending it again
+ * never creates duplicates", design.md). The key is `(workspace_id, id)` (#513): the same id sent
+ * to another workspace is an unrelated change there, never a collision with this one.
  */
 import type { Hlc } from "@envelope/core";
 
@@ -42,6 +43,9 @@ function toChangeRecord(row: ChangeLogRow): ChangeRecord {
   };
 }
 
+/** What the upload answered when a recorded change was first received: only accepted changes are recorded. */
+export type RecordedOutcome = "applied" | "stale";
+
 export interface RecordChangeInput {
   readonly id: string;
   readonly workspaceId: string;
@@ -49,13 +53,20 @@ export interface RecordChangeInput {
   readonly fieldName: string;
   readonly hlc: Hlc;
   readonly value: unknown;
+  readonly outcome: RecordedOutcome;
 }
 
-export async function recordChange(db: DbPool | DbClient, input: RecordChangeInput): Promise<void> {
-  await db.query(
-    `INSERT INTO change_log (id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (id) DO NOTHING`,
+/**
+ * Records a change, unless this workspace already has one with the same id. Returns whether it
+ * inserted a row: false means a change with this id was already recorded (a retry, or a
+ * concurrent request with the same change that committed first), and the caller must not apply
+ * this one again; `findRecordedChange` says what that earlier one was.
+ */
+export async function recordChange(db: DbPool | DbClient, input: RecordChangeInput): Promise<boolean> {
+  const { rowCount } = await db.query(
+    `INSERT INTO change_log (id, workspace_id, entity_id, field_name, hlc_physical, hlc_counter, device_id, value, outcome)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     ON CONFLICT (workspace_id, id) DO NOTHING`,
     [
       input.id,
       input.workspaceId,
@@ -68,8 +79,49 @@ export async function recordChange(db: DbPool | DbClient, input: RecordChangeInp
       // string value (as opposed to one already wrapped in an object) would otherwise be sent
       // as raw, unquoted text and rejected by Postgres's own JSON parser.
       JSON.stringify(input.value ?? null),
+      input.outcome,
     ],
   );
+  return rowCount === 1;
+}
+
+/** A change already recorded under an id, and whether it is the very change being sent again. */
+export interface RecordedChange {
+  readonly outcome: RecordedOutcome;
+  /** Whether the recorded change has the same entity, field, clock and value as the one compared. */
+  readonly sameChange: boolean;
+}
+
+/**
+ * The change this workspace already recorded under `change.id`, if any (#513), compared with
+ * `change`: a retry sends the very same change again, while a different change under a used id is
+ * a client error. Only this workspace's rows are looked at, so another workspace's ids never
+ * show.
+ */
+export async function findRecordedChange(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  change: Omit<RecordChangeInput, "workspaceId" | "outcome">,
+): Promise<RecordedChange | undefined> {
+  const { rows } = await db.query<{ outcome: RecordedOutcome; same_change: boolean }>(
+    `SELECT outcome,
+            (entity_id = $3 AND field_name = $4 AND hlc_physical = $5 AND hlc_counter = $6 AND device_id = $7
+             AND value IS NOT DISTINCT FROM $8::jsonb) AS same_change
+     FROM change_log
+     WHERE workspace_id = $1 AND id = $2`,
+    [
+      workspaceId,
+      change.id,
+      change.entityId,
+      change.fieldName,
+      change.hlc.physical,
+      change.hlc.counter,
+      change.hlc.deviceId,
+      JSON.stringify(change.value ?? null),
+    ],
+  );
+  const row = rows[0];
+  return row ? { outcome: row.outcome, sameChange: row.same_change } : undefined;
 }
 
 /** The most recent change for one entity's field, if any — what an incoming change's HLC must beat to win (#43). */

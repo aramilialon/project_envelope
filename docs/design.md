@@ -428,12 +428,13 @@ Each change is a small record:
 | Logical clock (when) and device | Plaintext | Plaintext |
 | Value | Plaintext | Encrypted |
 
-1. Every change has a UUID and a hybrid logical clock (HLC) timestamp generated on the device; sending it again never creates duplicates.
-2. Offline, changes go into a local SQLite queue and are sent as soon as the network is back.
-3. The server resolves conflicts by looking at the clock only: for each field, the most recent change wins. It never needs to read the value, so it works the same way in both kinds of workspace. Deletion is a field like any other (`deleted = true`), resolved by the same rule — never a special case.
-4. Whoever loses a conflict sees a notice on that field, with the option to restore their own value (which is itself just a new, later change).
-5. Reconciled transactions carry a plaintext "locked" flag: the server rejects later changes.
-6. Each device downloads the changes that arrived after the last clock value it has seen.
+1. Every change has a UUID and a hybrid logical clock (HLC) timestamp generated on the device; sending it again never creates duplicates and gets the same answer as the first time. The UUID is unique within the workspace: the same id in another workspace is an unrelated change, and a different change sent under an id already used is refused.
+2. A change applies only to an entity of the workspace it is sent to; any other entity is answered as not found, and the change is not recorded.
+3. Offline, changes go into a local SQLite queue and are sent as soon as the network is back.
+4. The server resolves conflicts by looking at the clock only: for each field, the most recent change wins. It never needs to read the value, so it works the same way in both kinds of workspace. Deletion is a field like any other (`deleted = true`), resolved by the same rule — never a special case.
+5. Whoever loses a conflict sees a notice on that field, with the option to restore their own value (which is itself just a new, later change).
+6. Reconciled transactions carry a plaintext "locked" flag: the server rejects later changes.
+7. Each device downloads the changes that arrived after the last clock value it has seen.
 
 The protocol is our own rather than a ready-made engine: engines that sync PostgreSQL tables with SQLite work on plaintext data and would force a second system for encrypted workspaces. The phase 0 prototype validates it with two devices, offline changes and conflicts.
 
