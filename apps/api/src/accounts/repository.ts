@@ -157,6 +157,16 @@ export async function listAccounts(db: DbPool | DbClient, workspaceId: string): 
   return rows.map(toAccountRecord);
 }
 
+/**
+ * Whether `accountId` names an account of this workspace, open or closed (#512). Asked before a
+ * write that names an account from the request, so an account of another workspace is answered
+ * as not found instead of reaching the foreign key or Row-Level Security as a database error.
+ */
+export async function accountExists(db: DbPool | DbClient, workspaceId: string, accountId: string): Promise<boolean> {
+  const { rows } = await db.query("SELECT 1 FROM accounts WHERE id = $1 AND workspace_id = $2", [accountId, workspaceId]);
+  return rows.length > 0;
+}
+
 /** Closes an account (excluded from budget calculations, never deleted). Returns undefined if not found or already closed. */
 export async function closeAccount(
   db: DbPool | DbClient,

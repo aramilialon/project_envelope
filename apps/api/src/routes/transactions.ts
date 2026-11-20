@@ -15,6 +15,7 @@ import {
   type SplitInput,
   type TransactionStatus,
 } from "../transactions/repository.ts";
+import { requireAccountOfWorkspace } from "./account-ownership.ts";
 
 const STATUSES: readonly TransactionStatus[] = ["pending", "cleared", "reconciled"];
 
@@ -70,7 +71,9 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   const writePreHandler = withWriteAccess(preHandler);
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
 
-  app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
+  // Creating or listing names the account in its path, which must belong to the workspace (#512);
+  // editing or deleting looks the transaction itself up in the workspace.
+  app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace] }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const splits = parseSplits(body);
@@ -118,7 +121,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     }
   });
 
-  app.get(base, { preHandler }, async (request) => {
+  app.get(base, { preHandler: [preHandler, requireAccountOfWorkspace] }, async (request) => {
     const { accountId } = request.params as { accountId: string };
     const transactions = await listTransactionsForAccount(request.db!, request.workspace!.id, accountId);
     return { transactions };

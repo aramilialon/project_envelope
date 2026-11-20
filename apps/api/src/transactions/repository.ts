@@ -2,6 +2,7 @@ import { assertCents, monthOf, ValidationError } from "@envelope/core";
 
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { isUuid } from "../ids.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
 import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "./splits.ts";
@@ -235,6 +236,11 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
     });
   }
 
+  // A malformed id names no account: answered like any other unknown one, not as a database error (#512).
+  const malformed = [input.sourceAccountId, input.destinationAccountId].find((id) => !isUuid(id));
+  if (malformed !== undefined) {
+    throw new ValidationError("unknown_account", `unknown account: "${malformed}"`, { accountId: malformed });
+  }
   const { rows } = await db.query<{ id: string; on_budget: boolean }>(
     "SELECT id, on_budget FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],

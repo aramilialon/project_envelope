@@ -11,6 +11,7 @@ import {
   unlockReconciledTransaction,
   type ReconciliationAdjustment,
 } from "../reconciliation/repository.ts";
+import { requireAccountOfWorkspace } from "./account-ownership.ts";
 
 function parseAdjustment(body: Record<string, unknown>): ReconciliationAdjustment | undefined | "invalid" {
   const raw = body.adjustment;
@@ -30,9 +31,12 @@ function parseAdjustment(body: Record<string, unknown>): ReconciliationAdjustmen
 export function registerReconciliationRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = withWriteAccess(preHandler);
+  // The routes under `base` name an account in their path, which must belong to the workspace (#512).
+  const accountPreHandler = [preHandler, requireAccountOfWorkspace];
+  const accountWritePreHandler = [...writePreHandler, requireAccountOfWorkspace];
   const base = "/workspaces/:workspaceId/accounts/:accountId";
 
-  app.get(`${base}/reconciliation-candidates`, { preHandler }, async (request, reply) => {
+  app.get(`${base}/reconciliation-candidates`, { preHandler: accountPreHandler }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const { date } = request.query as { date?: string };
     if (!date) {
@@ -50,7 +54,7 @@ export function registerReconciliationRoutes(app: FastifyInstance, pool: DbPool)
     }
   });
 
-  app.post(`${base}/reconciliations`, { preHandler: writePreHandler }, async (request, reply) => {
+  app.post(`${base}/reconciliations`, { preHandler: accountWritePreHandler }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const date = typeof body.date === "string" ? body.date : "";
