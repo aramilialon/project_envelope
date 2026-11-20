@@ -287,6 +287,15 @@ describe("categories routes", () => {
       assert.equal(groupRenameTooLong.statusCode, 400);
       assert.deepEqual(groupRenameTooLong.json(), expected);
 
+      const groupRenameAtLimit = await app.fastify.inject({
+        method: "PATCH",
+        url: `/workspaces/${workspaceId}/category-groups/${groupId}`,
+        headers: auth(),
+        payload: { name: "h".repeat(MAX_NAME_LENGTH) },
+      });
+      assert.equal(groupRenameAtLimit.statusCode, 200);
+      assert.equal(groupRenameAtLimit.json().name, "h".repeat(MAX_NAME_LENGTH));
+
       const categoryAtLimit = await app.fastify.inject({
         method: "POST",
         url: `/workspaces/${workspaceId}/categories`,

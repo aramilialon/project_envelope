@@ -383,6 +383,14 @@ describe("transactions routes", () => {
         assert.deepEqual(updated.json(), expected(field));
       }
 
+      // None of the rejected updates touched the stored row.
+      const stored = await superuserPool.query<{ payee: string; memo: string }>("SELECT payee, memo FROM transactions WHERE id = $1", [
+        transactionId,
+      ]);
+      assert.deepEqual(stored.rows[0], { payee: atLimit, memo: atLimit });
+      const storedSplits = await superuserPool.query<{ memo: string }>("SELECT memo FROM splits WHERE transaction_id = $1", [transactionId]);
+      assert.deepEqual(storedSplits.rows, [{ memo: atLimit }]);
+
       const updatedAtLimit = await app.fastify.inject({
         method: "PATCH",
         url: `${url}/${transactionId}`,
@@ -392,15 +400,23 @@ describe("transactions routes", () => {
       assert.equal(updatedAtLimit.statusCode, 200);
     });
 
-    it("rejects a transfer memo one character over the limit", async () => {
-      const response = await app.fastify.inject({
-        method: "POST",
-        url: `/workspaces/${workspaceId}/transfers`,
-        headers: auth(),
-        payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-21", amountCents: 100, memo: tooLong },
-      });
-      assert.equal(response.statusCode, 400);
-      assert.deepEqual(response.json(), expected("memo"));
+    it("accepts a transfer payee and memo at the limit, and rejects each one character over it", async () => {
+      const transfer = (text: Record<string, string>) =>
+        app.fastify.inject({
+          method: "POST",
+          url: `/workspaces/${workspaceId}/transfers`,
+          headers: auth(),
+          payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-21", amountCents: 100, ...text },
+        });
+
+      const accepted = await transfer({ payee: atLimit, memo: atLimit });
+      assert.equal(accepted.statusCode, 201);
+
+      for (const field of ["payee", "memo"] as const) {
+        const response = await transfer({ [field]: tooLong });
+        assert.equal(response.statusCode, 400, field);
+        assert.deepEqual(response.json(), expected(field));
+      }
     });
   });
 });

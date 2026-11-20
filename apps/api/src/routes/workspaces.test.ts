@@ -171,7 +171,17 @@ describe("workspaces routes (#394)", () => {
     assert.equal(response.statusCode, 403);
   });
 
-  it("rejects a name one character over the name limit (#507)", async () => {
+  it("accepts a name at the name limit, and rejects one character more (#507)", async () => {
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { name: "w".repeat(MAX_NAME_LENGTH), baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.json().name, "w".repeat(MAX_NAME_LENGTH));
+    createdWorkspaceIds.push(accepted.json().id);
+
     const response = await app.fastify.inject({
       method: "POST",
       url: "/workspaces",

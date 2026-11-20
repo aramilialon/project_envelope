@@ -13,7 +13,7 @@ import { ValidationError } from "./errors.ts";
 /** Names: accounts, category groups, categories, workspaces. */
 export const MAX_NAME_LENGTH = 100;
 
-/** Longer free text: payees, memos, notes. */
+/** Longer free text: payees, memos, purposes. */
 export const MAX_FREE_TEXT_LENGTH = 500;
 
 /** The number of Unicode code points in `value`. */

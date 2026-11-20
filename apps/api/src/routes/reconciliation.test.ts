@@ -182,13 +182,27 @@ describe("reconciliation routes", () => {
     assert.equal(response.statusCode, 409);
   });
 
-  it("rejects an adjustment memo one character over the free-text limit (#507)", async () => {
+  it("accepts an adjustment memo at the free-text limit, and rejects one character more (#507)", async () => {
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        date: "2026-06-30",
+        statementBalanceCents: -100,
+        tickedTransactionIds: [],
+        adjustment: { categoryId: null, memo: "m".repeat(MAX_FREE_TEXT_LENGTH) },
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.json().outcome, "reconciled");
+
     const response = await app.fastify.inject({
       method: "POST",
       url: `/workspaces/${workspaceId}/accounts/${accountId}/reconciliations`,
       headers: { authorization: `Bearer ${token}` },
       payload: {
-        date: "2026-05-31",
+        date: "2026-07-31",
         statementBalanceCents: -100,
         tickedTransactionIds: [],
         adjustment: { categoryId: null, memo: "m".repeat(MAX_FREE_TEXT_LENGTH + 1) },

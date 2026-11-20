@@ -280,5 +280,23 @@ describe("scheduled transactions routes", () => {
     });
     assert.equal(updated.statusCode, 400);
     assert.deepEqual(updated.json(), { error: "text_too_long", details: { field: "memo", max: MAX_FREE_TEXT_LENGTH } });
+
+    const splitMemoTooLong = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: { ...base, splits: [{ categoryId, amountCents: 1_000, memo: "s".repeat(MAX_FREE_TEXT_LENGTH + 1) }] },
+    });
+    assert.equal(splitMemoTooLong.statusCode, 400);
+    assert.deepEqual(splitMemoTooLong.json(), { error: "text_too_long", details: { field: "splits[0].memo", max: MAX_FREE_TEXT_LENGTH } });
+
+    const updatedAtLimit = await app.fastify.inject({
+      method: "PATCH",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${created.json().id}`,
+      headers: auth,
+      payload: { payee: "q".repeat(MAX_FREE_TEXT_LENGTH), splits: [{ categoryId, amountCents: 1_000, memo: "s".repeat(MAX_FREE_TEXT_LENGTH) }] },
+    });
+    assert.equal(updatedAtLimit.statusCode, 200);
+    assert.equal(updatedAtLimit.json().payee, "q".repeat(MAX_FREE_TEXT_LENGTH));
   });
 });
