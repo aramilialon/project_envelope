@@ -19,7 +19,10 @@
  *   - money going out to the off-budget account needs a real category:
  *     without one, or in UNASSIGNED, it is "uncategorized_transaction";
  *   - on a credit card, with no category or in UNASSIGNED, either way, it is
- *     "unsupported_transaction" (see the limitation below).
+ *     "unsupported_transaction" (see the limitation below). For an outgoing
+ *     card leg with no category the core answers "unsupported_transaction",
+ *     while the API refuses every on-budget to off-budget transfer without a
+ *     category earlier, with "uncategorized_transaction".
  * - A transaction in the UNASSIGNED category on a cash account is income.
  * - Every other transaction on an on-budget account needs a category, or
  *   splits whose amounts add up to the transaction amount.

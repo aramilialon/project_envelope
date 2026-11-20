@@ -609,6 +609,11 @@ A trade that moves money owns exactly one transaction on its own account, its **
   account is off budget, a trade never changes the budget. The money reached the broker through a
   transfer from an on-budget account, which asked for a category
   ([domain guide](domain-guide.md#the-cash-a-trade-moves)).
+- Money taken back out of the broker goes through `POST /workspaces/:workspaceId/transfers` too.
+  To an on-budget cash account without `categoryId`, its on-budget leg lands as Unassigned, income
+  to assign in the month of its date; with `categoryId` it goes into that category. To an on-budget
+  credit card a category is required: without one, 400 `card_income_not_supported` with
+  `details.accountId` ([domain guide](domain-guide.md#money-moved-to-an-off-budget-account)).
 - Once a cash leg is reconciled, its trade is `locked`: editing or deleting it answers 409
   `reconciled` until the reconciliation is unlocked
   (`POST /workspaces/:workspaceId/transactions/:transactionId/unlock-reconciliation`). The rows
@@ -793,7 +798,10 @@ real server. Paths are relative to `/workspaces/:workspaceId`, except `/instrume
 
 The transfer goes from an on-budget account to an off-budget one, so it needs `categoryId`
 (without one, 400 `uncategorized_transaction`): it is €30,000.00 of spending from "Investments",
-whose available drops to 0, and nothing else in the budget moves.
+whose available drops to 0, and nothing else in the budget moves. The other way, a transfer from
+the broker to the checking account may leave `categoryId` out: it then lands as Unassigned in the
+month of its date (into an on-budget credit card a category is required, 400
+`card_income_not_supported`). This walkthrough does not move money back.
 
 **2. Instruments.** `POST /instruments` three times: an ETF (`type: "fund"`), a share
 (`"stock"`), and a government bond quoted in percent of nominal (`"government_bond"`,

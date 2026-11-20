@@ -118,10 +118,24 @@ caused it, not by a savings goal on the payment category itself.
 
 A transfer between two on-budget accounts moves money without spending it: the budget does not
 change. A transfer between an on-budget account and an off-budget one (a brokerage account, a
-savings account kept out of the budget, a mortgage) is different, because the money leaves the
-budget or enters it. Its on-budget leg therefore carries a category, like any spending: a transfer
-without one is refused (`uncategorized_transaction`), and so is an edit that takes the category
-away (#378, #552). The off-budget leg never has one.
+savings account kept out of the budget, a mortgage, a loan) is different, because the money leaves
+the budget or enters it. Only the on-budget leg counts, and how it counts depends on where the
+money goes; the off-budget leg never has a category.
+
+- **Out to an off-budget account:** it always needs a real category, like any spending
+  ("Investments" for the monthly payment to the broker). A transfer without one, or with
+  "Unassigned", is refused (`uncategorized_transaction`), and so is an edit that takes the category
+  away (#378, #552).
+- **In from an off-budget account into a cash account:** by default it is **income to assign**
+  ("Unassigned"), in the month of its date, like a salary. A real category can be chosen instead,
+  for example to refill the envelope that funded the investment: it then goes into that category's
+  available, the same way a refund does (#598).
+- **In from an off-budget account into an on-budget credit card:** it needs a real category, and is
+  then read as a refund on the card. Without one it is refused (`card_income_not_supported`):
+  income on a card is not modeled yet.
+
+Transfers between two on-budget accounts, or between two off-budget accounts, never carry a
+category.
 
 This is how an investment is planned: the household gives the monthly amount to an "Investments"
 category, and the transfer to the broker spends it.
@@ -135,10 +149,22 @@ unassigned money stays at 40,000.00 − 30,000.00 − 500.00 = €9,500.00, and 
 below. Every buy, sale and fee on the brokerage account afterwards moves cash within that account
 only, and leaves the budget exactly as it was.
 
-Money brought back from an off-budget account goes into the category its on-budget leg names, the
-same way a refund does: €500.00 transferred back from the broker with "Investments" as its category
-puts €500.00 back into that category's available. Today that leg needs a category too; letting
-such money land as unassigned money by default is planned (#598).
+**Examples of money coming back.** September 2026: checking holds €3,000, of which €200 is
+unassigned, €1,800 is in "Groceries" and €1,000 in "Rent"; "Investments" holds nothing.
+
+1. Selling ETFs and moving €5,000 from the broker to checking, with no category: Unassigned becomes
+   **€5,200** and checking €8,000. The invariant holds: 5,200 + 1,800 + 1,000 = 8,000.
+2. The same transfer in "Investments" instead: "Investments" holds **€5,000**, Unassigned stays
+   €200.
+3. €5,000 sent to the broker in June through "Investments", and coming back in September as
+   Unassigned: September's unassigned money grows by €5,000; June, and the spending of
+   "Investments" in it, does not change.
+4. Starting from example 1, after assigning €4,000 to "Holiday" (Unassigned €1,200), the transfer's
+   checking leg is edited to "Investments": Unassigned becomes **−€3,800** (more assigned than
+   there is, shown as a warning) and "Investments" €5,000; the total is still €8,000, and the
+   broker's leg does not change.
+5. Refused: checking → broker with no category; broker → Visa with no category; the checking leg of
+   a transfer to the broker edited to no category.
 
 ### Days of buffer
 
@@ -147,39 +173,6 @@ out, over the last 30 days of outflows, across every on-budget account (transfer
 accounts do not count — no money actually left the budget). A household living paycheck to paycheck
 reads close to zero; one with a cushion reads higher, and watches the number instead of a single
 balance that says nothing about *when* that money is needed.
-
-### Transfers to and from off-budget accounts
-
-An off-budget account (a brokerage account, a mortgage, a loan, savings kept apart) is outside the
-budget, so a transfer between it and an on-budget account moves money into or out of the budget.
-Only the on-budget leg counts, and how it counts depends on where the money goes:
-
-- **Out to an off-budget account:** it always needs a real category, like any spending ("Investing"
-  for the monthly payment to the broker). Without one, or as "Unassigned", it is refused.
-- **In from an off-budget account into a cash account:** by default it is **income to assign**
-  ("Unassigned"), in the month of its date, like a salary. A real category can be chosen instead,
-  for example to refill the envelope that funded the investment.
-- **In from an off-budget account into an on-budget credit card:** it needs a real category, and is
-  then read as a refund on the card. Without one it is refused: income on a card is not modeled yet.
-
-Transfers between two on-budget accounts, or between two off-budget accounts, never carry a
-category.
-
-**Example.** September 2026: checking holds €3,000, of which €200 is unassigned, €1,800 is in
-Groceries and €1,000 in Rent; Investing holds nothing.
-
-1. Selling ETFs and moving €5,000 from the broker to checking, with no category: Unassigned becomes
-   **€5,200** and checking €8,000. The invariant holds: 5,200 + 1,800 + 1,000 = 8,000.
-2. The same transfer in Investing instead: Investing holds **€5,000**, Unassigned stays €200.
-3. €5,000 sent to the broker in June through Investing, and coming back in September as Unassigned:
-   September's unassigned money grows by €5,000; June, and Investing's spending in it, does not
-   change.
-4. Starting from example 1, after assigning €4,000 to Holiday (Unassigned €1,200), the transfer's
-   checking leg is edited to Investing: Unassigned becomes **−€3,800** (more assigned than there is,
-   shown as a warning) and Investing €5,000; the total is still €8,000, and the broker's leg does
-   not change.
-5. Refused: checking → broker with no category; broker → Visa with no category; the checking leg of
-   a transfer to the broker edited to no category.
 
 ### Import, duplicates and reconciliation
 
