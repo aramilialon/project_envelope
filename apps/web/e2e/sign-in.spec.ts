@@ -23,7 +23,7 @@ test.describe("sign-in (#49)", () => {
       await page.getByRole("button", { name: "Sign in" }).click();
 
       // Keycloak's own login form, not this app's.
-      await page.waitForURL(/\/realms\/envelope\/protocol\/openid-connect\/auth/);
+      await page.waitForURL(/\/realms\/[^/]+\/protocol\/openid-connect\/auth/);
       await page.getByLabel("Username or email").fill(user.username);
       await page.getByLabel("Password", { exact: true }).fill(user.password);
       await page.getByRole("button", { name: "Sign In" }).click();
@@ -54,7 +54,7 @@ test.describe("sign-in (#49)", () => {
     try {
       await page.goto("/");
       await page.getByRole("button", { name: "Sign in" }).click();
-      await page.waitForURL(/\/realms\/envelope\/protocol\/openid-connect\/auth/);
+      await page.waitForURL(/\/realms\/[^/]+\/protocol\/openid-connect\/auth/);
       await page.getByLabel("Username or email").fill(user.username);
       await page.getByLabel("Password", { exact: true }).fill(user.password);
       await page.getByRole("button", { name: "Sign In" }).click();

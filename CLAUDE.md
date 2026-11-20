@@ -27,7 +27,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |
-| `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, Git hooks, and a demo data seed (`scripts/README.md`) |
+| `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, Git hooks, a demo data seed, and disposable environments for exploratory and e2e runs (`scripts/explore-env/`); see `scripts/README.md` |
 
 ## Commands
 

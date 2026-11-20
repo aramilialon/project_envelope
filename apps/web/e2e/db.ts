@@ -1,19 +1,13 @@
 /**
  * Direct database fixtures for the e2e tests (#50): the superuser connection (`DATABASE_URL`,
  * the same convention `apps/api`'s own tests use for setup), never the restricted `envelope_app`
- * role — this is test setup, not something exercising Row-Level Security.
+ * role — this is test setup, not something exercising Row-Level Security. With `E2E_MANIFEST`
+ * set, the same superuser connects to the disposable environment's database instead
+ * (`environment.ts`, #536).
  */
 import pg from "pg";
 
-function databaseUrl(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error(
-      "Set DATABASE_URL to run the e2e tests, e.g. postgres://envelope:<password>@127.0.0.1:5432/envelope",
-    );
-  }
-  return url;
-}
+import { databaseUrl } from "./environment.ts";
 
 /** The local `users.id` for a Keycloak subject (`sub` claim), once the user-mapper preHandler has created it (i.e. after at least one authenticated request). */
 export async function findUserIdBySubject(keycloakSubject: string): Promise<string | undefined> {

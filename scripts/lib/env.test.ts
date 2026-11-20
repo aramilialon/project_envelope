@@ -57,6 +57,14 @@ describe("assertSafeToRun", () => {
     );
   });
 
+  it("never echoes a connection string's password in its refusal", () => {
+    process.env.NODE_ENV = "development";
+    assert.throws(
+      () => assertSafeToRun({ DATABASE_URL: "postgres://user:s3cret-pw@db.example.com:5432/envelope" }),
+      (error: Error) => !error.message.includes("s3cret-pw") && error.message.includes("user:***@db.example.com"),
+    );
+  });
+
   it("rejects a non-local KEYCLOAK_URL, naming it", () => {
     process.env.NODE_ENV = "development";
     assert.throws(

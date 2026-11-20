@@ -1,6 +1,6 @@
 # End-to-end tests (Playwright)
 
-Headless Chromium, driven through a real sign-in against the real "envelope" Keycloak realm — the one thing a mocked `useAuth()` unit test cannot prove. Found a real bug on its first real run: `scripts/keycloak/bootstrap.sh`'s `webOrigins` did not actually allow the token exchange's CORS request (`#308`).
+Headless Chromium, driven through a real sign-in against the real "envelope" Keycloak realm (or a disposable environment's own realm, below) — the one thing a mocked `useAuth()` unit test cannot prove. Found a real bug on its first real run: `scripts/keycloak/bootstrap.sh`'s `webOrigins` did not actually allow the token exchange's CORS request (`#308`).
 
 ## Running locally
 
@@ -22,10 +22,26 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 
 `keycloak-test-user.ts` creates a throwaway user in the real `envelope` realm through the admin API for each test (self-registration is disabled by design) and removes it afterward — nothing to set up by hand, and nothing left behind. `db.ts` needs `DATABASE_URL` (the superuser connection, the same one `apps/api`'s own tests use for fixture setup — never the restricted `envelope_app` role, since this is test setup, not something exercising Row-Level Security) to create and remove a workspace/membership directly.
 
+## Against a disposable environment
+
+With `E2E_MANIFEST` set to a disposable environment's manifest (`scripts/README.md`, "Disposable environments", `#536`), the suite runs against that environment instead: its own built web app (already running, so no dev server is started), API, realm and database. Nothing in the developer's own `envelope` realm or database is touched, and neither `apps/api` nor `apps/web` needs to be running locally. `DATABASE_URL` is not used: the fixtures connect to the disposable environments' own PostgreSQL server (never the shared one on port 5432, which they refuse), as its superuser, with the password in `~/.config/envelope-explore/postgres-password` (or `EXPLORE_DATABASE_URL` in CI) and the manifest's `postgres` host and port, which must be `127.0.0.1` or `localhost`. The manifest's own directory must be private (ours, not a symbolic link, no group or other permission bits). They still need `KEYCLOAK_ADMIN_PASSWORD`; the manifest holds no credential but the personas'.
+
+```bash
+$ pnpm --filter @envelope/scripts explore:up       # prints the manifest's path
+$ cd apps/web
+$ E2E_MANIFEST=/tmp/envelope-explore/<run>/manifest.json \
+  KEYCLOAK_ADMIN_PASSWORD=<password from infra/.env> \
+  pnpm test:e2e
+$ pnpm --filter @envelope/scripts explore:down <run>
+```
+
+The tests create their own throwaway users and workspaces in that realm and database, as they do locally, and leave the environment's personas alone. The web app there is a production build (`vite build`), with its service worker, rather than the dev server.
+
 ## Contents
 
 | File | What it does |
 | --- | --- |
+| `environment.ts` | Where the tests run: the local dev stack by default, or the disposable environment `E2E_MANIFEST` names (its web URL, realm and database) |
 | `keycloak-test-user.ts` | `createTestUser()`: a throwaway Keycloak user (admin API), with `teardown()` to remove it; `subject` is Keycloak's own user id, the `sub` claim any token issued to them carries |
 | `db.ts` | `findUserIdBySubject(subject)`: the local `users.id` once the user-mapper preHandler has created it; `createWorkspaceWithMembership(userId, name, role?)`: a throwaway workspace with a membership, with `teardown()` to remove it; `setWorkspaceTaxCountry`, `listTaxRegimes` (`#508`) |
 | `sign-in.spec.ts` | Signs in through the real Keycloak login form and back, and signs out again (`#49`) |
@@ -42,4 +58,4 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 
 ## In CI
 
-Not wired into `.github/workflows/ci.yml` yet: CI's own Keycloak container starts bare, with no `envelope` realm bootstrapped (unlike `apps/api`'s tests, which provision their own throwaway realm per run through `test-helpers/keycloak.ts`). Adding a CI step for this needs, in order: `scripts/keycloak/bootstrap.sh` run once against CI's Keycloak container, `apps/api` started with a real `.env` (not just migrated, the way its own integration tests use it), then `npx playwright install --with-deps chromium` and `pnpm test:e2e`. The dependency itself is already committed (`@playwright/test` in `package.json`/`pnpm-lock.yaml`), so none of that needs a second install step when this is set up.
+The `e2e` job in `.github/workflows/ci.yml` runs this suite against a disposable environment, with a PostgreSQL service of its own on port 55432 (`EXPLORE_DATABASE_URL`, throwaway literals) and a Keycloak container: it installs Chromium, runs `explore:up`, points `E2E_MANIFEST` at the manifest, runs `pnpm test:e2e`, prints the environment's logs and uploads Playwright's traces (`test-results/`) if anything failed, and runs `explore:down` whatever happened. It times out after 20 minutes. It is **non-blocking for now** (`continue-on-error: true`): a failure shows on the run but does not fail the pull request, until the job has proved stable on CI's runners. Making it blocking is a one-line change.
