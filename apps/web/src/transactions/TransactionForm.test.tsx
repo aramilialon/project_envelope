@@ -1,3 +1,4 @@
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -50,6 +51,13 @@ function renderForm(overrides: Partial<Parameters<typeof TransactionForm>[0]> = 
 }
 
 describe("TransactionForm (#54)", () => {
+  it("caps the payee and the memo at the API's free-text limit (#507)", () => {
+    renderForm();
+
+    expect((screen.getByLabelText("Payee") as HTMLInputElement).maxLength).toBe(MAX_FREE_TEXT_LENGTH);
+    expect((screen.getByLabelText("Memo") as HTMLInputElement).maxLength).toBe(MAX_FREE_TEXT_LENGTH);
+  });
+
   it("creates an outflow with a category", async () => {
     const createTransaction = vi.spyOn(transactionsApi, "createTransaction").mockResolvedValue({} as Transaction);
     const { onSaved } = renderForm();

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_NAME_LENGTH } from "@envelope/core";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -143,5 +145,28 @@ describe("accounts routes", () => {
       payload: { name: "", type: "not-a-type", currency: "EUR" },
     });
     assert.equal(response.statusCode, 400);
+  });
+
+  it("caps the account name at the name limit, counted in characters (#507)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    // Emoji are two UTF-16 code units each: the limit counts characters, so this is exactly at it.
+    const atLimit = "💶".repeat(MAX_NAME_LENGTH);
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: atLimit, type: "checking", currency: "EUR" },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.equal(accepted.json().name, atLimit);
+
+    const rejected = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: "a".repeat(MAX_NAME_LENGTH + 1), type: "checking", currency: "EUR" },
+    });
+    assert.equal(rejected.statusCode, 400);
+    assert.deepEqual(rejected.json(), { error: "text_too_long", details: { field: "name", max: MAX_NAME_LENGTH } });
   });
 });

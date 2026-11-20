@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -248,5 +250,35 @@ describe("scheduled transactions routes", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 404);
+  });
+
+  it("rejects a payee or memo one character over the free-text limit, on create and update (#507)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const base = { accountId, nextDueDate: "2026-10-01", recurEvery: 1, recurUnit: "month", splits: [{ categoryId, amountCents: 1_000 }] };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: { ...base, payee: "p".repeat(MAX_FREE_TEXT_LENGTH), memo: "m".repeat(MAX_FREE_TEXT_LENGTH) },
+    });
+    assert.equal(created.statusCode, 201);
+
+    const tooLong = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/scheduled-transactions`,
+      headers: auth,
+      payload: { ...base, payee: "p".repeat(MAX_FREE_TEXT_LENGTH + 1) },
+    });
+    assert.equal(tooLong.statusCode, 400);
+    assert.deepEqual(tooLong.json(), { error: "text_too_long", details: { field: "payee", max: MAX_FREE_TEXT_LENGTH } });
+
+    const updated = await app.fastify.inject({
+      method: "PATCH",
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${created.json().id}`,
+      headers: auth,
+      payload: { memo: "m".repeat(MAX_FREE_TEXT_LENGTH + 1) },
+    });
+    assert.equal(updated.statusCode, 400);
+    assert.deepEqual(updated.json(), { error: "text_too_long", details: { field: "memo", max: MAX_FREE_TEXT_LENGTH } });
   });
 });

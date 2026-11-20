@@ -1,8 +1,9 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, requireOwnerRole } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
 import { createWorkspace, deleteWorkspace } from "../workspaces/repository.ts";
 
 /**
@@ -23,6 +24,9 @@ export function registerWorkspacesRoutes(app: FastifyInstance, pool: DbPool): vo
     const timeZone = typeof body.timeZone === "string" ? body.timeZone : "";
     if (!name || !baseCurrency || !timeZone) {
       await reply.code(400).send({ error: "invalid workspace: name, baseCurrency and timeZone are required" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
       return;
     }
 

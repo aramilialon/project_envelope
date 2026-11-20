@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { applyIncomingChange, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
+import { sendIfTextTooLong, type TextFieldCheck } from "../errors.ts";
+import { applyIncomingChange, SYNC_TEXT_FIELD_LIMITS, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
 import { listChangesSince } from "../sync/repository.ts";
 
 function parseChanges(body: Record<string, unknown>): IncomingChange[] | undefined {
@@ -69,6 +70,12 @@ export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
     const changes = parseChanges(body);
     if (!changes) {
       await reply.code(400).send({ error: "changes must be a non-empty array of valid change records" });
+      return;
+    }
+    const textChecks = changes
+      .filter((change) => SYNC_TEXT_FIELD_LIMITS[change.fieldName] !== undefined)
+      .map((change): TextFieldCheck => [change.fieldName, change.value, SYNC_TEXT_FIELD_LIMITS[change.fieldName]!]);
+    if (await sendIfTextTooLong(reply, textChecks)) {
       return;
     }
 

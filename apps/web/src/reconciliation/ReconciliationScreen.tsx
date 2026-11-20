@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -371,7 +371,7 @@ export default function ReconciliationScreen() {
                   </div>
                   <div className="field">
                     <label htmlFor="rec-adj-memo">{intl.formatMessage({ id: "reconcile.adjustment.memo", defaultMessage: "Memo (optional)" })}</label>
-                    <input id="rec-adj-memo" type="text" value={adjustmentMemo} onChange={(event) => setAdjustmentMemo(event.target.value)} />
+                    <input id="rec-adj-memo" type="text" value={adjustmentMemo} onChange={(event) => setAdjustmentMemo(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
                   </div>
                   <div className="row-btns">
                     <button type="button" className="btn" disabled={submitting} onClick={() => setShowAdjustment(false)}>

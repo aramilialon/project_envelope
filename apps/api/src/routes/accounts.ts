@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import {
@@ -10,7 +11,7 @@ import {
 } from "../accounts/repository.ts";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
 
 export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
@@ -29,6 +30,9 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     }
     if (body.onBudget !== undefined && typeof body.onBudget !== "boolean") {
       await reply.code(400).send({ error: "invalid account: onBudget must be a boolean when given" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, [["name", name, MAX_NAME_LENGTH]])) {
       return;
     }
     const accountType = type as AccountType;

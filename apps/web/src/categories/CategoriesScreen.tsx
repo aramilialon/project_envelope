@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -296,6 +297,7 @@ export default function CategoriesScreen() {
                   type="text"
                   value={newCategoryName}
                   onChange={(event) => setNewCategoryName(event.target.value)}
+                  maxLength={MAX_NAME_LENGTH}
                   autoFocus
                   required
                 />
@@ -346,6 +348,7 @@ export default function CategoriesScreen() {
             type="text"
             value={newGroupName}
             onChange={(event) => setNewGroupName(event.target.value)}
+            maxLength={MAX_NAME_LENGTH}
             autoFocus
             required
           />

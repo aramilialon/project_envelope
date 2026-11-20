@@ -1,4 +1,4 @@
-import { isValidationError, parseAmount } from "@envelope/core";
+import { isValidationError, MAX_NAME_LENGTH, parseAmount } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -87,7 +87,7 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
       <form onSubmit={(event) => void handleSubmit(event)}>
         <div className="field">
           <label htmlFor="acc-name">{intl.formatMessage({ id: "accounts.form.name", defaultMessage: "Name" })}</label>
-          <input id="acc-name" type="text" value={name} onChange={(event) => setName(event.target.value)} required />
+          <input id="acc-name" type="text" value={name} onChange={(event) => setName(event.target.value)} maxLength={MAX_NAME_LENGTH} required />
         </div>
 
         <fieldset className="types">

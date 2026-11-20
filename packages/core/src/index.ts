@@ -48,6 +48,7 @@ export {
   validatePositionHistory,
   valuePosition,
 } from "./portfolio/positions.ts";
+export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
 export type {

@@ -1,3 +1,4 @@
+import { MAX_NAME_LENGTH } from "@envelope/core";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 
@@ -89,6 +90,7 @@ export default function CategoryNameField({ kind, label, submitLabel, initialVal
           aria-invalid={error !== null}
           aria-describedby={error ? errorId : undefined}
           onChange={(event) => setValue(event.target.value)}
+          maxLength={MAX_NAME_LENGTH}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.stopPropagation();

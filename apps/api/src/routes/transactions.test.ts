@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -343,5 +345,62 @@ describe("transactions routes", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 404);
+  });
+
+  describe("free-text length limit (#507)", () => {
+    const auth = () => ({ authorization: `Bearer ${token}` });
+    const atLimit = "m".repeat(MAX_FREE_TEXT_LENGTH);
+    const tooLong = "m".repeat(MAX_FREE_TEXT_LENGTH + 1);
+    const expected = (field: string) => ({ error: "text_too_long", details: { field, max: MAX_FREE_TEXT_LENGTH } });
+
+    it("accepts a payee, memo and split memo at the limit, and rejects each one character over it", async () => {
+      const url = `/workspaces/${workspaceId}/accounts/${accountId}/transactions`;
+      const accepted = await app.fastify.inject({
+        method: "POST",
+        url,
+        headers: auth(),
+        payload: { occurredAt: "2026-09-21", payee: atLimit, memo: atLimit, splits: [{ categoryId, amountCents: -100, memo: atLimit }] },
+      });
+      assert.equal(accepted.statusCode, 201);
+      const transactionId = accepted.json().id;
+
+      for (const [payload, field] of [
+        [{ payee: tooLong }, "payee"],
+        [{ memo: tooLong }, "memo"],
+        [{ splits: [{ categoryId, amountCents: -100 }, { categoryId, amountCents: -100, memo: tooLong }] }, "splits[1].memo"],
+      ] as const) {
+        const created = await app.fastify.inject({
+          method: "POST",
+          url,
+          headers: auth(),
+          payload: { occurredAt: "2026-09-21", splits: [{ categoryId, amountCents: -100 }], ...payload },
+        });
+        assert.equal(created.statusCode, 400, field);
+        assert.deepEqual(created.json(), expected(field));
+
+        const updated = await app.fastify.inject({ method: "PATCH", url: `${url}/${transactionId}`, headers: auth(), payload });
+        assert.equal(updated.statusCode, 400, field);
+        assert.deepEqual(updated.json(), expected(field));
+      }
+
+      const updatedAtLimit = await app.fastify.inject({
+        method: "PATCH",
+        url: `${url}/${transactionId}`,
+        headers: auth(),
+        payload: { memo: "n".repeat(MAX_FREE_TEXT_LENGTH) },
+      });
+      assert.equal(updatedAtLimit.statusCode, 200);
+    });
+
+    it("rejects a transfer memo one character over the limit", async () => {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth(),
+        payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-21", amountCents: 100, memo: tooLong },
+      });
+      assert.equal(response.statusCode, 400);
+      assert.deepEqual(response.json(), expected("memo"));
+    });
   });
 });

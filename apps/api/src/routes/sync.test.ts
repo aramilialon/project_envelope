@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+
 import { decodeJwt } from "jose";
 
 import { buildApp, type App } from "../app.ts";
@@ -264,5 +266,36 @@ describe("sync routes (#43, #44)", () => {
       headers: { authorization: `Bearer ${readOnlyToken}` },
     });
     assert.equal(response.statusCode, 200);
+  });
+
+  it("rejects the whole batch when one change's text is over its limit, applying none of it (#507)", async () => {
+    const before = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM transactions WHERE id = $1", [transactionId]);
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/changes`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        changes: [
+          {
+            id: randomUUID(),
+            entityId: transactionId,
+            fieldName: "transactions.memo",
+            hlc: { physical: 9_000_000, counter: 0, deviceId: "device-a" },
+            value: "m".repeat(MAX_FREE_TEXT_LENGTH),
+          },
+          {
+            id: randomUUID(),
+            entityId: transactionId,
+            fieldName: "transactions.payee",
+            hlc: { physical: 9_000_000, counter: 1, deviceId: "device-a" },
+            value: "p".repeat(MAX_FREE_TEXT_LENGTH + 1),
+          },
+        ],
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), { error: "text_too_long", details: { field: "transactions.payee", max: MAX_FREE_TEXT_LENGTH } });
+    const afterwards = await superuserPool.query<{ memo: string | null }>("SELECT memo FROM transactions WHERE id = $1", [transactionId]);
+    assert.equal(afterwards.rows[0]!.memo, before.rows[0]!.memo);
   });
 });

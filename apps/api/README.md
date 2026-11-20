@@ -43,7 +43,7 @@ The backend server: a Fastify HTTP API on top of PostgreSQL. Steps 1 to 4 of the
 | `src/routes/reconciliation.ts` | `GET /workspaces/:workspaceId/accounts/:accountId/reconciliation-candidates?date=` (pending and cleared-tickable transactions up to that date, and the balance to build on); `POST .../reconciliations` (ticked transaction ids, a statement balance, and an optional adjustment); `POST /workspaces/:workspaceId/transactions/:transactionId/unlock-reconciliation` |
 | `src/reconciliation/repository.ts` | Computes the cleared balance (the last non-broken reconciliation's own statement balance, plus the ticked cleared transactions) against the given statement balance; a zero difference reconciles them all in one row (`reconciliations`) and marks each transaction reconciled; a real difference either suggests a pending or unticked transaction whose amount matches exactly (closest date first), or, given an adjustment, creates one (`createTransaction`) and reconciles immediately; unlocking sets the transaction back to `cleared`, marks its reconciliation `broken_at`, and writes to the audit log (#216, #32) |
 | `src/audit-log/repository.ts` | `recordAuditLog`: the only place that writes to `audit_log` (ADR 0005, #216), so every caller gets the same columns |
-| `src/errors.ts` | `sendIfValidationError`: maps any `@envelope/core` `ValidationError`, thrown by the core itself or mirrored by a repository, to a 400 response with its stable `code` and `details` |
+| `src/errors.ts` | `sendIfValidationError`: maps any `@envelope/core` `ValidationError`, thrown by the core itself or mirrored by a repository, to a 400 response with its stable `code` and `details`. `sendIfTextTooLong`: checks a request's names and free-text fields against their limits (see "Length limits on names and free text" below) |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
 | `src/auth/user-mapper.ts` | Fastify preHandler, chained after the token verifier: upserts a `users` row from the token's `sub`/`email` claims and attaches its id to `request.userId` |
 | `src/auth/workspace-membership.ts` | Fastify preHandler, chained after the user mapper: checks the local user's role in the workspace the request names, and opens the request's single database transaction with `app.user_id`/`app.workspace_id` set for ADR 0006's RLS policies; `registerWorkspaceScope` commits it in `onSend` (before the response is flushed, so it is never observed uncommitted, #294) or rolls it back on `onError`; `requireWriteAccess`, chained after it on every endpoint that changes budget data, rejects a `read_only` member with 403 (#24) |
@@ -162,6 +162,17 @@ Comparisons with Perl/CGI/DBI, to find your way around the code.
 | `process.on("SIGTERM", ...)` | `$SIG{TERM} = sub { ... }` | Same idea: close connections cleanly before the process actually exits |
 | `createRemoteJWKSet` + `jwtVerify` (`jose`) | Checking a signed cookie or a Kerberos ticket against a key you fetch once and cache | Keycloak signs the token with a private key only it holds; the API only ever sees the matching public keys, published at a URL, and never has to trust the caller's word for who they are |
 | `request.db` held open for the whole request, `onResponse`/`onError` commit or roll it back | `$dbh->begin_work` at the top of a CGI script, `$dbh->commit` at the bottom, `$dbh->rollback` in the `die` handler | One connection, one transaction per request, so every query in that request sees the same `SET LOCAL` session variables |
+
+### Length limits on names and free text
+
+Every create and update route caps the names and free text it accepts (#507), so one member cannot store values close to the 1 MiB request body limit that every other member's lists then carry. The limits are `@envelope/core`'s `MAX_NAME_LENGTH` and `MAX_FREE_TEXT_LENGTH`, counted in Unicode code points (an emoji counts once), after trimming where the route trims:
+
+| Limit | Fields |
+| --- | --- |
+| 100 (`MAX_NAME_LENGTH`) | Account, category group, category and workspace names, on create and rename |
+| 500 (`MAX_FREE_TEXT_LENGTH`) | Transaction and transfer `payee` and `memo`, every split's `memo`, the same on scheduled transactions, a reconciliation's `adjustment.memo`, and synced `transactions.payee`/`transactions.memo` changes |
+
+The payee takes the free-text limit, not the name one, because a file import stores a bank's whole description in it. A value over its limit is refused with a 400, `{ "error": "text_too_long", "details": { "field": "<field>", "max": <limit> } }`, where `field` is the body property (`name`, `payee`, `memo`, `splits[1].memo`, `adjustment.memo`) or, for a sync upload, the change's `fieldName`; a sync upload with one such change applies none of the batch. Payees and memos read from an imported file are not checked yet.
 
 ## Current limitations
 

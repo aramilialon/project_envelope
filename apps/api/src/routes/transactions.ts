@@ -1,9 +1,10 @@
+import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError, type TextFieldCheck } from "../errors.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
@@ -43,6 +44,22 @@ function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {
   return splits;
 }
 
+/**
+ * The free-text fields of a transaction (or scheduled transaction) body, each with its limit
+ * (#507): the payee, the memo and every split's memo. The payee takes the longer free-text limit,
+ * not the name one, because a file import stores a bank's whole description in it.
+ */
+export function transactionTextChecks(
+  body: Record<string, unknown>,
+  splits: readonly { readonly memo?: string }[] | undefined,
+): TextFieldCheck[] {
+  return [
+    ["payee", body.payee, MAX_FREE_TEXT_LENGTH],
+    ["memo", body.memo, MAX_FREE_TEXT_LENGTH],
+    ...(splits ?? []).map((split, index): TextFieldCheck => [`splits[${index}].memo`, split.memo, MAX_FREE_TEXT_LENGTH]),
+  ];
+}
+
 /** The first split's categoryId that does not name a category of this workspace, if any. */
 function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonly SplitInput[]): string | undefined {
   return splits.map((s) => s.categoryId).find((id): id is string => id !== null && !categoryIds.has(id));
@@ -60,6 +77,9 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     const occurredAt = typeof body.occurredAt === "string" ? body.occurredAt : "";
     if (!splits || !occurredAt) {
       await reply.code(400).send({ error: "invalid transaction: occurredAt and a non-empty splits array are required" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
@@ -110,6 +130,9 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     const splits = body.splits === undefined ? undefined : parseSplits(body);
     if (body.splits !== undefined && !splits) {
       await reply.code(400).send({ error: "splits, when given, must be a non-empty array" });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
@@ -175,6 +198,9 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       await reply.code(400).send({
         error: "invalid transfer: sourceAccountId, destinationAccountId, occurredAt and amountCents are required",
       });
+      return;
+    }
+    if (await sendIfTextTooLong(reply, transactionTextChecks(body, undefined))) {
       return;
     }
     const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)

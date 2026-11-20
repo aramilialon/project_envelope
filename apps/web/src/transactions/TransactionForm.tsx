@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -318,7 +318,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
         <div className="field">
           <label htmlFor="tx-payee">{intl.formatMessage({ id: "transactions.form.payee", defaultMessage: "Payee" })}</label>
-          <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} />
+          <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
         {(kind !== "transfer" || needsTransferCategory) && !split && (
@@ -399,7 +399,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
         <div className="field">
           <label htmlFor="tx-memo">{intl.formatMessage({ id: "transactions.form.memo", defaultMessage: "Memo" })}</label>
-          <input id="tx-memo" type="text" value={memo} onChange={(event) => setMemo(event.target.value)} />
+          <input id="tx-memo" type="text" value={memo} onChange={(event) => setMemo(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
         <label className="chk">

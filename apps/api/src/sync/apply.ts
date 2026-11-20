@@ -10,7 +10,7 @@
  * not from code we wrote — an allowlist keeps a malicious or buggy client from touching
  * anything beyond what fieldAppliers below has explicitly wired.
  */
-import { compareHlc, type Hlc } from "@envelope/core";
+import { compareHlc, MAX_FREE_TEXT_LENGTH, type Hlc } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { getLatestChange, recordChange } from "./repository.ts";
@@ -39,6 +39,16 @@ const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.payee": async (db, workspaceId, entityId, value) => {
     await db.query("UPDATE transactions SET payee = $1 WHERE id = $2 AND workspace_id = $3", [value, entityId, workspaceId]);
   },
+};
+
+/**
+ * The length limit (#507) of every wired-up text field, so a change can no more store an
+ * over-long value than the route that edits the same field directly. The upload route checks
+ * every change against it before applying any of them.
+ */
+export const SYNC_TEXT_FIELD_LIMITS: Readonly<Record<string, number>> = {
+  "transactions.memo": MAX_FREE_TEXT_LENGTH,
+  "transactions.payee": MAX_FREE_TEXT_LENGTH,
 };
 
 /**
