@@ -6,7 +6,7 @@
  *   transfer's legs, a trade's cash leg, a brokerage account's balance and its identity, the
  *   portfolios of an account adding up to it);
  * - isolation: a refused request changes no workspace (a digest of every workspace table but
- *   `audit_log`, read through the superuser connection), and another workspace's token or id
+ *   `audit_log` and the background job's `notified_budget_problems`, read through the superuser connection), and another workspace's token or id
  *   never reaches this workspace's rows.
  */
 import {
@@ -519,8 +519,12 @@ export async function fullCheck(ctx: CheckContext, model: WorkspaceModel): Promi
 /**
  * A digest of every row of every workspace table, per workspace, through the superuser
  * connection (no Row-Level Security in the way): a refused request must leave it as it was.
- * `audit_log` is left out: it records attempts, not data.
+ * `audit_log` is left out: it records attempts, not data. So is `notified_budget_problems`, which only
+ * the `budget-recompute` job writes, in the background: through the real process (the `fetch`
+ * driver) a job queued by an earlier step can write it while a refused request is being checked.
  */
+const DIGEST_EXCLUDED_TABLES: readonly string[] = ["audit_log", "notified_budget_problems"];
+
 export class WorkspaceDigest {
   private readonly sql: string;
 
@@ -532,8 +536,9 @@ export class WorkspaceDigest {
     const { rows } = await pool.query<{ table_name: string }>(
       `SELECT c.table_name FROM information_schema.columns c
        JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-       WHERE c.table_schema = 'public' AND c.column_name = 'workspace_id' AND t.table_type = 'BASE TABLE' AND c.table_name <> 'audit_log'
+       WHERE c.table_schema = 'public' AND c.column_name = 'workspace_id' AND t.table_type = 'BASE TABLE' AND c.table_name <> ALL($1)
        ORDER BY c.table_name`,
+      [DIGEST_EXCLUDED_TABLES],
     );
     const parts = rows.map(
       ({ table_name }) =>
