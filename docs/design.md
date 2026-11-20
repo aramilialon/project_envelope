@@ -125,7 +125,9 @@ The user records every instrument they own and every transaction. The app derive
 | Net worth | Budget cash, investments and other assets or debts in one historical view | Phase 2 |
 | Local tax rules | Indicative tax calculation, starting with Italy (tax loss carry-forward, administered or self-declared regime) | Phase 3 |
 
-The portfolio connects to the budget through off-budget accounts. A payment from the checking account to the broker is a transfer, so invested money leaves the budget without showing up as spending.
+The portfolio connects to the budget through off-budget accounts. A payment from the checking account to the broker is a transfer from an on-budget account to an off-budget one, so it asks for a category on its on-budget leg (#378), like any money that leaves the budget: the monthly investment is planned as an envelope (an "Investments" category, for example), and the transfer is that category's spending. Money brought back from the broker to an on-budget account goes into the category given the same way. Trades themselves never touch the budget: they move cash within the brokerage account ([ADR 0012](adr/0012-trade-cash-legs.md)).
+
+How to record all of this through the API, with every endpoint, body and validation code, is in the [portfolio API reference](portfolio-api.md).
 
 ### Tax regime of brokerage accounts
 
@@ -602,7 +604,7 @@ The documentation explains not only what the code does but also how to change it
 | How-to guides | Step-by-step recipes: add a database field, an endpoint, a screen, a trade type, a price source; write a test; publish a release |
 | Domain guide | The rules of envelope budgeting and rebalancing, with numeric examples |
 | Glossary | Financial terms ("unassigned", TWR, threshold) and technical ones (migration, component, hook, endpoint) |
-| API documentation | Generated from the OpenAPI contract |
+| API documentation | Generated from the OpenAPI contract; until that exists, written by hand: the [portfolio API reference](portfolio-api.md) for the portfolio endpoints, and `apps/api/README.md` for the rest |
 | Code comments | Explain why, not what; every core function has a description and an example |
 | Changelog | What changed in each release |
 
