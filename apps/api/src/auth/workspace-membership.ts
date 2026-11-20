@@ -6,6 +6,12 @@
  * app.workspace_id). registerWorkspaceScope's onSend/onError hooks commit or
  * roll back that same transaction.
  *
+ * A request's writes are kept only for a successful reply (#515): onSend
+ * commits only when the reply's status is below 400 and rolls back otherwise,
+ * so a handler that writes and then replies 4xx (a `ValidationError` caught by
+ * `sendIfValidationError`, a 404 or 409 sentinel from a repository) leaves
+ * nothing behind; a thrown error rolls back through onError, as before.
+ *
  * onSend, not onResponse (#294): onResponse runs *after* the response has
  * already been sent — a client could see a success response for a write
  * whose transaction had not committed yet, or, on a crash in that narrow
@@ -31,8 +37,8 @@ export function registerWorkspaceScope(app: FastifyInstance): void {
     await releaseRequestTransaction(request, "ROLLBACK");
   });
 
-  app.addHook("onSend", async (request, _reply, payload) => {
-    await releaseRequestTransaction(request, "COMMIT");
+  app.addHook("onSend", async (request, reply, payload) => {
+    await releaseRequestTransaction(request, reply.statusCode < 400 ? "COMMIT" : "ROLLBACK");
     return payload;
   });
 }
