@@ -3,7 +3,10 @@
 Development scripts. Git hooks and GitHub setup are plain bash (`git-hooks/`, `github/`); the
 Keycloak realm bootstrap (`keycloak/bootstrap.sh`) and the Postgres role password reset
 (`dev/reset-role-passwords.sh`, see the root [`docs/getting-started.md`](../docs/getting-started.md),
-section 9) are bash too. `@envelope/scripts` (this package) is the one part with real
+section 9) are bash too. `dev/find-card-income.sql` is a read-only query that lists income stored
+on an on-budget credit card before the API refused it (#548; how to fix one by hand is in
+[`apps/api/README.md`](../apps/api/README.md), "Income on a credit card stored before #548").
+`@envelope/scripts` (this package) is the one part with real
 dependencies — the demo data seed and the disposable environments.
 
 ## Demo data seed

@@ -171,6 +171,24 @@ envelope=# DELETE FROM instruments WHERE id = '<id>';
 
 Check before a correction that it keeps every workspace's figures right: changing `type`, `currency` or `price_factor_e6` changes how every holding of that instrument is valued and taxed, in every workspace. A row that trades still reference cannot be deleted (#77); correct it in place instead.
 
+### Income on a credit card stored before #548
+
+`@envelope/core` does not model income on a credit card yet (`packages/core/README.md`, "Known limitations"), so the API refuses it on every write path with 400 `{ "error": "card_income_not_supported", "details": { "accountId": "<card>" } }`: a transaction, or a scheduled transaction, with a single split and no category (`categoryId: null`, income) on an on-budget credit card, whether created, edited, confirmed from an import (the row is `rejected` with that code and stays staged), recorded from a schedule, or written as a reconciliation adjustment. A categorized inflow on a card (a merchant refund) is not income and stays allowed, and so are a card payment (a transfer, whose legs have no category) and income on an off-budget card. The automatic firing of scheduled transactions leaves such a scheduled transaction due and unrecorded, and fires the others.
+
+Before #548 the API accepted such a transaction, and one of them makes every `GET .../budget-months/:month` of its workspace answer 400 `unsupported_transaction`. To find any already stored, run the read-only query in `scripts/dev/find-card-income.sql` as the table owner (it lists transactions and scheduled transactions, across every workspace):
+
+```bash
+$ psql "$DATABASE_URL" -f scripts/dev/find-card-income.sql
+```
+
+No rows means nothing to fix. No migration changes them, because only the user knows what each one was. Fix each one by hand, through the API or the web app (as a member of the workspace with the `owner` or `editor` role), choosing what it really was:
+
+- A refund of a purchase: give it the category of the original purchase (`PATCH .../accounts/:accountId/transactions/:transactionId` with `splits: [{ "categoryId": "<category>", "amountCents": <amount> }]`, or edit it in the account register).
+- Cashback or another inflow with no category of its own: delete it, then record what design.md ("Credit cards") describes for income on a card, an income transaction on a cash account plus a card payment (a transfer from that account to the card) of the same amount.
+- A mistake: delete it.
+
+A reconciled transaction must be unlocked first (`POST .../transactions/:transactionId/unlock-reconciliation`). A scheduled transaction the query lists is fixed the same way: give its split a category (`PATCH .../scheduled-transactions/:scheduledTransactionId`), or delete it. Run the query again afterwards: it should list nothing.
+
 ## Things to understand
 
 Comparisons with Perl/CGI/DBI, to find your way around the code.
@@ -219,3 +237,5 @@ Anything a route does not answer itself goes through one global error handler (`
 ## Current limitations
 
 Step 4 (Budget API) covers a full budget month driven through the API alone, including scheduled transactions (`#22`): created, listed, updated, deleted and recorded/skipped by hand, or fired automatically on their own due date (`#38`). Step 5 (Import) has CSV, OFX, QIF, CAMT.053 import and staging, and reconciliation; payee/category suggestion from the user's rules and history is out of scope for now (`#122`, a later phase). Step 6 (Queue and notifications) has the `QueueDriver` interface and its `postgres` adapter (`#34`), the outbox wired into the transaction-writing code path (`#35`), the idempotent `processed_jobs` register (`#36`), push notification delivery (`#39`) — `web` for real, `ios`/`android` deferred to milestone 0.3.0 — the `budget-recompute` job itself, notifying members only on a new or changed problem (`#40`), the shared double-delivery test harness (`#37`), a periodic job materializing an overdue scheduled transaction in every workspace, each in its own time zone (`#38`; ADR 0010's own `app_is_system_job()` is what lets it enumerate every workspace at all — the two existing RLS allowances both still need a request's own `app.user_id`/`app.workspace_id`, which a cron-triggered job genuinely has neither of), and the Web Push opt-in/opt-out itself (`#61`) — a browser can now actually register for the alerts `#40` already sends, rather than only a test inserting a `device_tokens` row by hand. Step 7 (Sync) has the change record model (`#42`), applying incoming changes by clock (`#43`), the changes-since-clock download endpoint (`#44`), the reconciled-transaction lock at the field-change layer (`#45`) and the milestone's own two-devices-converge smoke test (`#46`), scoped to `transactions.memo`/`transactions.payee` — every other field and entity is added only once something needs to sync it. Not here yet, its own later step of the roadmap: the web app itself (0.1.7 onward) — this package is the API only.
+
+Income on an on-budget credit card is refused with `card_income_not_supported` until `@envelope/core` models it (#548); see "Income on a credit card stored before #548" above.
