@@ -94,8 +94,8 @@ export interface PositionTrade {
   readonly accruedInterestCents: Cents;
   readonly withholdingForeignCents: Cents;
   /**
-   * Dividend: withheld (≥ 0). Bond buy or sell with accrued interest: signed,
-   * as in the cash leg (a buy's is credited back, a sell's is withheld).
+   * Entered as a positive amount; the type gives the direction: credited back
+   * on a bond buy with accrued interest, withheld on a sale or a dividend.
    */
   readonly withholdingDomesticCents: Cents;
   readonly gainTaxCents: Cents;
@@ -327,11 +327,9 @@ const USED_AMOUNTS: Readonly<Record<TradeType, readonly AmountField[]>> = {
   transfer: ["feesCents"],
 };
 
-/** Whether an amount may be negative: a bond trade's domestic withholding, a gain tax adjustment. */
+/** Whether an amount may be negative: only a gain tax adjustment's (extra tax charged). */
 function signedAllowed(trade: PositionTrade, field: AmountField): boolean {
-  if (field === "withholdingDomesticCents") return trade.type === "buy" || trade.type === "sell";
-  if (field === "grossCents") return trade.type === "tax" && trade.taxKind === "gain_tax_adjustment";
-  return false;
+  return field === "grossCents" && trade.type === "tax" && trade.taxKind === "gain_tax_adjustment";
 }
 
 function checkTrade(trade: PositionTrade): void {
@@ -406,6 +404,10 @@ function checkLegs(trade: PositionTrade, other: PositionTrade | undefined): Posi
   if (other === undefined) throw invalidTrade(trade, "transferTradeId", "the other leg of the transfer is missing");
   if (other.type !== "transfer" || other.transferTradeId !== trade.id || other.instrumentId !== trade.instrumentId) {
     throw invalidTrade(trade, "transferTradeId", "the other leg is not a transfer of the same instrument linked back");
+  }
+  if (other.currency !== trade.currency) {
+    // No exchange rates yet: the cost cannot be converted between the two accounts.
+    throw invalidTrade(trade, "currency", "the two legs of a transfer are in accounts with different currencies");
   }
   if (other.quantity !== -trade.quantity) {
     throw invalidTrade(trade, "quantity", "the two legs of a transfer need equal and opposite quantities");
@@ -513,15 +515,6 @@ function applySplits(state: AccountState, date: LocalDate, splits: readonly Posi
       });
     }
     covered.add(split.portfolioId);
-    const first = splits[0] as PositionTrade;
-    // Same ratio: from₁ × to₂ = from₂ × to₁ (ratios checked positive by checkTrade).
-    if (BigInt(split.splitFrom ?? 1) * BigInt(first.splitTo ?? 1) !== BigInt(first.splitFrom ?? 1) * BigInt(split.splitTo ?? 1)) {
-      throw new ValidationError(
-        "split_ratio_mismatch",
-        `the split rows of instrument ${state.instrumentId} on ${date} have different ratios`,
-        where,
-      );
-    }
   }
   const missing = [...state.portfolios.entries()]
     .filter(([id, portfolio]) => portfolio.quantity > 0 && !covered.has(id))
@@ -594,6 +587,15 @@ function replayInstrument(
       for (let j = i; j < sorted.length; j++) {
         const other = sorted[j] as PositionTrade;
         if (other.type !== "split" || other.date !== trade.date) break;
+        // One ratio per instrument and date, in every account: from₁ × to₂ = from₂ × to₁
+        // (ratios checked positive by checkTrade).
+        if (BigInt(other.splitFrom ?? 1) * BigInt(trade.splitTo ?? 1) !== BigInt(trade.splitFrom ?? 1) * BigInt(other.splitTo ?? 1)) {
+          throw new ValidationError(
+            "split_ratio_mismatch",
+            `the split rows of instrument ${instrumentId} on ${trade.date} have different ratios`,
+            { accountId: other.accountId, instrumentId, date: trade.date },
+          );
+        }
         const rows = byAccount.get(other.accountId) ?? [];
         rows.push(other);
         byAccount.set(other.accountId, rows);
@@ -742,7 +744,7 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
  *   "split_missing_for_portfolio" if a portfolio, in any account, holds the
  *   instrument at the start of a split's date but has no split row for it, "split_duplicate"
  *   for two split rows of one portfolio on one date, "split_ratio_mismatch"
- *   for split rows of one account and date with different ratios (details:
+ *   for split rows of one instrument and date, in any account, with different ratios (details:
  *   accountId, instrumentId, date, and portfolioId where one is concerned);
  *   "split_leaves_no_quantity" if a split rounds a whole position with a cost
  *   down to zero units; "invalid_trade" (details: tradeId, field) for a trade

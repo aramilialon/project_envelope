@@ -238,19 +238,21 @@ moment they leave, so a trade later backdated in the source account changes the 
 cost too. A transfer's own fees are never part of the cost.
 
 A split ratio is written from:to: 1:4 means 1 unit becomes 4, and a reverse split 10:1 means 10
-units become 1. Every split row of one account on one date must have the same ratio, and each
-portfolio has at most one. If a split rounds one portfolio's quantity down to zero, its share of
+units become 1. Every split row of one instrument on one date must have the same ratio, in every
+account (`split_ratio_mismatch`), and each portfolio has at most one. If a split rounds one portfolio's quantity down to zero, its share of
 the cost moves to the other portfolios of the account; the account's cost does not change.
 
 **What the totals mean.** Next to the cost and quantity, each position keeps its own totals, so
-they can be shown as their own lines:
+they can be shown as their own lines. Every total is in the account's currency, and the net
+result below is only ever added up within one currency.
 
 - **Income** = dividends and coupons (gross) − foreign and domestic withholding − income fees +
   accrued interest received − accrued interest paid. Income fees are the fees of dividends and
-  coupons. A bond buy's domestic withholding, credited back with the accrued interest paid,
-  counts as negative withholding.
-- **Costs** = financial transaction tax + standalone fees + standalone taxes (stamp duty and the
-  like).
+  coupons. The domestic withholding is entered as a positive amount and the trade's type gives its
+  direction: withheld on a sale, a dividend or a coupon; credited back on a bond buy with accrued
+  interest, where it counts as negative withholding.
+- **Costs** = financial transaction tax + transfer fees + standalone fees + standalone taxes
+  (stamp duty and the like).
 - **Taxes on gains** = gain tax withheld on sales ± gain tax adjustments. An adjustment's amount
   is positive when it is a refund (money back into the account), which lowers the total, and
   negative when it is extra tax charged, which raises it.
@@ -308,7 +310,10 @@ Worked examples, each one a test in `packages/core`:
 
 Not handled yet: return of capital, amortizing bonds, bonds issued at a discount, spin-offs,
 mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
-in other currencies.
+in other currencies. Until exchange rates exist, a transfer between two accounts in different
+currencies is refused (`invalid_trade`, field `currency`), because its cost cannot be converted;
+such a move is entered as a transfer out of the app from the first account plus a transfer in from
+outside into the second, carrying the cost converted by the user.
 
 ### Target allocation and thresholds
 

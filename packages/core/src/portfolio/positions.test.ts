@@ -334,6 +334,27 @@ describe("computePositions: selling out and transfers", () => {
     }
   });
 
+  it("refuses a transfer between accounts in different currencies", () => {
+    const usd = { accountId: "U", currency: "USD" };
+    assert.throws(
+      () =>
+        computePositions([
+          buy("2026-01-10", "A", 10, 1000, 0, usd),
+          trade({ id: "o", ...usd, date: "2026-02-01", type: "transfer", quantity: units(-10), transferTradeId: "i" }),
+          trade({ id: "i", accountId: "X", date: "2026-02-01", type: "transfer", quantity: units(10), transferTradeId: "o" }),
+        ]),
+      (error) => isValidationError(error, "invalid_trade") && error.details.field === "currency",
+    );
+    // Until exchange rates exist: a transfer out of the app, then one in from outside with the converted cost.
+    const positions = computePositions([
+      buy("2026-01-10", "A", 10, 1000, 0, usd),
+      trade({ ...usd, date: "2026-02-01", type: "transfer", quantity: units(-10) }),
+      trade({ accountId: "X", date: "2026-02-01", type: "transfer", quantity: units(10), costBasisCents: eur(920) }),
+    ]);
+    assert.equal(account(positions, "U").costBasisCents, 0);
+    assert.equal(account(positions, "X").costBasisCents, eur(920));
+  });
+
   it("keeps a transfer's fees out of the cost, in their own total", () => {
     const positions = computePositions([
       buy("2026-01-10", "A", 10, 100, 0, { accountId: OTHER_ACCOUNT }),
@@ -693,6 +714,24 @@ describe("validatePositionHistory and applyTradeChanges", () => {
     validatePositionHistory([...abHistory(), split("2026-03-01", "A", 1, 2), split("2026-03-01", "B", 2, 4)]);
   });
 
+  it("rejects split rows of one instrument and date with different ratios in different accounts", () => {
+    assert.throws(
+      () =>
+        validatePositionHistory([
+          buy("2026-01-10", "A", 10, 100, 0, { accountId: "X" }),
+          buy("2026-01-10", "A", 10, 100, 0, { accountId: "Y" }),
+          split("2026-03-01", "A", 1, 4, { accountId: "X" }),
+          split("2026-03-01", "A", 1, 2, { accountId: "Y" }),
+        ]),
+      (error) => {
+        assert.ok(isValidationError(error, "split_ratio_mismatch"));
+        assert.equal(error.details.instrumentId, ETF);
+        assert.equal(error.details.date, "2026-03-01");
+        return true;
+      },
+    );
+  });
+
   it("rejects two split rows of one portfolio on one date", () => {
     assert.throws(
       () =>
@@ -727,6 +766,8 @@ describe("validatePositionHistory and applyTradeChanges", () => {
       [{ type: "buy", quantity: units(1), withholdingDomesticCents: 1 }, "withholdingDomesticCents"],
       [{ type: "sell", quantity: units(1), feesCents: -1 }, "feesCents"],
       [{ type: "dividend", withholdingDomesticCents: -1 }, "withholdingDomesticCents"],
+      [{ type: "buy", quantity: units(1), accruedInterestCents: 1, withholdingDomesticCents: -1 }, "withholdingDomesticCents"],
+      [{ type: "sell", quantity: units(1), accruedInterestCents: 1, withholdingDomesticCents: -1 }, "withholdingDomesticCents"],
       [{ type: "dividend", transactionTaxCents: 1 }, "transactionTaxCents"],
       [{ type: "dividend", quantity: units(1) }, "quantity"],
       [{ type: "fee", grossCents: 1 }, "grossCents"],
