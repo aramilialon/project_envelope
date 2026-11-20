@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
 import {
+  assertWithholdingAgentFor,
   isTaxRegime,
   regimeAt,
   validateAccountTaxSettings,
+  validateTaxRegimeChange,
   validateTaxRegimeHistory,
+  validateWithholdingAgentChange,
   type TaxRegimeEntry,
 } from "./tax-regime.ts";
 
@@ -121,10 +124,39 @@ describe("validateAccountTaxSettings", () => {
     });
   });
 
-  it("leaves both optional on a brokerage account elsewhere, or with no tax country", () => {
+  it("needs no setting on a brokerage account elsewhere, or with no tax country, and refuses the Italian ones there", () => {
     validateAccountTaxSettings({ accountType: "brokerage", taxCountry: null });
     validateAccountTaxSettings({ accountType: "brokerage", taxCountry: "FR" });
-    validateAccountTaxSettings({ accountType: "brokerage", taxCountry: "FR", taxRegime: "managed" });
+    assert.throws(
+      () => validateAccountTaxSettings({ accountType: "brokerage", taxCountry: "FR", taxRegime: "managed" }),
+      (error) =>
+        isValidationError(error, "tax_regime_not_applicable") &&
+        error.details.field === "taxRegime" &&
+        error.details.taxCountry === "FR",
+    );
+    assert.throws(
+      () => validateAccountTaxSettings({ accountType: "brokerage", taxCountry: null, domesticWithholdingAgent: true }),
+      (error) =>
+        isValidationError(error, "tax_regime_not_applicable") &&
+        error.details.field === "domesticWithholdingAgent" &&
+        error.details.taxCountry === "",
+    );
+  });
+
+  it("needs an Italian withholding agent for an administered or managed regime, not for a self-declared one", () => {
+    for (const taxRegime of ["administered", "managed"] as const) {
+      assert.throws(
+        () => validateAccountTaxSettings({ accountType: "brokerage", taxCountry: "IT", taxRegime, domesticWithholdingAgent: false }),
+        (error) => isValidationError(error, "tax_regime_requires_withholding_agent") && error.details.regime === taxRegime,
+      );
+      validateAccountTaxSettings({ accountType: "brokerage", taxCountry: "IT", taxRegime, domesticWithholdingAgent: true });
+    }
+    validateAccountTaxSettings({
+      accountType: "brokerage",
+      taxCountry: "IT",
+      taxRegime: "self_declared",
+      domesticWithholdingAgent: false,
+    });
   });
 
   it("rejects either setting on an account that is not a brokerage account, whatever the country", () => {
@@ -139,5 +171,83 @@ describe("validateAccountTaxSettings", () => {
       );
     }
     validateAccountTaxSettings({ accountType: "checking", taxCountry: "IT" });
+  });
+});
+
+describe("assertWithholdingAgentFor", () => {
+  it("refuses administered or managed anywhere in the history without the flag set to true", () => {
+    for (const flag of [false, null, undefined]) {
+      assert.throws(
+        () => assertWithholdingAgentFor(["self_declared", "administered"], flag),
+        (error) => isValidationError(error, "tax_regime_requires_withholding_agent") && error.details.regime === "administered",
+      );
+      assert.throws(
+        () => assertWithholdingAgentFor(["managed"], flag),
+        (error) => isValidationError(error, "tax_regime_requires_withholding_agent") && error.details.regime === "managed",
+      );
+      assertWithholdingAgentFor(["self_declared"], flag);
+    }
+    assertWithholdingAgentFor(["self_declared", "administered", "managed"], true);
+  });
+});
+
+describe("validateTaxRegimeChange", () => {
+  const corrected: readonly TaxRegimeEntry[] = [
+    { validFrom: "2015-06-01", regime: "self_declared" },
+    { validFrom: "2024-01-01", regime: "administered" },
+  ];
+
+  it("accepts a corrected history in an IT workspace, which then decides older dates", () => {
+    validateTaxRegimeChange({ taxCountry: "IT", domesticWithholdingAgent: true, history: corrected });
+    assert.equal(regimeAt(corrected, "2019-05-10"), "self_declared");
+    assert.equal(regimeAt(corrected, "2024-05-10"), "administered");
+  });
+
+  it("refuses regimes outside an IT workspace, and an empty history in one", () => {
+    assert.throws(
+      () => validateTaxRegimeChange({ taxCountry: "FR", domesticWithholdingAgent: true, history: corrected }),
+      (error) => isValidationError(error, "tax_regime_not_applicable") && error.details.taxCountry === "FR",
+    );
+    validateTaxRegimeChange({ taxCountry: null, domesticWithholdingAgent: null, history: [] });
+    assert.throws(
+      () => validateTaxRegimeChange({ taxCountry: "IT", domesticWithholdingAgent: true, history: [] }),
+      (error) => isValidationError(error, "tax_regime_required"),
+    );
+  });
+
+  it("applies the history rules and the withholding-agent rule", () => {
+    assert.throws(
+      () =>
+        validateTaxRegimeChange({
+          taxCountry: "IT",
+          domesticWithholdingAgent: true,
+          history: [...corrected, { validFrom: "2025-07-01", regime: "managed" }],
+        }),
+      (error) => isValidationError(error, "tax_regime_change_not_year_start"),
+    );
+    assert.throws(
+      () => validateTaxRegimeChange({ taxCountry: "IT", domesticWithholdingAgent: false, history: corrected }),
+      (error) => isValidationError(error, "tax_regime_requires_withholding_agent"),
+    );
+  });
+});
+
+describe("validateWithholdingAgentChange", () => {
+  it("lets the flag be set once, on a brokerage account in an IT workspace that has none", () => {
+    validateWithholdingAgentChange({ accountType: "brokerage", taxCountry: "IT", current: null });
+    for (const current of [true, false]) {
+      assert.throws(
+        () => validateWithholdingAgentChange({ accountType: "brokerage", taxCountry: "IT", current }),
+        (error) => isValidationError(error, "withholding_agent_already_set"),
+      );
+    }
+    assert.throws(
+      () => validateWithholdingAgentChange({ accountType: "checking", taxCountry: "IT", current: null }),
+      (error) => isValidationError(error, "tax_regime_not_applicable") && error.details.type === "checking",
+    );
+    assert.throws(
+      () => validateWithholdingAgentChange({ accountType: "brokerage", taxCountry: null, current: null }),
+      (error) => isValidationError(error, "tax_regime_not_applicable") && error.details.taxCountry === "",
+    );
   });
 });
