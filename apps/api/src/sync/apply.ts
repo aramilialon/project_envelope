@@ -130,15 +130,17 @@ function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
 /**
  * Checked in this order, and only `applied` and `stale` are ever recorded:
  * - `invalid` when the change id or entity id is not a uuid (#513): it can name nothing.
- * - A change id this workspace has already recorded answers what it answered then, so a retry
- *   gets its original outcome and nothing is applied again; `id_conflict` when that id was
- *   recorded for a different change (another entity, field, clock or value), which is refused.
- *   Change ids are scoped to the workspace: another workspace's ids are never looked at.
  * - `trade_owned` for a field of a trade's cash leg that belongs to the trade
  *   (`TRADE_OWNED_FIELDS`), never recorded, for the same reason as `locked`.
  * - `unsupported_field` for anything not in `FIELD_APPLIERS` — recorded nowhere, since there is
  *   nowhere to apply it to; the caller reports it back to the device rather than silently
- *   dropping it.
+ *   dropping it. Both come before the change log is read: no change to such a field is ever
+ *   recorded, so a resend could only ever get the same answer, and the value of a field nothing
+ *   applies (any JSON at all) never reaches a query.
+ * - A change id this workspace has already recorded answers what it answered then, so a retry
+ *   gets its original outcome and nothing is applied again; `id_conflict` when that id was
+ *   recorded for a different change (another entity, field, clock or value), which is refused.
+ *   Change ids are scoped to the workspace: another workspace's ids are never looked at.
  * - `not_found` when the entity is not a row of the selected workspace (#513), whether it belongs
  *   to another workspace or to none, answered the same either way: there is nothing to apply it
  *   to, and recording it would hand the workspace's other devices a change to an entity they
@@ -152,16 +154,17 @@ export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: st
   if (!isUuid(change.id) || !isUuid(change.entityId)) {
     return "invalid";
   }
-  const recorded = await findRecordedChange(db, workspaceId, change);
-  if (recorded) {
-    return outcomeOfRecorded(recorded);
-  }
   if (TRADE_OWNED_FIELDS.has(change.fieldName) && (await isTradeOwned(db, workspaceId, change.fieldName, change.entityId))) {
     return "trade_owned";
   }
-  const applier = FIELD_APPLIERS[change.fieldName];
+  // Own keys only: a field name such as "constructor" must not find an inherited property.
+  const applier = Object.hasOwn(FIELD_APPLIERS, change.fieldName) ? FIELD_APPLIERS[change.fieldName] : undefined;
   if (!applier) {
     return "unsupported_field";
+  }
+  const recorded = await findRecordedChange(db, workspaceId, change);
+  if (recorded) {
+    return outcomeOfRecorded(recorded);
   }
   if (!(await workspaceRowExists(db, applier.table, workspaceId, change.entityId))) {
     return "not_found";
