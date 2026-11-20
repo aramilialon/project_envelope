@@ -3,8 +3,9 @@
 # run in parallel: "unit" needs no services and covers packages/core, apps/web,
 # packages/i18n and the development scripts; "integration" starts a real
 # PostgreSQL and Keycloak for apps/api's own integration and smoke tests; "e2e"
-# brings up a disposable environment (scripts/explore-env/, #536) on the same
-# services and runs apps/web's Playwright suite against it. No job waits on
+# brings up a disposable environment (scripts/explore-env/, #536) on a
+# PostgreSQL of its own and a Keycloak container, and runs apps/web's Playwright
+# suite against it. No job waits on
 # another, so a push is not held up by services that most of the test suite does
 # not need.
 name: CI
@@ -163,27 +164,31 @@ jobs:
   # Keycloak realm, API and built web app (scripts/explore-env/, #536). Non-blocking for now
   # (continue-on-error): a failure shows on the run but does not fail the pull request, until
   # the job has proved stable on CI's runners.
+  #
+  # Disposable environments never use the shared server's port 5432: this job's only PostgreSQL
+  # is a service on 55432, standing in for the `envelope-explore-postgres` container that
+  # explore-env manages locally (EXPLORE_DATABASE_URL tells it so). Keycloak's start-dev keeps
+  # its own data, so the job needs no other database.
   e2e:
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 20
     services:
-      postgres:
+      explore-postgres:
         image: postgres:17
         env:
-          POSTGRES_USER: envelope_test
-          POSTGRES_PASSWORD: envelope_test
-          POSTGRES_DB: envelope_test
+          POSTGRES_USER: explore_admin
+          POSTGRES_PASSWORD: explore_ci
         ports:
-          - 5432:5432
+          - 55432:5432
         options: >-
-          --health-cmd="pg_isready -U envelope_test -d envelope_test"
+          --health-cmd="pg_isready -U explore_admin"
           --health-interval=5s
           --health-timeout=3s
           --health-retries=20
     env:
-      # The superuser the environment is created with; the environment's own API gets
-      # envelope_app/envelope_queue connections to its own database only.
-      DATABASE_URL: postgres://envelope_test:envelope_test@localhost:5432/envelope_test
+      # Throwaway literals, valid only on this runner.
+      EXPLORE_DATABASE_URL: postgres://explore_admin:explore_ci@localhost:55432/postgres
       KEYCLOAK_ADMIN_PASSWORD: envelope_test
     steps:
       - uses: actions/checkout@v7
@@ -240,6 +245,16 @@ jobs:
             tail -n 200 "$log"
             echo "::endgroup::"
           done
+
+      # Playwright keeps a trace of every test it retried (trace: "on-first-retry").
+      - name: Upload the Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: apps/web/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Bring the environment down
         if: always() && env.E2E_MANIFEST != ''

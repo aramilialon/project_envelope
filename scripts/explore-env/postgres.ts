@@ -1,30 +1,24 @@
 /**
- * The PostgreSQL side of a disposable environment (#536): its own database on the shared server,
- * migrated with `apps/api`'s own runner, plus the one step done with direct SQL — giving the
- * editor and read-only personas their membership, since no API adds a member to a workspace yet.
- * Everything here connects as the superuser in `DATABASE_URL`, which stays in this process: the
- * environment's API gets `envelope_app`/`envelope_queue` connections to its own database only.
+ * The PostgreSQL side of a disposable environment (#536): its own database on the disposable
+ * environments' own server (`instance.ts`, never the shared development server), migrated with
+ * `apps/api`'s own runner, plus the one step done with direct SQL — giving the editor and
+ * read-only personas their membership, since no API adds a member to a workspace yet. Everything
+ * here connects as that server's superuser, which stays in this process: the environment's API
+ * gets `envelope_app`/`envelope_queue` connections to its own database only.
  */
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseEnv } from "node:util";
 
 import pg from "pg";
 
+import { assertExploreServerUrl } from "./instance.ts";
 import { assertExploreDatabase, DATABASE_PREFIX } from "./names.ts";
 
 const MIGRATE_TS = fileURLToPath(new URL("../../apps/api/src/db/migrate.ts", import.meta.url));
-const API_ENV_FILE = fileURLToPath(new URL("../../apps/api/.env", import.meta.url));
 const COMMENT_PREFIX = "envelope-explore created=";
 
-/** The same fixed values `apps/api`'s own tests fall back to (test-helpers/app-role.ts, queue-role.ts). */
-const ROLE_FALLBACK_PASSWORDS: Readonly<Record<string, string>> = {
-  envelope_app: "envelope-app-test-password",
-  envelope_queue: "envelope-queue-test-password",
-};
-
 async function withPool<T>(connectionString: string, run: (pool: pg.Pool) => Promise<T>): Promise<T> {
+  assertExploreServerUrl(connectionString);
   const pool = new pg.Pool({ connectionString, max: 1 });
   try {
     return await run(pool);
@@ -68,33 +62,44 @@ export async function dropDatabase(superuserUrl: string, name: string): Promise<
 
 export interface ExploreDatabase {
   readonly name: string;
-  /** From the comment `createDatabase` set; undefined if it is missing. */
+  /** From the comment `createDatabase` set, else the last change of the database's directory. */
   readonly createdAt: Date | undefined;
 }
 
 export async function listExploreDatabases(superuserUrl: string): Promise<ExploreDatabase[]> {
   return withPool(superuserUrl, async (pool) => {
-    const { rows } = await pool.query<{ datname: string; comment: string | null }>(
-      "SELECT datname, shobj_description(oid, 'pg_database') AS comment FROM pg_database WHERE starts_with(datname, $1) ORDER BY datname",
+    // With no comment (a run stopped between CREATE and COMMENT), the last change of the
+    // database's own directory stands in for its age: never older than the database itself.
+    const { rows } = await pool.query<{ datname: string; comment: string | null; modified: Date | null }>(
+      `SELECT datname, shobj_description(oid, 'pg_database') AS comment,
+              (pg_stat_file('base/' || oid, true)).modification AS modified
+         FROM pg_database WHERE starts_with(datname, $1) ORDER BY datname`,
       [DATABASE_PREFIX],
     );
     return rows.map((row) => {
       const stamp = row.comment?.startsWith(COMMENT_PREFIX) ? new Date(row.comment.slice(COMMENT_PREFIX.length)) : undefined;
-      return { name: row.datname, createdAt: stamp && !Number.isNaN(stamp.getTime()) ? stamp : undefined };
+      const createdAt = stamp && !Number.isNaN(stamp.getTime()) ? stamp : (row.modified ?? undefined);
+      return { name: row.datname, createdAt };
     });
   });
 }
 
 /** Runs `apps/api`'s own migration runner against `databaseUrl` (a superuser connection to the run's database). */
-export async function migrate(databaseUrl: string, log: (line: string) => void): Promise<void> {
+export async function migrate(databaseUrl: string, log: (line: string) => void, signal: AbortSignal): Promise<void> {
+  assertExploreServerUrl(databaseUrl);
   const child = spawn(process.execPath, [MIGRATE_TS], {
     env: { PATH: process.env.PATH ?? "", DATABASE_URL: databaseUrl },
     stdio: ["ignore", "pipe", "pipe"],
+    signal,
   });
   let output = "";
   child.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
   child.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
-  const code = await new Promise<number | null>((resolve) => child.once("exit", resolve));
+  const code = await new Promise<number | null>((resolve) => {
+    child.once("error", () => resolve(null));
+    child.once("exit", resolve);
+  });
+  signal.throwIfAborted();
   if (code !== 0) {
     throw new Error(`Migrating the database failed:\n${output}`);
   }
@@ -102,62 +107,20 @@ export async function migrate(databaseUrl: string, log: (line: string) => void):
 }
 
 /**
- * The password `role` logs in with: the one in `variable` (a connection string for that role) in
- * this process's environment, else in `apps/api/.env`, else the tests' own fixed value.
+ * Makes sure `role` can log in to `database` with `password`, the instance's own password for it
+ * (`instance.ts`). The server is dedicated to disposable environments, so setting it is safe;
+ * another run setting the same value at the same moment is not an error.
  */
-export function rolePassword(role: string, variable: string): string {
-  let fileEnv: Record<string, string | undefined> = {};
-  try {
-    fileEnv = parseEnv(readFileSync(API_ENV_FILE, "utf8"));
-  } catch {
-    // No apps/api/.env (CI, a fresh checkout or a worktree): fall through.
-  }
-  for (const value of [process.env[variable], fileEnv[variable]]) {
-    if (!value) {
-      continue;
-    }
-    try {
-      const url = new URL(value);
-      if (decodeURIComponent(url.username) === role && url.password) {
-        return decodeURIComponent(url.password);
-      }
-    } catch {
-      // Not a URL: ignore it.
-    }
-  }
-  const fallback = ROLE_FALLBACK_PASSWORDS[role];
-  if (!fallback) {
-    throw new Error(`No password known for role ${role}`);
-  }
-  return fallback;
-}
-
-/**
- * Makes sure `role` can log in to `database` with `password`. Roles are shared by every database
- * on the server, and a developer's own API uses them too, so an existing password is never
- * changed: only a role with no password at all (a fresh server, CI) gets one.
- */
-export async function ensureRoleLogin(superuserUrl: string, database: string, role: string, password: string, variable: string): Promise<void> {
+export async function ensureRoleLogin(superuserUrl: string, database: string, role: "envelope_app" | "envelope_queue", password: string): Promise<void> {
   const roleUrl = connectionTo(superuserUrl, database, { user: role, password });
   if (await canLogIn(roleUrl)) {
     return;
   }
   await withPool(superuserUrl, async (pool) => {
-    const { rows } = await pool.query<{ has_password: boolean }>(
-      "SELECT rolpassword IS NOT NULL AS has_password FROM pg_authid WHERE rolname = $1",
-      [role],
-    );
-    if (rows[0]?.has_password) {
-      throw new Error(
-        `${role} cannot log in with the password this tool found, and it already has another one. ` +
-          `Set ${variable} (as in apps/api/.env) so this tool uses the same password; it never changes an existing one.`,
-      );
-    }
     try {
       // ALTER ROLE's PASSWORD clause takes no bind parameter; the password is quoted as a literal.
       await pool.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${password.replaceAll("'", "''")}'`);
     } catch (error) {
-      // Another run may have set the same password at the same moment.
       if (!(await canLogIn(roleUrl))) {
         throw error;
       }

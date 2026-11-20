@@ -37,9 +37,10 @@ export function isRunning(pid: number): boolean {
 }
 
 /** Resolves with `http://127.0.0.1:<port>` once the process logs its listening line. */
-export async function waitForListening(pid: number, logFile: string): Promise<string> {
+export async function waitForListening(pid: number, logFile: string, signal: AbortSignal): Promise<string> {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
+    signal.throwIfAborted();
     const text = await readFile(logFile, "utf8").catch(() => "");
     for (const line of text.split("\n")) {
       if (line.startsWith('{"msg":"listening"')) {
@@ -96,7 +97,8 @@ export async function stopProcess(pid: number, marker: string): Promise<"stopped
   while (isRunning(pid) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  if (isRunning(pid)) {
+  // Checked again right before SIGKILL: the PID may have been reused while we waited.
+  if (isRunning(pid) && isRunProcess((await commandLine(pid)) ?? [], marker)) {
     signal("SIGKILL");
   }
   return "stopped";
@@ -105,8 +107,8 @@ export async function stopProcess(pid: number, marker: string): Promise<"stopped
 /** The entry points a run's own long-running processes are started from. */
 const ENTRY_POINTS = ["explore-env/static-server.ts", "apps/api/src/main.ts"];
 
-/** A process started from one of `ENTRY_POINTS` with `marker` among its arguments. */
-function isRunProcess(args: readonly string[], marker: string): boolean {
+/** A process started from one of `ENTRY_POINTS` with `marker` among its arguments (`processes.test.ts`). */
+export function isRunProcess(args: readonly string[], marker: string): boolean {
   return args.includes(marker) && args.some((arg) => ENTRY_POINTS.some((entryPoint) => arg.endsWith(entryPoint)));
 }
 
@@ -130,17 +132,40 @@ export async function findRunProcesses(marker: string): Promise<number[]> {
   return found;
 }
 
-/** Runs a command to completion with its output appended to `logFile`. */
-export async function runToLog(command: string, args: readonly string[], options: { cwd: string; env: Record<string, string>; logFile: string }): Promise<void> {
+/**
+ * Runs a command to completion with its output appended to `logFile`, in a process group of its
+ * own, so an abort (Ctrl-C or SIGTERM during `up`) stops it and every process it started.
+ */
+export async function runToLog(
+  command: string,
+  args: readonly string[],
+  options: { cwd: string; env: Record<string, string>; logFile: string; signal: AbortSignal },
+): Promise<void> {
+  options.signal.throwIfAborted();
   const fd = openSync(options.logFile, "a", 0o600);
   try {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env, stdio: ["ignore", fd, fd] });
-    const code = await new Promise<number | null>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", resolve);
-    });
-    if (code !== 0) {
-      throw new Error(`${command} ${args.join(" ")} failed (exit ${code}); see ${options.logFile}`);
+    const child = spawn(command, args, { cwd: options.cwd, env: options.env, detached: true, stdio: ["ignore", fd, fd] });
+    const stop = (): void => {
+      if (child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, "SIGTERM");
+        } catch {
+          // Already gone.
+        }
+      }
+    };
+    options.signal.addEventListener("abort", stop, { once: true });
+    try {
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", resolve);
+      });
+      options.signal.throwIfAborted();
+      if (code !== 0) {
+        throw new Error(`${command} ${args.join(" ")} failed (exit ${code}); see ${options.logFile}`);
+      }
+    } finally {
+      options.signal.removeEventListener("abort", stop);
     }
   } finally {
     closeSync(fd);

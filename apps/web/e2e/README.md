@@ -24,13 +24,12 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
 
 ## Against a disposable environment
 
-With `E2E_MANIFEST` set to a disposable environment's manifest (`scripts/README.md`, "Disposable environments", `#536`), the suite runs against that environment instead: its own built web app (already running, so no dev server is started), API, realm and database. Nothing in the developer's own `envelope` realm or database is touched, and neither `apps/api` nor `apps/web` needs to be running locally. The fixtures still need `DATABASE_URL` (the superuser; its database name is replaced by the environment's) and `KEYCLOAK_ADMIN_PASSWORD`: the manifest holds neither.
+With `E2E_MANIFEST` set to a disposable environment's manifest (`scripts/README.md`, "Disposable environments", `#536`), the suite runs against that environment instead: its own built web app (already running, so no dev server is started), API, realm and database. Nothing in the developer's own `envelope` realm or database is touched, and neither `apps/api` nor `apps/web` needs to be running locally. `DATABASE_URL` is not used: the fixtures connect to the disposable environments' own PostgreSQL server (never the shared one on port 5432, which they refuse), as its superuser, read from `~/.config/envelope-explore/postgres.env` (or `EXPLORE_DATABASE_URL` in CI) and the manifest's `postgres` host and port. They still need `KEYCLOAK_ADMIN_PASSWORD`; the manifest holds no credential but the personas'.
 
 ```bash
 $ pnpm --filter @envelope/scripts explore:up       # prints the manifest's path
 $ cd apps/web
 $ E2E_MANIFEST=/tmp/envelope-explore/<run>/manifest.json \
-  DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope \
   KEYCLOAK_ADMIN_PASSWORD=<password from infra/.env> \
   pnpm test:e2e
 $ pnpm --filter @envelope/scripts explore:down <run>
@@ -59,4 +58,4 @@ The tests create their own throwaway users and workspaces in that realm and data
 
 ## In CI
 
-The `e2e` job in `.github/workflows/ci.yml` runs this suite against a disposable environment, on the same PostgreSQL service container and Keycloak container the `integration` job uses: it installs Chromium, runs `explore:up`, points `E2E_MANIFEST` at the manifest, runs `pnpm test:e2e`, prints the environment's logs if anything failed, and runs `explore:down` whatever happened. It is **non-blocking for now** (`continue-on-error: true`): a failure shows on the run but does not fail the pull request, until the job has proved stable on CI's runners. Making it blocking is a one-line change.
+The `e2e` job in `.github/workflows/ci.yml` runs this suite against a disposable environment, with a PostgreSQL service of its own on port 55432 (`EXPLORE_DATABASE_URL`, throwaway literals) and a Keycloak container: it installs Chromium, runs `explore:up`, points `E2E_MANIFEST` at the manifest, runs `pnpm test:e2e`, prints the environment's logs and uploads Playwright's traces (`test-results/`) if anything failed, and runs `explore:down` whatever happened. It times out after 20 minutes. It is **non-blocking for now** (`continue-on-error: true`): a failure shows on the run but does not fail the pull request, until the job has proved stable on CI's runners. Making it blocking is a one-line change.

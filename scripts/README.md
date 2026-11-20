@@ -127,9 +127,9 @@ deliberate step once bars/timeline/phone layout actually exist (`#324`, `#326`, 
 
 `explore-env/` brings up a throwaway, isolated copy of the whole app for exploratory runs and for
 the end-to-end tests (`#536`): its own database, its own Keycloak realm with persona users, its
-own `apps/api` process and its own built `apps/web`, on free `127.0.0.1` ports, on the same
-PostgreSQL and Keycloak servers as everything else. Several can run at the same time, next to a
-developer's own `envelope` database, realm, API and dev server, without touching any of them.
+own `apps/api` process and its own built `apps/web`, on free `127.0.0.1` ports. Several can run
+at the same time, next to a developer's own `envelope` database, realm, API and dev server,
+without touching any of them.
 
 ```bash
 $ cd scripts
@@ -138,32 +138,66 @@ $ pnpm explore:down <run>                # or: pnpm explore:down <dir>/<run>/man
 $ pnpm explore:sweep                     # leftovers older than 24 h; --older-than-hours <n>
 ```
 
-Needs `DATABASE_URL` (the superuser connection) and `KEYCLOAK_ADMIN_PASSWORD` in `scripts/.env`
-or the environment, the same two the demo seed uses; `KEYCLOAK_URL` defaults to
-`http://127.0.0.1:8080`. Refuses to run with `NODE_ENV=production`, with a `DATABASE_URL` or
-`KEYCLOAK_URL` that is not local, or with a `KEYCLOAK_ISSUER` in the environment naming a realm
-that is not a disposable one.
+Needs `KEYCLOAK_ADMIN_PASSWORD` in `scripts/.env` or the environment; `KEYCLOAK_URL` defaults to
+`http://127.0.0.1:8080`, and Docker must be available. `DATABASE_URL` is **not** used. Refuses to
+run with `NODE_ENV=production`, with a `KEYCLOAK_URL` that is not local, or with a
+`KEYCLOAK_ISSUER` in the environment naming a realm that is not a disposable one. Relative paths
+(`--root`, a manifest given to `down`) are relative to the directory `pnpm` was run from.
+
+### Its own PostgreSQL server
+
+`envelope_app` and `envelope_queue` are roles of the whole PostgreSQL server, not of one
+database. On the shared development server, a run's API credentials would also open the shared
+`envelope` database, so disposable environments never use that server. They use a server of
+their own:
+
+- **Locally**, a container this tool manages: `envelope-explore-postgres` (`postgres:17`), bound
+  to `127.0.0.1` on port `55432` (`EXPLORE_POSTGRES_PORT` to choose another when it is first
+  created), its data in the `envelope-explore-postgres-data` volume. `up` starts it, creating it
+  first if needed, and leaves it running afterwards; `down` and `sweep` only use it if it exists.
+  It takes about 100 MB of memory.
+- **In CI**, `EXPLORE_DATABASE_URL` names a server the workflow provides (a second service on its
+  own port), and no container is managed.
+
+Its superuser (`explore_admin`) password and the `envelope_app`/`envelope_queue` passwords are
+generated the first time and kept in `~/.config/envelope-explore/` (under `$XDG_CONFIG_HOME` if
+set): `postgres.env` (also the container's `--env-file`) and `roles.env`, files of mode `0600` in
+a directory of mode `0700`, outside the repository, never in `infra/.env` or a manifest.
+
+Whatever names the server, it must be local, on an explicit port other than `5432`, and must not
+hold an `envelope` or `keycloak` database: the shared server is refused however it is reached.
+
+To remove the server and its secrets entirely (every environment on it goes too):
+
+```bash
+$ docker rm -f envelope-explore-postgres
+$ docker volume rm envelope-explore-postgres-data
+$ rm -r ~/.config/envelope-explore
+```
+
+Remove the volume and the directory together: a new password in a new directory does not open an
+old volume.
+
+### What `up` does
 
 `up` picks a run id (8 random hex digits) and, in order:
 
-1. creates the database `envelope_explore_<run>` (its creation time in the database's comment)
-   and migrates it with `apps/api`'s own runner;
-2. makes sure `envelope_app` and `envelope_queue` can log in to it, with the passwords
-   `APP_DATABASE_URL`/`QUEUE_DATABASE_URL` give them (environment, then `apps/api/.env`, then the
-   tests' fixed values). These roles are shared by every database on the server, so an existing
-   password is never changed: only a role with no password at all (a fresh server, CI) gets one;
-   a mismatch stops `up` and names the variable to set;
-3. starts a small static file server (`explore-env/static-server.ts`) for the web app, so its
+1. starts the server above, and creates the database `envelope_explore_<run>` on it (its
+   creation time in the database's comment), migrated with `apps/api`'s own runner; makes sure
+   `envelope_app` and `envelope_queue` log in with the server's own passwords;
+2. starts a small static file server (`explore-env/static-server.ts`) for the web app, so its
    origin is known before anything else needs it;
-4. creates the realm `envelope-explore-<run>` (its creation time in a realm attribute), runs
-   `keycloak/bootstrap.sh` on it with `KEYCLOAK_REALM` and `WEB_ORIGINS` set to that origin
-   (the same public, PKCE-only `envelope-api` client as the shared realm, allowing only this
-   origin), and adds a second public client, `envelope-explore-cli`, with the password grant and
-   the API's audience, so a persona can get a token without a browser. Access tokens live 15
-   minutes;
-5. starts `apps/api` with an environment built from scratch, never inherited: the run's issuer,
+3. creates the realm `envelope-explore-<run>` (its creation time in a realm attribute, brute-force
+   protection on), runs `keycloak/bootstrap.sh` on it with `ENVELOPE_BOOTSTRAP_REALM` and
+   `ENVELOPE_BOOTSTRAP_WEB_ORIGINS` set to that origin (the same public, PKCE-only `envelope-api`
+   client as the shared realm, allowing only this origin), and adds a second public client,
+   `envelope-explore-cli`, with the password grant and the API's audience, so a persona can get a
+   token without a browser. Access tokens live 15 minutes;
+4. starts `apps/api` with an environment built from scratch, never inherited: the run's issuer,
    `WEB_ORIGIN` set to the web server's origin, `envelope_app`/`envelope_queue` connections to the
    run's database, the `postgres` queue driver and a fresh VAPID key pair;
+5. writes a first manifest, without personas, so `down` can find the processes if what follows
+   fails;
 6. builds `apps/web` (`vite build`) with `VITE_API_URL`, `VITE_KEYCLOAK_ISSUER` and
    `VITE_KEYCLOAK_CLIENT_ID` matching, into the directory the web server serves;
 7. creates the personas: `household`, `investor` and `mixed`, each the owner of a workspace of
@@ -172,16 +206,21 @@ that is not a disposable one.
    workspace. Workspaces are created through `POST /workspaces` (and the tax country through
    `PATCH /workspaces/:workspaceId`) with each owner's own token. Adding the editor and reader is
    the one step done with direct SQL: no API adds a member to a workspace yet;
-8. writes `manifest.json` in the run directory (`<root>/<run>`, by default
+8. writes the final `manifest.json` in the run directory (`<root>/<run>`, by default
    `$TMPDIR/envelope-explore/<run>`).
 
 The workspaces start empty: no seed data is loaded (`seed-demo.ts` targets the shared realm).
-Before the 7th step, a first manifest without personas is written, so `down` can still find the
-processes if something fails after it; on any failure `up` removes what it created itself.
 
-Every API and web server process carries `envelope-explore-<run>` on its command line;
-`down` checks it before signalling a PID (a PID the system reused since is left alone), and also
-stops any process of the run the manifest does not list.
+If a step fails, `up` removes the processes, the database and the realm, and keeps the run
+directory with its logs (`sweep` removes it later). **Ctrl-C or SIGTERM** stops the step in
+progress (a migration or build is stopped with its whole process group), removes everything the
+run created, its run directory included, and exits with 130 or 143; a second signal exits at
+once.
+
+Every API and web server process carries `envelope-explore-<run>` as an argument; `down` checks
+that, and the entry point, before signalling a PID, and again right before a `SIGKILL` (a PID the
+system reused since is left alone). It also stops any process of the run the manifest does not
+list.
 
 ### The manifest
 
@@ -190,7 +229,7 @@ stops any process of the run the manifest does not list.
 | Field | Contents |
 | --- | --- |
 | `run`, `createdAt`, `runDir` | The run id, when it was brought up, and where its files are |
-| `database` | The database name (no connection string) |
+| `database`, `postgres` | The database name and the server's `host` and `port` (no credentials) |
 | `web.url`, `api.url` | Where the web app and the API listen; open the web app on exactly this URL |
 | `keycloak` | `url`, `realm`, `issuer`, `webClientId` (the web app's PKCE client), `apiClientId` (the password-grant client) and `tokenEndpoint` |
 | `workspaces[]` | `persona`, `id`, `name` and `taxCountry` of each workspace |
@@ -199,23 +238,33 @@ stops any process of the run the manifest does not list.
 | `logs` | The API's, the web server's and the build's log files, in the run directory |
 
 It never holds a superuser connection string, a database role's password or a Keycloak admin
-credential: those stay in the `up`/`down` process and, for the role passwords, in the API
-process's environment. Nothing secret is printed on stdout. A persona's token for calling the
-API directly:
+credential. Nothing secret is printed on stdout. A persona's token for calling the API directly
+(the password read from standard input, never a command-line argument):
 
 ```bash
-$ curl -s "$TOKEN_ENDPOINT" -d grant_type=password -d client_id=envelope-explore-cli \
-    -d username=investor --data-urlencode "password=$PASSWORD" | jq -r .access_token
+$ jq -j '.users[] | select(.username == "investor") | .password' manifest.json |
+    curl -s "$(jq -r .keycloak.tokenEndpoint manifest.json)" -d grant_type=password \
+      -d client_id=envelope-explore-cli -d username=investor --data-urlencode password@- |
+    jq -r .access_token
 ```
 
 ### Safety
 
-`explore-env/names.ts` (tested in `explore-env/names.test.ts`) is the only place names are made
-or checked: a database or realm name is built from a validated run id, or, when read from a
-manifest or the server's own list, must be exactly `envelope_explore_<run>` or
-`envelope-explore-<run>`. `envelope`, `keycloak`, `master`, `postgres`, `template0` and
-`template1` are refused by name as well. Before the API starts and before the web app is built,
-their environment is checked to name only this run's realm and database.
+- `explore-env/names.ts` (tested in `explore-env/names.test.ts`) is the only place names are made
+  or checked: a database or realm name is built from a validated run id, or, when read from a
+  manifest or the server's own list, must be exactly `envelope_explore_<run>` or
+  `envelope-explore-<run>`. `envelope`, `keycloak`, `master`, `postgres`, `template0` and
+  `template1` are refused by name as well. Before the API starts and before the web app is built,
+  their environment is checked to name only this run's realm and database.
+- A manifest is trusted only if its `run` is a run id, its database and realm are that run's own,
+  and it sits in a directory named after the run; the run directory `down` removes is the
+  manifest's own directory (or `<root>/<run>`), never a path read from the manifest.
+- The root and the configuration directory must be directories (not symbolic links) owned by the
+  current user, with no group or other permission bits; the same goes for the 0600 files.
+- `keycloak/bootstrap.sh` accepts only `http(s)://host[:port]` origins, refuses custom origins for
+  the shared `envelope` realm, and never puts the admin password or token on a command line.
+- `explore-env/guards.test.ts` covers the process check, the manifest checks, the web server's
+  path traversal guard, the server URL check, the private directories and the bootstrap origins.
 
 ### Down and sweep
 
@@ -223,17 +272,22 @@ their environment is checked to name only this run's realm and database.
 drops the database `WITH (FORCE)`, deletes the realm and removes the run directory; anything
 already gone is reported as such, so running it twice is safe.
 
-`sweep` takes down every run under the root whose manifest is older than the threshold, then
-every `envelope_explore_*` database and `envelope-explore-*` realm whose recorded creation time is
-older (with its processes, found by their command line), whether or not a manifest is left. A
-database or realm with no creation time recorded is reported and left alone.
+`sweep` takes down every run under the root whose manifest (or, for a run directory with no
+manifest, whose modification time) is older than the threshold, then every
+`envelope_explore_*` database and `envelope-explore-*` realm on the instance and in Keycloak whose
+creation time is older, with its processes, whether or not a run directory is left. A database
+with no recorded creation time ages by the last change of its own data directory; a realm with
+none is reported and left alone. **`--older-than-hours 0` removes every disposable environment on
+the instance and in Keycloak, including ones another person or another `up` is using right now.**
 
 ### Memory
 
 On the 6 vCPU, 16 GiB development host, one environment's own processes took about 135 MB
-(API) and 75 MB (web server) of resident memory. The shared containers grew too: with three
-environments up at once, Keycloak used about 715 MiB of the 1 GiB its container may use there (620 MiB with one) and
-PostgreSQL about 195 MiB. Keycloak's memory is the limit to watch when running several.
+(API) and 75 MB (web server) of resident memory, and the `envelope-explore-postgres` container
+about 100 MiB with two environments up. The shared Keycloak container grows with every realm
+created and does not give the memory back: it went from about 620 MiB to 900 MiB of the 1 GiB its
+container may use there over a day of creating and deleting a dozen realms. It is the limit to
+watch when running several; restarting Keycloak gives the memory back.
 
 ## Contents
 
@@ -249,8 +303,12 @@ PostgreSQL about 195 MiB. Keycloak's memory is the limit to watch when running s
 | `explore-env/cli.ts` | `up`, `down` and `sweep` for disposable environments (above) |
 | `explore-env/names.ts` | Run ids, database and realm names, and the checks that refuse anything else (`explore-env/names.test.ts`) |
 | `explore-env/manifest.ts` | The manifest's shape, the run directory, and reading a manifest back with its names checked |
-| `explore-env/postgres.ts` | Creating, migrating, listing and dropping a run's database; the `envelope_app`/`envelope_queue` logins; the editor and reader memberships |
+| `explore-env/instance.ts` | The disposable environments' own PostgreSQL server: the managed container, its secrets in `~/.config/envelope-explore/`, `EXPLORE_DATABASE_URL`, and the refusal of the shared server |
+| `explore-env/postgres.ts` | Creating, migrating, listing and dropping a run's database on that server; the `envelope_app`/`envelope_queue` logins; the editor and reader memberships |
+| `explore-env/private-dir.ts` | Checks that a directory or file holding secrets is ours, not a symbolic link, and closed to other users |
 | `explore-env/keycloak.ts` | Creating a run's realm (through `keycloak/bootstrap.sh`), its password-grant client and users; listing and deleting realms; a persona's token |
 | `explore-env/processes.ts` | Starting the API and web server detached with their logs, reading their `listening` line, finding and stopping a run's processes |
 | `explore-env/static-server.ts` | Serves the built web app on 127.0.0.1, `index.html` for the app's own routes |
+| `explore-env/static-paths.ts` | The web server's path traversal guard |
+| `explore-env/guards.test.ts` | Tests of the guards above that need no server |
 | `explore-env/vapid.ts` | A fresh VAPID key pair for each run's API |

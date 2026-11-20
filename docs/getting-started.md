@@ -302,9 +302,11 @@ without building it up by hand through the web app.
 For exploratory testing, or to run the end-to-end tests without touching your own `envelope`
 database and realm, bring up a throwaway environment next to them: its own database, Keycloak
 realm, API and built web app, on free `127.0.0.1` ports, with persona users already in place.
-Needs PostgreSQL and Keycloak running (section 8) and `scripts/.env` with `DATABASE_URL` and
-`KEYCLOAK_ADMIN_PASSWORD` (`scripts/README.md`); `apps/api` and `apps/web` do not need to be
-running.
+Its database lives on a PostgreSQL server of its own, never the shared one from section 8: the
+first `up` creates a container for it, `envelope-explore-postgres` on `127.0.0.1:55432`, with
+passwords it generates and keeps in `~/.config/envelope-explore/`. Needs Docker and Keycloak
+running (section 8) and `KEYCLOAK_ADMIN_PASSWORD` in `scripts/.env` (`scripts/README.md`);
+`apps/api` and `apps/web` do not need to be running.
 
 ```bash
 $ pnpm --filter @envelope/scripts explore:up
@@ -319,10 +321,19 @@ The manifest holds the web and API URLs and the personas' usernames and password
 URL exactly as printed (`127.0.0.1`, not `localhost`); from the laptop, forward the web, API
 and Keycloak ports as in section 10 (`-L <port>:127.0.0.1:<port>` for each port the manifest
 names) and browse to the same URL. `down` stops the processes, drops the
-database and deletes the realm, and is safe to run twice. `explore:sweep` removes environments
-left over for more than 24 hours. Several can run at the same time; each costs roughly 200 MB
-of memory for its own processes, plus some in the shared Keycloak. Details in
-`scripts/README.md`, "Disposable environments".
+database and deletes the realm, and is safe to run twice. Ctrl-C during `up` removes what it had created. `explore:sweep`
+removes environments left over for more than 24 hours. Several can run at the same time; each
+costs roughly 200 MB of memory for its own processes, plus about 100 MB for the container and
+some in the shared Keycloak. The container keeps running between environments; to remove it and
+its passwords for good:
+
+```bash
+$ docker rm -f envelope-explore-postgres
+$ docker volume rm envelope-explore-postgres-data
+$ rm -r ~/.config/envelope-explore
+```
+
+Details in `scripts/README.md`, "Disposable environments".
 
 ## Common problems
 

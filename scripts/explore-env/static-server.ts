@@ -13,6 +13,8 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 
+import { resolveRequestPath } from "./static-paths.ts";
+
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -34,14 +36,8 @@ const root = path.resolve(process.argv[2] ?? ".");
 const port = Number(process.argv[3] ?? "0");
 
 async function fileFor(urlPath: string): Promise<string | undefined> {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(urlPath);
-  } catch {
-    return undefined;
-  }
-  const candidate = path.resolve(root, `.${path.posix.normalize(`/${decoded}`)}`);
-  if (candidate !== root && !candidate.startsWith(`${root}${path.sep}`)) {
+  const candidate = resolveRequestPath(root, urlPath);
+  if (candidate === undefined) {
     return undefined;
   }
   try {

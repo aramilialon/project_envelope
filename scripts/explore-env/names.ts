@@ -49,13 +49,13 @@ export function runOf(name: string): string | undefined {
 }
 
 export function assertExploreDatabase(name: string): void {
-  if (NEVER_TOUCHED.has(name) || !name.startsWith(DATABASE_PREFIX) || runOf(name) === undefined) {
+  if (typeof name !== "string" || NEVER_TOUCHED.has(name) || !name.startsWith(DATABASE_PREFIX) || runOf(name) === undefined) {
     throw new Error(`Refusing to touch database "${name}": only ${DATABASE_PREFIX}<run> databases are disposable`);
   }
 }
 
 export function assertExploreRealm(name: string): void {
-  if (NEVER_TOUCHED.has(name) || !name.startsWith(REALM_PREFIX) || runOf(name) === undefined) {
+  if (typeof name !== "string" || NEVER_TOUCHED.has(name) || !name.startsWith(REALM_PREFIX) || runOf(name) === undefined) {
     throw new Error(`Refusing to touch realm "${name}": only ${REALM_PREFIX}<run> realms are disposable`);
   }
 }

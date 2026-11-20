@@ -3,13 +3,14 @@
  * environment, and everything `down` needs to remove it. It holds the personas' own passwords
  * (throwaway, valid only in this run's realm) but never a superuser connection string, a
  * database role's password or a Keycloak admin credential. Written with mode 0600 in a run
- * directory of mode 0700.
+ * directory of mode 0700, under a root that must be a private directory of the current user.
  */
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { assertExploreDatabase, assertExploreRealm, assertRunId, databaseName, realmName } from "./names.ts";
+import { assertPrivate, ensurePrivateDir } from "./private-dir.ts";
 
 export const MANIFEST_FILE = "manifest.json";
 
@@ -37,6 +38,8 @@ export interface Manifest {
   readonly createdAt: string;
   readonly runDir: string;
   readonly database: string;
+  /** The disposable environments' own PostgreSQL server (no credentials). */
+  readonly postgres: { readonly host: string; readonly port: number };
   readonly web: { readonly url: string };
   readonly api: { readonly url: string };
   readonly keycloak: {
@@ -62,7 +65,7 @@ export function defaultRoot(): string {
 
 export async function createRunDir(root: string, run: string): Promise<string> {
   assertRunId(run);
-  await mkdir(root, { recursive: true, mode: 0o700 });
+  await ensurePrivateDir(root);
   const runDir = path.join(root, run);
   await mkdir(runDir, { mode: 0o700 });
   return runDir;
@@ -75,13 +78,24 @@ export async function writeManifest(manifest: Manifest): Promise<string> {
   return file;
 }
 
+/**
+ * Reads a manifest back, refusing one whose run id is not a string of the right shape, or whose
+ * database and realm are not that run's own (`manifest.test.ts`).
+ */
 export async function readManifest(file: string): Promise<Manifest> {
+  await assertPrivate(path.dirname(file), "directory");
   const manifest = JSON.parse(await readFile(file, "utf8")) as Manifest;
+  if (typeof manifest.run !== "string") {
+    throw new Error(`${file}: "run" is not a string`);
+  }
   assertRunId(manifest.run);
   assertExploreDatabase(manifest.database);
-  assertExploreRealm(manifest.keycloak.realm);
+  assertExploreRealm(manifest.keycloak?.realm);
   if (manifest.database !== databaseName(manifest.run) || manifest.keycloak.realm !== realmName(manifest.run)) {
     throw new Error(`${file}: its database and realm do not belong to run ${manifest.run}`);
+  }
+  if (path.basename(path.dirname(file)) !== manifest.run) {
+    throw new Error(`${file}: it is not in a directory named after its run (${manifest.run})`);
   }
   return manifest;
 }
