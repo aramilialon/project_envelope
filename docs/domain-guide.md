@@ -156,7 +156,7 @@ missed case would be worst to find in production.
 ## Portfolios and rebalancing
 
 Being built (phase 0.2.x of the [roadmap](design.md#roadmap)). Quantities, prices and positions
-are already computed in `packages/core`, though nothing records trades yet; the rest are the rules
+are already computed in `packages/core`, and the API records trades (#77); the rest are the rules
 the engine will follow once it exists, not a description of something already running.
 
 ### Positions and returns
@@ -307,6 +307,33 @@ Worked examples, each one a test in `packages/core`:
   (`split_missing_for_portfolio`); so is a trade that would make another portfolio hold the
   instrument on that date without its own split row. An account that no longer holds the
   instrument on that date needs no row.
+
+#### The cash a trade moves
+
+Every trade that moves money writes it on the brokerage account as one transaction, its cash leg
+([ADR 0012](adr/0012-trade-cash-legs.md)), so the account's cash balance is the money transferred
+in from the budget, minus what was transferred out, plus every cash leg. The leg is positive when
+cash comes in:
+
+| Trade | Cash |
+| --- | --- |
+| Buy | −(gross + fees + transaction tax + accrued interest − domestic withholding) |
+| Sell | gross + accrued interest − fees − transaction tax − gain tax − domestic withholding |
+| Dividend or coupon | gross − fees − foreign withholding − domestic withholding |
+| Fee | −fees |
+| Tax | −amount; a gain tax adjustment +amount (a refund is positive, extra tax negative) |
+| Transfer of securities | −fees (nothing without fees) |
+| Split | nothing |
+
+With the worked examples above: the 100 shares at €50 with a €5 fee and €5 of transaction tax take
+€5,010.00 out of the account; selling 60 at €70 with a €5 fee and €247.26 of gain tax puts
+4,200 − 5 − 247.26 = €3,947.74 in; the €20.00 dividend puts 20 − 3 − 4.42 − 2 = €10.58 in; the
+€100 gain tax refund puts €100 in. A €6,000 transfer from the checking account into the brokerage
+account, then that buy and that sale, leave 6,000 − 5,010 + 3,947.74 = €4,937.74 in the account.
+
+The leg's amount, account and date come from the trade; only its memo, payee and cleared status
+are edited on the transaction. The budget never sees any of it: a brokerage account is off budget,
+and the money left the budget once, when it was transferred to the broker.
 
 Not handled yet: return of capital, amortizing bonds, bonds issued at a discount, spin-offs,
 mergers and rights issues, dividends paid in shares, and the fiscal view in euros for instruments
