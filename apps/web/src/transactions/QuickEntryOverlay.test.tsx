@@ -65,7 +65,7 @@ function budgetMonth(overrides: Partial<BudgetMonthResponse> = {}): BudgetMonthR
 function renderOverlay(options: { accounts?: Account[]; groups?: CategoryGroup[]; month?: BudgetMonthResponse } = {}) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "editor", baseCurrency: "EUR", timeZone: "UTC" },
+    { id: "ws-1", name: "Famiglia", role: "editor", baseCurrency: "EUR", timeZone: "UTC", taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(options.accounts ?? [CHECKING]);
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(options.groups ?? [HOME]);

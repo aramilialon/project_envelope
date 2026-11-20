@@ -16,6 +16,8 @@ export interface CreatedWorkspace {
   readonly role: "owner";
   readonly baseCurrency: string;
   readonly timeZone: string;
+  /** Always null on creation; set later by the owner (#508). */
+  readonly taxCountry: null;
 }
 
 /** `Intl` itself is the validator: it throws on a currency/time zone it does not recognize, with no need for a hand-maintained list of every valid one. */
@@ -63,7 +65,52 @@ export async function createWorkspace(pool: DbPool, userId: string, input: Creat
     },
     { "app.workspace_id": id },
   );
-  return { id, name: input.name, role: "owner", baseCurrency: input.baseCurrency, timeZone: input.timeZone };
+  return { id, name: input.name, role: "owner", baseCurrency: input.baseCurrency, timeZone: input.timeZone, taxCountry: null };
+}
+
+const REGION_NAMES = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+
+/** An ISO 3166-1 alpha-2 code `Intl` knows as a region, the same way the currency and time zone are checked. */
+function assertValidTaxCountry(taxCountry: string): void {
+  if (!/^[A-Z]{2}$/.test(taxCountry) || REGION_NAMES.of(taxCountry) === undefined) {
+    throw new ValidationError("invalid_tax_country", `"${taxCountry}" is not an ISO 3166-1 alpha-2 country code`, {
+      taxCountry,
+    });
+  }
+}
+
+export interface WorkspaceSettings {
+  readonly id: string;
+  readonly name: string;
+  readonly baseCurrency: string;
+  readonly timeZone: string;
+  readonly taxCountry: string | null;
+}
+
+/**
+ * Sets the workspace's tax country (#508), or clears it with null. The route restricts this to
+ * the owner (`requireOwnerRole`). Brokerage accounts created before the change keep whatever
+ * regime they have, possibly none: setting `IT` does not ask for one retroactively.
+ *
+ * @throws ValidationError "invalid_tax_country" for a code that is not a known ISO 3166-1 alpha-2 region.
+ */
+export async function setWorkspaceTaxCountry(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  taxCountry: string | null,
+): Promise<WorkspaceSettings | undefined> {
+  if (taxCountry !== null) {
+    assertValidTaxCountry(taxCountry);
+  }
+  const { rows } = await db.query<{ id: string; name: string; base_currency: string; time_zone: string; tax_country: string | null }>(
+    `UPDATE workspaces SET tax_country = $2 WHERE id = $1
+     RETURNING id, name, base_currency, time_zone, tax_country`,
+    [workspaceId, taxCountry],
+  );
+  const row = rows[0];
+  return row
+    ? { id: row.id, name: row.name, baseCurrency: row.base_currency, timeZone: row.time_zone, taxCountry: row.tax_country }
+    : undefined;
 }
 
 /**

@@ -1,17 +1,35 @@
-import { isValidationError, MAX_NAME_LENGTH, parseAmount } from "@envelope/core";
+import { isValidationError, MAX_NAME_LENGTH, parseAmount, TAX_REGIMES, type TaxRegime } from "@envelope/core";
 import { useState, type FormEvent } from "react";
-import { useIntl } from "react-intl";
+import { defineMessages, useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import SideSheet from "../layout/SideSheet.tsx";
-import { ACCOUNT_TYPE_HINTS, ACCOUNT_TYPE_LABELS } from "./accountType.ts";
-import { createAccount, type AccountType } from "./api.ts";
+import { ACCOUNT_TYPE_HINTS, ACCOUNT_TYPE_LABELS, TAX_REGIME_HINTS, TAX_REGIME_LABELS } from "./accountType.ts";
+import { AccountTaxError, createAccount, type AccountTaxErrorCode, type AccountType } from "./api.ts";
 
 const TYPES: readonly AccountType[] = ["checking", "savings", "cash", "credit_card", "brokerage"];
+
+/** What the form says for each tax-settings code the API can return (#508). */
+const TAX_ERROR_MESSAGES = defineMessages<AccountTaxErrorCode>({
+  tax_regime_required: {
+    id: "accounts.form.error.taxRegimeRequired",
+    defaultMessage: "Choose this account's tax regime.",
+  },
+  tax_regime_not_applicable: {
+    id: "accounts.form.error.taxRegimeNotApplicable",
+    defaultMessage: "A tax regime applies only to a brokerage account in a workspace whose tax country is Italy.",
+  },
+  tax_regime_requires_withholding_agent: {
+    id: "accounts.form.error.taxRegimeRequiresWithholdingAgent",
+    defaultMessage: "An administered or managed account needs a broker that is an Italian withholding agent.",
+  },
+});
 
 interface Props {
   readonly workspaceId: string;
   readonly baseCurrency: string;
+  /** The workspace's tax country (#508): in "IT", a brokerage account asks for its tax regime and withholding agent. */
+  readonly taxCountry: string | null;
   onClose(): void;
   onCreated(): void;
 }
@@ -22,14 +40,21 @@ interface Props {
  * step and the workspace-settings account list, each a different shape — so it is composed
  * from those same already-established pieces (`.types`/`.opt` radiogroup, `.field`, money
  * input) rather than inventing a new pattern.
+ *
+ * In a workspace whose tax country is Italy ("IT") only, a brokerage account also asks for its
+ * tax regime (#508): a second `.types`/`.opt` radiogroup with no preselection, a one-line hint per
+ * regime and one for the group, and — for a self-declared regime only — a `.chk` checkbox for
+ * whether the broker is an Italian withholding agent. Neither appears anywhere else.
  */
-export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onCreated }: Props) {
+export default function AddAccountForm({ workspaceId, baseCurrency, taxCountry, onClose, onCreated }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("checking");
   const [onBudget, setOnBudget] = useState(true);
   const [owedStr, setOwedStr] = useState("");
+  const [taxRegime, setTaxRegime] = useState<TaxRegime | "">("");
+  const [withholdingAgent, setWithholdingAgent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -43,11 +68,18 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
   // `createAccount` ignores `startingBalanceCents` for every other account type.
   const showOwed = type === "credit_card" && effectiveOnBudget;
 
+  // The tax regime and withholding agent of a brokerage account (#508) are Italian rules today:
+  // asked, and required, only in a workspace whose tax country is "IT". An administered or
+  // managed account's broker is always an Italian withholding agent, so the question is asked
+  // only for a self-declared one, and `true` is sent for the other two.
+  const showTax = type === "brokerage" && taxCountry === "IT";
+  const showWithholdingAgent = showTax && taxRegime === "self_declared";
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const accessToken = auth.user?.access_token;
     const trimmedName = name.trim();
-    if (!accessToken || !trimmedName) {
+    if (!accessToken || !trimmedName || (showTax && taxRegime === "")) {
       return;
     }
 
@@ -74,10 +106,17 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
         currency: baseCurrency,
         onBudget: effectiveOnBudget,
         ...(startingBalanceCents === undefined ? {} : { startingBalanceCents }),
+        ...(showTax && taxRegime !== ""
+          ? { taxRegime, domesticWithholdingAgent: taxRegime === "self_declared" ? withholdingAgent : true }
+          : {}),
       });
       onCreated();
-    } catch {
-      setError(intl.formatMessage({ id: "accounts.form.error", defaultMessage: "We could not create this account." }));
+    } catch (createError) {
+      setError(
+        createError instanceof AccountTaxError
+          ? intl.formatMessage(TAX_ERROR_MESSAGES[createError.code])
+          : intl.formatMessage({ id: "accounts.form.error", defaultMessage: "We could not create this account." }),
+      );
       setSubmitting(false);
     }
   }
@@ -143,6 +182,62 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
           </div>
         )}
 
+        {showTax && (
+          <fieldset className="types" aria-describedby="acc-tax-regime-hint">
+            <legend>{intl.formatMessage({ id: "accounts.form.taxRegime", defaultMessage: "Tax regime" })}</legend>
+            <p className="hint" id="acc-tax-regime-hint">
+              {intl.formatMessage({
+                id: "accounts.form.taxRegime.hint",
+                defaultMessage: "How gains on this account are taxed. Your broker's contract or tax statements say which one.",
+              })}
+            </p>
+            {TAX_REGIMES.map((regime) => (
+              <label className="opt" key={regime}>
+                <input
+                  type="radio"
+                  name="acc-tax-regime"
+                  value={regime}
+                  checked={taxRegime === regime}
+                  onChange={() => {
+                    setTaxRegime(regime);
+                    setError(null);
+                  }}
+                  aria-describedby={`acc-tax-regime-hint-${regime}`}
+                />
+                <span>
+                  <b>{intl.formatMessage(TAX_REGIME_LABELS[regime])}</b>
+                  <small id={`acc-tax-regime-hint-${regime}`} aria-hidden="true">
+                    {intl.formatMessage(TAX_REGIME_HINTS[regime])}
+                  </small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        {showWithholdingAgent && (
+          <label className="chk">
+            <input
+              type="checkbox"
+              checked={withholdingAgent}
+              onChange={(event) => setWithholdingAgent(event.target.checked)}
+              aria-describedby="acc-withholding-agent-hint"
+            />
+            <span>
+              {intl.formatMessage({
+                id: "accounts.form.withholdingAgent",
+                defaultMessage: "The broker is an Italian withholding agent",
+              })}
+              <small id="acc-withholding-agent-hint" aria-hidden="true">
+                {intl.formatMessage({
+                  id: "accounts.form.withholdingAgent.hint",
+                  defaultMessage: "It withholds Italian tax at source on dividends, coupons and fund income.",
+                })}
+              </small>
+            </span>
+          </label>
+        )}
+
         {error && (
           <p className="hint bad" role="alert">
             {error}
@@ -153,7 +248,7 @@ export default function AddAccountForm({ workspaceId, baseCurrency, onClose, onC
           <button type="button" className="btn" onClick={onClose}>
             {intl.formatMessage({ id: "common.action.cancel", defaultMessage: "Cancel" })}
           </button>
-          <button type="submit" className="btn primary" disabled={submitting || !name.trim()}>
+          <button type="submit" className="btn primary" disabled={submitting || !name.trim() || (showTax && taxRegime === "")}>
             {intl.formatMessage({ id: "accounts.form.submit", defaultMessage: "Add account" })}
           </button>
         </div>

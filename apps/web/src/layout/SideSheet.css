@@ -46,7 +46,7 @@
 
 .side-sheet .field input,
 .side-sheet .field select {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid var(--rule);
   border-radius: 10px;
@@ -87,15 +87,28 @@
   font-size: 13px;
 }
 
+/* 44px: the accessibility baseline's minimum touch target, for the whole clickable label. */
 .side-sheet .chk {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   cursor: pointer;
 }
 
 .side-sheet .chk input {
   accent-color: var(--pen);
+}
+
+.side-sheet .chk small,
+.side-sheet .types .hint {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.side-sheet .types .hint {
+  margin: 0 0 6px;
 }
 
 .side-sheet .hint.bad {

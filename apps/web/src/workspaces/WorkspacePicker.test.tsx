@@ -10,8 +10,8 @@ const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const WORKSPACES = [
-  { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" },
-  { id: "ws-2", name: "Personale", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome" },
+  { id: "ws-1", name: "Famiglia", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+  { id: "ws-2", name: "Personale", role: "owner" as const, baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
 ];
 
 function renderPicker(subject?: string) {

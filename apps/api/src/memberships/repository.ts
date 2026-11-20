@@ -28,6 +28,8 @@ export interface UserWorkspace {
   readonly baseCurrency: string;
   /** IANA time zone name (e.g. "Europe/Rome"): "today" and "this month" are the workspace's own, not the browser's (#326). */
   readonly timeZone: string;
+  /** ISO 3166-1 alpha-2, or null (#508): in an `IT` workspace a brokerage account needs a tax regime. */
+  readonly taxCountry: string | null;
 }
 
 /**
@@ -45,8 +47,15 @@ export interface UserWorkspace {
  */
 export async function listWorkspacesForUser(pool: DbPool, userId: string): Promise<UserWorkspace[]> {
   const rows = await withUserScopedTransaction(pool, userId, async (client) => {
-    const { rows } = await client.query<{ id: string; name: string; role: WorkspaceRole; base_currency: string; time_zone: string }>(
-      `SELECT w.id, w.name, m.role, w.base_currency, w.time_zone
+    const { rows } = await client.query<{
+      id: string;
+      name: string;
+      role: WorkspaceRole;
+      base_currency: string;
+      time_zone: string;
+      tax_country: string | null;
+    }>(
+      `SELECT w.id, w.name, m.role, w.base_currency, w.time_zone, w.tax_country
        FROM memberships m
        JOIN workspaces w ON w.id = m.workspace_id
        WHERE m.user_id = $1
@@ -55,5 +64,12 @@ export async function listWorkspacesForUser(pool: DbPool, userId: string): Promi
     );
     return rows;
   });
-  return rows.map((row) => ({ id: row.id, name: row.name, role: row.role, baseCurrency: row.base_currency, timeZone: row.time_zone }));
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    role: row.role,
+    baseCurrency: row.base_currency,
+    timeZone: row.time_zone,
+    taxCountry: row.tax_country,
+  }));
 }

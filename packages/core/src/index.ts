@@ -125,3 +125,21 @@ export {
   normalizeInstrument,
   parseInstrumentSearch,
 } from "./portfolio/instrument.ts";
+export type {
+  AccountTaxSettings,
+  TaxRegime,
+  TaxRegimeChange,
+  TaxRegimeEntry,
+  WithholdingAgentChange,
+} from "./portfolio/tax-regime.ts";
+export {
+  assertWithholdingAgentFor,
+  isTaxRegime,
+  regimeAt,
+  TAX_REGIME_COUNTRY,
+  TAX_REGIMES,
+  validateAccountTaxSettings,
+  validateTaxRegimeChange,
+  validateTaxRegimeHistory,
+  validateWithholdingAgentChange,
+} from "./portfolio/tax-regime.ts";

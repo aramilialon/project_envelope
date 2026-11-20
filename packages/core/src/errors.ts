@@ -54,7 +54,14 @@ export type ValidationErrorCode =
   | "invalid_ticker"
   | "invalid_exchange"
   | "search_query_too_short"
-  | "text_too_long";
+  | "text_too_long"
+  | "invalid_tax_country"
+  | "tax_regime_required"
+  | "tax_regime_not_applicable"
+  | "tax_regime_change_not_year_start"
+  | "tax_regime_duplicate_date"
+  | "tax_regime_requires_withholding_agent"
+  | "withholding_agent_already_set";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

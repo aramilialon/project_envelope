@@ -177,6 +177,7 @@ export default function AccountsScreen() {
         <AddAccountForm
           workspaceId={workspaceId!}
           baseCurrency={currentWorkspace.baseCurrency}
+          taxCountry={currentWorkspace.taxCountry}
           onClose={() => setAddingAccount(false)}
           onCreated={() => {
             setAddingAccount(false);

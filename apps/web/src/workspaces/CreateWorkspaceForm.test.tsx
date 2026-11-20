@@ -22,6 +22,7 @@ describe("CreateWorkspaceForm (#394)", () => {
       role: "owner",
       baseCurrency: "USD",
       timeZone: "America/New_York",
+      taxCountry: null,
     });
     const { onCreated } = renderForm();
 

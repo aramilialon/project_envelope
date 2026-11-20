@@ -127,6 +127,18 @@ The user records every instrument they own and every transaction. The app derive
 
 The portfolio connects to the budget through off-budget accounts. A payment from the checking account to the broker is a transfer, so invested money leaves the budget without showing up as spending.
 
+### Tax regime of brokerage accounts
+
+A workspace has an optional **tax country** (ISO 3166-1 alpha-2), set by its owner. It decides which tax data a brokerage account must carry; only `IT` asks for any today, other countries are added with their own rules. Nothing here computes a tax yet: these records let trades be checked against the regime now, and let the local tax rules (milestone 0.11.0) estimate taxes later. The three regimes are described in the [domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account).
+
+- **One account, one dossier.** An app account is one dossier at the broker. One broker can hold several dossiers under different regimes; each is its own account here.
+- **Regime history, not a single value.** Each brokerage account keeps a list of periods, each a regime and the first day it applies: `self_declared`, `administered` or `managed`. A trade uses the regime in force on its own date (`regimeAt` in `@envelope/core`), so a change from a later 1 January does not alter trades dated before it; recording or correcting the history re-reads the trades it covers. The first period may start on any date, and also applies to every date before it: before the first recorded change, the initial regime is the only one known, so older trades imported later need no backdated regime. Its date (by default the day it is recorded) only marks when it was recorded. Every later period starts on 1 January (`tax_regime_change_not_year_start`), and no two periods start on the same day (`tax_regime_duplicate_date`). A switch in the middle of a year is, in practice, two accounts and a transfer of securities between them.
+- **Correcting the history.** An owner or editor can add a period (`POST .../tax-regimes`) or replace the whole history at once (`PUT .../tax-regimes`), for example to record that an account was self-declared before it became administered. The replacement happens in one transaction, under the account's lock, and is checked by the same rules.
+- **Withholding agent, fixed per account.** A brokerage account also records whether the broker is an Italian withholding agent. The flag has no history: a change of the broker's status means a new account and a transfer of securities. It is used only to validate the regime and, later, for estimates; the tax actually withheld on each dividend, coupon or sale is recorded on that trade, and that is the fact. An administered or managed regime, anywhere in the history, needs the flag set to true (`tax_regime_requires_withholding_agent`): there the broker settles the tax itself. In the self-declared regime the flag decides which withholdings can appear on the account's income: an Italian withholding agent still withholds on income from funds and ETFs (including the gain when units are sold or redeemed), dividends and coupons; a foreign broker applies no Italian withholding of its own.
+- **When they are required.** Creating a brokerage account in an `IT` workspace needs both the regime and the withholding-agent flag (`tax_regime_required`); any other account type, or a workspace whose tax country is not `IT`, refuses either (`tax_regime_not_applicable`). A brokerage account created before its workspace's tax country became `IT` keeps working with no regime until one is added; its flag can be set once (`PATCH .../accounts/:accountId`) while it has none. On such an account in an `IT` workspace, a trade is refused only while its regime history is empty (trades, issue #77). Once a regime is added, it covers every earlier trade too.
+- **Managed accounts.** In the managed regime the tax applies to the result the mandate accrued over the year, realized or not, and the manager, an Italian intermediary, applies it. A managed (discretionary mandate) account is normally modelled as one private "mandate" instrument per account with a manually entered value, which needs private instruments (milestone 0.2.1). Until then, a managed account records individual trades only.
+- **Deferred to the local tax rules (milestone 0.11.0):** tax estimates, loss carry-forward and its expiry, conversion to euro, per-taxpayer averages, account owners.
+
 ### ETF look-through (phase 2)
 
 The app breaks every ETF down into its holdings and shows the portfolio's real exposure: by country, region, sector, currency and single company. For example "62% of your stocks are in the United States" or "one company weighs 3.1% across all your ETFs".
@@ -263,9 +275,10 @@ The data lives in PostgreSQL on the server, which is the source of truth. Device
 | Entity | Main fields | Notes |
 | --- | --- | --- |
 | User | email, password hash, passkeys, 2FA, language, locale, time zone | A user can belong to several workspaces |
-| Workspace | name, base currency, reference time zone, plan | Security boundary: every query is filtered by workspace |
+| Workspace | name, base currency, reference time zone, tax country (optional), plan | Security boundary: every query is filtered by workspace |
 | Membership | user, workspace, role | Owner, editor, read-only |
-| Account | type, currency, on or off budget, closed | Bank accounts, cards, brokers; each real account lives in exactly one workspace |
+| Account | type, currency, on or off budget, withholding agent (brokerage only), closed | Bank accounts, cards, brokers; each real account lives in exactly one workspace |
+| AccountTaxRegime | account, valid from, regime | A brokerage account's regime history (see "Tax regime of brokerage accounts"): self-declared, administered or managed; later periods start on 1 January |
 | Transaction | account, date, amount, payee, status (pending, cleared, reconciled) | Edited in place, or deleted outright (both legs together for a transfer); reconciled transactions neither, until unlocked |
 | Split | transaction, category, amount | One transaction across several categories |
 | Category / Group | name, order, archived | |

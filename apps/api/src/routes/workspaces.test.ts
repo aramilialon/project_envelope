@@ -157,6 +157,70 @@ describe("workspaces routes (#394)", () => {
     assert.equal(remaining.length, 0);
   });
 
+  it("sets and clears the tax country, and only its own owner may (#508)", async () => {
+    // The test realm's access tokens live 3 seconds: take fresh ones as the test goes.
+    let ownerToken = await realm.getUserToken();
+    const auth = () => ({ authorization: `Bearer ${ownerToken}` });
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: auth(),
+      payload: { name: "Taxed", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    });
+    const workspace = created.json();
+    createdWorkspaceIds.push(workspace.id);
+    assert.equal(workspace.taxCountry, null);
+
+    const patch = (payload: unknown, headers: Record<string, string> = auth()) =>
+      app.fastify.inject({ method: "PATCH", url: `/workspaces/${workspace.id}`, headers, payload: payload as object });
+    const listedTaxCountry = async () => {
+      const listed = await app.fastify.inject({ method: "GET", url: "/me/workspaces", headers: auth() });
+      return listed.json().workspaces.find((w: { id: string }) => w.id === workspace.id).taxCountry;
+    };
+
+    const set = await patch({ taxCountry: "IT" });
+    assert.equal(set.statusCode, 200);
+    assert.deepEqual(set.json(), {
+      id: workspace.id,
+      name: "Taxed",
+      baseCurrency: "EUR",
+      timeZone: "Europe/Rome",
+      taxCountry: "IT",
+    });
+    assert.equal(await listedTaxCountry(), "IT");
+
+    for (const taxCountry of ["XX", "it", "ITA", ""]) {
+      const refused = await patch({ taxCountry });
+      assert.equal(refused.statusCode, 400, taxCountry);
+      assert.equal(refused.json().error, "invalid_tax_country", taxCountry);
+    }
+    for (const payload of [{}, { taxCountry: 39 }]) {
+      assert.equal((await patch(payload)).statusCode, 400, JSON.stringify(payload));
+    }
+    assert.equal(await listedTaxCountry(), "IT");
+
+    const editorToken = await realm.getTokenForNewUser();
+    await app.fastify.inject({ method: "GET", url: "/me/workspaces", headers: { authorization: `Bearer ${editorToken}` } });
+    const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [
+      decodeJwt(editorToken).sub,
+    ]);
+    await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'editor')", [
+      rows[0]!.id,
+      workspace.id,
+    ]);
+    const byEditor = await patch({ taxCountry: null }, { authorization: `Bearer ${editorToken}` });
+    assert.equal(byEditor.statusCode, 403);
+    ownerToken = await realm.getUserToken();
+    assert.equal(await listedTaxCountry(), "IT");
+
+    const cleared = await patch({ taxCountry: null });
+    assert.equal(cleared.statusCode, 200);
+    assert.equal(await listedTaxCountry(), null);
+
+    // This test outlasts a token's 3-second life: leave the next test a fresh one.
+    token = await realm.getUserToken();
+  });
+
   it("deleting a workspace the caller does not belong to is a 403, the same as any other unknown one", async () => {
     const other = await superuserPool.query<{ id: string }>(
       "INSERT INTO workspaces (name, base_currency, time_zone) VALUES ('Not mine', 'EUR', 'Europe/Rome') RETURNING id",

@@ -57,7 +57,7 @@ function transaction(overrides: Partial<Transaction>): Transaction {
 function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = []) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
