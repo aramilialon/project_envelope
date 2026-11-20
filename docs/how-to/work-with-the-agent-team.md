@@ -16,7 +16,7 @@ Besides the maintainer, work on `envelope` uses a small team of AI agents, each 
 | Integrator | `integrator` | only mechanical merge resolutions | once branches have passed their reviews: orders them, brings each up to date with `main`, pushes, opens the pull request, squash-merges after green CI |
 | Explorer | `explorer` | no (a browser only) | before a release, once the milestone's issues are merged: uses the app as a household, an investor or a mixed household on a disposable environment and reports reproducible findings |
 
-The automatic review workflow on GitHub (`.github/workflows/claude-code-review.yml`) adds one more independent read of every pull request.
+The automatic review workflow on GitHub (`.github/workflows/claude-code-review.yml`) adds one independent read of every pull request, once (see "Agents and CI").
 
 ## How an issue goes through the team
 
@@ -26,6 +26,14 @@ The automatic review workflow on GitHub (`.github/workflows/claude-code-review.y
 4. **Verify.** On the finished branch: `qa` always; the `ux-reviewer` if a screen changed; the `security-reviewer` if the change matches its scope; the `domain-expert` again if a calculation was built. Reviewers run independently of each other and of the developer's report.
 5. **Fix and decide.** The coordinator sends must-fix findings back to the developer, and brings to the maintainer any disagreement between roles and any finding that needs a decision.
 6. **Integrate.** The coordinator hands the reviewed branches to the `integrator`, with each one's issue, worktree, review summary and developer. The integrator decides the order (issue dependencies, migration numbers, files several branches change), brings each branch up to date with `main` (a rebase only before the branch is first pushed, a merge of `main` afterwards; never a force-push), resolves only mechanical conflicts such as two entries added to the same changelog or list, and sends every other conflict back to the developer with the files and what changed on `main`. It then pushes, opens the pull request saying which reviews ran and what they found, waits for CI, squash-merges, and re-checks the branches still waiting, since `main` has moved.
+
+## Agents and CI
+
+Role agents run locally, on the developer machine and on disposable environments, never as new CI jobs: the maintainer's rule is to keep the overall cost, in money and tokens, as low as possible.
+
+- The automatic AI review on GitHub (`.github/workflows/claude-code-review.yml`) gives every pull request one independent read, once, when it is opened or marked ready, not again on every push.
+- Dependencies are audited weekly by a token-free workflow (`.github/workflows/security-audit.yml`, `pnpm audit`) that keeps one issue open with its findings; the team fixes them locally like any other issue.
+- Exploratory runs, QA and the security review stay local.
 
 ## Exploratory runs before a release
 
