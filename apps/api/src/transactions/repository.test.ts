@@ -290,6 +290,50 @@ describe("transactions repository", () => {
     assert.equal(transfer.destination.splits[0]?.amountCents, 5000);
   });
 
+  it("gives the other leg of a transfer the opposite amount when one leg's splits change (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: creditCardAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 5000,
+    });
+
+    const updated = await updateTransaction(pool, workspaceId, transfer.destination.id, {
+      splits: [{ categoryId: null, amountCents: 6500 }],
+    });
+    assert.ok(typeof updated !== "string", `expected a record, got "${String(updated)}"`);
+    assert.equal(updated.splits[0]?.amountCents, 6500);
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, accountId)).filter((t) => t.id === transfer.source.id);
+    assert.deepEqual(source?.splits, [{ ...transfer.source.splits[0], amountCents: -6500 }]);
+  });
+
+  it("refuses to change a transfer leg's amount when the other leg has several splits, changing neither (#547)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: accountId,
+      destinationAccountId: offBudgetAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 1000,
+      categoryId,
+    });
+    // Same total, so the other leg is untouched; the on-budget leg now has two splits.
+    const split = await updateTransaction(pool, workspaceId, transfer.source.id, {
+      splits: [
+        { categoryId, amountCents: -400 },
+        { categoryId: otherCategoryId, amountCents: -600 },
+      ],
+    });
+    assert.ok(typeof split !== "string");
+
+    await assert.rejects(
+      () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 1500 }] }),
+      (error: unknown) => isValidationError(error, "unsupported_transaction"),
+    );
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.destination.id);
+    assert.equal(destination?.splits[0]?.amountCents, 1000);
+  });
+
   it("creates a cash-to-card transfer the same way, no special-casing", async () => {
     const transfer = await createTransfer(pool, {
       workspaceId,

@@ -49,6 +49,11 @@ interface FieldApplier {
  * Neither of these can store income on an on-budget credit card (#548). Wiring a field that can
  * (a split's category or amount, a transaction's account) must refuse it the way
  * `assertNotCardIncome` (transactions/repository.ts) does for the API's own writes.
+ *
+ * No amount is a sync field: a change to `splits.amount_cents` or `transactions.amount_cents`
+ * answers `unsupported_field`. Wiring one up must keep a transfer's two legs cancelling out, as
+ * `updateTransaction` does (#547): a bare UPDATE of one leg's split would break the budget
+ * invariant.
  */
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {

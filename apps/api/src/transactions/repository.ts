@@ -623,11 +623,26 @@ export async function listTransactionEventsForMonth(
     }));
 }
 
+function sumOfSplits(splits: readonly { readonly amountCents: number }[]): number {
+  return splits.reduce((sum, split) => sum + split.amountCents, 0);
+}
+
 /**
  * Updates payee/memo/status and, if given, replaces every split. Refuses to replace the splits of
  * a trade's cash leg (`trade_owned`, ADR 0012). Refuses a
  * reconciled transaction (design.md: "Reconciled transactions cannot be
  * edited or deleted" — unlocking one is #32's own explicit, audited action).
+ *
+ * A transfer's two legs always cancel out (#547): new splits that change one leg's amount give
+ * the other leg the opposite amount, in the same database transaction. The other leg keeps its
+ * own split — its id, memo and category, if it has one (the on-budget leg of a transfer to or
+ * from an off-budget account) — and its payee, memo and status; only its amount follows. Both
+ * legs are locked first, so the reconciliation flow cannot reconcile the other one in between.
+ * The edit is refused as `reconciled` when the other leg is reconciled, and as `trade_owned` when
+ * it is a trade's cash leg, as for the leg itself, and with a `ValidationError`
+ * (`unsupported_transaction`) when the other leg has several splits, since nothing says which of them the difference belongs to. New
+ * splits with the same total (a different category on the leg) leave the other leg alone. The
+ * payee, memo and status of a leg stay its own: they never reach the other leg.
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -635,7 +650,15 @@ export async function updateTransaction(
   transactionId: string,
   patch: UpdateTransactionInput,
 ): Promise<TransactionRecord | "not_found" | "reconciled" | "trade_owned"> {
-  const existing = await getTransaction(db, workspaceId, transactionId);
+  let existing = await getTransaction(db, workspaceId, transactionId);
+  if (existing !== undefined && existing.transferId !== null && patch.splits !== undefined) {
+    // In id order, the same order every other edit of this pair takes, so two never deadlock.
+    await db.query("SELECT id FROM transactions WHERE workspace_id = $1 AND id = ANY($2) ORDER BY id FOR UPDATE", [
+      workspaceId,
+      [existing.id, existing.transferId],
+    ]);
+    existing = await getTransaction(db, workspaceId, transactionId);
+  }
   if (!existing) {
     return "not_found";
   }
@@ -659,6 +682,28 @@ export async function updateTransaction(
     }
   }
 
+  // The other leg of a transfer, and its one split, when this edit changes the leg's amount (#547).
+  let partnerSplit: { readonly id: string; readonly amountCents: number } | undefined;
+  if (patch.splits !== undefined && existing.transferId !== null) {
+    const newTotal = sumOfSplits(patch.splits);
+    const partner = newTotal === sumOfSplits(existing.splits) ? undefined : await getTransaction(db, workspaceId, existing.transferId);
+    if (partner) {
+      if (partner.status === "reconciled") {
+        return "reconciled";
+      }
+      if (partner.tradeId !== null) {
+        return "trade_owned";
+      }
+      const [onlySplit, ...others] = partner.splits;
+      if (onlySplit === undefined || others.length > 0) {
+        throw new ValidationError("unsupported_transaction", "the other leg of this transfer has several splits; its amount cannot follow", {
+          transactionId: partner.id,
+        });
+      }
+      partnerSplit = { id: onlySplit.id, amountCents: -newTotal };
+    }
+  }
+
   const payee = patch.payee ?? existing.payee ?? undefined;
   const memo = patch.memo ?? existing.memo ?? undefined;
   const status = patch.status ?? existing.status;
@@ -673,6 +718,13 @@ export async function updateTransaction(
   if (patch.splits !== undefined) {
     await db.query("DELETE FROM splits WHERE transaction_id = $1 AND workspace_id = $2", [transactionId, workspaceId]);
     await insertSplits(db, workspaceId, transactionId, patch.splits);
+  }
+  if (partnerSplit !== undefined) {
+    await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [
+      partnerSplit.amountCents,
+      partnerSplit.id,
+      workspaceId,
+    ]);
   }
 
   const record = await getTransaction(db, workspaceId, transactionId);
