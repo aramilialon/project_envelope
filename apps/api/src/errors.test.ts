@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import { ValidationError } from "@envelope/core";
 import Fastify from "fastify";
 
-import { LOG_REDACT_PATHS, registerErrorHandler, toErrorReply } from "./errors.ts";
+import { LOG_REDACT_PATHS, registerErrorHandler, toErrorReply, TooManyRequestsError } from "./errors.ts";
 import { ID_PARAM_NAMES, isUuid } from "./ids.ts";
 
 describe("registerErrorHandler's logging (#512)", () => {
@@ -71,6 +71,13 @@ function databaseError(code: string, message: string): Error {
 }
 
 describe("toErrorReply (#512)", () => {
+  it("maps a rate limit to 429 too_many_requests with the seconds to wait (#566)", () => {
+    assert.deepEqual(toErrorReply(new TooManyRequestsError(42)), {
+      statusCode: 429,
+      body: { error: "too_many_requests", details: { retryAfterSeconds: 42 } },
+    });
+  });
+
   it("maps a foreign-key violation to 400 invalid_reference, without the database message", () => {
     const reply = toErrorReply(
       databaseError("23503", 'insert or update on table "import_mappings" violates foreign key constraint "import_mappings_account_fk"'),

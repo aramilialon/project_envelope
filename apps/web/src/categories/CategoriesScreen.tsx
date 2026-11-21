@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import {
   archiveCategory,
   CategoryConflictError,
@@ -83,7 +84,7 @@ export default function CategoriesScreen() {
   if (state.status === "error") {
     return (
       <p role="alert">
-        {intl.formatMessage({ id: "categories.error", defaultMessage: "We could not load your categories." })}
+        {tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "categories.error", defaultMessage: "We could not load your categories." })}
       </p>
     );
   }

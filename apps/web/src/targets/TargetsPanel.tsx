@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import type { BudgetMonthCategory } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { runQuickAssign, type GoalKind } from "./api.ts";
@@ -91,7 +92,7 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
   if (targets.status === "error") {
     return (
       <SideSheet title={title} onClose={onClose}>
-        <p role="alert">{intl.formatMessage({ id: "targets.error", defaultMessage: "We could not load your targets." })}</p>
+        <p role="alert">{tooManyRequestsMessage(intl, targets.error) ?? intl.formatMessage({ id: "targets.error", defaultMessage: "We could not load your targets." })}</p>
       </SideSheet>
     );
   }

@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createAssignments } from "./api.ts";
@@ -153,9 +154,10 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
       onChanged();
     } catch (caught) {
       setSubmitError(
-        isAmountTooLarge(caught)
-          ? amountTooLargeMessage(intl, currency)
-          : intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." }),
+        tooManyRequestsMessage(intl, caught) ??
+          (isAmountTooLarge(caught)
+            ? amountTooLargeMessage(intl, currency)
+            : intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." })),
       );
       setSubmitting(false);
     }

@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
@@ -70,7 +71,7 @@ export default function ReconciliationScreen() {
     return <p role="status">{intl.formatMessage({ id: "reconcile.loading", defaultMessage: "Loading this account…" })}</p>;
   }
   if (state.status === "error") {
-    return <p role="alert">{intl.formatMessage({ id: "reconcile.error", defaultMessage: "We could not load this account." })}</p>;
+    return <p role="alert">{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "reconcile.error", defaultMessage: "We could not load this account." })}</p>;
   }
 
   const { account, categories, candidates } = state;
@@ -187,16 +188,17 @@ export default function ReconciliationScreen() {
       }
     } catch (caught) {
       setError(
-        caught instanceof ApiError && caught.code === "card_income_not_supported"
-          ? // #548: an adjustment with no category would be income on an on-budget credit card, not supported yet.
-            intl.formatMessage({
-              id: "reconcile.adjustment.cardIncomeNotSupported",
-              defaultMessage: "On a credit card, an adjustment needs a category.",
-            })
-          : isAmountTooLarge(caught)
-            ? // #651: the adjustment would be above the cap on a single amount.
-              amountTooLargeMessage(intl, currency)
-            : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
+        tooManyRequestsMessage(intl, caught) ??
+          (caught instanceof ApiError && caught.code === "card_income_not_supported"
+            ? // #548: an adjustment with no category would be income on an on-budget credit card, not supported yet.
+              intl.formatMessage({
+                id: "reconcile.adjustment.cardIncomeNotSupported",
+                defaultMessage: "On a credit card, an adjustment needs a category.",
+              })
+            : isAmountTooLarge(caught)
+              ? // #651: the adjustment would be above the cap on a single amount.
+                amountTooLargeMessage(intl, currency)
+              : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." })),
       );
     } finally {
       setSubmitting(false);

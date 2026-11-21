@@ -274,7 +274,10 @@ old volume.
    token without a browser. Access tokens live 15 minutes;
 4. starts `apps/api` with an environment built from scratch, never inherited: the run's issuer,
    `WEB_ORIGIN` set to the web server's origin, `envelope_app`/`envelope_queue` connections to the
-   run's database, the `postgres` queue driver and a fresh VAPID key pair;
+   run's database, the `postgres` queue driver, a fresh VAPID key pair, and a per-address rate
+   limit raised far above its default, since every client of the run (the e2e suite's parallel
+   workers, several explorers) connects from 127.0.0.1; the per-user limits keep their defaults
+   (#566);
 5. writes a first manifest, without personas, so `down` can find the processes if what follows
    fails;
 6. builds `apps/web` (`vite build`) with `VITE_API_URL`, `VITE_KEYCLOAK_ISSUER` and

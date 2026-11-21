@@ -25,6 +25,7 @@ import { appConnectionString, ensureAppRoleLogin } from "../app-role.ts";
 import { requireIntegrationTestEnv } from "../integration-setup.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../keycloak.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../queue-role.ts";
+import { HIGH_RATE_LIMITS_ENV } from "../rate-limits.ts";
 import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../vapid-keys.ts";
 import { fetchDriver, injectDriver, type WalkDriver } from "./driver.ts";
 import { createWalkUsers, runWalk, type WalkEnvironment, type WalkLog, type WalkResult } from "./run.ts";
@@ -109,6 +110,7 @@ describe("random walk through the API (#80, ADR 0013)", () => {
         APP_DATABASE_URL: appConnectionString(databaseUrl),
         KEYCLOAK_ISSUER: realm.issuer,
         KEYCLOAK_AUDIENCE: realm.audience,
+        ...HIGH_RATE_LIMITS_ENV,
       }),
     );
     env = await environment(injectDriver(app));
@@ -139,6 +141,7 @@ describe("random walk through the API (#80, ADR 0013)", () => {
       VAPID_PUBLIC_KEY: TEST_VAPID_PUBLIC_KEY,
       VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       VAPID_SUBJECT: TEST_VAPID_SUBJECT,
+      ...HIGH_RATE_LIMITS_ENV,
     });
     lastServer = server;
     return fetchDriver(server.baseUrl);

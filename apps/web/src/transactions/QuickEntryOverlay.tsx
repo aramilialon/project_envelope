@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 
 import { useAccounts } from "../accounts/useAccounts.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { useBudgetMonth } from "../budget/useBudgetMonth.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -160,7 +161,10 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
   }
 
   const loading = accountsState.status === "loading" || budgetMonth.status === "loading" || workspaces.status === "loading";
-  const failed = accountsState.status === "error" || budgetMonth.status === "error" || workspaces.status === "error";
+  const loadErrors = [accountsState, budgetMonth, workspaces].flatMap((s) => (s.status === "error" ? [s.error] : []));
+  const failed = loadErrors.length > 0;
+  // A load refused over the API's rate limit says how long to wait while it is retried (#683).
+  const rateLimited = loadErrors.map((e) => tooManyRequestsMessage(intl, e)).find((m) => m !== undefined);
 
   return (
     <div className="quick-entry" role="dialog" aria-modal="true" aria-label={intl.formatMessage({ id: "quickEntry.title", defaultMessage: "New expense" })}>
@@ -197,7 +201,7 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
       ) : loading ? (
         <p role="status">{intl.formatMessage({ id: "quickEntry.loading", defaultMessage: "Loading…" })}</p>
       ) : failed ? (
-        <p role="alert">{intl.formatMessage({ id: "quickEntry.loadError", defaultMessage: "We could not load your accounts and categories." })}</p>
+        <p role="alert">{rateLimited ?? intl.formatMessage({ id: "quickEntry.loadError", defaultMessage: "We could not load your accounts and categories." })}</p>
       ) : onBudgetAccounts.length === 0 || categories.length === 0 ? (
         <p role="alert">
           {intl.formatMessage({

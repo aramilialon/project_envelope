@@ -4,6 +4,8 @@
  * not a confusing failure somewhere deep in the code later on.
  */
 
+import { isIP } from "node:net";
+
 export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 
 /** Selects the queue driver (design.md, "Queue module"); `postgres` (pg-boss) is the only one so far. */
@@ -23,6 +25,30 @@ export interface Config {
   readonly keycloakAudience: string;
   /** The web app's own origin (#48), the only one the API's CORS policy allows. */
   readonly webOrigin: string;
+  /**
+   * The reverse proxies whose `X-Forwarded-For` the API believes (#566): addresses or CIDR ranges,
+   * never "any". Empty (the default) means the connection's own address is the client's address,
+   * which is right when nothing fronts the API; behind Caddy on the same machine it is `127.0.0.1`.
+   */
+  readonly trustProxy: readonly string[];
+  readonly rateLimit: RateLimitConfig;
+}
+
+/**
+ * Request limits (#566, ADR 0017): one per client address, counted before authentication, and
+ * three per verified user, counted after it. Each counts the requests of one window.
+ */
+export interface RateLimitConfig {
+  readonly addressMax: number;
+  readonly addressWindowMs: number;
+  /** Every request of one user, whichever address it comes from. */
+  readonly userMax: number;
+  /** The window of the three per-user limits. */
+  readonly userWindowMs: number;
+  /** A user's writes (POST, PUT, PATCH, DELETE), counted in `userMax` too. */
+  readonly userWriteMax: number;
+  /** A user's file imports (`POST …/import`), counted in the two above too. */
+  readonly userImportMax: number;
 }
 
 export interface QueueConfig {
@@ -38,6 +64,23 @@ export interface PushConfig {
   readonly vapidPrivateKey: string;
 }
 
+/**
+ * The default request limits (#566, ADR 0017), the one place they are set; each can be overridden
+ * by its environment variable. Sized from a measured session: an ordinary session in the web app
+ * with a 35-category budget sent about 325 requests in 7 seconds, so a user gets 1200 a minute,
+ * room for a few such bursts in one minute. The per-address limit is twice that, above the
+ * per-user one, because one address can carry several members (every device behind one NAT, or
+ * Caddy's own address when TRUST_PROXY is not set) and it runs first: below the per-user limit,
+ * it would refuse a member the per-user limit allows.
+ */
+export const RATE_LIMIT_DEFAULTS = {
+  addressMax: 2400,
+  windowSeconds: 60,
+  userMax: 1200,
+  userWriteMax: 120,
+  userImportMax: 10,
+} as const;
+
 const LOG_LEVELS: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -51,6 +94,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     keycloakIssuer: requireEnv(env, "KEYCLOAK_ISSUER"),
     keycloakAudience: requireEnv(env, "KEYCLOAK_AUDIENCE"),
     webOrigin: env.WEB_ORIGIN || "http://localhost:5173",
+    trustProxy: parseTrustProxy(env, "TRUST_PROXY"),
+    rateLimit: {
+      addressMax: parsePositiveInteger(env, "RATE_LIMIT_IP_MAX", RATE_LIMIT_DEFAULTS.addressMax),
+      addressWindowMs: parsePositiveInteger(env, "RATE_LIMIT_IP_WINDOW_SECONDS", RATE_LIMIT_DEFAULTS.windowSeconds) * 1000,
+      userMax: parsePositiveInteger(env, "RATE_LIMIT_USER_MAX", RATE_LIMIT_DEFAULTS.userMax),
+      userWindowMs: parsePositiveInteger(env, "RATE_LIMIT_USER_WINDOW_SECONDS", RATE_LIMIT_DEFAULTS.windowSeconds) * 1000,
+      userWriteMax: parsePositiveInteger(env, "RATE_LIMIT_USER_WRITE_MAX", RATE_LIMIT_DEFAULTS.userWriteMax),
+      userImportMax: parsePositiveInteger(env, "RATE_LIMIT_USER_IMPORT_MAX", RATE_LIMIT_DEFAULTS.userImportMax),
+    },
   };
 }
 
@@ -121,6 +173,41 @@ function parsePort(env: NodeJS.ProcessEnv, name: string, defaultValue: number): 
     throw new Error(`${name} cannot be 0 when NODE_ENV is production`);
   }
   return port;
+}
+
+function parsePositiveInteger(env: NodeJS.ProcessEnv, name: string, defaultValue: number): number {
+  const value = env[name];
+  if (value === undefined) {
+    return defaultValue;
+  }
+  const parsed = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer, got "${value}"`);
+  }
+  return parsed;
+}
+
+/**
+ * A comma-separated list of addresses or CIDR ranges (`127.0.0.1`, `10.0.0.0/24`, `::1`). Anything
+ * else is refused, "true" and "*" included: believing `X-Forwarded-For` from every address would
+ * let any client choose the address its requests are counted under.
+ */
+function parseTrustProxy(env: NodeJS.ProcessEnv, name: string): readonly string[] {
+  const value = env[name]?.trim();
+  if (!value) {
+    return [];
+  }
+  return value.split(",").map((entry) => {
+    const trimmed = entry.trim();
+    const [address, prefix, ...rest] = trimmed.split("/");
+    const family = isIP(address ?? "");
+    const maxPrefix = family === 6 ? 128 : 32;
+    const validPrefix = prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= maxPrefix);
+    if (family === 0 || !validPrefix || rest.length > 0) {
+      throw new Error(`${name} must be a comma-separated list of IP addresses or CIDR ranges, got "${trimmed}"`);
+    }
+    return trimmed;
+  });
 }
 
 function parseLogLevel(env: NodeJS.ProcessEnv, name: string, defaultValue: LogLevel): LogLevel {

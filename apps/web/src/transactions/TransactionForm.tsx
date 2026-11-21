@@ -7,6 +7,7 @@ import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import { getBudgetMonth } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { useFetchState } from "../useFetchState.ts";
@@ -272,6 +273,10 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   }
 
   function saveErrorMessage(caught: unknown): string {
+    const limited = tooManyRequestsMessage(intl, caught);
+    if (limited) {
+      return limited;
+    }
     // A split line typed above the cap, or the API refusing an amount above it (#651).
     if (isAmountTooLarge(caught)) {
       return amountTooLargeMessage(intl, currency);

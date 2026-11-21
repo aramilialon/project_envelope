@@ -379,7 +379,7 @@ The app handles personal financial data, so security is designed in from the sta
 - **Isolation.** Row-Level Security in PostgreSQL on top of the API checks: a bug in the code must never expose another user's data. Foreign keys are checked without Row-Level Security, so every reference between two workspace tables includes `workspace_id` and cannot point at another workspace's row ([ADR 0006](adr/0006-row-level-security.md)).
 - **Encryption.** TLS everywhere; encrypted database and backups; secrets (for example bank tokens) encrypted at field level with separately managed keys.
 - **End-to-end encryption.** A future, optional module, per workspace. Details below.
-- **API protection.** Validation of every input, CSRF protection, security headers, rate limits, no sensitive data in logs.
+- **API protection.** Validation of every input, CSRF protection, security headers, rate limits, no sensitive data in logs. The rate limits run in the API process ([ADR 0017](adr/0017-api-rate-limiting.md)): per client address before authentication, the health check included, and per verified user after it, stricter for writes and stricter still for file imports; a request over a limit gets 429 `too_many_requests` with `Retry-After`. Only the configured reverse proxy's `X-Forwarded-For` is believed. Connection limits at the edge come with the relay setup.
 - **Dependencies.** Automated dependency updates, vulnerability scanning in CI, signed Docker images.
 - **Backup and restore.** Daily backups with point-in-time recovery; periodic restore tests, not just backups.
 - **Responsible disclosure.** A SECURITY.md file, a dedicated address and stated response times.

@@ -49,6 +49,8 @@
   "accountsPanel.offBudgetTag": "off budget",
   "accountsPanel.onBudget": "On budget",
   "accountsPanel.toAccountsScreen": "Go to the Accounts screen →",
+  "api.error.tooManyRequests": "Too many requests in a short time. Try again in {seconds, plural, one {# second} other {# seconds}}.",
+  "api.error.tooManyRequestsSoon": "Too many requests in a short time. Try again in a moment.",
   "budget.actions.assign": "Assign",
   "budget.actions.quickAssign": "Quick assign",
   "budget.actions.scheduled": "Scheduled",

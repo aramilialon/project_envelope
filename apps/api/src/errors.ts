@@ -56,6 +56,21 @@ export interface ErrorReply {
   readonly body: { readonly error: string; readonly code?: string; readonly details?: unknown };
 }
 
+/**
+ * A request over one of the API's rate limits (#566, ADR 0017). The global handler answers it 429
+ * `too_many_requests` with `details.retryAfterSeconds`; the limiter has already set `Retry-After`.
+ */
+export class TooManyRequestsError extends Error {
+  readonly statusCode = 429;
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super("Too many requests");
+    this.name = "TooManyRequestsError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
 const FOREIGN_KEY_VIOLATION = "23503";
 const INVALID_TEXT_REPRESENTATION = "22P02";
 const INSUFFICIENT_PRIVILEGE = "42501";
@@ -120,6 +135,10 @@ export function toErrorReply(error: unknown): ErrorReply {
       return { statusCode: 403, body: { error: "forbidden" } };
     }
     return { statusCode: 500, body: { error: "internal_error" } };
+  }
+
+  if (error instanceof TooManyRequestsError) {
+    return { statusCode: 429, body: { error: "too_many_requests", details: { retryAfterSeconds: error.retryAfterSeconds } } };
   }
 
   if (typeof error === "object" && error !== null) {
