@@ -238,4 +238,93 @@ test.describe("account register (#54)", () => {
       await user.teardown();
     }
   });
+
+  test("money coming in from an off-budget account lands as Unassigned by default, and can be moved to a category (#599)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Group name").fill("Everyday");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await page.getByRole("button", { name: "+ Add a category" }).click();
+      await page.getByLabel("Category name").fill("Groceries");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Groceries")).toBeVisible();
+
+      // An on-budget checking account, and a brokerage account, off budget.
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Checking");
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Broker");
+      await page.getByRole("radio", { name: /Brokerage/ }).check();
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+      await expect(page.getByRole("heading", { name: "Checking" })).toBeVisible();
+
+      // From the broker: "Unassigned" is offered first and already chosen, with what it holds.
+      await page.getByRole("button", { name: "New transaction" }).click();
+      const sheet = page.getByRole("dialog");
+      await sheet.getByText("Transfer", { exact: true }).click();
+      await sheet.getByText("From another account", { exact: true }).click();
+      await sheet.getByLabel("Amount").fill("5000.00");
+      await sheet.getByLabel("From account").selectOption({ label: "Broker (off budget)" });
+      const category = sheet.getByLabel("Category");
+      await expect(category.locator("option").first()).toHaveText("Unassigned (€0.00)");
+      await expect(category).toHaveValue("");
+      await expect(sheet.getByText("The money comes into the budget: “Unassigned” goes from €0.00 to €5,000.00.")).toBeVisible();
+      await sheet.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(sheet).not.toBeVisible();
+      await expect(page.getByRole("button", { name: "Transfer · From Broker · Unassigned" })).toBeVisible();
+
+      // The money is there to assign in the budget month.
+      await page.getByRole("link", { name: "Budget" }).click();
+      await page.waitForURL(`/${workspace.id}`);
+      await expect(page.getByText("€5,000.00").first()).toBeVisible();
+
+      // Edited afterwards, the same money goes into Groceries instead.
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+      await page.getByRole("button", { name: "Transfer · From Broker · Unassigned" }).click();
+      await sheet.getByLabel("Category").selectOption({ label: "Groceries" });
+      await expect(sheet.getByText("The money comes into the budget: Groceries goes from €0.00 to €5,000.00.")).toBeVisible();
+      await sheet.getByRole("button", { name: "Save" }).click();
+      await expect(sheet).not.toBeVisible();
+      await expect(page.getByRole("button", { name: "Transfer · From Broker · Groceries" })).toBeVisible();
+
+      // Going out to the broker, a category is still required.
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await sheet.getByText("Transfer", { exact: true }).click();
+      await sheet.getByLabel("Amount").fill("100.00");
+      await sheet.getByLabel("To account").selectOption({ label: "Broker (off budget)" });
+      await expect(sheet.getByLabel("Category").locator("option").first()).toHaveText("Choose a category");
+      await sheet.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(sheet.getByRole("alert")).toHaveText("Choose a category.");
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
 });

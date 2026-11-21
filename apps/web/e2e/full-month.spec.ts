@@ -155,7 +155,7 @@ test.describe("a full budget month (#63)", () => {
       await page.getByRole("button", { name: "New transaction" }).click();
       await page.getByRole("dialog").getByText("Transfer", { exact: true }).click();
       await page.getByLabel("Amount").fill("50.00");
-      await page.getByLabel("To account").selectOption({ label: "Savings" });
+      await page.getByLabel("To account").selectOption({ label: "Savings (off budget)" });
       await page.getByLabel("Category").selectOption({ label: "Groceries" });
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.getByRole("dialog")).not.toBeVisible();
