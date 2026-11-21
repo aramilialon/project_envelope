@@ -42,6 +42,38 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(onAssignFromUnassigned).toHaveBeenCalled();
   });
 
+  it("explains what was paid beyond what was set aside first, then the starting balance, without saying it takes nothing from unassigned money (#699)", () => {
+    renderDetail({ available: -25_433, uncovered: 24_567, owed: 24_567, hasStartingBalance: true });
+
+    const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
+    expect(sentences).toEqual([
+      "The card was paid €254.33 more than was set aside for it. Cover it here this month, or it comes out of next month's unassigned money.",
+      "Some of this debt was already there when you added the card — its starting balance. Assign money to this category a bit at a time to cover it.",
+    ]);
+    expect(screen.queryByText(/takes nothing from unassigned money/)).not.toBeInTheDocument();
+  });
+
+  it("a card paid exactly its debt from cash (owed 0, available −€300): only the paid-beyond sentence, and €300.00 to cover (#699)", () => {
+    renderDetail({ available: -30_000, uncovered: 0, owed: 0, hasStartingBalance: true });
+
+    const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
+    expect(sentences).toEqual([
+      "The card was paid €300.00 more than was set aside for it. Cover it here this month, or it comes out of next month's unassigned money.",
+    ]);
+    const row = (label: string) => screen.getByText(label).closest(".qa")!;
+    expect(row("Card balance")).toHaveTextContent("€0.00");
+    expect(row("Set aside")).toHaveTextContent("€0.00");
+    expect(row("Paid beyond what was set aside")).toHaveTextContent("€300.00");
+    expect(row("To cover")).toHaveTextContent("€300.00");
+    expect(screen.getByRole("button", { name: "Assign €300.00 from unassigned money" })).toBeInTheDocument();
+  });
+
+  it("keeps the starting-balance sentence whole when nothing was paid beyond what was set aside", () => {
+    renderDetail({ available: 0, uncovered: 50_000, owed: 50_000, hasStartingBalance: true });
+    expect(screen.getByText(/It does not come from new spending, so it takes nothing from unassigned money\./)).toBeInTheDocument();
+    expect(screen.queryByText(/more than was set aside for it/)).not.toBeInTheDocument();
+  });
+
   it("shows money set aside, and a generic 'fully covered' sentence when nothing is uncovered", () => {
     renderDetail({ available: 50_000, uncovered: 0, owed: 40_000 });
 

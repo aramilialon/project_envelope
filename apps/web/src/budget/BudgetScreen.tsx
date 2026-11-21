@@ -834,15 +834,35 @@ interface StatusLineProps {
 /** The muted line under a category's name: what was spent of what it was given, or a card's own debt still to cover. */
 function StatusLine({ category, money, intl }: StatusLineProps) {
   if (category.isPaymentCategory) {
-    if (category.uncovered <= 0) {
+    // "To cover" is always `cardDebt`'s `toCover` (#699): with nothing paid beyond what was set
+    // aside it is the uncovered debt; otherwise the line names both parts of it.
+    const debt = cardDebt(category);
+    if (debt.toCover <= 0) {
       return null;
     }
-    const debt = cardDebt(category).owed;
+    if (debt.paidBeyondSetAside > 0) {
+      return (
+        <small className="spent n">
+          {debt.owed > 0
+            ? intl.formatMessage(
+                {
+                  id: "budget.bar.debtToCoverPaidBeyond",
+                  defaultMessage: "{toCover} to cover: {debt} of debt and {paidBeyond} paid beyond what was set aside",
+                },
+                { toCover: money(debt.toCover), debt: money(debt.owed), paidBeyond: money(debt.paidBeyondSetAside) },
+              )
+            : intl.formatMessage(
+                { id: "budget.bar.toCoverPaidBeyond", defaultMessage: "{toCover} to cover: paid beyond what was set aside" },
+                { toCover: money(debt.toCover) },
+              )}
+        </small>
+      );
+    }
     return (
       <small className="spent n">
         {intl.formatMessage(
           { id: "budget.bar.debtToCover", defaultMessage: "{uncovered} to cover of {debt} of debt" },
-          { uncovered: money(category.uncovered), debt: money(debt) },
+          { uncovered: money(debt.toCover), debt: money(debt.owed) },
         )}
       </small>
     );

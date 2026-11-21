@@ -66,19 +66,55 @@ export default function PaymentCategoryDetail({
   const debt = cardDebt({ available, uncovered, ...(owed !== undefined ? { owed } : {}) });
   const covered = debt.toCover <= 0;
 
-  function explanation(): string {
+  /**
+   * The sentences above the debt (#699): what was paid beyond what was set aside first, when the
+   * card was, then where the uncovered debt comes from, when any is. Whole messages only, one per
+   * paragraph, never joined in code.
+   */
+  function explanation(): readonly string[] {
     if (covered) {
-      return intl.formatMessage({
-        id: "budget.payment.covered",
-        defaultMessage: "The card's debt is fully covered by money set aside. When you pay the card from the checking account, the payment counts against it.",
-      });
+      return [
+        intl.formatMessage({
+          id: "budget.payment.covered",
+          defaultMessage: "The card's debt is fully covered by money set aside. When you pay the card from the checking account, the payment counts against it.",
+        }),
+      ];
     }
+    const sentences: string[] = [];
+    const paidBeyond = debt.paidBeyondSetAside > 0;
+    if (paidBeyond) {
+      sentences.push(
+        intl.formatMessage(
+          {
+            id: "budget.payment.paidBeyondExplanation",
+            defaultMessage:
+              "The card was paid {paidBeyond} more than was set aside for it. Cover it here this month, or it comes out of next month's unassigned money.",
+          },
+          { paidBeyond: money(debt.paidBeyondSetAside) },
+        ),
+      );
+    }
+    if (debt.uncovered > 0) {
+      sentences.push(uncoveredExplanation(paidBeyond));
+    }
+    return sentences;
+  }
+
+  function uncoveredExplanation(afterPaidBeyond: boolean): string {
     if (hasStartingBalance) {
-      return intl.formatMessage({
-        id: "budget.payment.uncoveredStartingBalance",
-        defaultMessage:
-          "Some of this debt was already there when you added the card — its starting balance. It does not come from new spending, so it takes nothing from unassigned money. Assign money to this category a bit at a time to cover it.",
-      });
+      // After the paid-beyond sentence, "it takes nothing from unassigned money" would read as
+      // contradicting it: that part does come out of next month's unassigned money.
+      return afterPaidBeyond
+        ? intl.formatMessage({
+            id: "budget.payment.uncoveredStartingBalanceAfterPaidBeyond",
+            defaultMessage:
+              "Some of this debt was already there when you added the card — its starting balance. Assign money to this category a bit at a time to cover it.",
+          })
+        : intl.formatMessage({
+            id: "budget.payment.uncoveredStartingBalance",
+            defaultMessage:
+              "Some of this debt was already there when you added the card — its starting balance. It does not come from new spending, so it takes nothing from unassigned money. Assign money to this category a bit at a time to cover it.",
+          });
     }
     if (overspendingBy && overspendingBy.length > 0) {
       const names = new Intl.ListFormat(intl.locale, { style: "long", type: "conjunction" }).format(
@@ -108,7 +144,11 @@ export default function PaymentCategoryDetail({
       <div className="sec">
         <span className="state-l">{intl.formatMessage({ id: "budget.payment.setAside", defaultMessage: "Set aside to pay the card" })}</span>
         <span className="big n">{money(debt.setAside)}</span>
-        <p className="explain">{explanation()}</p>
+        {explanation().map((sentence) => (
+          <p key={sentence} className="explain">
+            {sentence}
+          </p>
+        ))}
       </div>
 
       {!covered && (

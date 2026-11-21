@@ -416,15 +416,31 @@ describe("BudgetScreen (#53, #324)", () => {
       }),
       [HOME],
     );
-    expect(await screen.findByText("€245.67 to cover of €245.67 of debt")).toBeInTheDocument();
-    const todo = document.querySelector(".todo")!;
-    expect(within(todo as HTMLElement).getByText("Cover Visa payment")).toBeInTheDocument();
-    expect(todo).toHaveTextContent("€500.00");
-    expect(within(todo as HTMLElement).queryByText(/Debt to cover/)).not.toBeInTheDocument();
+    // "To cover" is the whole €500.00, naming both of its parts.
+    expect(await screen.findByText("€500.00 to cover: €245.67 of debt and €254.33 paid beyond what was set aside")).toBeInTheDocument();
+    // One To do item for the card, for the whole amount, and no second "Debt to cover" one.
+    const item = screen.getByRole("button", { name: /^Cover Visa payment/ });
+    expect(item).toHaveTextContent("€500.00");
+    expect(screen.queryByRole("button", { name: /Debt to cover/ })).not.toBeInTheDocument();
 
     fireEvent.click(within(document.querySelector(".bars")!).getByRole("button", { name: /Visa payment/ }));
     expect(await screen.findByText("Paid beyond what was set aside")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Assign €500.00 from unassigned money" })).toBeInTheDocument();
+  });
+
+  it("a card paid exactly its debt from cash: no debt left, the line still shows what there is to cover (#699)", async () => {
+    // Opened owing €300, €300 paid from checking, nothing assigned: owed 0, available −€300.
+    renderScreen(
+      budgetMonth({
+        categories: [],
+        paymentCategories: [
+          category({ categoryId: "pc1", name: "Visa payment", activity: -30_000, available: -30_000, cashOverspending: 30_000, uncovered: 0, owed: 0 }),
+        ],
+      }),
+      [HOME],
+    );
+    expect(await screen.findByText("€300.00 to cover: paid beyond what was set aside")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Cover Visa payment/ })).toHaveTextContent("€300.00");
   });
 
   it("collapses and expands a group", async () => {
@@ -817,6 +833,39 @@ describe("BudgetScreen (#53, #324)", () => {
     // which starts with the category's bare name.
     fireEvent.click(screen.getByRole("button", { name: /^Visa payment/ }));
     expect(await screen.findByText("To cover")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
+  });
+
+  it("opens a card paid beyond what was set aside full screen on a phone: real debt, the paid-beyond line, the whole amount to cover (#699)", async () => {
+    setWidth(390);
+    renderScreen(
+      budgetMonth({
+        categories: [],
+        paymentCategories: [
+          category({
+            categoryId: "pc1",
+            name: "Visa payment",
+            activity: -25_433,
+            available: -25_433,
+            cashOverspending: 25_433,
+            uncovered: 24_567,
+            owed: 24_567,
+          }),
+        ],
+      }),
+      [HOME],
+    );
+    await screen.findByText("Visa payment");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Visa payment/ }));
+    const row = (label: string) => screen.getByText(label).closest(".qa")!;
+    expect(await screen.findByText("Card balance")).toBeInTheDocument();
+    expect(row("Card balance")).toHaveTextContent("€245.67");
+    expect(row("Set aside")).toHaveTextContent("€0.00");
+    expect(row("Paid beyond what was set aside")).toHaveTextContent("€254.33");
+    expect(row("To cover")).toHaveTextContent("€500.00");
+    expect(screen.getByText(/^The card was paid €254\.33 more than was set aside for it\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assign €500.00 from unassigned money" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
   });
 
