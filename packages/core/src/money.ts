@@ -51,12 +51,20 @@ export function sumCents(values: readonly Cents[]): Cents {
 
 const currencyDecimalsCache = new Map<CurrencyCode, number>();
 
-/** Number of decimals of a currency: 2 for EUR, 0 for JPY, 3 for KWD. */
+/**
+ * Number of decimals of a currency: 2 for EUR, 0 for JPY, 3 for KWD; 2 for a
+ * code `Intl` cannot read at all (such as "EURO", stored before #652 checked
+ * an account's currency), so one bad row never stops a whole screen.
+ */
 export function currencyDecimals(currency: CurrencyCode): number {
   const cached = currencyDecimalsCache.get(currency);
   if (cached !== undefined) return cached;
-  const decimals =
-    new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  let decimals = 2;
+  try {
+    decimals = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    // An ill-formed code: keep the default.
+  }
   currencyDecimalsCache.set(currency, decimals);
   return decimals;
 }
@@ -177,13 +185,23 @@ const formatterCache = new Map<string, Intl.NumberFormat>();
  *
  * @example formatMoney(123456, { locale: "en-US", currency: "EUR" }) // "€1,234.56"
  * @example formatMoney(123456, { locale: "it-IT", currency: "EUR" }) // "1234,56 €" (non-breaking space)
+ *
+ * A code `Intl` cannot read (such as "EURO", stored before #652 checked an
+ * account's currency) gives the amount followed by that code, never an exception.
  */
 export function formatMoney(cents: Cents, options: { locale: Locale; currency: CurrencyCode }): string {
   assertCents(cents);
   const cacheKey = `${options.locale}|${options.currency}`;
   let formatter = formatterCache.get(cacheKey);
   if (formatter === undefined) {
-    formatter = new Intl.NumberFormat(options.locale, { style: "currency", currency: options.currency });
+    try {
+      formatter = new Intl.NumberFormat(options.locale, { style: "currency", currency: options.currency });
+    } catch {
+      // An ill-formed currency code (#652): the amount with its code, never an exception.
+      const decimals = currencyDecimals(options.currency);
+      const plain = new Intl.NumberFormat(options.locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      return `${plain.format(cents / 10 ** decimals)} ${options.currency}`;
+    }
     formatterCache.set(cacheKey, formatter);
   }
   return formatter.format(cents / 10 ** currencyDecimals(options.currency));

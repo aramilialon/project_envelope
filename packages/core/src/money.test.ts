@@ -107,6 +107,11 @@ describe("currencyDecimals", () => {
     assert.equal(currencyDecimals("JPY"), 0);
     assert.equal(currencyDecimals("KWD"), 3);
   });
+
+  it("falls back to 2 for a code Intl cannot read, and formatMoney shows the amount with that code instead of throwing (#652)", () => {
+    assert.equal(currencyDecimals("EURO"), 2);
+    assert.equal(formatMoney(-123456, { locale: "en-US", currency: "EURO" }), "-1,234.56 EURO");
+  });
 });
 
 describe("assertCents and sumCents", () => {
