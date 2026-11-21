@@ -50,6 +50,35 @@ test.describe("budget month (#53)", () => {
     }
   });
 
+  test("at 360px the band's facts wrap instead of widening the page (#650)", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      // The band's longest label: kept on one line, it once made the page wider than the phone.
+      await expect(page.getByText("From this month's money, assigned to later months")).toBeVisible();
+      // A string, not a function: this project's e2e code is type-checked without the DOM library.
+      const { scrollWidth, clientWidth } = await page.evaluate<{ scrollWidth: number; clientWidth: number }>(
+        "({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth })",
+      );
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
+
   test("assigns unassigned money to a category from the band's 'Assign' button (#328)", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
