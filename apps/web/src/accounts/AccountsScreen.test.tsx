@@ -1,7 +1,8 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
@@ -64,6 +65,35 @@ describe("AccountsScreen (#51, #323)", () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole("status")).toHaveTextContent("Loading your accounts…");
+  });
+
+  it("says how long to wait while a load over the API's rate limit is retried, then shows the accounts (#683)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      useAuth.mockReturnValue({ user: { access_token: "t" } });
+      vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([]);
+      vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([]);
+      vi.spyOn(accountsApi, "listAccounts")
+        .mockRejectedValueOnce(new ApiError("GET failed: 429", 429, "too_many_requests", { retryAfterSeconds: 20 }))
+        .mockResolvedValueOnce([CHECKING]);
+      renderWithIntl(
+        <MemoryRouter initialEntries={["/ws-1/accounts"]}>
+          <Routes>
+            <Route path="/:workspaceId/accounts" element={<AccountsScreen />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests in a short time. Try again in 20 seconds.");
+      expect(screen.queryByText("We could not load your accounts.")).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20_000);
+      });
+      expect((await screen.findAllByText("Checking")).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows an error state", async () => {

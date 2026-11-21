@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
@@ -43,7 +44,7 @@ export default function AccountsScreen() {
   if (state.status === "error") {
     return (
       <p role="alert">
-        {intl.formatMessage({ id: "accounts.error", defaultMessage: "We could not load your accounts." })}
+        {tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "accounts.error", defaultMessage: "We could not load your accounts." })}
       </p>
     );
   }
