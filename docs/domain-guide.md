@@ -607,8 +607,11 @@ regime and the field; the withholding on accrued interest at a foreign broker is
 `domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
 takes no new trade (`tax_regime_required`). A workspace can still become `IT` while some of its
 brokerage accounts have trades and no regime: the change lists those accounts, their trades keep
-taking edits that leave the regime's inputs alone (a memo, a time, a quantity, a price), and the
-first regime recorded is checked against them like any other change of the history. The worked examples below follow the tests in
+taking any edit while the account has no regime, and the first regime recorded is checked against
+every one of them by every rule above, the withholding on accrued interest included. A trade no
+regime would accept (gain tax on a share's sale with a self-declared regime in mind, say) is edited
+first, then the regime is recorded. Setting the withholding-agent flag later, on an account that
+already has a regime, is checked against its trades the same way. The worked examples below follow the tests in
 `packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
 result tax, for one, is not).
 
