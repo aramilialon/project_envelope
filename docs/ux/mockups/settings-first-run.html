@@ -639,7 +639,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     ['Svago', ['Abbonamenti', 'Hobby']]
   ];
   START.forEach(function (g) { g[1].forEach(function (c) { O.cats[c] = c !== 'Acqua'; }); });
-  var TYPES = [['checking', 'Conto corrente', 'Stipendio, bollette, bancomat'], ['savings', 'Conto risparmio', 'Soldi messi da parte, in budget'], ['cash', 'Contanti', 'Il portafoglio'], ['offbudget', 'Fuori budget', 'Investimenti, mutuo: si vedono ma non si assegnano']];
+  var TYPES = [['checking', 'Conto corrente', 'Stipendio, bollette, bancomat'], ['savings', 'Conto risparmio', 'Soldi messi da parte, in budget'], ['cash', 'Contanti', 'I contanti che hai con te'], ['offbudget', 'Fuori budget', 'Investimenti, mutuo: si vedono ma non si assegnano']];
   function renderOnb() {
     var total = 5, h = '<div class="onb-top"><b>envelope</b><div class="dots-steps" aria-label="Passo ' + O.step + ' di ' + total + '">' + [1, 2, 3, 4, 5].map(function (i) { return '<i class="' + (i <= O.step ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
     if (O.step === 1) {
