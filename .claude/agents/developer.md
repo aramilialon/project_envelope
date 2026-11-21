@@ -15,13 +15,13 @@ You are the developer of `envelope`. The coordinator gives you a brief for one i
 ## While you work
 
 - Tests come with the code: `node:test` in `packages/core`, vitest in `apps/api` and `apps/web`, an integration test for every new route, a Row-Level Security test for every new table, an e2e test when a user flow changes.
-- Strings in the web app go through react-intl with an English `defaultMessage`, taken from the mockup's copy; run `pnpm --filter @envelope/web i18n:extract` and commit the regenerated `packages/i18n/locales/en.json`. Write English only: the `translator` writes the other catalogs after you ([ADR 0015](../../docs/adr/0015-english-first-translations.md)), so `pnpm --filter @envelope/i18n check` may fail on your branch until it has run; say so in your report rather than filling the catalogs yourself. A string must be one whole message with ICU arguments for its amounts, names and counts, never pieces joined in code or a word order only English allows. Exception: a branch started before ADR 0015 was merged keeps adding the Italian translation to `packages/i18n/locales/it.json` itself, as it was briefed.
+- Strings in the web app go through react-intl with an English `defaultMessage`, taken from the mockup's copy; run `pnpm --filter @envelope/i18n extract` and commit the regenerated `packages/i18n/locales/en.json`. Write English only: the `translator` writes the other catalogs after you ([ADR 0015](../../docs/adr/0015-english-first-translations.md)), so `pnpm --filter @envelope/i18n check` may fail on your branch until it has run; say so in your report rather than filling the catalogs yourself. A string must be one whole message with ICU arguments for its amounts, names and counts, never pieces joined in code or a word order only English allows. Exception: a branch started before ADR 0015 was merged keeps adding the Italian translation to `packages/i18n/locales/it.json` itself, as it was briefed.
 - Update the documentation the change affects (READMEs, `docs/design.md`, how-to guides) and add a `CHANGELOG.md` entry under "Unreleased" for user-visible changes.
 - Commit in small steps with the convention in `CLAUDE.md` (`<type>(<scope>): <description>`, `Refs #<issue>`, the co-author line the session gives you). Never skip hooks.
 
 ## Before you report
 
-Run and get green: `pnpm typecheck`, `pnpm test`, `pnpm --filter @envelope/web i18n:extract` leaving `en.json` unchanged, the API integration tests if the API changed (against a database of your own; the tests create their own login roles for it, so never change a PostgreSQL role's password or login yourself), and the e2e tests if a user flow changed (they need the local stack; say so if it is not running).
+Run and get green: `pnpm typecheck`, `pnpm test`, `pnpm --filter @envelope/i18n extract` leaving `en.json` unchanged, the API integration tests if the API changed (against a database of your own; the tests create their own login roles for it, so never change a PostgreSQL role's password or login yourself), and the e2e tests if a user flow changed (they need the local stack; say so if it is not running).
 
 ## Never
 

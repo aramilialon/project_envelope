@@ -31,7 +31,7 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 ### Review status of each language
 
 - Italian is reviewed by the maintainer.
-- German, Spanish and French are machine-translated and agent-reviewed. The documentation says so, in the review status of each language in `packages/i18n/locales/index.json` and in the `packages/i18n` README; the app does not.
+- German, Spanish and French are machine-translated and agent-reviewed. The documentation says so: `review` in `packages/i18n/locales/index.json` records `"maintainer"` or `"agent"` for each shipped language, and the `packages/i18n` README's review status table says the same; the app does not.
 
 ### Loading
 
@@ -70,7 +70,7 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 
 ## Consequences
 
-- Adding a language means: a catalog, a glossary column, a translator run, a UX pass in that language (German, the longest, at 360 px), and adding it to the shipped list.
+- Adding a language means, following the steps in the [`packages/i18n` README](../../packages/i18n/README.md): a catalog and a glossary column (the translator), a loader line in the web app and the language added to `shipped` and `review` in `locales/index.json` (the developer), and a UX pass in that language (German, the longest, at 360 px).
 - Every pull request that changes interface text gets one more agent step. The developer's green checks no longer include catalog completeness; the translator's do.
 - The reference screenshots taken from the mockups become English, like the ones taken from the app.
 - Translations in languages the maintainer cannot read may contain errors that only users will notice; the documentation invites corrections.

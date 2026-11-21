@@ -19,11 +19,11 @@ git fetch origin
 git diff origin/main...HEAD -- packages/i18n/locales/en.json
 ```
 
-If that diff is empty, there is nothing to translate: say so and return. If the developer changed `defaultMessage`s but `en.json` does not match them, do not regenerate it yourself; report it to the coordinator for the developer (`pnpm --filter @envelope/web i18n:extract`).
+If that diff is empty, there is nothing to translate: say so and return. If the developer changed `defaultMessage`s but `en.json` does not match them, do not regenerate it yourself; report it to the coordinator for the developer (`pnpm --filter @envelope/i18n extract`).
 
 ## What you write
 
-- **Which catalogs:** every shipped catalog (the list in `packages/i18n/locales/index.json`) stays complete. A catalog not shipped yet is filled too once its language issue (#624, #625 or #626) is open or merged, so it is complete when the language joins the list. Never edit `en.json`: it is generated.
+- **Which catalogs:** every shipped catalog (the list in `packages/i18n/locales/index.json`) stays complete. A catalog not shipped yet is filled too once its language issue (#624, #625 or #626) is open or merged, so it is complete when the language joins the list. Adding the language to `shipped` and `review` in `locales/index.json`, and its loader to `apps/web/src/i18n/catalogs.ts` (steps 2 and 3 of "Adding a language" in the `packages/i18n` README), is the developer's job, not yours. Never edit `en.json`: it is generated.
 - **Which keys:** every key the diff adds, and every key whose English text the diff changes: re-translate those in every language, even when the old translation still looks close. Remove every key the diff removes. Leave the other keys alone.
 - **Screens approved in Italian.** For a screen whose mockup was approved in Italian before ADR 0015, the approved Italian is the source for `it.json`: read it at the commit recorded in `docs/ux/README.md` (`git show <sha>:docs/ux/mockups/<file>`) and use its wording where the English says the same thing. Until that commit is recorded (#622), the mockups in `docs/ux/mockups/` themselves are still the Italian ones.
 - **Branches started before ADR 0015**, where the developer already wrote the Italian: keep it unless it breaks the glossary or a rule below, and say what you changed.
@@ -43,12 +43,12 @@ Amounts, numbers and dates are formatted by `Intl`, not by the catalogs, but you
 
 ## Before you report
 
-- Run `pnpm --filter @envelope/i18n check` and get it green. It fails on a missing or stale key, a changed ICU argument, or a plural or select without `other`, in every shipped catalog.
+- Run `pnpm --filter @envelope/i18n check` and get it green. It fails on a missing or stale key, a changed ICU argument, or a plural or select without `other`, in every shipped catalog. It does not look at a catalog that is not shipped yet: for one of those, compare its keys with `en.json` yourself (for example with `jq -S 'keys'` on both) and say in your report that it is complete.
 - Commit with the convention in `CLAUDE.md`, for example `feat(web): translate the import screen into it, de, es, fr`, with `Refs #<issue>` and the co-author line the session gives you. Never skip hooks.
 
 ## Never
 
-Edit code, tests, `en.json`, the mockups or any file outside `packages/i18n/locales/` and `packages/i18n/glossary.md`; push, open or merge a pull request; commit on `main`; force-push; change `.claude/settings.json` or CI workflows.
+Edit code, tests, `en.json`, `locales/index.json`, the mockups or any file outside `packages/i18n/locales/` and `packages/i18n/glossary.md`; push, open or merge a pull request; commit on `main`; force-push; change `.claude/settings.json` or CI workflows.
 
 ## Before you return
 
