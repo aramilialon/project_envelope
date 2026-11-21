@@ -109,6 +109,10 @@ function renderScreen(
   return { ...rendered, getBudgetMonth, listGoalProgress };
 }
 
+// jsdom has no `scrollIntoView`: a spy stands in for it, so a detail opened from elsewhere can be checked to scroll (#728).
+const scrollIntoView = vi.fn();
+HTMLElement.prototype.scrollIntoView = scrollIntoView;
+
 describe("BudgetScreen (#53, #324)", () => {
   afterEach(() => {
     setWidth(ORIGINAL_WIDTH);
@@ -441,6 +445,70 @@ describe("BudgetScreen (#53, #324)", () => {
     );
     expect(await screen.findByText("€300.00 to cover: paid beyond what was set aside")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Cover Visa payment/ })).toHaveTextContent("€300.00");
+  });
+
+  it("a category overspent in cash and with a card: both parts on its row, each asked once, the card part on the card (#728, V2)", async () => {
+    renderScreen(
+      budgetMonth({
+        categories: [category({ categoryId: "c1", name: "Groceries", activity: -35_000, available: -35_000, cashOverspending: 5_000, creditOverspending: 30_000 })],
+        paymentCategories: [
+          category({
+            categoryId: "pc1",
+            name: "Visa payment",
+            uncovered: 30_000,
+            owed: 30_000,
+            overspendingBy: [{ categoryId: "c1", name: "Groceries", amount: 30_000 }],
+          }),
+        ],
+      }),
+      [HOME],
+    );
+    expect(await screen.findByText("€50.00 overspent in cash, €300.00 with a card")).toBeInTheDocument();
+
+    // To do: the cash part on Groceries, the card part on the card — €350.00 in all, never €650.00.
+    expect(screen.getByRole("button", { name: /^Cover Groceries/ })).toHaveTextContent("€50.00");
+    expect(screen.getByRole("button", { name: /^Debt to cover: Visa payment/ })).toHaveTextContent("€300.00");
+
+    // The category's detail says where its card part went, and opens the card's payment category.
+    fireEvent.click(within(document.querySelector(".bars")!).getByRole("button", { name: /^Groceries/ }));
+    expect(await screen.findByText("€300.00 spent with a card beyond what was available is now part of the card's debt, in Visa payment.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Visa payment" }));
+    expect(await screen.findByRole("button", { name: "Assign €300.00 from unassigned money" })).toBeInTheDocument();
+    // The card's detail opens elsewhere on the screen: it scrolls into view and takes focus on its heading.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Visa payment" })).toHaveFocus());
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
+  });
+
+  it("a To do item opens its category's detail with focus on its heading; a row's own tap leaves focus on the row (#728)", async () => {
+    renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", activity: -5_000, available: -5_000, cashOverspending: 5_000 })] }),
+      [HOME],
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /^Cover Groceries/ }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Groceries" })).toHaveFocus());
+
+    fireEvent.click(screen.getByRole("button", { name: "× Close" }));
+    const row = within(document.querySelector(".bars")!).getByRole("button", { name: /^Groceries/ });
+    row.focus();
+    fireEvent.click(row);
+    expect(await screen.findByRole("heading", { name: "Groceries" })).toBeInTheDocument();
+    expect(row).toHaveFocus();
+  });
+
+  it("a category overspent only with a card: no To do item of its own, its card asks for it (#728, X2)", async () => {
+    renderScreen(
+      budgetMonth({
+        categories: [category({ categoryId: "c1", name: "Groceries", activity: -9_134, available: -9_134, creditOverspending: 9_134 })],
+        paymentCategories: [
+          category({ categoryId: "mc", name: "Mastercard", sortOrder: 1, activity: -30_000, available: -30_000, cashOverspending: 30_000, uncovered: 24_567, owed: 24_567, overspendingBy: [{ categoryId: "c1", name: "Groceries", amount: 4_567 }] }),
+          category({ categoryId: "visa", name: "Visa", sortOrder: 2, activity: -4_567, available: -4_567, cashOverspending: 4_567, uncovered: 0, owed: 0, overspendingBy: [{ categoryId: "c1", name: "Groceries", amount: 4_567 }] }),
+        ],
+      }),
+      [HOME],
+    );
+    expect(await screen.findByRole("button", { name: /^Cover Mastercard/ })).toHaveTextContent("€545.67");
+    expect(screen.getByRole("button", { name: /^Cover Visa/ })).toHaveTextContent("€45.67");
+    expect(screen.queryByRole("button", { name: /^Cover Groceries/ })).not.toBeInTheDocument();
   });
 
   it("collapses and expands a group", async () => {
@@ -929,6 +997,9 @@ describe("BudgetScreen (#53, #324)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
     expect(await screen.findByLabelText("Assigned this month")).toHaveValue("600.00");
     expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
+    // It replaces the list the person was scrolling: it opens at its top, with focus on its heading (#728).
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Groceries" })).toHaveFocus());
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "start" });
     // The list itself is gone, not just covered — the whole screen is the detail now.
     expect(screen.queryByText("To do")).not.toBeInTheDocument();
 
@@ -950,6 +1021,7 @@ describe("BudgetScreen (#53, #324)", () => {
     // which starts with the category's bare name.
     fireEvent.click(screen.getByRole("button", { name: /^Visa payment/ }));
     expect(await screen.findByText("To cover")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Visa payment" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Budget/ })).toBeInTheDocument();
   });
 

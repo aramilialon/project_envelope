@@ -251,9 +251,22 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
             {amount >= gap
               ? destination.isPaymentCategory
                 ? intl.formatMessage({ id: "moveMoney.cardDebtCovered", defaultMessage: "The card's debt is fully covered." })
-                : destination.cashOverspending > 0 || destination.creditOverspending > 0
-                  ? intl.formatMessage({ id: "moveMoney.overspendingCovered", defaultMessage: "The overspending is covered." })
-                  : intl.formatMessage({ id: "moveMoney.reservationCovered", defaultMessage: "The scheduled transactions are covered." })
+                : destination.creditOverspending > 0
+                  ? // #728: the card part stays in the card's debt, covered on the card's payment category.
+                    // Money beyond the cash part covers card spending and moves to the card (rule 4 of
+                    // `budget-month.ts`), up to the category's credit overspending.
+                    amount > gap
+                    ? intl.formatMessage(
+                        {
+                          id: "moveMoney.cashPartCoveredRestToCard",
+                          defaultMessage: "The part overspent in cash is covered. The other {extra} covers card spending and moves to the card.",
+                        },
+                        { extra: money(Math.min(amount - gap, destination.creditOverspending)) },
+                      )
+                    : intl.formatMessage({ id: "moveMoney.cashPartCovered", defaultMessage: "The part overspent in cash is covered." })
+                  : destination.cashOverspending > 0
+                    ? intl.formatMessage({ id: "moveMoney.overspendingCovered", defaultMessage: "The overspending is covered." })
+                    : intl.formatMessage({ id: "moveMoney.reservationCovered", defaultMessage: "The scheduled transactions are covered." })
               : intl.formatMessage({ id: "moveMoney.stillMissing", defaultMessage: "{missing} is still missing." }, { missing: money(gap - amount) })}
           </div>,
         );

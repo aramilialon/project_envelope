@@ -1,0 +1,3 @@
+# Two branches that both add entries under "Unreleased" merge without a conflict (#737);
+# changelog fragments replace this later (#738).
+CHANGELOG.md merge=union
