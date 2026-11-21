@@ -146,7 +146,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
   pnpm --filter @envelope/api test
 ```
 
-CI does the same against a fresh PostgreSQL service container and a Keycloak container it starts and waits on: see `.github/workflows/ci.yml`.
+CI does the same against a fresh PostgreSQL service container and a Keycloak container it starts first and waits on only after installing and migrating, so its boot overlaps with them: see `.github/workflows/ci.yml`.
 
 Several runs can share one machine at the same time, each against a database of its own (for example `envelope_test_a` and `envelope_test_b`): the smoke tests listen on ports the operating system picks, each test database gets login roles of its own (below), and the two job test files that fire every workspace (`fire-job.test.ts`, `double-delivery.test.ts`) create and drop a throwaway database of their own, named after `DATABASE_URL`'s with a random suffix. The `DATABASE_URL` user therefore needs to be allowed to create databases, as the `envelope` superuser and CI's own are.
 
