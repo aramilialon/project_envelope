@@ -7,9 +7,9 @@
   the source language of the app. Sample data is fictional.
 
   Every balance is as of today (the 25th, #702): a row dated after today, this month or
-  later, sits apart in the "Più avanti" (Later) section at the top of the register, counts in
-  no balance, is never "still awaiting the bank", and shows the running balance it leads to on
-  top of today's. A short date shows its year when it is not the current one.
+  later, sits apart in the "Più avanti" (Later) section at the top of the register, is not in
+  today's balance, is never "still awaiting the bank", and shows the running balance it leads to on
+  top of today's; the timeline draws the rows after today in its dashed, projected part. A short date shows its year when it is not the current one.
 -->
 <html lang="it">
 <head>
@@ -307,8 +307,9 @@ button{cursor:pointer}
 .month-sep .n{font-weight:600;font-stretch:100%;color:var(--ink-2)}
 /* "Più avanti" (Later, #702): rows dated after today, apart at the top, above today's rows. */
 .later-sep{justify-content:flex-start;align-items:baseline;flex-wrap:wrap;gap:4px 10px}
-.later-sep small{font-weight:400;font-stretch:100%;font-size:12px;color:var(--muted)}
-.later-end{border-bottom:1px solid var(--ink-2)}
+.later-sep h3{margin:0;font:inherit}
+.later-sep small,.later-sep p{margin:0;font-weight:400;font-stretch:100%;font-size:12px;color:var(--muted)}
+.later-end,.ph-tx.later-end{border-bottom:1px solid var(--ink-2)}
 .locknote{padding:10px 12px;background:var(--paper-2);border:1px solid var(--rule);font-size:13px;color:var(--ink-2)}
 
 /* Transaction editor */
@@ -557,7 +558,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var TODAY_ISO = '2026-09-25';
   // A short date, with its year when it is not the current one (#702).
   function dLabel(iso) { var q = iso.split('-'); return Number(q[2]) + ' ' + MONTHS[Number(q[1]) - 1] + (q[0] === TODAY_ISO.slice(0, 4) ? '' : ' ' + q[0]); }
-  // A row dated after today has not happened yet: it is in no balance (#702).
+  // A row dated after today has not happened yet: it is not in today's balance (#702).
   function isLater(t) { return t.date > TODAY_ISO; }
 
   var ICON = {
@@ -652,7 +653,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function euros(c) { return (Math.abs(c) / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
   function events() {
     var list = [];
-    TXS.filter(function (t) { return t.date.slice(0, 7) === TODAY_ISO.slice(0, 7); }).forEach(function (t) { list.push({ d: Number(t.date.slice(8)), kind: t.amount > 0 ? 'in' : 'out', amount: Math.abs(t.amount), label: lab(t) }); });
+    // A recorded row dated after today has not happened yet (#702): it joins the dashed, projected part.
+    TXS.filter(function (t) { return t.date.slice(0, 7) === TODAY_ISO.slice(0, 7); }).forEach(function (t) { list.push({ d: Number(t.date.slice(8)), kind: isLater(t) ? (t.amount > 0 ? 'in-plan' : 'plan') : t.amount > 0 ? 'in' : 'out', amount: Math.abs(t.amount), label: lab(t) }); });
     SCHED.forEach(function (x) { list.push({ d: x.d, kind: x.d < TODAY ? 'late' : x.income ? 'in-plan' : 'plan', amount: Math.abs(x.amount), label: lab(x) }); });
     return list;
   }
@@ -783,7 +785,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var t = r.t;
       if (!matches(t)) return;
       shown++;
-      if (isLater(t) && laterShown++ === 0) html += '<div class="month-sep later-sep"><span>Più avanti</span><small>Con data dopo oggi: non entrano nel saldo di oggi.</small></div>';
+      if (isLater(t) && laterShown++ === 0) html += '<div class="month-sep later-sep"><span>Più avanti</span> <small>Con data dopo oggi: non entrano nel saldo di oggi.</small></div>';
       var st = '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button>';
       html += '<div class="rrow rcols' + (state.sel === t.id ? ' on' : '') + (isLater(t) && laterShown === laterTotal ? ' later-end' : '') + '">' + st +
         '<button type="button" class="open" data-open="' + t.id + '" aria-label="Apri ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
@@ -1010,11 +1012,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function phRegisterHtml() {
     var b = balances(), rows = sorted().reverse().filter(phMatches), html = '', day = null, laterOpen = false;
+    var laterShown = 0, laterTotal = rows.filter(isLater).length;
     rows.forEach(function (t) {
-      if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><span>Più avanti</span><small>Con data dopo oggi: non entrano nel saldo di oggi.</small></div>'; }
+      // The heading is "Più avanti" alone; its note follows it, outside it.
+      if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><h3>Più avanti</h3><p>Con data dopo oggi: non entrano nel saldo di oggi.</p></div>'; }
+      var laterEnd = isLater(t) && ++laterShown === laterTotal;
       if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === TODAY_ISO ? 'Oggi' : (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
       var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      html += '<div class="ph-tx"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
+      html += '<div class="ph-tx' + (laterEnd ? ' later-end' : '') + '"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
         '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
         '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';
     });

@@ -41,11 +41,24 @@ export function todayOf(month: string, timeZone: string | undefined): { iso: str
   return { iso, day: Number(iso.slice(8, 10)) };
 }
 
-/** `GET .../budget-months/:month/events` into `computeTimeline`'s own input shape — shared by the budget month's own timeline (workspace-wide) and the account register's (one account's own, `?accountId=`, `#337`). */
+/**
+ * `GET .../budget-months/:month/events` into `computeTimeline`'s own input shape — shared by the budget month's own timeline (workspace-wide) and the account register's (one account's own, `?accountId=`, `#337`).
+ *
+ * A recorded row dated after today has not happened yet (#702): it goes into the dashed,
+ * projected part of the line like a scheduled item, so the line ends where the projected balance
+ * at month end says, and its solid part only holds what today's balance holds.
+ */
 export function toTimelineEvents(events: readonly MonthEvent[], today: { iso: string } | undefined): TimelineEvent[] {
   return events.map((e): TimelineEvent => {
     const direction = e.amountCents >= 0 ? "in" : "out";
-    const status: TimelineEventStatus = e.kind !== "scheduled" ? "recorded" : today !== undefined && e.date < today.iso ? "overdue" : "scheduled";
+    const status: TimelineEventStatus =
+      e.kind !== "scheduled"
+        ? today !== undefined && e.date > today.iso
+          ? "scheduled"
+          : "recorded"
+        : today !== undefined && e.date < today.iso
+          ? "overdue"
+          : "scheduled";
     return { day: Number(e.date.slice(8, 10)), amountCents: Math.abs(e.amountCents), direction, status };
   });
 }
