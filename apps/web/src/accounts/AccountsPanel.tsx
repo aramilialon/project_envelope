@@ -7,10 +7,12 @@ import { Link, useNavigate } from "react-router-dom";
 import type { Account } from "./api.ts";
 import { useAccountBalances } from "./useAccountBalances.ts";
 import { useAccounts } from "./useAccounts.ts";
+import { useHoldsSecurities } from "./useHoldsSecurities.ts";
 import "./AccountsPanel.css";
 
 export interface AccountsPanelProps {
   readonly workspaceId: string;
+  /** The workspace's base currency, the net worth's own; each account's balance is in its own currency. */
   readonly currency: string;
   /** The account whose register the main content shows right now, marked current in the list. */
   readonly currentAccountId: string | undefined;
@@ -29,7 +31,11 @@ export interface AccountsPanelProps {
  * goes to the full Accounts screen. Open accounts only: a closed one is neither listed nor counted,
  * the same as the Accounts screen's own list above its "Closed" section. Not a dialog: nothing
  * else on the page is blocked while it is open, so there is no focus trap — Escape and its own
- * "Close" button both dismiss it.
+ * "Close" button both dismiss it. Each balance is shown in its account's own currency, and the net
+ * worth adds up the base-currency ones only (#652): a note under it lists what other currencies
+ * hold, each in its own, and another says securities are not included whenever a brokerage
+ * account holds some; both notes show only once the net worth itself does, until exchange rates
+ * (#86) and prices (#125) exist.
  */
 export default function AccountsPanel({ workspaceId, currency, currentAccountId, refreshKey, onClose }: AccountsPanelProps) {
   const intl = useIntl();
@@ -38,7 +44,8 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
   const state = useAccounts(workspaceId);
   const open = state.status === "ok" ? state.accounts.filter((a) => a.closedAt === null) : [];
   const balances = useAccountBalances(workspaceId, auth.user?.access_token, open, refreshKey);
-  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
+  const holdsSecurities = useHoldsSecurities(workspaceId, auth.user?.access_token, open, refreshKey);
+  const money = (cents: number, inCurrency: string) => formatMoney(cents, { locale: intl.locale, currency: inCurrency });
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -53,7 +60,18 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
   // Every row shows as soon as the account list itself arrives; amounts, and the net worth (only
   // meaningful once every balance is in), fill in when the balances do.
   const allBalancesKnown = open.every((a) => a.id in balances);
-  const groups = groupAccountsForPanel(open.map((account) => ({ account, id: account.id, isCard: account.type === "credit_card", onBudget: account.onBudget, balance: balances[account.id] ?? 0 })));
+  const groups = groupAccountsForPanel(
+    open.map((account) => ({
+      account,
+      id: account.id,
+      isCard: account.type === "credit_card",
+      onBudget: account.onBudget,
+      balance: balances[account.id] ?? 0,
+      currency: account.currency,
+    })),
+    currency,
+  );
+  const netWorthKnown = state.status === "ok" && allBalancesKnown;
 
   function section(title: string, rows: readonly { account: Account }[]) {
     if (rows.length === 0) {
@@ -76,7 +94,7 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
                 <b>{account.name}</b>
                 {!account.onBudget && <small>{intl.formatMessage({ id: "accountsPanel.offBudgetTag", defaultMessage: "off budget" })}</small>}
               </span>
-              <span className={`n${balance !== undefined && balance < 0 ? " neg" : ""}`}>{balance === undefined ? "" : money(balance)}</span>
+              <span className={`n${balance !== undefined && balance < 0 ? " neg" : ""}`}>{balance === undefined ? "" : money(balance, account.currency)}</span>
             </button>
           );
         })}
@@ -92,7 +110,20 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
         </button>
         <div className="where">{intl.formatMessage({ id: "accountsPanel.label", defaultMessage: "Accounts" })}</div>
         <h2>{intl.formatMessage({ id: "accountsPanel.netWorth", defaultMessage: "Net worth" })}</h2>
-        <span className="big n">{state.status === "ok" && allBalancesKnown ? money(groups.netWorth) : ""}</span>
+        <span className="big n">{netWorthKnown ? money(groups.netWorth, currency) : ""}</span>
+        {netWorthKnown && groups.excluded.length > 0 && (
+          <p className="nw-note">
+            {intl.formatMessage(
+              { id: "accountsPanel.netWorth.otherCurrencies", defaultMessage: "Not included: {amounts} (no exchange rates yet)" },
+              { amounts: intl.formatList(groups.excluded.map((e) => money(e.amount, e.currency)), { type: "conjunction" }) },
+            )}
+          </p>
+        )}
+        {netWorthKnown && holdsSecurities && (
+          <p className="nw-note">
+            {intl.formatMessage({ id: "accountsPanel.netWorth.noSecurities", defaultMessage: "Net worth does not include securities (no prices yet)" })}
+          </p>
+        )}
       </div>
 
       {state.status === "loading" && (

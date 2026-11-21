@@ -35,6 +35,7 @@ export type ValidationErrorCode =
   | "invalid_currency"
   | "invalid_time_zone"
   | "brokerage_on_budget"
+  | "account_currency_not_base"
   | "invalid_quantity"
   | "invalid_quantity_format"
   | "invalid_quantity_step"

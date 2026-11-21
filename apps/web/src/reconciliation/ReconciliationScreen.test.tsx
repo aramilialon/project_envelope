@@ -90,6 +90,16 @@ describe("ReconciliationScreen (#60)", () => {
     expect(screen.getByRole("button", { name: "Lock 2 transactions" })).toBeInTheDocument();
   });
 
+  it("shows amounts in the account's own currency, not the workspace's (#652)", async () => {
+    // Queued before `renderScreen` sets its own default, so this one answers the screen's only read.
+    vi.spyOn(accountsApi, "listAccounts").mockResolvedValueOnce([{ ...CHECKING, name: "US broker", type: "brokerage", currency: "USD", onBudget: false }]);
+    renderScreen(candidates());
+    await screen.findByText(/US broker/);
+
+    expect(screen.getByText("$515.00")).toBeInTheDocument();
+    expect(screen.queryByText("€515.00")).not.toBeInTheDocument();
+  });
+
   it("locks the ticked transactions on a zero difference", async () => {
     renderScreen(candidates());
     await screen.findByText(/Checking/);

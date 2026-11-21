@@ -43,6 +43,8 @@
   "accountsPanel.empty": "No accounts yet.",
   "accountsPanel.label": "Accounts",
   "accountsPanel.netWorth": "Net worth",
+  "accountsPanel.netWorth.noSecurities": "Net worth does not include securities (no prices yet)",
+  "accountsPanel.netWorth.otherCurrencies": "Not included: {amounts} (no exchange rates yet)",
   "accountsPanel.offBudget": "Off budget",
   "accountsPanel.offBudgetTag": "off budget",
   "accountsPanel.onBudget": "On budget",

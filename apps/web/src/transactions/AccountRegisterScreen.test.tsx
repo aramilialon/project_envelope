@@ -194,6 +194,98 @@ describe("AccountRegisterScreen (#54, #333)", () => {
     });
   });
 
+  describe("an off-budget account in its own currency (#652)", () => {
+    const US_BROKER: Account = { ...CHECKING, name: "US broker", type: "brokerage", currency: "USD", onBudget: false };
+    const EU_BROKER: Account = { ...CHECKING, name: "Broker", type: "brokerage", onBudget: false };
+    const cashLeg = (overrides: Partial<Transaction>) =>
+      transaction({ payee: "Buy ETF", splits: [{ id: "s1", categoryId: null, amountCents: -100_000, memo: null }], ...overrides });
+
+    it("shows its balances in the account's currency, not the workspace's", async () => {
+      renderScreen(
+        [
+          cashLeg({ id: "t1", payee: "Deposit", status: "cleared", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] }),
+          cashLeg({ id: "t2", status: "pending", occurredAt: "2026-09-16T00:00:00.000Z", budgetDate: "2026-09-16" }),
+        ],
+        [],
+        [US_BROKER],
+      );
+
+      const accBal = (await screen.findByRole("heading", { name: "US broker" })) && document.querySelector(".acc-bal")!;
+      expect(accBal.querySelector(".big")).toHaveTextContent("$4,000.00");
+      expect(accBal.textContent).toContain("$5,000.00"); // cleared
+      expect(accBal.textContent).toContain("-$1,000.00"); // pending
+      expect(accBal.textContent).not.toContain("€");
+    });
+
+    it("leaves the category cell empty, never 'Unassigned', a trade's cash leg included", async () => {
+      renderScreen(
+        [
+          cashLeg({ id: "t1", payee: "Deposit", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] }),
+          cashLeg({ id: "t2", payee: "Buy ETF", tradeId: "trade-1" } as Partial<Transaction>),
+        ],
+        [],
+        [EU_BROKER],
+      );
+
+      const deposit = (await screen.findByText("Deposit")).closest("tr")!;
+      const buy = screen.getByText("Buy ETF").closest("tr")!;
+      for (const row of [deposit, buy]) {
+        const cell = row.querySelectorAll("td")[3]!;
+        expect(cell).toHaveTextContent(/^$/);
+        // No unnamed button left as an empty tab stop.
+        expect(within(cell).queryByRole("button")).not.toBeInTheDocument();
+      }
+      expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+    });
+
+    it("shows a zero-decimal currency's amounts and balances with no decimals", async () => {
+      const yen: Account = { ...EU_BROKER, name: "Yen account", currency: "JPY" };
+      renderScreen(
+        [
+          cashLeg({ id: "t1", payee: "Deposit", splits: [{ id: "s1", categoryId: null, amountCents: 50_000, memo: null }] }),
+          cashLeg({ id: "t2", payee: "Bookshop", occurredAt: "2026-09-16T00:00:00.000Z", budgetDate: "2026-09-16", splits: [{ id: "s2", categoryId: null, amountCents: -5_000, memo: null }] }),
+        ],
+        [],
+        [yen],
+      );
+
+      const row = (await screen.findByText("Bookshop")).closest("tr")!;
+      const cells = row.querySelectorAll("td");
+      expect(cells[4]).toHaveTextContent(/^5,000$/);
+      expect(cells[6]).toHaveTextContent(/^45,000$/);
+      expect(document.querySelector(".acc-bal .big")).toHaveTextContent("¥45,000");
+      expect(document.querySelector(".acc-bal .big")!.textContent).not.toContain(".");
+    });
+
+    it("keeps naming a transfer in an off-budget register", async () => {
+      renderScreen(
+        [cashLeg({ payee: "From checking", transferId: "leg-out", transferAccountId: "acc-other", splits: [{ id: "s1", categoryId: null, amountCents: 50_000, memo: null }] })],
+        [],
+        [EU_BROKER, { ...CHECKING, id: "acc-other", name: "Checking" }],
+      );
+
+      const row = (await screen.findByText("From checking")).closest("tr")!;
+      expect(within(row).getByText("Transfer")).toBeInTheDocument();
+    });
+
+    it("shows no 'Unassigned' on the phone either, only the memo under the payee", async () => {
+      setWidth(390);
+      renderScreen([cashLeg({ memo: "Monthly plan" })], [], [EU_BROKER]);
+
+      // Exactly the memo: no empty category before it, no " · " left over.
+      expect((await screen.findByText("Monthly plan")).tagName).toBe("SMALL");
+      expect(screen.queryByText(/Unassigned/)).not.toBeInTheDocument();
+    });
+
+    it("finds no 'Unassigned' when searching an off-budget register", async () => {
+      renderScreen([cashLeg({})], [], [EU_BROKER]);
+      await screen.findByText("Buy ETF");
+
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "unassigned" } });
+      expect(screen.queryByText("Buy ETF")).not.toBeInTheDocument();
+    });
+  });
+
   it("filters by status with counts", async () => {
     renderScreen([
       transaction({ id: "t1", status: "cleared" }),
@@ -381,6 +473,20 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       await screen.findByText("Supermarket");
 
       expect(document.querySelector(".time")).not.toBeNull();
+    });
+
+    it("labels the timeline's axis in the account's own currency (#652)", async () => {
+      const usBroker: Account = { ...CHECKING, name: "US broker", type: "brokerage", currency: "USD", onBudget: false };
+      renderScreen(
+        [transaction({ splits: [{ id: "s1", categoryId: null, amountCents: 300_000, memo: null }] })],
+        [{ date: "2026-09-10", amountCents: 300_000, payee: "Supermarket", categoryId: null, kind: "recorded" }],
+        [usBroker],
+      );
+      await screen.findByText("Supermarket");
+
+      const labels = [...document.querySelectorAll(".t-grid-l")].map((label) => label.textContent ?? "");
+      expect(labels.length).toBeGreaterThan(0);
+      expect(labels.every((label) => label.includes("$") && !label.includes("€"))).toBe(true);
     });
 
     it("shows Record for an overdue scheduled transaction, and calls the record endpoint on click", async () => {

@@ -5,9 +5,11 @@ export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
   assertAmount,
   assertCents,
+  assertKnownCurrency,
   assertTotal,
   currencyDecimals,
   formatMoney,
+  isKnownCurrency,
   MAX_AMOUNT_CENTS,
   parseAmount,
   parseBalance,
@@ -127,7 +129,7 @@ export type { AvailableChange, TransferCategoryRule, TransferEnd } from "./prese
 export { availableAfterInflow, transferCategoryRule } from "./presentation/transferCategory.ts";
 export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetProblemKind } from "./presentation/budgetProblems.ts";
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
-export type { AccountsPanelGroups, PanelAccount } from "./presentation/accountsPanel.ts";
+export type { AccountsPanelGroups, ExcludedAmount, PanelAccount } from "./presentation/accountsPanel.ts";
 export { groupAccountsForPanel } from "./presentation/accountsPanel.ts";
 export type { InstrumentInput, InstrumentSearch, InstrumentTextField, InstrumentType, NormalizedInstrument } from "./portfolio/instrument.ts";
 export {

@@ -94,3 +94,14 @@ export async function closeAccount(accessToken: string, workspaceId: string, acc
   const response = await apiFetch(accessToken, "PATCH", `/workspaces/${workspaceId}/accounts/${accountId}/close`);
   return (await response.json()) as Account;
 }
+
+/**
+ * Whether a brokerage account holds any security right now (#652): one of its positions
+ * (`GET .../accounts/:accountId/positions`, #79) has a quantity other than zero. A position sold
+ * out keeps its row, with a quantity of zero, so the list alone is not enough.
+ */
+export async function holdsSecurities(accessToken: string, workspaceId: string, accountId: string): Promise<boolean> {
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/accounts/${accountId}/positions`);
+  const body = (await response.json()) as { positions: readonly { readonly quantityE8: number }[] };
+  return body.positions.some((position) => position.quantityE8 !== 0);
+}

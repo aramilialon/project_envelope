@@ -1,4 +1,4 @@
-import { assertAmount, assertDate, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import { assertAmount, assertDate, assertKnownCurrency, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
@@ -88,14 +88,31 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * `taxRegimeValidFrom`, and "invalid_amount"/"amount_too_large" for a
  * starting balance that is not a whole number of minor units or is beyond the
  * cap (ADR 0002).
+ *
+ * @throws ValidationError "account_currency_not_base" (`details`: `currency`,
+ * `baseCurrency`) for an on-budget account, card included, whose currency is
+ * not the workspace's base currency (#652): the budget is in one currency,
+ * and amounts in different currencies are never added together. An
+ * off-budget account keeps any currency.
+ * @throws ValidationError "invalid_currency" (`details`: `currency`) for a
+ * currency that is not an upper-case ISO 4217 code the runtime knows
+ * (`@envelope/core`'s `assertKnownCurrency`, #652).
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
+  assertKnownCurrency(input.currency);
   if (input.startingBalanceCents !== undefined) {
     assertAmount(input.startingBalanceCents, "startingBalance");
   }
+  const workspace = await workspaceSettings(db, input.workspaceId);
+  if (input.onBudget && workspace !== undefined && input.currency !== workspace.baseCurrency) {
+    throw new ValidationError("account_currency_not_base", "an on-budget account must be in the workspace's base currency", {
+      currency: input.currency,
+      baseCurrency: workspace.baseCurrency,
+    });
+  }
   validateAccountTaxSettings({
     accountType: input.type,
-    taxCountry: await workspaceTaxCountry(db, input.workspaceId),
+    taxCountry: workspace?.taxCountry ?? null,
     taxRegime: input.taxRegime,
     domesticWithholdingAgent: input.domesticWithholdingAgent,
   });
@@ -187,12 +204,17 @@ export async function closeAccount(
   return rows[0] ? toAccountRecord(rows[0]) : undefined;
 }
 
-/** The workspace's tax country (#508), or null when it has none. */
-async function workspaceTaxCountry(db: DbPool | DbClient, workspaceId: string): Promise<string | null> {
-  const { rows } = await db.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [
-    workspaceId,
-  ]);
-  return rows[0]?.tax_country ?? null;
+/** The workspace's base currency and tax country (#508, null when it has none), or undefined when it is not found. */
+async function workspaceSettings(
+  db: DbPool | DbClient,
+  workspaceId: string,
+): Promise<{ readonly baseCurrency: string; readonly taxCountry: string | null } | undefined> {
+  const { rows } = await db.query<{ base_currency: string; tax_country: string | null }>(
+    "SELECT base_currency, tax_country FROM workspaces WHERE id = $1",
+    [workspaceId],
+  );
+  const row = rows[0];
+  return row === undefined ? undefined : { baseCurrency: row.base_currency, taxCountry: row.tax_country };
 }
 
 const CHECK_VIOLATION = "23514";
