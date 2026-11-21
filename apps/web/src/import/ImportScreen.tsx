@@ -114,7 +114,8 @@ export default function ImportScreen() {
   const { account, accounts, categories, savedMapping } = setup;
   const currency = account.currency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
-  const otherAccounts = accounts.filter((a) => a.id !== accountId);
+  // A transfer moves money between two accounts in the same currency only (#652).
+  const otherAccounts = accounts.filter((a) => a.id !== accountId && a.currency === currency);
   const openCategories = categories.filter((c) => !c.archived);
 
   // A transfer with an off-budget account moves money into or out of the budget, so its on-budget

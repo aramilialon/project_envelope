@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { assertScalesLinearly } from "../testing/linear-time.ts";
 import { parseOfx } from "./ofx.ts";
 
 // A generic OFX 1.02 (SGML) bank statement download, shaped like a real one:
@@ -116,5 +117,21 @@ describe("parseOfx", () => {
 
   it("returns an empty array for a file with no transactions", () => {
     assert.deepEqual(parseOfx("<OFX></OFX>"), []);
+  });
+});
+
+describe("parseOfx on a hostile file (#675)", () => {
+  it("parses in linear time a file of opening tags that never close", () => {
+    assertScalesLinearly((size) => "<STMTTRN>".repeat(size), parseOfx, 200_000);
+    assertScalesLinearly((size) => "<STMTTRN>x".repeat(size), parseOfx, 200_000);
+    assert.deepEqual(parseOfx("<STMTTRN>".repeat(200_000)), []);
+  });
+
+  it("ignores a last transaction that never closes, as before", () => {
+    const content = `<STMTTRN><DTPOSTED>20260901<TRNAMT>-1.00</STMTTRN><STMTTRN><DTPOSTED>20260902<TRNAMT>-2.00`;
+    assert.deepEqual(
+      parseOfx(content).map((row) => row.amountCents),
+      [-100],
+    );
   });
 });

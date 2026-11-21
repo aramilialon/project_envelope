@@ -161,11 +161,23 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 ```
 
 `taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace:
+`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+accounts that have no tax regime yet:
 
 ```json
-{ "id": "45fd02be-…", "name": "Household", "baseCurrency": "EUR", "timeZone": "Europe/Rome", "taxCountry": "IT" }
+{
+  "id": "45fd02be-…",
+  "name": "Household",
+  "baseCurrency": "EUR",
+  "timeZone": "Europe/Rome",
+  "taxCountry": "IT",
+  "accountsWithoutTaxRegime": ["9b1c…"]
+}
 ```
+
+`accountsWithoutTaxRegime` lists, by id and oldest first, every brokerage account of the workspace
+with an empty regime history when the tax country is `IT`, and is `[]` otherwise: a client can ask
+for their regimes right away.
 
 | Error | Details |
 | --- | --- |
@@ -173,9 +185,11 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
-them. Setting `IT` does not ask existing brokerage accounts for a regime retroactively: such an
-account keeps working until its first trade, which is refused while it has no regime (see
-below). `GET /me/workspaces` lists each workspace's `taxCountry`.
+them. Setting `IT` does not ask existing brokerage accounts for a regime retroactively, and is
+never refused for them: such an account keeps working, a new trade on it is refused while it has no
+regime (see below), and the trades it already has can still be edited in every field the regime
+rules do not read, their memo first of all ([Editing a trade](#editing-a-trade)). Its first regime
+is checked against those trades like any other change of the history. `GET /me/workspaces` lists each workspace's `taxCountry`.
 
 ## Brokerage accounts and their tax regime
 
@@ -226,11 +240,15 @@ The answer (201) is the account; the regime is read with `GET …/tax-regimes`:
 owner, editor. Only for a brokerage account in an `IT` workspace whose flag is still null (one
 created before the workspace's tax country became `IT`): the flag is set once and is fixed
 afterwards. If the broker's status changes, that is a new account and a transfer of securities.
-The answer is the account.
+The answer is the account. When the account already has a regime history, every trade of the
+account is checked against the new flag by the trade rules (step 7): `false` is refused while a bond
+trade carries a domestic withholding on its accrued interest. Without a history, the first regime
+checks them (below).
 
 | Error | Details |
 | --- | --- |
 | 400 `withholding_agent_already_set` | `{ "field": "domesticWithholdingAgent" }` |
+| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "domestic_withholding_requires_agent" }`: the flag would break that trade, the earliest by date then id |
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` |
 
 ### The regime history
@@ -248,7 +266,24 @@ start on the same day. What each regime means, with examples, is in the
 | `PUT …/tax-regimes` | owner, editor | `{ "taxRegimes": [ { "validFrom": "2024-03-15", "regime": "self_declared" }, { "validFrom": "2026-01-01", "regime": "administered" } ] }` | 200 `{ "taxRegimes": […] }`, the whole history replaced at once |
 
 `PUT` corrects the history: the old periods are deleted and the new ones inserted in one
-transaction, under a lock on the account, and checked by the same rules. `POST` can also add a
+transaction, under a lock on the account, and checked by the same rules.
+
+**A change reads the account's trades again.** Every trade of the account the change covers — its
+date now falls under another regime or, for a gain tax adjustment, the regimes in force on or before
+its date are no longer the same — is checked against the new history by the trade rules
+([What is checked, in order](#what-is-checked-in-order), step 7). If one of them breaks, the change
+is refused with `tax_regime_conflicts_with_trade`, naming the earliest such trade (by date, then id)
+and the code it would fail with, and nothing is written. For example, an administered account with
+a sale of a stock that carries gain tax cannot become `self_declared` over that sale's date (a fund
+sale at a domestic withholding agent can), and a managed account with a `managed_result_tax` cannot
+leave `managed` over that tax's date. Edit or delete the trade first, or start the new regime on a
+later 1 January. A trade whose period the change leaves alone is not checked again, and neither is
+the withholding on accrued interest, which depends on the broker, not on the regime. The account's
+first regime is the exception: it covers every trade, and checks each by every trade rule, the
+withholding on accrued interest included (`domestic_withholding_requires_agent`), since trades
+recorded while the account had no regime were never checked against the broker either. The check runs
+under the same account lock as the write, which a trade being recorded or edited on that account
+also waits for. `POST` can also add a
 period before the first one, but only when the first one starts on 1 January (it then becomes a
 change, and changes start on 1 January).
 
@@ -259,6 +294,7 @@ change, and changes start on 1 January).
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime" }`: any `administered` or `managed` period needs the flag set to true |
 | 400 `tax_regime_not_applicable` | `{ "field": "taxRegime", "type" }` (not a brokerage account) or `{ "field": "taxRegime", "taxCountry" }` (not an `IT` workspace) |
 | 400 `tax_regime_required` | `{ "field": "taxRegime", "taxCountry": "IT" }`: `PUT` with an empty list in an `IT` workspace |
+| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code (`domestic_withholding_requires_agent` too, on a first regime) |
 | 400 `invalid_date` | `{ "value" }` |
 
 ## Instruments
@@ -530,7 +566,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `accrued_interest_not_allowed` | `{ "instrumentType" }` (`""` without an instrument) | accrued interest on an instrument that is not a bond |
 | `withholding_exceeds_gross` | `{ "field", "withheld", "gross" }` | a dividend's withholdings above its gross (`field: "withholding"`), or a bond trade's domestic withholding above its accrued interest (`field: "withholdingDomesticCents"`) |
 | `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a fee or a tax of 0, a field the type does not use, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
-| `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet |
+| `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet; a new trade only, an edit of a trade there is not checked |
 | `tax_kind_not_allowed_in_regime` | `{ "regime", "field" }`, plus `taxKind` for a tax | gain tax, an adjustment or a managed result tax the regime on that date does not allow |
 | `domestic_withholding_requires_agent` | `{ "field": "withholdingDomesticCents" }` | a domestic withholding on a bond trade's accrued interest at a broker that is not an Italian withholding agent |
 | `insufficient_quantity` | `{ "tradeId", "accountId", "portfolioId", "instrumentId", "date", "available", "requested" }`, quantities × 10^8 | the portfolio would hold less than zero at that trade |
@@ -648,6 +684,15 @@ trade never changes: delete it and record another.
 - **The history is checked again.** The edited rows go through every check of a create, and the
   whole history of every instrument the edit touches (the old one and the new one) is replayed;
   an edit that would make any portfolio oversell, at any date, is refused.
+- **The tax regime only when something it reads changes.** In an `IT` workspace an edited row is
+  checked against the regime again (step 7) only when its date, account, instrument, tax kind, gain
+  tax, transaction tax, either withholding or, on a tax, its amount changes. An edit of the memo,
+  the time, the quantity, the price or the portfolio alone skips that check, so a trade recorded
+  before its account's regime history changed keeps taking those edits. While an account has no
+  regime yet (a trade recorded before the workspace's tax country became `IT`), an edit of its
+  trades is not checked against the regime at all, a split's or a transfer's included: the
+  account's first regime checks every trade, so a trade no regime would accept can be fixed by an
+  edit before the regime is recorded.
 - **Archived portfolios.** A trade already in an archived portfolio can still be edited there, or
   moved out of it. Moving a trade or a transfer's leg (either one) into an archived portfolio is
   `portfolio_archived`. A split moved to another date covers the holdings on that date, archived
@@ -793,7 +838,10 @@ transferred in.
 A household in an `IT` workspace funds an administered brokerage account from its budget and
 records two portfolios. These are the steps and figures of the milestone's smoke test
 (`apps/api/src/smoke/0.2.0-portfolio.smoke.test.ts`), which checks every number below against the
-real server. Paths are relative to `/workspaces/:workspaceId`, except `/instruments`.
+real server (it also spends from a second category, left out here, so its own budget figures
+differ from step 6's). Paths are relative to `/workspaces/:workspaceId`, except `/instruments`.
+Followed in this order on an empty workspace, such as a disposable environment's, every request
+answers as shown.
 
 **1. The workspace, the accounts and the money.**
 
@@ -802,9 +850,15 @@ real server. Paths are relative to `/workspaces/:workspaceId`, except `/instrume
 | `PATCH` (the workspace itself) | `{ "taxCountry": "IT" }` |
 | `POST /accounts` | `{ "name": "Checking", "type": "checking", "currency": "EUR" }` |
 | `POST /accounts` | `{ "name": "Broker", "type": "brokerage", "currency": "EUR", "taxRegime": "administered", "taxRegimeValidFrom": "2026-01-01", "domesticWithholdingAgent": true }` |
+| `POST /category-groups` | `{ "name": "Goals" }` |
+| `POST /categories` | `{ "name": "Investments", "groupId": "<goals>" }` |
 | `POST /accounts/<checking>/transactions` | `{ "occurredAt": "2026-03-02", "splits": [ { "categoryId": null, "amountCents": 4000000 } ] }`: €40,000.00 of income |
-| `POST /assignments` | €30,000.00 assigned to an "Investments" category for 2026-03 |
+| `POST /assignments` | `{ "entries": [ { "month": "2026-03", "sourceCategoryId": null, "destinationCategoryId": "<investments>", "amountCents": 3000000 } ] }`: €30,000.00 from Unassigned to "Investments" |
 | `POST /transfers` | `{ "sourceAccountId": "<checking>", "destinationAccountId": "<broker>", "occurredAt": "2026-03-10", "amountCents": 3000000, "categoryId": "<investments>" }` |
+
+Each `POST` answers 201 with the new row, whose `id` the later steps use. The transfer answers
+`{ "source": { … }, "destination": { … } }`, its two transactions: `destination.id` is the
+deposit on the broker, which step 7 reconciles.
 
 The transfer goes from an on-budget account to an off-budget one, so it needs `categoryId`
 (without one, 400 `uncategorized_transaction`): it is €30,000.00 of spending from "Investments",
@@ -815,14 +869,17 @@ month of its date (into an on-budget credit card a category is required, 400
 
 **2. Instruments.** `POST /instruments` three times: an ETF (`type: "fund"`), a share
 (`"stock"`), and a government bond quoted in percent of nominal (`"government_bond"`,
-`priceFactorE6: 10000`), all in EUR.
+`priceFactorE6: 10000`), all in EUR, each with a ticker and exchange of its own (or an ISIN), for
+example `{ "ticker": "BTP31", "exchange": "XMIL", "name": "Treasury bond 2031", "type":
+"government_bond", "currency": "EUR", "priceFactorE6": 10000 }`. The catalog is shared, so on a
+server where those tickers are taken, pick others (409 `ticker_taken`).
 
 **3. Portfolios.** `POST /portfolios` `{ "name": "Growth" }` and
 `{ "name": "Income", "purpose": "Coupons and dividends" }`.
 
 **4. Trades**, each `POST /trades` with `"accountId": "<broker>"`:
 
-| Trade | Body (besides account and portfolio) | `cashCents` | Arithmetic |
+| Trade | Body (besides `accountId`, `portfolioId` and, for buys and sales, `"type"` and `instrumentId` as in "Recording a trade") | `cashCents` | Arithmetic |
 | --- | --- | --- | --- |
 | Growth buys 20 ETF | `type: "buy"`, `tradeDate: "2026-03-12"`, `quantityE8: 2000000000`, `priceE6: 100000000`, `feesCents: 500` | −200500 | gross 20 × 100.00 = 2,000.00, + 5.00 fee |
 | Income buys 30 ETF | `"2026-03-13"`, 30 at 120.00, fee 5.00 | −360500 | the account holds 50 for 2,005.00 + 3,605.00 = €5,610.00 |
@@ -832,9 +889,9 @@ month of its date (into an on-budget credit card a category is required, 400
 | Correct the share buy | `PATCH /trades/<id>` `{ "quantityE8": 8000000000, "feesCents": 400 }` | −400400 | gross computed again: 80 × 50.00 = 4,000.00, + 4.00 |
 | Delete the mistake | `DELETE /trades/<id>` | — | 204; its cash leg goes with it |
 | Dividend on Growth's shares | `type: "dividend"`, `"2026-04-01"`, `grossCents: 4000`, `withholdingForeignCents: 600`, `withholdingDomesticCents: 884`, `feesCents: 100` | +2416 | 26% domestic on the 34.00 left after foreign tax is 8.84; 40.00 − 6.00 − 8.84 − 1.00 |
-| ETF split 1:2 | `{ "type": "split", "instrumentId": "<etf>", "tradeDate": "2026-04-10", "splitFrom": 1, "splitTo": 2 }` | 0, 0 | two rows: Growth 10 → 20, Income 30 → 60; cost still 4,488.00, now on 80 units |
+| ETF split 1:2 | `{ "type": "split", "instrumentId": "<etf>", "tradeDate": "2026-04-10", "splitFrom": 1, "splitTo": 2 }` | 0, 0 | two rows with `quantityE8: 0` in the answer; the positions (step 5) show Growth 10 → 20, Income 30 → 60; cost still 4,488.00, now on 80 units |
 | Bond buy on Income | `"2026-04-15"`, `quantityE8: 1000000000000` (10,000 nominal), `priceE6: 99500000`, `feesCents: 200`, `accruedInterestCents: 4000`, `withholdingDomesticCents: 500` | −998700 | gross 10,000 × 99.50 × 0.01 = 9,950.00; 12.5% of the 40.00 accrued interest credited back; −(9,950.00 + 2.00 + 40.00 − 5.00) |
-| Income moves 5 ETF to Growth | transfer, `"2026-04-20"`, `quantityE8: 500000000`, `from` Income with `feesCents: 150`, `to` Growth | −150, 0 | same account: Growth 25, Income 55, cost and average unchanged |
+| Income moves 5 ETF to Growth | transfer, `"2026-04-20"`, `quantityE8: 500000000`, `from` Income with `feesCents: 150`, `to` Growth | −150 (from), 0 (to); the answer lists the to leg first | same account: Growth 25, Income 55, cost and average unchanged |
 | Custody fee on Growth | `type: "fee"`, `"2026-04-30"`, `feesCents: 350`, no instrument | −350 | |
 
 **5. Positions.** `GET /portfolios/<growth>/positions`:
@@ -859,9 +916,31 @@ gains €44.98.
 **6. The cash adds up.** The broker's balance is the deposit plus every cash leg:
 30,000.00 − 2,005.00 − 3,605.00 − 4,004.00 + 1,250.02 + 24.16 − 9,987.00 − 1.50 − 3.50 =
 €11,668.18. And realized + income − costs − taxes on gains = 173.00 − 10.84 − 5.00 − 44.98 =
-€112.18 = 11,668.18 + 18,444.00 − 30,000.00. The budget months are exactly what they were before
-the first trade.
+€112.18 = 11,668.18 + 18,444.00 − 30,000.00. The balance is the sum of the splits' `amountCents`
+of every transaction in `GET /accounts/<broker>/transactions`.
 
-**7. Reconciling locks.** Marking the deposit and Growth's first buy `cleared` and reconciling the
-account at 12 March against a statement balance of €27,995.00 (30,000.00 − 2,005.00) makes that
-buy `locked: true`; editing or deleting it then answers 409 `reconciled`.
+The budget months are exactly what they were before the first trade: `GET /budget-months/2026-03`
+and `GET /budget-months/2026-04` (the full path is
+`GET /workspaces/:workspaceId/budget-months/:month`) answer the same body as they did right after
+the transfer. In March `unassigned` is 1000000 (40,000.00 − 30,000.00), and "Investments" has
+`assigned` 3000000, `activity` −3000000 and `available` 0; April starts with the same 1000000
+unassigned and nothing in "Investments".
+
+**7. Reconciling locks.** The broker's statement of 12 March shows the deposit and Growth's first
+buy: 30,000.00 − 2,005.00 = €27,995.00.
+
+| Request | Body | Answer |
+| --- | --- | --- |
+| `PATCH /accounts/<broker>/transactions/<deposit>` | `{ "status": "cleared" }` | 200 |
+| `PATCH /accounts/<broker>/transactions/<buy's cashTransactionId>` | `{ "status": "cleared" }` | 200 |
+| `POST /accounts/<broker>/reconciliations` | `{ "date": "2026-03-12", "statementBalanceCents": 2799500, "tickedTransactionIds": [ "<deposit>", "<buy's cashTransactionId>" ] }` | 201 `{ "outcome": "reconciled", "reconciliation": { … } }` |
+| `GET /trades` | | the ETF buy of 12 March, alone, has `locked: true` |
+| `PATCH /trades/<buy>` | `{ "feesCents": 0 }` | 409 `{ "error": "a trade whose cash leg is reconciled cannot be edited; unlock it first", "code": "reconciled" }` |
+| `DELETE /trades/<buy>` | | 409, the same `code` |
+
+`<deposit>` is the transfer's `destination.id` from step 1; the buy's `cashTransactionId` is in
+its row in the answer to `POST /trades`. Positions do not change.
+
+Mind the two error shapes ([Before you start](#before-you-start)): a 409 carries its code in
+`code`, next to English text in `error`, while a 400 carries the code in `error` itself (the
+`uncategorized_transaction` of step 1 is `{ "error": "uncategorized_transaction", "details": {} }`).

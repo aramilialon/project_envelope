@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { ValidationError } from "@envelope/core";
+import { assertKnownCurrency, TAX_REGIME_COUNTRY, ValidationError } from "@envelope/core";
 
 import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
@@ -18,15 +18,6 @@ export interface CreatedWorkspace {
   readonly timeZone: string;
   /** Always null on creation; set later by the owner (#508). */
   readonly taxCountry: null;
-}
-
-/** `Intl` itself is the validator: it throws on a currency/time zone it does not recognize, with no need for a hand-maintained list of every valid one. */
-function assertValidCurrency(currency: string): void {
-  try {
-    new Intl.NumberFormat("en", { style: "currency", currency });
-  } catch {
-    throw new ValidationError("invalid_currency", `"${currency}" is not a known currency code`, { currency });
-  }
 }
 
 function assertValidTimeZone(timeZone: string): void {
@@ -47,7 +38,9 @@ function assertValidTimeZone(timeZone: string): void {
  * self-managed transaction (there is no single workspace to scope *that* one to either).
  */
 export async function createWorkspace(pool: DbPool, userId: string, input: CreateWorkspaceInput): Promise<CreatedWorkspace> {
-  assertValidCurrency(input.baseCurrency);
+  // The same check as an account's (#652): a base currency such as "eur" or "VEF" would leave
+  // the workspace unable to hold any on-budget account.
+  assertKnownCurrency(input.baseCurrency);
   assertValidTimeZone(input.timeZone);
 
   const id = randomUUID();
@@ -87,10 +80,21 @@ export interface WorkspaceSettings {
   readonly taxCountry: string | null;
 }
 
+export interface TaxCountryChange extends WorkspaceSettings {
+  /**
+   * The workspace's brokerage accounts with no tax regime, by id, when its tax country has regimes
+   * (`IT`); empty otherwise (#653).
+   */
+  readonly accountsWithoutTaxRegime: readonly string[];
+}
+
 /**
  * Sets the workspace's tax country (#508), or clears it with null. The route restricts this to
  * the owner (`requireOwnerRole`). Brokerage accounts created before the change keep whatever
- * regime they have, possibly none: setting `IT` does not ask for one retroactively.
+ * regime they have, possibly none: setting `IT` does not ask for one retroactively, and is never
+ * refused for it. The answer lists those accounts instead (#653), so a client can ask for their
+ * regime: each takes no new trade until it has one, while the trades it already has stay
+ * editable in every field the regime rules do not read.
  *
  * @throws ValidationError "invalid_tax_country" for a code that is not a known ISO 3166-1 alpha-2 region.
  */
@@ -98,7 +102,7 @@ export async function setWorkspaceTaxCountry(
   db: DbPool | DbClient,
   workspaceId: string,
   taxCountry: string | null,
-): Promise<WorkspaceSettings | undefined> {
+): Promise<TaxCountryChange | undefined> {
   if (taxCountry !== null) {
     assertValidTaxCountry(taxCountry);
   }
@@ -108,9 +112,27 @@ export async function setWorkspaceTaxCountry(
     [workspaceId, taxCountry],
   );
   const row = rows[0];
-  return row
-    ? { id: row.id, name: row.name, baseCurrency: row.base_currency, timeZone: row.time_zone, taxCountry: row.tax_country }
-    : undefined;
+  if (!row) {
+    return undefined;
+  }
+  const withoutRegime =
+    row.tax_country === TAX_REGIME_COUNTRY
+      ? await db.query<{ id: string }>(
+          `SELECT a.id FROM accounts a
+           WHERE a.workspace_id = $1 AND a.type = 'brokerage'
+             AND NOT EXISTS (SELECT 1 FROM account_tax_regimes r WHERE r.workspace_id = a.workspace_id AND r.account_id = a.id)
+           ORDER BY a.created_at, a.id`,
+          [workspaceId],
+        )
+      : { rows: [] };
+  return {
+    id: row.id,
+    name: row.name,
+    baseCurrency: row.base_currency,
+    timeZone: row.time_zone,
+    taxCountry: row.tax_country,
+    accountsWithoutTaxRegime: withoutRegime.rows.map((account) => account.id),
+  };
 }
 
 /**

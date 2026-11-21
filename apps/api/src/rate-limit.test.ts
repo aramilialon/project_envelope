@@ -81,6 +81,30 @@ describe("rate limits", () => {
       const limited = await app.fastify.inject({ method: "GET", url: "/health", headers: { origin: WEB_ORIGIN } });
       assertTooManyRequests(limited);
       assert.equal(limited.headers["access-control-allow-origin"], WEB_ORIGIN);
+      // Retry-After is not CORS-safelisted: the browser hands it to the web app only if exposed.
+      const exposed = String(limited.headers["access-control-expose-headers"] ?? "").toLowerCase().split(/\s*,\s*/);
+      assert.ok(exposed.includes("retry-after"), `Access-Control-Expose-Headers: ${limited.headers["access-control-expose-headers"]}`);
+    });
+
+    it("answers a CORS preflight before the limit, without counting it", async () => {
+      const app = appWith({ RATE_LIMIT_IP_MAX: "2" });
+      const preflight = {
+        method: "OPTIONS" as const,
+        url: "/workspaces",
+        headers: { origin: WEB_ORIGIN, "access-control-request-method": "POST" },
+      };
+      for (let i = 0; i < 5; i++) {
+        const response = await app.fastify.inject(preflight);
+        assert.equal(response.statusCode, 204, response.body);
+        assert.equal(response.headers["access-control-allow-origin"], WEB_ORIGIN);
+      }
+      // The preflights above used none of the address's allowance.
+      for (let i = 0; i < 2; i++) {
+        assert.equal((await app.fastify.inject({ method: "GET", url: "/health" })).statusCode, 200);
+      }
+      assertTooManyRequests(await app.fastify.inject({ method: "GET", url: "/health" }));
+      // Once the address is over its limit, a preflight is still answered.
+      assert.equal((await app.fastify.inject(preflight)).statusCode, 204);
     });
 
     it("counts requests with a bad token or none before authentication, separately for each address", async () => {

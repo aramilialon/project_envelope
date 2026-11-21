@@ -44,7 +44,6 @@ export default function ReconciliationScreen() {
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
   const timeZone = currentWorkspace?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const currency = currentWorkspace?.baseCurrency ?? "EUR";
 
   const [date, setDate] = useState(() => todayIsoIn(timeZone));
   const [statementStr, setStatementStr] = useState("");
@@ -75,6 +74,8 @@ export default function ReconciliationScreen() {
   }
 
   const { account, categories, candidates } = state;
+  // The account's own currency (#652): an off-budget account may be in another one than the workspace's.
+  const currency = account.currency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const openCategories = categories.filter((c) => !c.archived);
 

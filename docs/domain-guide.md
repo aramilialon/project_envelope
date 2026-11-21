@@ -17,6 +17,42 @@ first, then spend" is also enforced: assigning more than is unassigned is allowe
 budget itself is sometimes unavoidable — rent is due before the paycheck clears), but it is shown
 as a warning, never silently.
 
+**A month's unassigned money counts only money received by then.** Looking at any month M, the
+app follows the money month by month from M on: for each month N, the income received by the end
+of N (and by today), less everything assigned to months up to N, less the cash overspending taken
+from the months before M. M's unassigned money is the smallest of these figures. So:
+
+- a month never shows income dated after it: browsing back to August does not show September's
+  salary;
+- money assigned ahead to a later month comes out of the month it was taken from;
+- but a later month's assignment paid for by that later month's own income is not blamed on M;
+- income dated after today counts nowhere until its date: it is expected income, not money
+  received. Spending dated after today does count against its category straight away, which errs
+  on the safe side. This holds for outflows only: money coming in with a category and dated after
+  today (a refund, a categorized transfer from the broker) counts in its category at once for now
+  (#668).
+
+"From this month's money, assigned to later months" is later months' assignments that their own
+income does not pay for, charged to M; when it exceeds what M has, M's unassigned money is negative
+(example 3: €1,100 while September received €1,000).
+
+**Examples.** Today is 21 November 2026.
+
+1. Nothing in August, a €3,000 salary on 25 September: August shows **€0** unassigned, September
+   **€3,000**. A second €3,000 salary on 25 October leaves August and September as they were;
+   October shows €6,000.
+2. €1,000 received in September, €900 of it assigned to October's rent: September shows **€100**
+   unassigned and €900 assigned to later months; October shows €100.
+3. The same, but €1,100 assigned to October and no October income: September shows **−€100** (a
+   warning: more assigned than received), with €1,100 assigned to later months.
+4. €100 received in September; a €16,802 loan paid out on 5 October and assigned in October to the
+   loan's own category: September shows **€100**, not −€16,702, because October's own income pays
+   for October's assignment.
+5. €2,000 received on 10 November, €500 expected on 27 November, €300 assigned to Groceries and
+   €50 of groceries already entered for the 25th: November shows **€1,700** unassigned and
+   Groceries €250 available. The €500 counts from the 27th on, in November and every later month,
+   not before.
+
 ### A category's own month
 
 Four numbers describe a category in a given month:
@@ -157,14 +193,50 @@ unassigned, €1,800 is in "Groceries" and €1,000 in "Rent"; "Investments" hol
 2. The same transfer in "Investments" instead: "Investments" holds **€5,000**, Unassigned stays
    €200.
 3. €5,000 sent to the broker in June through "Investments", and coming back in September as
-   Unassigned: September's unassigned money grows by €5,000; June, and the spending of
-   "Investments" in it, does not change.
+   Unassigned: September's unassigned money grows by €5,000 (and every later month's with it);
+   June, July and August, and the spending of "Investments" in June, do not change: income never
+   shows in a month before its date.
 4. Starting from example 1, after assigning €4,000 to "Holiday" (Unassigned €1,200), the transfer's
    checking leg is edited to "Investments": Unassigned becomes **−€3,800** (more assigned than
    there is, shown as a warning) and "Investments" €5,000; the total is still €8,000, and the
    broker's leg does not change.
 5. Refused: checking → broker with no category; broker → Visa with no category; the checking leg of
    a transfer to the broker edited to no category.
+
+### Each account in its own currency
+
+Every account keeps its own currency, and amounts in different currencies are never added together
+until exchange rates exist (#86, #652):
+
+- **On-budget accounts, cards included, are in the workspace's base currency.** The budget is one
+  pot of money in one currency; an on-budget account in another one is refused
+  (`account_currency_not_base`). An off-budget account (a broker in dollars, a savings account in
+  francs) can be in any currency.
+- **A transfer moves money between two accounts in the same currency.** One amount cannot mean
+  €1,000 on one side and $1,000 on the other, so a transfer between accounts in different
+  currencies is refused (`currency_mismatch`). Such a move is entered as an outflow from one account
+  and an inflow into the other, each in its own currency.
+- **Every balance is shown in its account's own currency.**
+- **The net worth adds up base-currency accounts only.** What accounts in other currencies hold is
+  listed beside it, each in its own currency ("Not included: $3,000.00 (no exchange rates yet)").
+  Balances in one currency are netted: a −$100 card and a $3,000 broker show as $2,900, and a
+  lone −$5,000 loan as −$5,000. Securities are not in the net worth either until prices exist
+  (#125): only the cash in the brokerage account counts. Sending €10,000 to a broker in euros
+  leaves the net worth unchanged (the money only moves between two accounts in the net worth);
+  spending it on an ETF lowers the net worth by what the purchase cost, fees included. A line says
+  so whenever the workspace holds securities.
+
+**Example.** Base currency EUR: checking €5,000, an on-budget card −€500, a broker in euros holding
+€2,000 of cash and some ETFs, a broker in dollars holding $3,000 of cash. Net worth:
+5,000 − 500 + 2,000 = **€6,500**, with "Not included: $3,000.00 (no exchange rates yet)" and "Net
+worth does not include securities (no prices yet)".
+
+**Example, continued.** €1,000 moves from checking to the dollar broker, which receives $1,080. It
+cannot be a transfer: checking records an outflow of €1,000 with a category (which one is the
+household's choice), and the broker an inflow of $1,080. Checking now holds €4,000 and the broker
+$4,080, so the net worth drops to 4,000 − 500 + 2,000 = **€5,500**, and the note becomes "Not
+included: $4,080.00 (no exchange rates yet)". The euros reappear in the net worth, as dollars
+converted at a rate, only once exchange rates exist (#86).
 
 ### Days of buffer
 
@@ -196,8 +268,12 @@ Across every feature above, one equation must always hold:
 ```
 unassigned money + every category's available + reserved + assigned to future months
   + this month's credit overspending
-  = money actually sitting in the on-budget cash accounts (cards excluded)
+  = money in the on-budget cash accounts (cards excluded) at the end of the month,
+    less the income dated after today (not received yet)
 ```
+
+that is, income received by the earlier of the end of the month and today, plus the activity up to
+the end of the month. It holds in every month, not only the current one.
 
 Every code path that moves money — assigning, spending, a transfer, a scheduled transaction firing,
 a card payment — has to keep this equation true, or the budget and the real accounts have quietly
@@ -573,6 +649,15 @@ on its gain at the sale; a sale on 5 January 2027 is under the self-declared reg
 goes into the investor's own annual return. Recording the switch does not change the 2026 sale. A
 switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start`).
 
+**Example.** The same account already holds a sale of a share on 10 February 2026, on which the
+broker withheld €26.00 of gain tax. Correcting the history to "self-declared since 2024" is refused
+(`tax_regime_conflicts_with_trade`, naming that sale): under self-declared a broker withholds no
+gain tax on a share, so the recorded sale would no longer make sense. Either the sale is wrong (edit
+or delete it first) or the history is (keep administered over February 2026). Had the sale been of
+a fund at an Italian withholding agent, the correction would be accepted, since such a broker still
+withholds on fund gains. A change only judges the trades it covers: a switch from 1 January 2027
+leaves that sale alone.
+
 **Example.** Two self-declared accounts each receive a foreign dividend of €100 gross, €15 of it
 withheld abroad, so €85 is left. At a broker that is an Italian withholding agent, €22.10 is
 withheld on the €85 and €62.90 arrives. At a foreign broker, €85 arrives and is reported in the
@@ -596,7 +681,13 @@ gains and income from securities; 12.5% applies to government bonds.
 A trade the regime does not allow is refused with `tax_kind_not_allowed_in_regime`, naming the
 regime and the field; the withholding on accrued interest at a foreign broker is refused with
 `domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
-takes no trade at all (`tax_regime_required`). The worked examples below follow the tests in
+takes no new trade (`tax_regime_required`). A workspace can still become `IT` while some of its
+brokerage accounts have trades and no regime: the change lists those accounts, their trades keep
+taking any edit while the account has no regime, and the first regime recorded is checked against
+every one of them by every rule above, the withholding on accrued interest included. A trade no
+regime would accept (gain tax on a share's sale with a self-declared regime in mind, say) is edited
+first, then the regime is recorded. Setting the withholding-agent flag later, on an account that
+already has a regime, is checked against its trades the same way. The worked examples below follow the tests in
 `packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
 result tax, for one, is not).
 

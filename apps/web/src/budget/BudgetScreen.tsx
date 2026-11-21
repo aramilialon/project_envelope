@@ -289,7 +289,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
             <b>{money(state.budgetMonth.reserved)}</b>
           </span>
           <span>
-            {intl.formatMessage({ id: "budget.assignedInFuture", defaultMessage: "Already assigned to future months" })}{" "}
+            {intl.formatMessage({ id: "budget.assignedInFuture", defaultMessage: "From this month's money, assigned to later months" })}{" "}
             <b>{money(state.budgetMonth.assignedInFuture)}</b>
           </span>
           {daysOfBufferState.status === "ok" && (

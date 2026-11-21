@@ -32,13 +32,27 @@
       "mcp__playwright-mixed__browser_network_request"
     ],
     "ask": [
-      "Bash(git tag *)",
-      "Bash(gh release *)"
+      "Bash(git tag -d *)",
+      "Bash(git tag --delete *)",
+      "Bash(git tag -f *)",
+      "Bash(git tag --force *)",
+      "Bash(git push origin :refs/tags/*)",
+      "Bash(git push --delete origin v*)",
+      "Bash(git push origin --delete v*)",
+      "Bash(gh release edit *)",
+      "Bash(gh release delete *)",
+      "Bash(gh release delete-asset *)",
+      "Bash(gh release upload *)"
     ],
     "allow": [
       "Bash(gh pr merge * --squash --delete-branch)",
       "Bash(gh pr review *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(gh release view *)",
+      "Bash(gh release list *)",
+      "Bash(git tag -a v*)",
+      "Bash(git push origin v*)",
+      "Bash(gh release create v*)"
     ]
   }
 }

@@ -236,5 +236,6 @@ Shown only in a workspace whose tax country is Italy; the terms name Italian con
 | Sign out | Esci | Abmelden | Cerrar sesión | Se déconnecter | |
 | Workspace settings | Impostazioni del workspace | Workspace-Einstellungen | Ajustes del espacio de trabajo | Paramètres de l'espace de travail | |
 | Currency | Valuta | Währung | Moneda | Devise | |
+| Exchange rate | Tasso di cambio | Wechselkurs | Tipo de cambio | Taux de change | Between two currencies; *mancano ancora i tassi di cambio*, *noch keine Wechselkurse*, *aún sin tipos de cambio*, *pas encore de taux de change* |
 | Time zone | Fuso orario | Zeitzone | Zona horaria | Fuseau horaire | |
 | Archive | Archiviare | Archivieren | Archivar | Archiver | Categories and groups |

@@ -70,7 +70,7 @@ Every change reaches `main` through a pull request that the maintainer reviews a
 - The pull request title follows the same format: with "Squash and merge" it becomes the commit message on `main`, and CI checks it.
 - When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`). Once the GitHub Actions CI run on that pull request has completed successfully, merge it (squash) and report the link; do not merge before CI finishes.
 - Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
-- Releases (tags, GitHub releases) are done only when asked.
+- Releases (tags, GitHub releases): the coordinator tags and publishes a release on its own once every step of "Releasing a milestone" has passed (exploratory run, security alerts, changelog); a release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`) waits for the maintainer's own test first.
 
 ## Current focus: backend MVP
 
