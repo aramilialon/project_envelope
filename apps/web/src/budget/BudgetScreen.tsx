@@ -39,7 +39,7 @@ import GroupMenu from "./GroupMenu.tsx";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import { daysInMonth, monthAbbrev, monthLabel, shiftMonth, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
-import RowDetail from "./RowDetail.tsx";
+import RowDetail, { type CardPart } from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
 import Timeline from "./Timeline.tsx";
 import { timelineValueLabelWidth } from "./textWidth.ts";
@@ -171,6 +171,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  /**
+   * A detail opened from elsewhere on the screen (a "To do" item, a category's link to its card;
+   * #728) asks to be brought into view and focused: `seq` changes on every such open, so opening
+   * the one already open still moves there.
+   */
+  const [detailFocus, setDetailFocus] = useState<{ readonly categoryId: string; readonly seq: number } | null>(null);
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
   /**
    * Changing month closes a category's detail and the Move money form (#698): their amounts, and
@@ -440,6 +446,9 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   }
 
   function renderDetail(category: BudgetGroupCategory, fullScreen: boolean) {
+    const requested = detailFocus?.categoryId === category.categoryId ? detailFocus.seq : undefined;
+    // On the phone the detail replaces the list, so it always opens at its top with focus on it.
+    const focusRequest = fullScreen ? `${category.categoryId}:${requested ?? 0}` : requested;
     return category.isPaymentCategory ? (
       <PaymentCategoryDetail
         categoryName={category.name}
@@ -450,6 +459,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         {...(category.overspendingBy !== undefined ? { overspendingBy: category.overspendingBy } : {})}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        focusRequest={focusRequest}
         readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
         onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
@@ -467,12 +477,42 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         assigned={category.assigned}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        focusRequest={focusRequest}
         readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
         onChanged={() => refetchAndCheckProblems()}
         onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+        cardParts={cardPartsOf(category.categoryId)}
+        onOpenPaymentCategory={openCategory}
       />
     );
+  }
+
+  /** A category's credit overspending per card (#728), read from each card's own `overspendingBy`. */
+  function cardPartsOf(categoryId: string): CardPart[] {
+    return groups
+      .flatMap((g) => g.categories)
+      .filter((c) => c.isPaymentCategory)
+      .flatMap((card) =>
+        (card.overspendingBy ?? [])
+          .filter((o) => o.categoryId === categoryId && o.amount > 0)
+          .map((o) => ({ paymentCategoryId: card.categoryId, paymentCategoryName: card.name, amount: o.amount })),
+      );
+  }
+
+  /**
+   * Opens a category's detail in its row. On the desktop, a collapsed group never renders its own
+   * categories at all (`#411`): its group is expanded first, or nothing visible would change.
+   * The detail then scrolls into view and takes focus on its heading (#728): it may open far from
+   * the "To do" item or the link that opened it.
+   */
+  function openCategory(categoryId: string) {
+    const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === categoryId));
+    if (ownGroup) {
+      setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
+    }
+    setOpenCategoryId(categoryId);
+    setDetailFocus((f) => ({ categoryId, seq: (f?.seq ?? 0) + 1 }));
   }
 
   function handleTodoItemClick(item: TodoItem) {
@@ -483,13 +523,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     if (item.kind === "overassigned") {
       return;
     }
-    // On the desktop, a collapsed group never renders its own categories at all (`#411`): opening
-    // one from the "To do" list needs its group expanded first, or nothing visible would change.
-    const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === item.categoryId));
-    if (ownGroup) {
-      setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
+    if (item.categoryId === null) {
+      // Overdue scheduled income (#347) reserves no category: nothing to open.
+      setOpenCategoryId(null);
+      return;
     }
-    setOpenCategoryId(item.categoryId);
+    openCategory(item.categoryId);
   }
 
   const phoneOpenCategory = isPhone && detailReady && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
@@ -698,7 +737,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                               // Desktop toggles its own inline detail closed again on a second tap
                               // (`isOpen` is always false on phone, since its detail replaces this
                               // whole list instead — there is nothing here left to toggle back to).
-                              onClick={() => setOpenCategoryId(isPhone || !isOpen ? category.categoryId : null)}
+                              onClick={() => {
+                                // A row's own tap keeps focus on the row (desktop); only the phone,
+                                // whose detail replaces the list, moves it (`renderDetail`).
+                                setDetailFocus(null);
+                                setOpenCategoryId(isPhone || !isOpen ? category.categoryId : null);
+                              }}
                             >
                               {rowContent}
                             </button>
@@ -891,6 +935,18 @@ function StatusLine({ category, money, intl }: StatusLineProps) {
   const spent = Math.max(0, -category.activity);
 
   if (spent > 0) {
+    // #728: overspent both ways, the cash part and the card part are named apart — the card part
+    // is the card's debt, asked on its payment category, the cash part asked here.
+    if (category.cashOverspending > 0 && category.creditOverspending > 0) {
+      return (
+        <small className="spent n">
+          {intl.formatMessage(
+            { id: "budget.bar.overspentCashAndCard", defaultMessage: "{cash} overspent in cash, {card} with a card" },
+            { cash: money(category.cashOverspending), card: money(category.creditOverspending) },
+          )}
+        </small>
+      );
+    }
     if (category.creditOverspending > 0) {
       return (
         <small className="spent n">

@@ -15,8 +15,17 @@ import { cardDebt } from "./cardDebt.ts";
 
 export type TodoItem =
   | { readonly kind: "overassigned"; readonly amountCents: Cents }
-  | { readonly kind: "cashOverspending"; readonly categoryId: string; readonly amountCents: Cents }
-  | { readonly kind: "cardOverspending"; readonly categoryId: string; readonly amountCents: Cents }
+  | {
+      readonly kind: "cashOverspending";
+      readonly categoryId: string;
+      readonly amountCents: Cents;
+      /**
+       * The part of `amountCents` that is the category's reservation shortfall (#728), present
+       * only when it is above zero: an ordinary category with no credit overspending asks for its
+       * cash overspending and its reservation shortfall in one item, so the interface can say so.
+       */
+      readonly reservationShortfallCents?: Cents;
+    }
   | {
       readonly kind: "scheduledOverdue";
       readonly scheduledTransactionId: string;
@@ -77,33 +86,38 @@ export function reservationShortfall(category: CategoryMonth): Cents {
  * How much money a category still needs to stop being a problem — the same figure "Move money"
  * preselects when opened from a category's own row (design.md, "Assign / Move money": it
  * "preselects the category and the amount it is missing", `docs/ux/mockups/budget-month.html`'s
- * own `openMove`'s `gap`): the whole of a cash/card overspend first, else a reservation shortfall,
- * else (payment categories only) card debt still uncovered. Zero when none of these apply.
+ * own `openMove`'s `gap`), the amount of the category's own "To do" item and what quick
+ * assign's "Cover overspending" assigns to it. Zero when nothing applies.
  *
- * A card paid beyond what its payment category set aside is cash overspending on that category,
- * and its debt stays uncovered on top of it: covering both takes `cardDebt`'s `toCover`,
- * cash overspending + uncovered = `max(0, max(0, owed) - available)` (#699). `uncovered` is
- * always 0 on an ordinary category, so adding it to the overspend changes nothing there.
+ * Card debt is asked once, on the card's payment category (#728). A category's credit
+ * overspending is already part of its card's uncovered debt (the card owes it, and no money was
+ * moved into the payment category for it), so it is never asked here as well: asking it on both
+ * would set the same money aside twice. An ordinary category asks for its cash overspending,
+ * plus its reservation shortfall when it has no credit overspending — with credit overspending,
+ * money assigned to the category covers the card spending first and moves to the card (rule 4),
+ * so it would not reach the reservation and would only lower what the card asks.
+ *
+ * A payment category asks `cardDebt`'s `toCover`: its cash overspending (the card was paid beyond
+ * what was set aside) plus its uncovered debt, `max(0, max(0, owed) - available)` (#699).
+ * `uncovered` is always 0 on an ordinary category, and `reserved` always 0 on a payment category.
  */
 export function amountNeededToCover(category: CategoryMonth): Cents {
-  if (category.cashOverspending > 0 || category.creditOverspending > 0) {
-    return category.cashOverspending + category.creditOverspending + category.uncovered;
+  if (category.creditOverspending > 0) {
+    return category.cashOverspending;
   }
-  const short = reservationShortfall(category);
-  if (short > 0) {
-    return short;
-  }
-  return category.uncovered > 0 ? category.uncovered : 0;
+  return category.cashOverspending + reservationShortfall(category) + category.uncovered;
 }
 
 /**
  * Builds the list in the mockup's own priority order: being assigned more than there is money
- * for comes first (if at all), then overspending (cash before card, since cash needs new money
- * immediately), overdue scheduled transactions, a reservation a category cannot cover (only when
- * that category is not already flagged by overspending above), uncovered card debt, and finally
- * every target still missing money as one combined item.
+ * for comes first (if at all), then cash overspending, overdue scheduled transactions, a
+ * reservation a category cannot cover (only when that category is not overspent), uncovered card
+ * debt, and finally every target still missing money as one combined item.
  *
- * A card paid beyond what its payment category set aside is cash overspending like any other,
+ * Card debt is asked once, on the card's payment category (#728): a category's credit
+ * overspending gets no item of its own, since it is already inside its card's uncovered debt, and
+ * a category overspent in cash asks only for what `amountNeededToCover` gives it, never its card
+ * part. A card paid beyond what its payment category set aside is cash overspending like any other,
  * listed with the rest of it, for the whole of `cardDebt`'s `toCover` — the overspending plus the
  * debt still uncovered, one item, never a second "debt to cover" one for the same card (#699).
  */
@@ -112,11 +126,14 @@ export function computeTodos(input: TodosInput): readonly TodoItem[] {
 
   for (const category of input.categories) {
     if (category.cashOverspending > 0) {
-      // Covering the category in full needs its whole overspend, cash and card together — the
-      // card portion gets its own item below only when there is no cash overspending alongside it.
-      items.push({ kind: "cashOverspending", categoryId: category.categoryId, amountCents: category.cashOverspending + category.creditOverspending });
-    } else if (category.creditOverspending > 0) {
-      items.push({ kind: "cardOverspending", categoryId: category.categoryId, amountCents: category.creditOverspending });
+      const amountCents = amountNeededToCover(category);
+      const short = amountCents - category.cashOverspending;
+      items.push({
+        kind: "cashOverspending",
+        categoryId: category.categoryId,
+        amountCents,
+        ...(short > 0 ? { reservationShortfallCents: short } : {}),
+      });
     }
   }
   for (const category of input.paymentCategories) {

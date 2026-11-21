@@ -193,6 +193,69 @@ describe("quick assign repository", () => {
     assert.equal(after?.owed, 24_567);
   });
 
+  it("cover_overspending never assigns credit overspending; cover_card_debt then settles the cards in one run (#728, X2)", async () => {
+    // Groceries with nothing assigned; the Mastercard opened owing €500, €45.67 of groceries on
+    // it, €300 paid from checking; the Visa €45.67 of groceries, paid exactly €45.67.
+    const mastercard = await createAccount(pool, { workspaceId, name: "X2 Mastercard", type: "credit_card", currency: "EUR", onBudget: true });
+    const visa = await createAccount(pool, { workspaceId, name: "X2 Visa", type: "credit_card", currency: "EUR", onBudget: true });
+    const mastercardPayment = mastercard.paymentCategoryId;
+    const visaPayment = visa.paymentCategoryId;
+    assert.ok(mastercardPayment && visaPayment);
+    const groceries = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'X2 Groceries', 4) RETURNING id",
+      [workspaceId, groupId],
+    );
+    const groceriesId = groceries.rows[0]!.id;
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: mastercard.id,
+      occurredAt: "2027-03-01",
+      status: "cleared",
+      splits: [{ categoryId: mastercardPayment, amountCents: -50_000 }],
+    });
+    await createTransaction(pool, { workspaceId, accountId: mastercard.id, occurredAt: "2027-03-03", splits: [{ categoryId: groceriesId, amountCents: -4_567 }] });
+    await createTransaction(pool, { workspaceId, accountId: visa.id, occurredAt: "2027-03-03", splits: [{ categoryId: groceriesId, amountCents: -4_567 }] });
+    await createTransfer(pool, { workspaceId, sourceAccountId: checkingAccountId, destinationAccountId: mastercard.id, occurredAt: "2027-03-10", amountCents: 30_000 });
+    await createTransfer(pool, { workspaceId, sourceAccountId: checkingAccountId, destinationAccountId: visa.id, occurredAt: "2027-03-10", amountCents: 4_567 });
+
+    const month = await getBudgetMonth(pool, workspaceId, "2027-03");
+    const groceriesBefore = month.categories.find((c) => c.categoryId === groceriesId);
+    assert.equal(groceriesBefore?.creditOverspending, 9_134);
+    assert.equal(groceriesBefore?.cashOverspending, 0);
+
+    // Groceries is overspent only with the cards: "Cover overspending" leaves it, and the cards, alone.
+    const overspending = await runQuickAssign(pool, workspaceId, authorId, "2027-03", { kind: "all" }, "cover_overspending");
+    assert.deepEqual(
+      overspending.filter((e) => [groceriesId, mastercardPayment, visaPayment].includes(e.destinationCategoryId ?? "")),
+      [],
+    );
+
+    const debt = await runQuickAssign(pool, workspaceId, authorId, "2027-03", { kind: "all" }, "cover_card_debt");
+    const given = (categoryId: string) => debt.filter((e) => e.destinationCategoryId === categoryId).reduce((sum, e) => sum + e.amountCents, 0);
+    assert.equal(given(mastercardPayment), 54_567);
+    assert.equal(given(visaPayment), 4_567);
+    assert.equal(given(groceriesId), 0);
+
+    const after = await getBudgetMonth(pool, workspaceId, "2027-03");
+    const mastercardAfter = after.paymentCategories.find((c) => c.categoryId === mastercardPayment);
+    const visaAfter = after.paymentCategories.find((c) => c.categoryId === visaPayment);
+    assert.equal(mastercardAfter?.available, 24_567);
+    assert.equal(mastercardAfter?.owed, 24_567);
+    assert.equal(mastercardAfter?.uncovered, 0);
+    assert.equal(visaAfter?.available, 0);
+    assert.equal(visaAfter?.owed, 0);
+
+    // Nothing left for either mode to do.
+    const again = [
+      ...(await runQuickAssign(pool, workspaceId, authorId, "2027-03", { kind: "all" }, "cover_overspending")),
+      ...(await runQuickAssign(pool, workspaceId, authorId, "2027-03", { kind: "all" }, "cover_card_debt")),
+    ];
+    assert.deepEqual(
+      again.filter((e) => [groceriesId, mastercardPayment, visaPayment].includes(e.destinationCategoryId ?? "")),
+      [],
+    );
+  });
+
   it("repeat_assigned: copies last month's assigned amount into the current month", async () => {
     await createAssignmentBatch(pool, {
       workspaceId,
