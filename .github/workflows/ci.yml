@@ -94,10 +94,27 @@ jobs:
         id: web_unit
         if: always()
         run: pnpm --filter @envelope/web test
-      - name: Run pnpm test - packages/i18n - catalog completeness
-        id: i18n_complete
+      - name: Run pnpm test - packages/i18n - unit
+        id: i18n_unit
         if: always()
         run: pnpm --filter @envelope/i18n test
+      # Not part of `pnpm test` (#620): a catalog that is not shipped yet may be incomplete,
+      # but every shipped one (packages/i18n/locales/index.json) must be complete.
+      - name: Check the shipped catalogs - packages/i18n - catalog completeness
+        id: i18n_complete
+        if: always()
+        run: pnpm --filter @envelope/i18n check
+      # en.json is generated from every app's own defaultMessages: a change that edits one
+      # without re-running the extraction would ship English the catalogs do not know about.
+      - name: Check that en.json is up to date - packages/i18n - extraction
+        id: i18n_extract
+        if: always()
+        run: |
+          pnpm --filter @envelope/i18n extract
+          if ! git diff --exit-code packages/i18n/locales/en.json; then
+            echo "::error::packages/i18n/locales/en.json is out of date: run 'pnpm --filter @envelope/i18n extract' and commit it."
+            exit 1
+          fi
       - name: Run pnpm test - scripts - unit
         id: scripts_unit
         if: always()
@@ -107,7 +124,9 @@ jobs:
         run: |
           if [ "${{ steps.core_unit.outcome }}" != "success" ] ||
              [ "${{ steps.web_unit.outcome }}" != "success" ] ||
+             [ "${{ steps.i18n_unit.outcome }}" != "success" ] ||
              [ "${{ steps.i18n_complete.outcome }}" != "success" ] ||
+             [ "${{ steps.i18n_extract.outcome }}" != "success" ] ||
              [ "${{ steps.scripts_unit.outcome }}" != "success" ]; then
             echo "::error::At least one test step failed; see above."
             exit 1
