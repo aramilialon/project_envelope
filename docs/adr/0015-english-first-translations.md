@@ -31,7 +31,7 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 ### Review status of each language
 
 - Italian is reviewed by the maintainer.
-- German, Spanish and French are machine-translated and agent-reviewed. The documentation and the catalog index (`packages/i18n`'s README) say so; the app does not.
+- German, Spanish and French are machine-translated and agent-reviewed. The documentation says so, in the review status of each language in `packages/i18n/locales/index.json` and in the `packages/i18n` README; the app does not.
 
 ### Loading
 
@@ -61,7 +61,7 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 ### Sign-in and the identity provider
 
 - The sign-in screen has a language selector (#627, #630); that choice belongs to the device. After sign-in, an explicit account language wins; otherwise the device choice counts as the device language.
-- The interface language reaches the identity provider through the standard OpenID Connect `ui_locales` parameter, and the identity provider's own translations are used (#631). A custom theme's message bundles, if one is ever added, fall under the translator like the app's catalogs.
+- The interface language reaches the identity provider through the standard OpenID Connect `ui_locales` parameter, and the identity provider's own translations are used (#631). A custom theme's message bundles, if one is ever added, fall under the translator like the app's catalogs, and so do the identity provider's consent texts (ADR 0014, written in English and Italian so far).
 - From milestone 0.7.0 the app also writes the identity provider user's `locale` attribute, and the identity provider's emails are translated (#632).
 
 ### Push notifications
