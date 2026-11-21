@@ -48,6 +48,12 @@
   color: var(--paper);
 }
 
+/* The radio itself is invisible: its keyboard focus shows on the whole segment (the mockup). */
+.transaction-form .segs label:has(input:focus-visible) {
+  outline: 2px solid var(--pen);
+  outline-offset: -2px;
+}
+
 .transaction-form .segs:disabled,
 .transaction-form .segs[disabled] {
   opacity: 0.6;
