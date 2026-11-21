@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertCents, assertMonth, ValidationError } from "@envelope/core";
+import { assertAmount, assertMonth, ValidationError } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 
@@ -68,7 +68,7 @@ function toEntryRecord(row: AssignmentEntryRow): AssignmentEntryRecord {
 
 function validateEntry(entry: AssignmentEntryInput): void {
   assertMonth(entry.month);
-  assertCents(entry.amountCents);
+  assertAmount(entry.amountCents);
   if (entry.amountCents <= 0) {
     throw new ValidationError("invalid_amount", "an assignment amount must be positive", {
       amount: entry.amountCents,

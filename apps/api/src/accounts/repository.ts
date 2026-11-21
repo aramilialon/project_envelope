@@ -1,4 +1,4 @@
-import { assertDate, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import { assertAmount, assertDate, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
@@ -84,10 +84,15 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * `account_tax_regimes` (`tax-regimes.ts`) in the same transaction.
  *
  * @throws ValidationError "tax_regime_required" / "tax_regime_not_applicable"
- * from `validateAccountTaxSettings`, and "invalid_date" for a bad
- * `taxRegimeValidFrom`.
+ * from `validateAccountTaxSettings`, "invalid_date" for a bad
+ * `taxRegimeValidFrom`, and "invalid_amount"/"amount_too_large" for a
+ * starting balance that is not a whole number of minor units or is beyond the
+ * cap (ADR 0002).
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
+  if (input.startingBalanceCents !== undefined) {
+    assertAmount(input.startingBalanceCents, "startingBalance");
+  }
   validateAccountTaxSettings({
     accountType: input.type,
     taxCountry: await workspaceTaxCountry(db, input.workspaceId),

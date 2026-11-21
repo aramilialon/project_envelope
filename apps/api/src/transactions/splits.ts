@@ -7,7 +7,7 @@
  * checks, so only the shared half moves here.
  */
 
-import { assertCents, ValidationError } from "@envelope/core";
+import { assertAmount, ValidationError } from "@envelope/core";
 
 export interface SplitLike {
   readonly categoryId: string | null;
@@ -51,15 +51,17 @@ export function validateSplitTotals<T extends SplitLike>(
   }
   let total = 0;
   for (const split of splits) {
-    assertCents(split.amountCents);
+    assertAmount(split.amountCents);
     onSplit?.(split);
     if (split.categoryId === null && splits.length > 1) {
       throw new ValidationError("unsupported_transaction", "income cannot be part of a split");
     }
     total += split.amountCents;
   }
+  // The transaction's own amount is the sum of its splits: capped like any single amount (#651).
+  assertAmount(total, "total");
   if (expectedTotal !== undefined) {
-    assertCents(expectedTotal);
+    assertAmount(expectedTotal, "total");
     if (expectedTotal !== total) {
       throw new ValidationError("split_mismatch", `splits add up to ${total} instead of ${expectedTotal}`, {
         splitTotal: total,

@@ -5,6 +5,7 @@
  */
 
 import {
+  assertAmount,
   detectDuplicates,
   isValidationError,
   parseCamt053,
@@ -122,6 +123,9 @@ async function stageParsedRows(
   parsedRows: readonly ImportRow[],
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
+  // The parsers already cap every amount they read (#651); a statement's closing balance is typed.
+  for (const row of parsedRows) assertAmount(row.amountCents);
+  if (closingBalanceCents !== undefined) assertAmount(closingBalanceCents, "closingBalance");
   const existingTransactions = await listTransactionsForAccount(db, workspaceId, accountId);
   const existing: ExistingTransaction[] = existingTransactions.map((t) => ({
     id: t.id,

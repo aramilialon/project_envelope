@@ -1,4 +1,4 @@
-import { assertCents, monthOf, ValidationError } from "@envelope/core";
+import { assertAmount, monthOf, ValidationError } from "@envelope/core";
 
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -267,7 +267,7 @@ export interface CreateTradeCashLegInput {
  * writes it in the same database transaction as the trade.
  */
 export async function createTradeCashLeg(db: DbPool | DbClient, input: CreateTradeCashLegInput): Promise<string> {
-  assertCents(input.amountCents);
+  assertAmount(input.amountCents, "cash");
   const id = await insertTransactionRow(db, {
     workspaceId: input.workspaceId,
     accountId: input.accountId,
@@ -306,7 +306,7 @@ export interface RewriteTradeCashLegInput extends CreateTradeCashLegInput {
  * @returns the leg's id, or null when the trade moves no cash.
  */
 export async function rewriteTradeCashLeg(db: DbPool | DbClient, input: RewriteTradeCashLegInput): Promise<string | null> {
-  assertCents(input.amountCents);
+  assertAmount(input.amountCents, "cash");
   const { rows } = await db.query<{ id: string; account_id: string; unchanged_date: boolean; amount_cents: string; status: string }>(
     `SELECT t.id, t.account_id, t.status,
             t.occurred_at = $3::date::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $1) AS unchanged_date,
@@ -390,7 +390,7 @@ export interface TransferRecord {
  * categories once the budget month is computed, same as any other transfer here.
  */
 export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput, queue?: QueueDriver): Promise<TransferRecord> {
-  assertCents(input.amountCents);
+  assertAmount(input.amountCents);
   if (input.amountCents <= 0) {
     throw new ValidationError("invalid_amount", "a transfer amount must be positive", { amount: input.amountCents });
   }

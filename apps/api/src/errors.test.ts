@@ -114,6 +114,12 @@ describe("toErrorReply (#512)", () => {
     assert.deepEqual(reply, { statusCode: 400, body: { error: "invalid_amount", details: { amount: 1.5 } } });
   });
 
+  it("maps amount_total_overflow to 422: the stored rows, not the request, are the problem (#651)", () => {
+    const details = { label: "transactions", transactionIds: "a,b", count: 2 };
+    const reply = toErrorReply(new ValidationError("amount_total_overflow", "an English message", details));
+    assert.deepEqual(reply, { statusCode: 422, body: { error: "amount_total_overflow", details } });
+  });
+
   it("keeps a Fastify client error's status, with a fixed body instead of its message", () => {
     const unsupported = Object.assign(new Error("Unsupported Media Type: text/plain"), {
       statusCode: 415,
