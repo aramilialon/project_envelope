@@ -8,6 +8,7 @@ import * as targetsApi from "../targets/api.ts";
 import type { GoalProgress } from "../targets/api.ts";
 import { ApiError } from "../apiFetch.ts";
 import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
+import type { TargetsState } from "../targets/useTargets.ts";
 import * as budgetApi from "./api.ts";
 import type { ScheduledTransaction } from "./api.ts";
 import ScheduledPanel from "./ScheduledPanel.tsx";
@@ -73,13 +74,24 @@ function renderPanel(scheduledTransactions: readonly ScheduledTransaction[], goa
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([ACCOUNT]);
   vi.spyOn(budgetApi, "listScheduledTransactions").mockResolvedValue(scheduledTransactions);
-  vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
+  // Next month's targets are this panel's own request; this month's come from the budget screen (#682).
+  const listGoalProgress = vi.spyOn(targetsApi, "listGoalProgress").mockResolvedValue([...goalsByCategory.values()]);
+  const currentTargets: TargetsState = { status: "ok", progressByCategory: goalsByCategory, refetch: vi.fn() };
   const onClose = vi.fn();
   const onChanged = vi.fn();
   renderWithIntl(
-    <ScheduledPanel workspaceId="ws-1" month="2026-09" groups={GROUPS} currency="EUR" timeZone="Europe/Rome" onClose={onClose} onChanged={onChanged} />,
+    <ScheduledPanel
+      workspaceId="ws-1"
+      month="2026-09"
+      groups={GROUPS}
+      currency="EUR"
+      timeZone="Europe/Rome"
+      currentTargets={currentTargets}
+      onClose={onClose}
+      onChanged={onChanged}
+    />,
   );
-  return { onClose, onChanged };
+  return { onClose, onChanged, listGoalProgress };
 }
 
 function goalProgress(overrides: Partial<GoalProgress> = {}): GoalProgress {
@@ -115,26 +127,32 @@ describe("ScheduledPanel (#330)", () => {
     const recordScheduledTransaction = vi
       .spyOn(budgetApi, "recordScheduledTransaction")
       .mockResolvedValue({ transaction: { id: "tx-1" }, scheduledTransaction: scheduledTransaction({ nextDueDate: "2026-10-05" }) });
-    const { onChanged } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    const { onChanged, listGoalProgress } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
     await screen.findByText("Landlord");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]!);
 
     await waitFor(() => expect(recordScheduledTransaction).toHaveBeenCalledWith("t", "ws-1", "sched-1"));
     expect(onChanged).toHaveBeenCalled();
+    // Next month's preview follows the moved due date (#682).
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", "2026-10");
   });
 
   it("'Skip' advances the due date without creating a transaction", async () => {
     const skipScheduledTransaction = vi
       .spyOn(budgetApi, "skipScheduledTransaction")
       .mockResolvedValue(scheduledTransaction({ nextDueDate: "2026-10-05" }));
-    const { onChanged } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    const { onChanged, listGoalProgress } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
     await screen.findByText("Landlord");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Skip" })[0]!);
 
     await waitFor(() => expect(skipScheduledTransaction).toHaveBeenCalledWith("t", "ws-1", "sched-1"));
     expect(onChanged).toHaveBeenCalled();
+    // Next month's preview follows the moved due date (#682).
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", "2026-10");
   });
 
   it("next month's preview shows 'within the target' when the target already asks enough", async () => {
@@ -260,6 +278,13 @@ describe("ScheduledPanel (#330)", () => {
     await screen.findByText("Checking");
     fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "day" } });
     expect(screen.queryByLabelText("Use it as this category's target")).not.toBeInTheDocument();
+  });
+
+  it("requests only next month's targets itself, this month's coming from the budget screen (#682)", async () => {
+    const { listGoalProgress } = renderPanel([scheduledTransaction({ nextDueDate: "2026-10-05" })], new Map([["rent", goalProgress()]]));
+    expect(await screen.findByText("Within the target")).toBeInTheDocument();
+    expect(listGoalProgress).toHaveBeenCalledTimes(1);
+    expect(listGoalProgress).toHaveBeenCalledWith("t", "ws-1", "2026-10");
   });
 
   it("the '× Close' button calls onClose", async () => {

@@ -7,7 +7,7 @@ import { useAccounts } from "../accounts/useAccounts.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { upsertGoal, type RepeatInterval } from "../targets/api.ts";
-import { useTargets } from "../targets/useTargets.ts";
+import { useTargets, type TargetsState } from "../targets/useTargets.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
 import { createScheduledTransaction, recordScheduledTransaction, skipScheduledTransaction, type RecurUnit, type ScheduledTransaction } from "./api.ts";
 import type { BudgetGroup } from "./useBudgetMonth.ts";
@@ -35,8 +35,10 @@ interface Props {
   readonly groups: readonly BudgetGroup[];
   readonly currency: string;
   readonly timeZone: string | undefined;
+  /** This month's targets, fetched once by the budget screen (`useTargets`, #682) rather than again here; next month's are fetched here. */
+  readonly currentTargets: TargetsState;
   onClose(): void;
-  /** Called once Record, Skip or a new scheduled transaction actually changes something — the budget month needs refetching. */
+  /** Called once Record, Skip, "Use as target" or a new scheduled transaction actually changes something — the budget month and `currentTargets` need refetching. */
   onChanged(): void;
 }
 
@@ -56,7 +58,7 @@ function splitTotal(s: ScheduledTransaction): number {
  * repeat"); the mockup's own "Expected income" group and the income/expense toggle on "+ New
  * scheduled transaction" are left out until then.
  */
-export default function ScheduledPanel({ workspaceId, month, groups, currency, timeZone, onClose, onChanged }: Props) {
+export default function ScheduledPanel({ workspaceId, month, groups, currency, timeZone, currentTargets, onClose, onChanged }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const scheduled = useScheduledTransactions(workspaceId);
@@ -89,14 +91,9 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
       });
     }
   }
-  const nextMonthTargets = useTargets(workspaceId, theNextMonth, [...nextMonthByCategory.keys()]);
+  const nextMonthTargets = useTargets(workspaceId, theNextMonth);
   const nextMonthTotal = [...nextMonthByCategory.values()].reduce((sum, v) => sum + v.amountCents, 0);
 
-  const currentTargets = useTargets(
-    workspaceId,
-    month,
-    categories.map((c) => c.categoryId),
-  );
   const hasTargetByCategory = new Set(currentTargets.status === "ok" ? currentTargets.progressByCategory.keys() : []);
 
   async function withBusy(id: string, action: () => Promise<void>) {
@@ -104,6 +101,8 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
     try {
       await action();
       scheduled.refetch();
+      // Recording or skipping moves the item's due date, possibly into or out of next month.
+      nextMonthTargets.refetch();
       onChanged();
     } finally {
       setBusyId(null);
@@ -139,6 +138,7 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
           ? { kind: "repeating" as const, amountCents: info.amountCents, dueMonth: theNextMonth, every: info.recurEvery as RepeatInterval }
           : { kind: "monthly" as const, amountCents: info.amountCents };
     await upsertGoal(accessToken, workspaceId, categoryId, input);
+    nextMonthTargets.refetch();
     onChanged();
   }
 
@@ -260,6 +260,8 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
             onSaved={() => {
               setShowNew(false);
               scheduled.refetch();
+              // It may have set the category's target too ("Use it as this category's target").
+              nextMonthTargets.refetch();
               onChanged();
             }}
           />

@@ -1,4 +1,4 @@
-import { formatMoney, MAX_AMOUNT_CENTS } from "@envelope/core";
+import { formatMoney, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -89,7 +89,8 @@ function renderScreen(
   vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue(groups);
   const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue(month);
   vi.spyOn(budgetApi, "getBudgetMonthEvents").mockImplementation(eventsImpl ?? (() => Promise.resolve(events)));
-  vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
+  // Read on every call, so a test can change the map to see a refetch pick up the new targets.
+  const listGoalProgress = vi.spyOn(targetsApi, "listGoalProgress").mockImplementation(() => Promise.resolve([...goalsByCategory.values()]));
   vi.spyOn(budgetApi, "listScheduledTransactions").mockResolvedValue(scheduledTransactions);
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
@@ -105,7 +106,7 @@ function renderScreen(
       </Routes>
     </MemoryRouter>,
   );
-  return { ...rendered, getBudgetMonth };
+  return { ...rendered, getBudgetMonth, listGoalProgress };
 }
 
 describe("BudgetScreen (#53, #324)", () => {
@@ -120,7 +121,7 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(categoriesApi, "listCategoryGroups").mockReturnValue(new Promise(() => {}));
     vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
     vi.spyOn(budgetApi, "getBudgetMonthEvents").mockReturnValue(new Promise(() => {}));
-    vi.spyOn(targetsApi, "getGoal").mockReturnValue(new Promise(() => {}));
+    vi.spyOn(targetsApi, "listGoalProgress").mockReturnValue(new Promise(() => {}));
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -137,7 +138,7 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([]);
     vi.spyOn(budgetApi, "getBudgetMonth").mockRejectedValue(new Error("network"));
     vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+    vi.spyOn(targetsApi, "listGoalProgress").mockResolvedValue([]);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -156,7 +157,7 @@ describe("BudgetScreen (#53, #324)", () => {
       new ApiError("GET failed: 422", 422, "amount_total_overflow", { label: "transactions", transactionIds: "t1,t2", count: 2 }),
     );
     vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+    vi.spyOn(targetsApi, "listGoalProgress").mockResolvedValue([]);
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
         <Routes>
@@ -518,7 +519,7 @@ describe("BudgetScreen (#53, #324)", () => {
     vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([HOME]);
     const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockClear().mockResolvedValue(budgetMonth({ categories: [category({})] }));
     vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+    vi.spyOn(targetsApi, "listGoalProgress").mockResolvedValue([]);
 
     renderWithIntl(
       <MemoryRouter initialEntries={["/ws-1"]}>
@@ -684,8 +685,76 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(await screen.findByText("Debt to cover: Visa")).toBeInTheDocument();
-    // The goals are fetched only once the budget month is in, so they can arrive a render later.
+    // The goals are their own request, so they can arrive a render after the budget month.
     expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
+  });
+
+  it("lists only the month's own ordinary categories' targets under 'To do', not a payment category's or a missing one's (#682)", async () => {
+    const goal = (categoryId: string, id: string): GoalProgress => ({
+      goal: { id, workspaceId: "ws-1", categoryId, kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" },
+      asks: 6_000,
+      missing: 1_000,
+      progress: 0.83,
+    });
+    const goalsByCategory = new Map<string, GoalProgress>([
+      ["c1", goal("c1", "g1")],
+      ["visa", goal("visa", "g2")],
+      ["gone", goal("gone", "g3")],
+    ]);
+    renderScreen(
+      budgetMonth({ categories: [category({})], paymentCategories: [category({ categoryId: "visa", name: "Visa" })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+
+    expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
+    expect(screen.getAllByText(/^Fund the .* target$/)).toHaveLength(1);
+    expect(screen.queryByText("Fund the Visa target")).not.toBeInTheDocument();
+  });
+
+  it("makes one targets request for the month, Targets and Scheduled panels included (#682)", async () => {
+    const goalsByCategory = new Map<string, GoalProgress>([
+      ["c1", { goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" }, asks: 6_000, missing: 1_000, progress: 0.83 }],
+    ]);
+    const { listGoalProgress, getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({})] }), [HOME], [], goalsByCategory);
+    await screen.findByText("Fund the Groceries target");
+    const month = getBudgetMonth.mock.calls[0]![2];
+    expect(listGoalProgress).toHaveBeenCalledTimes(1);
+    expect(listGoalProgress).toHaveBeenCalledWith("t", "ws-1", month);
+
+    fireEvent.click(screen.getByRole("button", { name: "Targets" }));
+    expect(await screen.findByText("Asks €60.00, €10.00 missing")).toBeInTheDocument();
+    expect(listGoalProgress).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Scheduled" }));
+    // The Scheduled panel asks for next month's targets only, for its own preview.
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", shiftMonth(month, 1));
+  });
+
+  it("refetches the targets with the budget month, so the 'To do' list follows an assignment (#682)", async () => {
+    vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const goalsByCategory = new Map<string, GoalProgress>([
+      ["c1", { goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 70_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" }, asks: 70_000, missing: 10_000, progress: 0.86 }],
+    ]);
+    const { listGoalProgress } = renderScreen(
+      budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+    expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
+
+    goalsByCategory.set("c1", { ...goalsByCategory.get("c1")!, missing: 0, progress: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+    const input = await screen.findByLabelText("Assigned this month");
+    input.focus();
+    fireEvent.change(input, { target: { value: "700.00" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Fund the Groceries target")).not.toBeInTheDocument());
   });
 
   it("opens a category's own detail full screen on a phone, with a back link, replacing the whole list (#331)", async () => {

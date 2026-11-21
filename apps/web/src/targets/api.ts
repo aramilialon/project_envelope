@@ -1,7 +1,5 @@
 /** Targets (`apps/api` calls them "goals") and quick assign (#55). */
-import { apiFetch, authHeaders } from "../apiFetch.ts";
-
-const API_URL: string = import.meta.env.VITE_API_URL;
+import { apiFetch } from "../apiFetch.ts";
 
 export type GoalKind = "monthly" | "by_date" | "repeating" | "balance";
 export type RepeatInterval = 2 | 3 | 4 | 6 | 12 | 24;
@@ -32,23 +30,10 @@ export interface GoalProgress {
   readonly progress: number;
 }
 
-/** Undefined when this category has no target set, rather than throwing — the one call here that cannot go through `apiFetch`, which would throw before this gets the chance to look at a 404. */
-export async function getGoal(
-  accessToken: string,
-  workspaceId: string,
-  categoryId: string,
-  month: string,
-): Promise<GoalProgress | undefined> {
-  const response = await fetch(`${API_URL}/workspaces/${workspaceId}/categories/${categoryId}/goal?month=${month}`, {
-    headers: authHeaders(accessToken),
-  });
-  if (response.status === 404) {
-    return undefined;
-  }
-  if (!response.ok) {
-    throw new Error(`GET /workspaces/${workspaceId}/categories/${categoryId}/goal failed: ${response.status}`);
-  }
-  return (await response.json()) as GoalProgress;
+/** Every target of the workspace with its progress for `month`, in one request (#682); a category without a target has no entry. */
+export async function listGoalProgress(accessToken: string, workspaceId: string, month: string): Promise<GoalProgress[]> {
+  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/goals?month=${month}`);
+  return ((await response.json()) as { goals: GoalProgress[] }).goals;
 }
 
 export async function upsertGoal(

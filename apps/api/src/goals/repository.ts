@@ -1,6 +1,6 @@
 import { assertAmount, assertMonth, computeTarget, type Target } from "@envelope/core";
 
-import { getBudgetMonth } from "../budget/repository.ts";
+import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 
 export type GoalKind = "monthly" | "by_date" | "repeating" | "balance";
@@ -146,6 +146,22 @@ export function toCoreTarget(goal: GoalRecord): Target {
 }
 
 /**
+ * One goal joined with what its category's line of an already computed budget month says
+ * (#18): undefined when the category is not in that month at all.
+ */
+function toGoalProgress(goal: GoalRecord, budgetMonth: BudgetMonthResponse, month: string): GoalProgress | undefined {
+  const category =
+    budgetMonth.categories.find((c) => c.categoryId === goal.categoryId) ??
+    budgetMonth.paymentCategories.find((c) => c.categoryId === goal.categoryId);
+  if (!category) {
+    return undefined;
+  }
+  const state = { carried: category.carriedOver, assigned: category.assigned, available: category.available };
+  const { asks, missing, progress } = computeTarget(toCoreTarget(goal), state, month);
+  return { goal, asks, missing, progress };
+}
+
+/**
  * A category's goal joined with how much it still needs this month (#18):
  * the goal's own carried/assigned/available come from the same budget month
  * computation the budget endpoint (#16) already assembles.
@@ -160,12 +176,19 @@ export async function getGoalProgress(
   if (!goal) {
     return undefined;
   }
-  const budgetMonth = await getBudgetMonth(db, workspaceId, month);
-  const category = [...budgetMonth.categories, ...budgetMonth.paymentCategories].find((c) => c.categoryId === categoryId);
-  if (!category) {
-    return undefined;
+  return toGoalProgress(goal, await getBudgetMonth(db, workspaceId, month), month);
+}
+
+/**
+ * Every goal of the workspace with its progress for `month` (#682), each the same as
+ * `getGoalProgress` would return for its category, from a single budget month computation
+ * instead of one per category. A goal whose category is not in the month is left out.
+ */
+export async function listGoalProgress(db: DbPool | DbClient, workspaceId: string, month: string): Promise<GoalProgress[]> {
+  const goals = await listGoals(db, workspaceId);
+  if (goals.length === 0) {
+    return [];
   }
-  const state = { carried: category.carriedOver, assigned: category.assigned, available: category.available };
-  const { asks, missing, progress } = computeTarget(toCoreTarget(goal), state, month);
-  return { goal, asks, missing, progress };
+  const budgetMonth = await getBudgetMonth(db, workspaceId, month);
+  return goals.flatMap((goal) => toGoalProgress(goal, budgetMonth, month) ?? []);
 }
