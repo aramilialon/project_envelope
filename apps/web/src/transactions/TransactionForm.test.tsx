@@ -678,6 +678,66 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     );
   });
 
+  it("says the day money dated after today comes into Unassigned, instead of adding it now (#700)", async () => {
+    const getBudgetMonth = mockBudgetMonth();
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+    await screen.findByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.");
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-15" } });
+    expect(await screen.findByText("The money comes into “Unassigned” on Sep 15.")).toBeInTheDocument();
+    expect(screen.queryByText(/goes from/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Category")).toHaveAccessibleDescription("The money comes into “Unassigned” on Sep 15.");
+
+    // A later month: the same, from that month's budget.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-10-02" } });
+    expect(await screen.findByText("The money comes into “Unassigned” on Oct 2.")).toBeInTheDocument();
+    expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10");
+
+    // Back to today: from and to again.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-01" } });
+    expect(await screen.findByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.")).toBeInTheDocument();
+  });
+
+  it("says the day money dated after today comes in at once, while the budget month loads and if it fails", async () => {
+    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-15" } });
+    expect(screen.getByText("The money comes into “Unassigned” on Sep 15.")).toBeInTheDocument();
+
+    getBudgetMonth.mockRejectedValue(new Error("unavailable"));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-10-02" } });
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10"));
+    expect(await screen.findByText("The money comes into “Unassigned” on Oct 2.")).toBeInTheDocument();
+
+    // Today's date needs the amounts: no hint without them.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-01" } });
+    await waitFor(() => expect(screen.queryByText(/The money comes into/)).not.toBeInTheDocument());
+  });
+
+  it("says the same for money sent from the off-budget account's own register with a later date", async () => {
+    mockBudgetMonth();
+    renderForm({ accountId: "acc-broker", accounts: [CHECKING, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5000.00" } });
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-checking" } });
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-02" } });
+
+    expect(await screen.findByText("The money comes into “Unassigned” on Sep 2.")).toBeInTheDocument();
+  });
+
+  it("keeps a chosen category's from and to for a later date: categorized money counts by month", async () => {
+    mockBudgetMonth();
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-15" } });
+    await screen.findByText("The money comes into “Unassigned” on Sep 15.");
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    expect(screen.getByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
+  });
+
   it("puts the money in a chosen category instead, with the hint following it", async () => {
     mockBudgetMonth();
     const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
