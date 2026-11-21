@@ -55,10 +55,10 @@ function transaction(overrides: Partial<Transaction>): Transaction {
   };
 }
 
-function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = [], accounts: readonly Account[] = [CHECKING]) {
+function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = [], accounts: readonly Account[] = [CHECKING], timeZone = "Europe/Rome") {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
-    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+    { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone, taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([...accounts]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
@@ -513,7 +513,8 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       const groups = screen.getAllByRole("rowgroup");
       // [0] is the header; [1] the "Later" rows; [2] the rows up to today.
       const later = groups[1]!;
-      expect(within(later).getByRole("rowheader")).toHaveTextContent("Later");
+      // The heading and its note read as two words apart, not "LaterDated…" (#702).
+      expect(within(later).getByRole("rowheader")).toHaveAccessibleName("Later Dated after today: not in today's balance.");
       expect(within(later).getByText("Sale")).toBeInTheDocument();
       expect(within(later).getByText("Bonus")).toBeInTheDocument();
       expect(within(later).getByText("Gym")).toBeInTheDocument();
@@ -565,13 +566,35 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       expect(screen.queryByText("Later")).not.toBeInTheDocument();
     });
 
+    it("reads the current year in the workspace's time zone, not the browser's, around New Year", async () => {
+      // 10:30 UTC on 31 December is already 1 January 2027 at UTC+14, while a browser anywhere from
+      // UTC-12 to UTC+13 is still in 2026: the workspace's year decides which dates show a year.
+      vi.setSystemTime(new Date("2026-12-31T10:30:00.000Z"));
+      renderScreen(
+        [row("t1", "2026-12-30", "Supermarket", -8_000, "pending"), row("t2", "2027-01-01", "Bakery", -500)],
+        [],
+        [CHECKING],
+        "Pacific/Kiritimati",
+      );
+      await screen.findByText("Bakery");
+      const bakery = screen.getByText("Bakery").closest("tr")!;
+      await waitFor(() => expect(within(bakery).getByRole("button", { name: "Jan 1" })).toBeInTheDocument());
+
+      const supermarket = screen.getByText("Supermarket").closest("tr")!;
+      expect(within(supermarket).getByRole("button", { name: "Dec 30, 2026" })).toBeInTheDocument();
+      // The "To do" list's dates read the same year.
+      expect(screen.getByRole("button", { name: /Mark Supermarket/ })).toHaveTextContent("Dec 30, 2026, still awaiting the bank");
+    });
+
     it("puts the 'Later' heading above the later days on the phone too", async () => {
       setWidth(390);
       renderScreen(ROWS, SCHEDULED);
       await screen.findByText("Salary");
 
-      const heading = screen.getByRole("heading", { name: /Later/ });
-      expect(heading).toHaveTextContent("Dated after today: not in today's balance.");
+      const heading = screen.getByRole("heading", { name: "Later" });
+      // The note sits right after the heading, outside it.
+      expect(heading.nextElementSibling).toHaveTextContent("Dated after today: not in today's balance.");
+      expect(heading.nextElementSibling!.tagName).toBe("P");
       const dayHeaders = [...document.querySelectorAll(".ph-day")].map((d) => d.textContent);
       expect(dayHeaders[0]).toBe("Friday, March 3, 2028");
       // The later days come first, then today's and the earlier ones.

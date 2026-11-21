@@ -15,7 +15,10 @@ export type AccountBalances = Readonly<Record<string, number>>;
  * parallel. There is no bulk endpoint, and no reason for one yet — a household's own account
  * count is small. A change of `refreshKey` reads them all again (the accounts panel's own case,
  * `#412`: it stays open across screens and recorded transactions). The rows are kept rather than
- * their sum, so the balances follow the day (and the time zone, once known) without a new fetch.
+ * their sum, so the balances follow the day (and the time zone, once known) without a new fetch:
+ * "today" is read again on each render, so a balance moves to the new day on the next render after
+ * midnight in the workspace's zone. No timer forces that render; a screen left open past midnight
+ * keeps the old day's balances until something re-renders it.
  */
 export function useAccountBalances(
   workspaceId: string,

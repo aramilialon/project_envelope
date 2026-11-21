@@ -328,39 +328,49 @@
 }
 
 /* "Later" (#702): rows dated after today, apart at the top of the list, above today's rows —
-   the mockup's section heading, bold and condensed like its month separator, with a muted note. */
-.register-screen .register-table .reg-later-h th,
-.register-screen h2.reg-later-h {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+   the mockup's section heading, bold and condensed like its month separator, with a muted note,
+   and a darker rule closing the section. */
+.register-screen .register-table tr.reg-later-h th,
+.register-screen .reg-later-h h2 {
   margin: 0;
-  padding: 14px 8px 6px 0;
-  border-bottom: 1px solid var(--rule);
   font-size: 14px;
   font-weight: 700;
   font-stretch: 78%;
   color: var(--ink);
 }
 
-.register-screen .register-table .reg-later-h th {
-  display: table-cell;
-  padding-left: 42px;
+.register-screen .register-table tr.reg-later-h th,
+.register-screen .register-table tr.reg-later-h td {
+  padding-top: 14px;
 }
 
-.register-screen .reg-later-h small {
+.register-screen .reg-later-h small,
+.register-screen .reg-later-h p {
+  margin: 0;
   font-size: 12px;
   font-weight: 400;
   font-stretch: 100%;
   color: var(--muted);
 }
 
-.register-screen .register-table .reg-later-h small {
-  margin-left: 10px;
+.register-screen .register-table tr.reg-later-h small {
+  margin-left: 6px;
 }
 
 .register-screen .register-table tbody.reg-later tr:last-child td {
+  border-bottom: 1px solid var(--ink-2);
+}
+
+.register-screen div.reg-later-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 14px 0 6px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.register-screen div.reg-later > div:last-child > .ph-tx:last-child {
   border-bottom: 1px solid var(--ink-2);
 }
 

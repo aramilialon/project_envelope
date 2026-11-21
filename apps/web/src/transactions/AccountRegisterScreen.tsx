@@ -307,7 +307,7 @@ export default function AccountRegisterScreen() {
 
   const visible = withBalance.filter((row) => matchesFilter(row.transaction.status) && matchesSearch(row.transaction));
   // Rows dated after today, this month or later, sit apart at the top ("Later", #702): they have
-  // not happened yet, so they are in no balance and never "still awaiting the bank".
+  // not happened yet, so they are not in today's balance and never "still awaiting the bank".
   const later = visible.filter((row) => isAfterToday(row.transaction.budgetDate, today));
   const upToToday = visible.filter((row) => !isAfterToday(row.transaction.budgetDate, today));
 
@@ -530,6 +530,7 @@ export default function AccountRegisterScreen() {
             limit={2}
             money={money}
             locale={intl.locale}
+            currentYear={currentYear}
             onRecord={(id) => void handleRecordScheduled(id)}
             onMark={(id) => void handleMarkCleared(id)}
           />
@@ -545,6 +546,7 @@ export default function AccountRegisterScreen() {
               items={registerTodoItems}
               money={money}
               locale={intl.locale}
+              currentYear={currentYear}
               onRecord={(id) => void handleRecordScheduled(id)}
               onMark={(id) => void handleMarkCleared(id)}
             />
@@ -590,13 +592,13 @@ export default function AccountRegisterScreen() {
       ) : isPhone ? (
         <div className="phone-register">
           {later.length > 0 && (
-            <>
-              <h2 className="reg-later-h">
-                {laterHeading}
-                <small>{laterNote}</small>
-              </h2>
+            <div className="reg-later">
+              <div className="reg-later-h">
+                <h2>{laterHeading}</h2>
+                <p>{laterNote}</p>
+              </div>
               {groupByDay(later).map(renderPhoneGroup)}
-            </>
+            </div>
           )}
           {groupByDay(upToToday).map(renderPhoneGroup)}
         </div>
@@ -616,8 +618,10 @@ export default function AccountRegisterScreen() {
           {later.length > 0 && (
             <tbody className="reg-later">
               <tr className="reg-later-h">
-                <th colSpan={7} scope="rowgroup">
-                  {laterHeading}
+                {/* Empty under the status column, so the heading starts where the dates do. */}
+                <td aria-hidden="true"></td>
+                <th colSpan={6} scope="rowgroup">
+                  {laterHeading}{" "}
                   <small>{laterNote}</small>
                 </th>
               </tr>
