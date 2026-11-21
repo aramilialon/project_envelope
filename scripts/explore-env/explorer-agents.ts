@@ -29,6 +29,19 @@ const PERSONA_SCOPE: Record<Persona, string> = {
   mixed: "a household that budgets and invests, above all where the two meet",
 };
 
+/**
+ * Each persona's standing charter (#737), covered every release besides what the release changed,
+ * so that the three explorers do not walk the same flows. It completes the sentence "you cover …".
+ */
+export const PERSONA_CHARTER: Record<Persona, string> = {
+  household:
+    "the permission matrix (what the owner, the editor and the reader can and cannot do on every screen you reach) and the credit card flows (spending on a card, paying it, overspending with it, and moving money to cover it).",
+  investor:
+    "trades and the positions they produce (buys, sells to zero, splits, transfers of securities, edits and deletes), closing an account that still holds money or securities, and the net-worth rules (what counts, as of which day).",
+  mixed:
+    "transfers between budget and investment accounts, closed accounts (what can and cannot still reach them, through every screen and import), and every place where the budget meets the portfolio (funding the brokerage account through a category, dividends and fees on its cash, net worth across both).",
+};
+
 /** The browser tools an explorer may use, in the order its definition lists them. */
 export const EXPLORER_TOOLS = [
   "browser_navigate",
@@ -94,7 +107,9 @@ export function renderAgent(persona: Persona, instructions: string): string {
     `milestone's issues are merged, at the same time as the other explorers. Has a browser of its own ` +
     `and nothing else.`;
   const tools = EXPLORER_TOOLS.map((tool) => toolName(persona, tool)).join(", ");
-  const body = instructions.replaceAll("{{persona}}", PERSONA_TITLE[persona]);
+  const body = instructions
+    .replaceAll("{{persona}}", PERSONA_TITLE[persona])
+    .replaceAll("{{charter}}", PERSONA_CHARTER[persona]);
   return [
     "---",
     `name: ${agentName(persona)}`,

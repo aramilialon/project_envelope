@@ -8,6 +8,7 @@ import {
   agentPath,
   DENIED_TOOLS,
   EXPLORER_TOOLS,
+  PERSONA_CHARTER,
   PERSONAS,
   readInstructions,
   renderAgent,
@@ -31,6 +32,18 @@ describe("explorer agents (one browser each)", () => {
         `${agentName(persona)}.md is out of date: run node scripts/explore-env/explorer-agents.ts`,
       );
     }
+  });
+
+  it("gives each explorer its own standing charter and leaves no placeholder behind", () => {
+    const instructions = readInstructions();
+    const charters = new Set<string>();
+    for (const persona of PERSONAS) {
+      const rendered = renderAgent(persona, instructions);
+      assert.ok(!rendered.includes("{{"), `${agentName(persona)}.md keeps a placeholder`);
+      assert.ok(rendered.includes(PERSONA_CHARTER[persona]), `${agentName(persona)}.md lacks its charter`);
+      charters.add(PERSONA_CHARTER[persona]);
+    }
+    assert.equal(charters.size, PERSONAS.length, "two personas share a charter");
   });
 
   it("gives each explorer only its own server's tools and nothing else", () => {
