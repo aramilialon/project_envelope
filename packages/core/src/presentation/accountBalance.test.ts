@@ -67,7 +67,7 @@ describe("computeAccountBalance", () => {
     assert.equal(result.projectedAtMonthEndCents, 80_000);
   });
 
-  it("adds the month's scheduled items not recorded yet, overdue ones included", () => {
+  it("adds the month's scheduled items not recorded yet, overdue ones of this month included", () => {
     const rows = [{ date: "2026-11-01", amountCents: 100_000, pending: false }];
     const scheduled = [
       { date: "2026-11-15", amountCents: -4_500 }, // overdue
@@ -85,6 +85,61 @@ describe("computeAccountBalance", () => {
     const result = computeAccountBalance(recordedForTheFuture, TODAY, nextOccurrence);
     assert.equal(result.balanceCents, 0);
     assert.equal(result.projectedAtMonthEndCents, -9_000);
+  });
+
+  it("ignores scheduled items dated in another month than today's, earlier or later", () => {
+    const scheduled = [
+      { date: "2026-10-30", amountCents: -7_000 }, // overdue since last month
+      { date: "2026-11-27", amountCents: -1_000 },
+      { date: "2026-12-03", amountCents: 50_000 },
+    ];
+    const result = computeAccountBalance([], TODAY, scheduled);
+    assert.equal(result.projectedAtMonthEndCents, -1_000);
+  });
+
+  it("keeps a card's negative balance and pushes it further down with a purchase dated after today", () => {
+    const card = [
+      { date: "2026-11-03", amountCents: -50_000, pending: false },
+      { date: "2026-11-28", amountCents: -12_000, pending: true },
+    ];
+    const result = computeAccountBalance(card, TODAY);
+    assert.equal(result.balanceCents, -50_000);
+    assert.equal(result.clearedCents, -50_000);
+    assert.equal(result.pendingCents, 0);
+    assert.equal(result.projectedAtMonthEndCents, -62_000);
+  });
+
+  it("leaves the sum of two accounts unchanged by a transfer between them, before and after its date", () => {
+    const checking = [
+      { date: "2026-11-01", amountCents: 200_000, pending: false },
+      { date: "2026-11-25", amountCents: -30_000, pending: true },
+    ];
+    const savings = [
+      { date: "2026-11-01", amountCents: 50_000, pending: false },
+      { date: "2026-11-25", amountCents: 30_000, pending: true },
+    ];
+    for (const today of [TODAY, "2026-11-25", "2026-11-26"]) {
+      const a = computeAccountBalance(checking, today);
+      const b = computeAccountBalance(savings, today);
+      assert.equal(a.balanceCents + b.balanceCents, 250_000, today);
+      assert.equal(a.projectedAtMonthEndCents + b.projectedAtMonthEndCents, 250_000, today);
+    }
+    // Before its date the transfer is in neither balance; from its date on, in both.
+    assert.equal(computeAccountBalance(checking, TODAY).balanceCents, 200_000);
+    assert.equal(computeAccountBalance(checking, "2026-11-25").balanceCents, 170_000);
+  });
+
+  it("counts a reconciled row as cleared: it is not pending", () => {
+    // The register maps a reconciled transaction to `pending: false` (`balanceRowOf`).
+    const rows = [
+      { date: "2026-11-05", amountCents: 40_000, pending: false }, // reconciled
+      { date: "2026-11-12", amountCents: -5_000, pending: false }, // cleared
+      { date: "2026-11-19", amountCents: -2_000, pending: true },
+    ];
+    const result = computeAccountBalance(rows, TODAY);
+    assert.equal(result.clearedCents, 35_000);
+    assert.equal(result.pendingCents, -2_000);
+    assert.equal(result.balanceCents, 33_000);
   });
 
   it("refuses a today that is not a calendar date", () => {

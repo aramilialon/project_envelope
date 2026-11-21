@@ -41,12 +41,14 @@ export function isAfterToday(date: LocalDate, today: LocalDate): boolean {
  * - the balance counts the rows dated on or before `today`; cleared and pending split those same
  *   rows, so they always add up to it;
  * - the projected balance at month end adds the rows dated after today up to the last day of
- *   today's month, and the scheduled items of that month not recorded yet, overdue ones included;
+ *   today's month, and the scheduled items of this month not recorded yet, overdue ones of this
+ *   month included;
  * - a row dated after the month end counts in no balance.
  *
- * `notYetRecorded` holds only scheduled items that have no recorded row: recording one advances
- * its next date, so the recorded row replaces it and it is counted once. Items dated in another
- * month than today's are ignored. `today` and every date are `YYYY-MM-DD` in the workspace's time
+ * `notYetRecorded` holds only scheduled items that have no recorded row: recording one with
+ * "Record" advances its next date, so the recorded row replaces it and it is counted once. A
+ * scheduled item entered again by hand as an ordinary transaction is not linked to it, so both
+ * would count. Items dated in another month than today's are ignored. `today` and every date are `YYYY-MM-DD` in the workspace's time
  * zone, which is where the boundary between today and tomorrow is drawn.
  *
  * @throws ValidationError "invalid_date" if `today` is not a calendar date.
