@@ -121,9 +121,9 @@ Copy `.env.example` to `.env` and adjust it; `.env` is read automatically by `de
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug` or `trace` |
 | `LOG_PRETTY` | `false` | Human-readable logs instead of JSON; only for a terminal, never in production |
 | `NODE_ENV` | `development` | |
-| `TRUST_PROXY` | empty | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` the API believes (#566). Empty: the connection's own address is the client's. Behind Caddy on the same machine (`infra/Caddyfile`), `127.0.0.1`. `true` and `*` are refused |
-| `RATE_LIMIT_IP_MAX` / `RATE_LIMIT_IP_WINDOW_SECONDS` | `300` / `60` | Requests per client address per window, every route counted, the health check included (see "Rate limits" below) |
-| `RATE_LIMIT_USER_MAX` / `RATE_LIMIT_USER_WINDOW_SECONDS` | `600` / `60` | Requests per signed-in user per window, whatever the address |
+| `TRUST_PROXY` | empty | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` the API believes (#566). Empty: the connection's own address is the client's. Behind Caddy on the same machine (`infra/Caddyfile`), `127.0.0.1`, which must then be set: otherwise every request comes from Caddy's address and the whole household shares one per-address count. `true` and `*` are refused |
+| `RATE_LIMIT_IP_MAX` / `RATE_LIMIT_IP_WINDOW_SECONDS` | `2400` / `60` | Requests per client address per window, every route counted, the health check included; kept above `RATE_LIMIT_USER_MAX` (see "Rate limits" below) |
+| `RATE_LIMIT_USER_MAX` / `RATE_LIMIT_USER_WINDOW_SECONDS` | `1200` / `60` | Requests per signed-in user per window, whatever the address |
 | `RATE_LIMIT_USER_WRITE_MAX` | `120` | Writes (`POST`, `PUT`, `PATCH`, `DELETE`) per user per window |
 | `RATE_LIMIT_USER_IMPORT_MAX` | `10` | File imports (`POST …/accounts/:accountId/import`) per user per window |
 
@@ -290,6 +290,10 @@ The API limits requests in process, with `@fastify/rate-limit` and its in-memory
 
 - **Per client address**, on `onRequest`, before anything else: every route counts, the health check and requests with a bad or missing token included, so neither can load the database or the token verifier without limit. The address is the connection's own, unless the connection comes from a proxy listed in `TRUST_PROXY`, whose `X-Forwarded-For` is then believed; an IPv6 address counts by its /64.
 - **Per user**, right after the user mapper, keyed on the user the token verified, never on a claim of a token not yet verified: every request, then writes, then file imports, each against its own limit, so one member's requests never use up another's. A request without a valid token is answered 401 before it reaches this layer.
+
+The defaults are set in one place, `RATE_LIMIT_DEFAULTS` in `src/config.ts`. An ordinary session in the web app with a 35-category budget sends about 325 requests in 7 seconds, so a user gets 1200 a minute. The per-address limit (2400) is kept above the per-user one: one address can carry several members (a household behind one NAT, or everyone under Caddy's address when `TRUST_PROXY` is not set), and since it runs first, a lower one would refuse a member before the per-user limit applies. Each of the four limiters keeps its own in-memory store of at most 10 000 keys.
+
+A CORS preflight (`OPTIONS`) is answered by `@fastify/cors` before the per-address limit and never counted; the CORS policy exposes `Retry-After` so the web app can read it. Sign-in is not limited here: the API has no sign-in route, and Keycloak's own brute-force detection limits failed sign-in attempts.
 
 A request over a limit is answered 429 `too_many_requests` with `Retry-After` (in seconds) and `details.retryAfterSeconds`; the web app shows the code's translation. The counters reset when the process restarts, and they are per process: running more than one API process would need a shared store. The limits are in "Configuration" above; the tests build apps with limits far above what they send (`src/test-helpers/rate-limits.ts`), except `src/rate-limit.test.ts`, which tests the limits themselves.
 

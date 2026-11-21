@@ -64,6 +64,23 @@ export interface PushConfig {
   readonly vapidPrivateKey: string;
 }
 
+/**
+ * The default request limits (#566, ADR 0017), the one place they are set; each can be overridden
+ * by its environment variable. Sized from a measured session: an ordinary session in the web app
+ * with a 35-category budget sent about 325 requests in 7 seconds, so a user gets 1200 a minute,
+ * room for a few such bursts in one minute. The per-address limit is twice that, above the
+ * per-user one, because one address can carry several members (every device behind one NAT, or
+ * Caddy's own address when TRUST_PROXY is not set) and it runs first: below the per-user limit,
+ * it would refuse a member the per-user limit allows.
+ */
+export const RATE_LIMIT_DEFAULTS = {
+  addressMax: 2400,
+  windowSeconds: 60,
+  userMax: 1200,
+  userWriteMax: 120,
+  userImportMax: 10,
+} as const;
+
 const LOG_LEVELS: readonly LogLevel[] = ["fatal", "error", "warn", "info", "debug", "trace"];
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -79,12 +96,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     webOrigin: env.WEB_ORIGIN || "http://localhost:5173",
     trustProxy: parseTrustProxy(env, "TRUST_PROXY"),
     rateLimit: {
-      addressMax: parsePositiveInteger(env, "RATE_LIMIT_IP_MAX", 300),
-      addressWindowMs: parsePositiveInteger(env, "RATE_LIMIT_IP_WINDOW_SECONDS", 60) * 1000,
-      userMax: parsePositiveInteger(env, "RATE_LIMIT_USER_MAX", 600),
-      userWindowMs: parsePositiveInteger(env, "RATE_LIMIT_USER_WINDOW_SECONDS", 60) * 1000,
-      userWriteMax: parsePositiveInteger(env, "RATE_LIMIT_USER_WRITE_MAX", 120),
-      userImportMax: parsePositiveInteger(env, "RATE_LIMIT_USER_IMPORT_MAX", 10),
+      addressMax: parsePositiveInteger(env, "RATE_LIMIT_IP_MAX", RATE_LIMIT_DEFAULTS.addressMax),
+      addressWindowMs: parsePositiveInteger(env, "RATE_LIMIT_IP_WINDOW_SECONDS", RATE_LIMIT_DEFAULTS.windowSeconds) * 1000,
+      userMax: parsePositiveInteger(env, "RATE_LIMIT_USER_MAX", RATE_LIMIT_DEFAULTS.userMax),
+      userWindowMs: parsePositiveInteger(env, "RATE_LIMIT_USER_WINDOW_SECONDS", RATE_LIMIT_DEFAULTS.windowSeconds) * 1000,
+      userWriteMax: parsePositiveInteger(env, "RATE_LIMIT_USER_WRITE_MAX", RATE_LIMIT_DEFAULTS.userWriteMax),
+      userImportMax: parsePositiveInteger(env, "RATE_LIMIT_USER_IMPORT_MAX", RATE_LIMIT_DEFAULTS.userImportMax),
     },
   };
 }

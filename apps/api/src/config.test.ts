@@ -22,9 +22,9 @@ describe("loadConfig", () => {
     assert.equal(config.keycloakAudience, BASE_ENV.KEYCLOAK_AUDIENCE);
     assert.deepEqual(config.trustProxy, []);
     assert.deepEqual(config.rateLimit, {
-      addressMax: 300,
+      addressMax: 2400,
       addressWindowMs: 60_000,
-      userMax: 600,
+      userMax: 1200,
       userWindowMs: 60_000,
       userWriteMax: 120,
       userImportMax: 10,
