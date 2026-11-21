@@ -451,6 +451,36 @@ describe("BudgetScreen (#53, #324)", () => {
     await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledTimes(2));
   });
 
+  it("closes the row detail on a month change, so an amount typed for one month is never written to another (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+
+    fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+    const input = await screen.findByLabelText("Assigned this month");
+    input.focus();
+    fireEvent.change(input, { target: { value: "1000" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(createAssignments).toHaveBeenCalledTimes(1));
+    expect(createAssignments.mock.calls[0]?.[2]).toEqual([
+      { month: currentMonth, sourceCategoryId: null, destinationCategoryId: "c1", amountCents: 40_000 },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", shiftMonth(currentMonth, -1)));
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+
+    // Opened again, it shows the previous month's own amount, and Enter on it sends nothing.
+    fireEvent.click(await screen.findByRole("button", { name: /^Groceries/ }));
+    const again = await screen.findByLabelText("Assigned this month");
+    expect(again).toHaveValue("600.00");
+    again.focus();
+    fireEvent.keyDown(again, { key: "Enter" });
+    await waitFor(() => expect(again).toHaveValue("600.00"));
+    expect(createAssignments).toHaveBeenCalledTimes(1);
+  });
+
   it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
     renderScreen(
       budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0 })] }),

@@ -172,6 +172,11 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  /** Changing month closes a category's detail (#698): its "Assigned this month" was the old month's. */
+  function goToMonth(step: number) {
+    setMonth((m) => shiftMonth(m, step));
+    setOpenCategoryId(null);
+  }
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
   const [nameEditing, setNameEditing] = useState<NameEditing>(null);
   // A group just added from here (#397) has no category yet, and the budget month only lists
@@ -260,7 +265,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               type="button"
               className="arrow"
               aria-label={intl.formatMessage({ id: "budget.month.previous", defaultMessage: "Previous month" })}
-              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+              onClick={() => goToMonth(-1)}
             >
               ←
             </button>
@@ -269,7 +274,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               type="button"
               className="arrow"
               aria-label={intl.formatMessage({ id: "budget.month.next", defaultMessage: "Next month" })}
-              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+              onClick={() => goToMonth(1)}
             >
               →
             </button>
@@ -440,6 +445,8 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
       />
     ) : (
       <RowDetail
+        // One detail per month and category (#698): nothing typed for one carries over to another.
+        key={`${month}:${category.categoryId}`}
         workspaceId={workspaceId}
         month={month}
         categoryId={category.categoryId}
