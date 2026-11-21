@@ -100,7 +100,7 @@ pnpm test
 
 Every change reaches `main` through a pull request, with commit messages and titles in the form `type(scope): description`. The workflow is described in [docs/how-to/work-with-issues-and-pull-requests.md](docs/how-to/work-with-issues-and-pull-requests.md).
 
-Code, comments, documentation and commit messages are in English. The interface is translatable: English is the source language and Italian the first complete translation ([ADR 0004](docs/adr/0004-internationalization.md)).
+Code, comments, documentation and commit messages are in English. The interface is translatable: English is the source language, and Italian, German, Spanish and French are required translations once each is shipped ([ADR 0004](docs/adr/0004-internationalization.md), [ADR 0015](docs/adr/0015-english-first-translations.md)).
 
 ### Dependency overrides
 
