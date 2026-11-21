@@ -201,6 +201,35 @@ describe("RowDetail (#327)", () => {
       expect(createAssignments).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps an entry typed while the previous one was being saved, measured against the new amount", async () => {
+      let finish: () => void = () => {};
+      const { createAssignments } = renderControlled(
+        60_000,
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const input = focusedInput();
+
+      fireEvent.change(input, { target: { value: "+20" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      input.focus();
+      fireEvent.change(input, { target: { value: "+5" } });
+
+      finish();
+      await waitFor(() => expect(createAssignments).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
+      expect(input).toHaveValue("+5");
+
+      createAssignments.mockImplementation(() => Promise.resolve());
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(input).toHaveValue("625.00"));
+      expect(createAssignments).toHaveBeenLastCalledWith("t", "ws-1", [
+        { month: "2026-10", sourceCategoryId: null, destinationCategoryId: "cat-1", amountCents: 500 },
+      ]);
+    });
+
     it("follows a new assigned amount from the budget month", () => {
       const { rerender } = renderControlled(60_000);
       expect(screen.getByLabelText("Assigned this month")).toHaveValue("600.00");

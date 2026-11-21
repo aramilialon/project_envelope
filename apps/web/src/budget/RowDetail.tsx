@@ -120,9 +120,12 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
           : { month, sourceCategoryId: categoryId, destinationCategoryId: null, amountCents: -entry.delta },
       ]);
       // The new assigned amount, never the text typed: "-15" left in the field would take another
-      // 15 on the next Enter.
+      // 15 on the next Enter. Unless the user has typed their next entry while this one was being
+      // saved: that text is theirs, measured against the new amount when they press Enter.
       setCurrent(entry.newAssigned);
-      show(entry.newAssigned);
+      if (valueRef.current === raw) {
+        show(entry.newAssigned);
+      }
       onChanged();
     } catch (caught) {
       if (isAmountTooLarge(caught)) {
