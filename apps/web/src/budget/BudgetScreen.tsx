@@ -509,6 +509,11 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     if (item.kind === "overassigned") {
       return;
     }
+    if (item.categoryId === null) {
+      // Overdue scheduled income (#347) reserves no category: nothing to open.
+      setOpenCategoryId(null);
+      return;
+    }
     openCategory(item.categoryId);
   }
 
