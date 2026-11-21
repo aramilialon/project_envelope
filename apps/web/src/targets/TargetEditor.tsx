@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { ApiError } from "../apiFetch.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { deleteGoal, upsertGoal, type GoalKind, type GoalRecord, type RepeatInterval } from "./api.ts";
 import { TARGET_KINDS, targetKindHint, targetKindLabel } from "./targetKindLabels.ts";
@@ -100,13 +101,23 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
       });
       onSaved();
     } catch (caught) {
-      setError(
-        isAmountTooLarge(caught)
-          ? amountTooLargeMessage(intl, currency)
-          : intl.formatMessage({ id: "targets.editor.error", defaultMessage: "We could not save this target." }),
-      );
+      setError(saveErrorMessage(caught));
       setSubmitting(false);
     }
+  }
+
+  /**
+   * What a refused save says. The form checks the amount itself first (more than zero, at most
+   * the cap), so the API refusing it (400 `invalid_goal_amount`, #701) should not happen; if it
+   * does, it gets the form's own words for an amount that is not above zero.
+   */
+  function saveErrorMessage(caught: unknown): string {
+    if (caught instanceof ApiError && caught.code === "invalid_goal_amount") {
+      return intl.formatMessage({ id: "targets.editor.invalidAmount", defaultMessage: "Enter an amount greater than zero." });
+    }
+    return isAmountTooLarge(caught)
+      ? amountTooLargeMessage(intl, currency)
+      : intl.formatMessage({ id: "targets.editor.error", defaultMessage: "We could not save this target." });
   }
 
   async function handleRemove() {
