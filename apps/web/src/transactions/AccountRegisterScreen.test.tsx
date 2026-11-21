@@ -47,6 +47,7 @@ function transaction(overrides: Partial<Transaction>): Transaction {
     memo: null,
     status: "cleared",
     transferId: null,
+    transferAccountId: null,
     externalId: null,
     createdAt: "2026-09-15T00:00:00.000Z",
     splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
@@ -54,12 +55,12 @@ function transaction(overrides: Partial<Transaction>): Transaction {
   };
 }
 
-function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = []) {
+function renderScreen(transactions: Transaction[], events: readonly budgetApi.MonthEvent[] = [], accounts: readonly Account[] = [CHECKING]) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
     { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
-  vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
+  vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([...accounts]);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
   vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue(transactions);
   vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue(events);
@@ -136,6 +137,61 @@ describe("AccountRegisterScreen (#54, #333)", () => {
     expect(rows[1]).toHaveTextContent("15.00"); // running balance after both
     expect(rows[2]).toHaveTextContent("First");
     expect(rows[2]).toHaveTextContent("10.00");
+  });
+
+  describe("a transfer with an off-budget account (#599)", () => {
+    const BROKER: Account = { ...CHECKING, id: "acc-broker", name: "Broker", type: "brokerage", onBudget: false };
+    const SAVINGS: Account = { ...CHECKING, id: "acc-savings", name: "Savings" };
+
+    it("names where money coming in came from and that it landed in Unassigned", async () => {
+      renderScreen(
+        [transaction({ payee: "Sale", transferId: "leg-out", transferAccountId: "acc-broker", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] })],
+        [],
+        [CHECKING, BROKER],
+      );
+      const row = (await screen.findByText("Sale")).closest("tr")!;
+      expect(within(row).getByText("Transfer · From Broker · Unassigned")).toBeInTheDocument();
+    });
+
+    it("names the category such money landed in instead, when it has one", async () => {
+      renderScreen(
+        [transaction({ payee: "Sale", transferId: "leg-out", transferAccountId: "acc-broker", splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: 500_000, memo: null }] })],
+        [],
+        [CHECKING, BROKER],
+      );
+      const row = (await screen.findByText("Sale")).closest("tr")!;
+      expect(within(row).getByText("Transfer · From Broker · Groceries")).toBeInTheDocument();
+    });
+
+    it("mirrors it for money going out to the off-budget account", async () => {
+      renderScreen(
+        [transaction({ payee: "Monthly", transferId: "leg-in", transferAccountId: "acc-broker", splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -50_000, memo: null }] })],
+        [],
+        [CHECKING, BROKER],
+      );
+      const row = (await screen.findByText("Monthly")).closest("tr")!;
+      expect(within(row).getByText("Transfer · To Broker · Groceries")).toBeInTheDocument();
+    });
+
+    it("keeps a plain 'Transfer' between two on-budget accounts", async () => {
+      renderScreen(
+        [transaction({ payee: "Move", transferId: "leg-in", transferAccountId: "acc-savings", splits: [{ id: "s1", categoryId: null, amountCents: -1_000, memo: null }] })],
+        [],
+        [CHECKING, SAVINGS],
+      );
+      const row = (await screen.findByText("Move")).closest("tr")!;
+      expect(within(row).getByText("Transfer")).toBeInTheDocument();
+    });
+
+    it("uses the same label on the phone, under the payee", async () => {
+      setWidth(390);
+      renderScreen(
+        [transaction({ payee: "Sale", transferId: "leg-out", transferAccountId: "acc-broker", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] })],
+        [],
+        [CHECKING, BROKER],
+      );
+      expect(await screen.findByText("Transfer · From Broker · Unassigned")).toBeInTheDocument();
+    });
   });
 
   it("filters by status with counts", async () => {

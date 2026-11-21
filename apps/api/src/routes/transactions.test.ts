@@ -184,6 +184,30 @@ describe("transactions routes", () => {
     assert.ok(destinationList.json().transactions.some((t: { id: string }) => t.id === transfer.destination.id));
   });
 
+  it("names the account of a transfer's other leg on each leg, and null on a plain transaction (#599)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: { sourceAccountId: accountId, destinationAccountId: savingsAccountId, occurredAt: "2026-09-22", amountCents: 1200 },
+    });
+    assert.equal(created.statusCode, 201);
+    const transfer = created.json();
+    assert.equal(transfer.source.transferAccountId, savingsAccountId);
+    assert.equal(transfer.destination.transferAccountId, accountId);
+
+    type Listed = { id: string; transferAccountId: string | null; transferId: string | null };
+    const sourceList = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`, headers: auth });
+    const listed: Listed[] = sourceList.json().transactions;
+    assert.equal(listed.find((t) => t.id === transfer.source.id)?.transferAccountId, savingsAccountId);
+    for (const t of listed.filter((t) => t.transferId === null)) {
+      assert.equal(t.transferAccountId, null);
+    }
+    const destinationList = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/accounts/${savingsAccountId}/transactions`, headers: auth });
+    assert.equal((destinationList.json().transactions as Listed[]).find((t) => t.id === transfer.destination.id)?.transferAccountId, accountId);
+  });
+
   it("rejects a transfer to the same account with a translatable error", async () => {
     const response = await app.fastify.inject({
       method: "POST",

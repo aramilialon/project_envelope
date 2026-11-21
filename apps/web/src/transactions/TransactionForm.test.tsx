@@ -1,9 +1,12 @@
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import it_ from "@envelope/i18n/locales/it.json";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { IntlProvider } from "react-intl";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Account } from "../accounts/api.ts";
 import { ApiError } from "../apiFetch.ts";
+import * as budgetApi from "../budget/api.ts";
 import type { Category } from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "./api.ts";
@@ -267,6 +270,7 @@ describe("TransactionForm (#54)", () => {
       memo: null,
       status: "cleared",
       transferId: null,
+      transferAccountId: null,
       externalId: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
@@ -297,6 +301,7 @@ describe("TransactionForm (#54)", () => {
       memo: "From the bank",
       status: "cleared",
       transferId: null,
+      transferAccountId: null,
       externalId: "bank-1",
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s9", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
@@ -358,6 +363,7 @@ describe("TransactionForm (#54)", () => {
       memo: null,
       status: "pending",
       transferId: "t2-other",
+      transferAccountId: "acc-savings",
       externalId: null,
       createdAt: "2026-09-10T00:00:00.000Z",
       splits: [{ id: "s2", categoryId: null, amountCents: -5000, memo: null }],
@@ -388,6 +394,7 @@ describe("TransactionForm (#54)", () => {
       memo: null,
       status: "cleared",
       transferId: null,
+      transferAccountId: null,
       externalId: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
@@ -417,6 +424,7 @@ describe("TransactionForm (#54)", () => {
       memo: null,
       status: "cleared",
       transferId: null,
+      transferAccountId: null,
       externalId: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
@@ -427,5 +435,351 @@ describe("TransactionForm (#54)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not delete this transaction.");
     expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe("TransactionForm: money coming in from an off-budget account (#599)", () => {
+  const BROKER: Account = { ...CHECKING, id: "acc-broker", name: "Broker", type: "brokerage", onBudget: false };
+
+  function mockBudgetMonth() {
+    return vi.spyOn(budgetApi, "getBudgetMonth").mockResolvedValue({
+      month: "2026-09",
+      unassigned: 20_000,
+      assignedInFuture: 0,
+      overspentLastMonth: 0,
+      creditOverspending: 0,
+      reserved: 0,
+      categories: [
+        {
+          categoryId: "cat-groceries",
+          name: "Groceries",
+          groupId: "g1",
+          groupName: "Everyday",
+          sortOrder: 1,
+          carriedOver: 0,
+          assigned: 180_000,
+          activity: 0,
+          available: 180_000,
+          creditOverspending: 0,
+          cashOverspending: 0,
+          reserved: 0,
+          uncovered: 0,
+        },
+      ],
+      paymentCategories: [],
+    });
+  }
+
+  function leg(overrides: Partial<Transaction>): Transaction {
+    return {
+      id: "leg-in",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-12T00:00:00.000Z",
+      budgetDate: "2026-09-12",
+      payee: null,
+      memo: null,
+      status: "pending",
+      transferId: "leg-out",
+      transferAccountId: "acc-broker",
+      externalId: null,
+      createdAt: "2026-09-12T00:00:00.000Z",
+      splits: [{ id: "s-in", categoryId: null, amountCents: 500_000, memo: null }],
+      ...overrides,
+    };
+  }
+
+  function chooseIncomingFromBroker() {
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5000.00" } });
+    fireEvent.change(screen.getByLabelText("From account"), { target: { value: "acc-broker" } });
+  }
+
+  it("leaves credit cards out of the source accounts, and marks an off-budget one", () => {
+    renderForm({ accounts: [CHECKING, SAVINGS, VISA, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+
+    const options = [...screen.getByLabelText("From account").querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(["Choose an account", "Savings", "Broker (off budget)"]);
+  });
+
+  it("keeps the account already chosen when switching direction, but not a card as the source", () => {
+    renderForm({ accounts: [CHECKING, SAVINGS, VISA, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-savings" } });
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    expect(screen.getByLabelText("From account")).toHaveValue("acc-savings");
+
+    fireEvent.click(screen.getByRole("radio", { name: "To another account" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-visa" } });
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    expect(screen.getByLabelText("From account")).toHaveValue("");
+  });
+
+  it("offers Unassigned with its amount first, selected by default, says where the money lands, and sends no category", async () => {
+    const getBudgetMonth = mockBudgetMonth();
+    const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
+    renderForm({ accounts: [CHECKING, VISA, BROKER] });
+    chooseIncomingFromBroker();
+
+    const category = screen.getByLabelText("Category");
+    await waitFor(() => expect(category.querySelector("option")).toHaveTextContent("Unassigned (€200.00)"));
+    expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-09");
+    expect(category).toHaveValue("");
+    expect([...category.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Unassigned (€200.00)", "Groceries", "Restaurants"]);
+    expect(screen.getByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(createTransfer).toHaveBeenCalledWith("t", "ws-1", {
+        sourceAccountId: "acc-broker",
+        destinationAccountId: "acc-checking",
+        occurredAt: "2026-09-01",
+        amountCents: 500_000,
+        status: "pending",
+      }),
+    );
+  });
+
+  it("puts the money in a chosen category instead, with the hint following it", async () => {
+    mockBudgetMonth();
+    const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+
+    await screen.findByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.");
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    expect(screen.getByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(createTransfer).toHaveBeenCalledWith(
+        "t",
+        "ws-1",
+        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-checking", categoryId: "cat-groceries" }),
+      ),
+    );
+  });
+
+  it("starts back at Unassigned when the transfer kind is chosen after a category", async () => {
+    mockBudgetMonth();
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Outflow" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+
+    expect(screen.getByLabelText("Category")).toHaveValue("");
+  });
+
+  it("still requires a category, with no Unassigned, from an off-budget account into an on-budget card", async () => {
+    mockBudgetMonth();
+    const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
+    renderForm({ accountId: "acc-visa", accounts: [CHECKING, VISA, BROKER] });
+    chooseIncomingFromBroker();
+
+    const options = [...screen.getByLabelText("Category").querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(["Choose a category", "Groceries", "Restaurants"]);
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+    expect(createTransfer).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() =>
+      expect(createTransfer).toHaveBeenCalledWith(
+        "t",
+        "ws-1",
+        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-visa", categoryId: "cat-groceries" }),
+      ),
+    );
+  });
+
+  it("still requires a category, with no Unassigned, going out to an off-budget account", () => {
+    renderForm({ accounts: [CHECKING, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-broker" } });
+
+    const options = [...screen.getByLabelText("Category").querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toEqual(["Choose a category", "Groceries", "Restaurants"]);
+  });
+
+  it("asks for no category coming in from an on-budget account", () => {
+    renderForm({ accounts: [CHECKING, SAVINGS] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    fireEvent.change(screen.getByLabelText("From account"), { target: { value: "acc-savings" } });
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+  });
+
+  it("requires a source account", async () => {
+    renderForm({ accounts: [CHECKING, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "50.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a source account.");
+  });
+
+  it("sets a category on an existing Unassigned leg, leaving its amount alone", async () => {
+    mockBudgetMonth();
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    renderForm({ accounts: [CHECKING, BROKER], transaction: leg({}) });
+
+    expect(screen.getByRole("radio", { name: "From another account" })).toBeChecked();
+    expect(screen.getByLabelText("From account")).toHaveValue("acc-broker");
+    expect(screen.getByLabelText("From account")).toBeDisabled();
+    expect(screen.getByLabelText("Category")).toHaveValue("");
+    // The leg already counts in "Unassigned": no hint until the category changes.
+    expect(screen.queryByText(/comes into the budget/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    expect(await screen.findByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "leg-in", {
+        splits: [{ categoryId: "cat-groceries", amountCents: 500_000 }],
+        amountCents: 500_000,
+      }),
+    );
+  });
+
+  it("clears an existing leg's category back to Unassigned", async () => {
+    mockBudgetMonth();
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    renderForm({
+      accounts: [CHECKING, BROKER],
+      transaction: leg({ splits: [{ id: "s-in", categoryId: "cat-groceries", amountCents: 500_000, memo: null }] }),
+    });
+
+    expect(screen.getByLabelText("Category")).toHaveValue("cat-groceries");
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "leg-in", {
+        splits: [{ categoryId: null, amountCents: 500_000 }],
+        amountCents: 500_000,
+      }),
+    );
+  });
+
+  it("does not let an existing leg going out to an off-budget account lose its category", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    renderForm({
+      accounts: [CHECKING, BROKER],
+      transaction: leg({ splits: [{ id: "s-out", categoryId: "cat-groceries", amountCents: -500_000, memo: null }] }),
+    });
+
+    expect(screen.getByRole("radio", { name: "To another account" })).toBeChecked();
+    expect(screen.getByLabelText("To account")).toHaveValue("acc-broker");
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+    expect(updateTransaction).not.toHaveBeenCalled();
+  });
+
+  it("offers no category on the off-budget leg itself", () => {
+    renderForm({
+      accountId: "acc-broker",
+      accounts: [CHECKING, BROKER],
+      transaction: leg({ accountId: "acc-broker", transferAccountId: "acc-checking", splits: [{ id: "s-out", categoryId: null, amountCents: -500_000, memo: null }] }),
+    });
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+  });
+
+  it("links the hint to the category it describes", async () => {
+    mockBudgetMonth();
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Category")).toHaveAccessibleDescription(
+        "The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.",
+      ),
+    );
+  });
+
+  it("drops a split left on when the kind changes, so a transfer still shows its category", () => {
+    renderForm({ accounts: [CHECKING, BROKER] });
+    fireEvent.click(screen.getByRole("button", { name: "Split across categories" }));
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-broker" } });
+    expect(screen.getByLabelText("Category")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Outflow" }));
+    expect(screen.getByLabelText("Category")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split across categories" })).toBeInTheDocument();
+  });
+
+  it("clears a stale message when the direction or the account changes", async () => {
+    renderForm({ accounts: [CHECKING, SAVINGS, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "50.00" } });
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-broker" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "To another account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-savings" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("TransactionForm in Italian (#599)", () => {
+  function renderInItalian(transaction?: Transaction) {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    return render(
+      <IntlProvider locale="it" defaultLocale="en" messages={it_}>
+        <TransactionForm
+          workspaceId="ws-1"
+          accountId="acc-checking"
+          accounts={[CHECKING, SAVINGS]}
+          categories={[GROCERIES]}
+          currency="EUR"
+          today="2026-09-01"
+          {...(transaction ? { transaction } : {})}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </IntlProvider>,
+    );
+  }
+
+  it("translates the title and the main button of a new and an edited transaction", () => {
+    const { unmount } = renderInItalian();
+    expect(screen.getByRole("heading", { name: "Nuova transazione" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aggiungi" })).toBeInTheDocument();
+    unmount();
+
+    renderInItalian({
+      id: "tx-1",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-12T00:00:00.000Z",
+      budgetDate: "2026-09-12",
+      payee: null,
+      memo: null,
+      status: "pending",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      createdAt: "2026-09-12T00:00:00.000Z",
+      splits: [{ id: "s-1", categoryId: "cat-groceries", amountCents: -1250, memo: null }],
+    });
+    expect(screen.getByRole("heading", { name: "Modifica transazione" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Salva" })).toBeInTheDocument();
   });
 });

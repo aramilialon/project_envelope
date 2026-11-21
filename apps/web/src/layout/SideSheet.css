@@ -14,6 +14,19 @@
   border-left: 1px solid var(--rule);
 }
 
+/* Phone breakpoint: kept in sync with usePhoneWidth.ts's own PHONE_MAX_WIDTH. The sheet is the
+   full-screen form docs/design.md describes, a modal above the tab bar (z-index 10) like the
+   quick-entry overlay, so its buttons are never underneath it (#599). */
+@media (max-width: 600px) {
+  .side-sheet {
+    z-index: 20;
+    left: 0;
+    width: auto;
+    border-left: 0;
+    padding: 22px 16px calc(22px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .side-sheet .panel-head {
   display: flex;
   align-items: baseline;

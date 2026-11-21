@@ -38,6 +38,7 @@ function transactionOf(amountCents: number): Transaction {
     memo: null,
     status: "cleared",
     transferId: null,
+    transferAccountId: null,
     externalId: null,
     createdAt: "2026-09-01",
     splits: [{ id: "s", categoryId: null, amountCents, memo: null }],
