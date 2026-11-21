@@ -1,4 +1,5 @@
 import type { CategoryMonth } from "../budget/budget-month.ts";
+import { cardDebt } from "./cardDebt.ts";
 
 /**
  * A category's bar geometry (design.md, "Budget month on the desktop" — "Bars";
@@ -95,15 +96,15 @@ export function computeCategoryBar(category: CategoryMonth): CategoryBar {
 
 /**
  * A credit card's own payment category: the bar draws its debt instead of a track/tail (covered
- * in `bar`, uncovered hatched) — `CategoryMonth.uncovered` is already `max(0, owed - available)`,
- * so the card's real debt (never stored directly here) is recovered as `available + uncovered`
- * whenever there is any; when there is none, the bar needs no debt figure at all.
+ * in `bar`, uncovered hatched). The whole bar is the card's real debt (`cardDebt`'s `owed`), the
+ * covered part what is set aside for it — never negative: a card paid beyond what was set aside
+ * covers nothing with it (#699). When nothing is uncovered, the bar needs no debt figure at all.
  */
 export function computePaymentCategoryBar(category: CategoryMonth): PaymentCategoryBar {
-  if (category.uncovered <= 0) {
+  const debt = cardDebt(category);
+  if (debt.uncovered <= 0 || debt.owed <= 0) {
     return { kind: "payment", uncovered: undefined };
   }
-  const debt = category.available + category.uncovered;
-  const coveredPercent = pct(Math.max(0, category.available), debt);
+  const coveredPercent = pct(debt.setAside, debt.owed);
   return { kind: "payment", uncovered: { leftPercent: coveredPercent, widthPercent: 100 - coveredPercent } };
 }

@@ -198,10 +198,19 @@ export interface CategoryMonth {
   readonly reserved: Cents;
   /**
    * Payment categories only: how much of the card's real balance (`BudgetInput.cardBalances`)
-   * assigned money does not cover yet — `max(0, owed - available)`. Derived fresh every call,
-   * never persisted or carried to the next month; 0 when no `cardBalances` entry is given.
+   * assigned money does not cover yet — `max(0, owed - max(0, available))`. A negative
+   * `available` (the card was paid beyond what was set aside) is already `cashOverspending` and
+   * covers nothing, so it never counts here a second time; the card's real debt is therefore
+   * `owed`, never `available + uncovered`. Derived fresh every call, never persisted or carried
+   * to the next month; 0 when no `cardBalances` entry is given.
    */
   readonly uncovered: Cents;
+  /**
+   * Payment categories only (#699): the card's real balance, what is owed on it
+   * (`CardBalance.owed`) — the debt the interface shows. Absent when no `cardBalances` entry is
+   * given for the card, and always absent for an ordinary category.
+   */
+  readonly owed?: Cents;
   /**
    * Payment categories only (#355): which ordinary categories' credit overspending this month is
    * attributable to this specific card, and how much — `apps/web`'s own "the uncovered debt comes
@@ -413,6 +422,7 @@ function computePaymentCategories(
       // unassigned (cashOverspending); counting its negative available again here
       // would double the same shortfall into both mechanisms.
       uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
+      ...(owed !== undefined ? { owed } : {}),
       overspendingBy: [...(data.overspendingByCard.get(p.id) ?? [])]
         .map(([categoryId, amount]) => ({ categoryId, amount }))
         .sort((a, b) => (a.categoryId < b.categoryId ? -1 : a.categoryId > b.categoryId ? 1 : 0)),

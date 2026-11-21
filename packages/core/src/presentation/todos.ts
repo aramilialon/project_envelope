@@ -1,5 +1,6 @@
 import type { CategoryMonth } from "../budget/budget-month.ts";
 import type { Cents } from "../money.ts";
+import { cardDebt } from "./cardDebt.ts";
 
 /**
  * The budget month's own "To do" list (design.md, "Budget month on the desktop" — "To do";
@@ -78,10 +79,15 @@ export function reservationShortfall(category: CategoryMonth): Cents {
  * "preselects the category and the amount it is missing", `docs/ux/mockups/budget-month.html`'s
  * own `openMove`'s `gap`): the whole of a cash/card overspend first, else a reservation shortfall,
  * else (payment categories only) card debt still uncovered. Zero when none of these apply.
+ *
+ * A card paid beyond what its payment category set aside is cash overspending on that category,
+ * and its debt stays uncovered on top of it: covering both takes `cardDebt`'s `toCover`,
+ * `max(0, owed - available)` (#699). `uncovered` is always 0 on an ordinary category, so adding it
+ * to the overspend changes nothing there.
  */
 export function amountNeededToCover(category: CategoryMonth): Cents {
   if (category.cashOverspending > 0 || category.creditOverspending > 0) {
-    return category.cashOverspending + category.creditOverspending;
+    return category.cashOverspending + category.creditOverspending + category.uncovered;
   }
   const short = reservationShortfall(category);
   if (short > 0) {
@@ -96,6 +102,10 @@ export function amountNeededToCover(category: CategoryMonth): Cents {
  * immediately), overdue scheduled transactions, a reservation a category cannot cover (only when
  * that category is not already flagged by overspending above), uncovered card debt, and finally
  * every target still missing money as one combined item.
+ *
+ * A card paid beyond what its payment category set aside is cash overspending like any other,
+ * listed with the rest of it, for the whole of `cardDebt`'s `toCover` — the overspending plus the
+ * debt still uncovered, one item, never a second "debt to cover" one for the same card (#699).
  */
 export function computeTodos(input: TodosInput): readonly TodoItem[] {
   const items: TodoItem[] = [];
@@ -107,6 +117,11 @@ export function computeTodos(input: TodosInput): readonly TodoItem[] {
       items.push({ kind: "cashOverspending", categoryId: category.categoryId, amountCents: category.cashOverspending + category.creditOverspending });
     } else if (category.creditOverspending > 0) {
       items.push({ kind: "cardOverspending", categoryId: category.categoryId, amountCents: category.creditOverspending });
+    }
+  }
+  for (const category of input.paymentCategories) {
+    if (category.cashOverspending > 0) {
+      items.push({ kind: "cashOverspending", categoryId: category.categoryId, amountCents: cardDebt(category).toCover });
     }
   }
 
@@ -130,6 +145,7 @@ export function computeTodos(input: TodosInput): readonly TodoItem[] {
   }
 
   for (const category of input.paymentCategories) {
+    if (category.cashOverspending > 0) continue;
     if (category.uncovered > 0) {
       items.push({ kind: "cardDebtUncovered", categoryId: category.categoryId, amountCents: category.uncovered });
     }
