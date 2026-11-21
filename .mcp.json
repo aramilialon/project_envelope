@@ -1,8 +1,16 @@
 {
   "mcpServers": {
-    "playwright": {
+    "playwright-household": {
       "command": "sh",
-      "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\""]
+      "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\" household"]
+    },
+    "playwright-investor": {
+      "command": "sh",
+      "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\" investor"]
+    },
+    "playwright-mixed": {
+      "command": "sh",
+      "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\" mixed"]
     }
   }
 }
