@@ -88,4 +88,25 @@ describe("groupAccountsForPanel", () => {
     assert.equal(groups.netWorth, 0);
     assert.deepEqual(groups.excluded, [{ currency: "USD", amount: 5_000 }]);
   });
+
+  it("counts an on-budget base-currency card in the net worth, and nets an off-budget card into its own currency (#652)", () => {
+    const groups = groupAccountsForPanel(
+      [
+        account("checking", { balance: 700_000 }),
+        account("visa", { isCard: true, balance: -50_000 }),
+        account("us-card", { isCard: true, onBudget: false, currency: "USD", balance: -10_000 }),
+        account("us-broker", { onBudget: false, currency: "USD", balance: 300_000 }),
+      ],
+      "EUR",
+    );
+    assert.equal(groups.netWorth, 650_000);
+    assert.deepEqual(groups.excluded, [{ currency: "USD", amount: 290_000 }]);
+    assert.deepEqual(ids(groups.cards), ["visa", "us-card"]);
+  });
+
+  it("lists a lone debt in another currency as a negative amount (#652)", () => {
+    const groups = groupAccountsForPanel([account("us-loan", { onBudget: false, currency: "USD", balance: -500_000 })], "EUR");
+    assert.equal(groups.netWorth, 0);
+    assert.deepEqual(groups.excluded, [{ currency: "USD", amount: -500_000 }]);
+  });
 });
