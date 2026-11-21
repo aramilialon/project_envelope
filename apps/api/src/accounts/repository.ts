@@ -1,6 +1,17 @@
-import { assertAmount, assertDate, assertKnownCurrency, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import {
+  assertAmount,
+  assertDate,
+  assertKnownCurrency,
+  assertTotal,
+  computePositions,
+  validateAccountTaxSettings,
+  ValidationError,
+  type LocalDate,
+  type TaxRegime,
+} from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { loadPositionTrades } from "../trades/repository.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
 
 export type AccountType = "checking" | "savings" | "cash" | "credit_card" | "brokerage";
@@ -189,19 +200,66 @@ export async function accountExists(db: DbPool | DbClient, workspaceId: string, 
   return rows.length > 0;
 }
 
-/** Closes an account (excluded from budget calculations, never deleted). Returns undefined if not found or already closed. */
-export async function closeAccount(
-  db: DbPool | DbClient,
-  workspaceId: string,
-  accountId: string,
-): Promise<AccountRecord | undefined> {
+/** What `closeAccount` did: closed it, found no open account by that id, or refused it as not empty (#703). */
+export type CloseAccountResult =
+  | { readonly status: "closed"; readonly account: AccountRecord }
+  | { readonly status: "not_found" }
+  | {
+      readonly status: "not_empty";
+      /** The account's balance over all dates, future-dated rows included, in its own currency. */
+      readonly balanceCents: number;
+      /** Whether it still holds any security (a position with a quantity other than zero). */
+      readonly holdsPositions: boolean;
+    };
+
+/**
+ * Closes an account, never deleting it. A closed account still counts in the budget: its
+ * transactions stay in every month they fall in. Returns `not_found` if it is not found or is
+ * already closed.
+ *
+ * Refuses (#703) an account whose balance over all dates is not zero, or that still holds any
+ * security; the route answers 409 `account_not_empty`. The account row is locked first
+ * (`FOR UPDATE`, which conflicts with the key-share lock a new transaction or trade on the account
+ * takes through its foreign key), so nothing can be added to it between the check and the close.
+ *
+ * @throws ValidationError "amount_total_overflow" when the balance is beyond the safe range.
+ */
+export async function closeAccount(db: DbClient, workspaceId: string, accountId: string): Promise<CloseAccountResult> {
+  const locked = await db.query("SELECT 1 FROM accounts WHERE id = $1 AND workspace_id = $2 AND closed_at IS NULL FOR UPDATE", [
+    accountId,
+    workspaceId,
+  ]);
+  if (locked.rows.length === 0) {
+    return { status: "not_found" };
+  }
+
+  const { rows: balanceRows } = await db.query<{ balance_cents: string }>(
+    `SELECT COALESCE(SUM(s.amount_cents), 0)::text AS balance_cents
+     FROM splits s
+     JOIN transactions t ON t.workspace_id = s.workspace_id AND t.id = s.transaction_id
+     WHERE t.workspace_id = $1 AND t.account_id = $2`,
+    [workspaceId, accountId],
+  );
+  const balanceCents = Number(balanceRows[0]?.balance_cents ?? "0");
+  assertTotal(balanceCents, "account balance", { accountId });
+
+  // Only a brokerage account has trades: for any other account the replay finds none.
+  const { accounts: positions } = computePositions(await loadPositionTrades(db, workspaceId, { accountId }));
+  const holdsPositions = positions.some((position) => position.accountId === accountId && position.quantity !== 0);
+
+  if (balanceCents !== 0 || holdsPositions) {
+    return { status: "not_empty", balanceCents, holdsPositions };
+  }
+
   const { rows } = await db.query<AccountRow>(
-    `UPDATE accounts SET closed_at = now()
-     WHERE id = $1 AND workspace_id = $2 AND closed_at IS NULL
-     RETURNING ${ACCOUNT_COLUMNS}`,
+    `UPDATE accounts SET closed_at = now() WHERE id = $1 AND workspace_id = $2 RETURNING ${ACCOUNT_COLUMNS}`,
     [accountId, workspaceId],
   );
-  return rows[0] ? toAccountRecord(rows[0]) : undefined;
+  const row = rows[0];
+  if (!row) {
+    throw new Error("closeAccount: the locked account row was not updated");
+  }
+  return { status: "closed", account: toAccountRecord(row) };
 }
 
 /** The workspace's base currency and tax country (#508, null when it has none), or undefined when it is not found. */

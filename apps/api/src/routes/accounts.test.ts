@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, beforeEach, describe, it } from "node:test";
 
 import { MAX_NAME_LENGTH, regimeAt, type TaxRegimeEntry } from "@envelope/core";
@@ -641,6 +642,180 @@ describe("accounts routes", () => {
       assert.equal((await replaceHistory(legacyBrokerageId, [], headers)).statusCode, 403);
       assert.equal((await setFlag(legacyBrokerageId, false, headers)).statusCode, 403);
       assert.deepEqual((await history(legacyBrokerageId)).json(), listed.json());
+    });
+  });
+
+  describe("closing an account that is not empty (#703)", () => {
+    /** A workspace of its own, so its trades can go before the instrument they reference. */
+    let closeWorkspaceId: string;
+    let categoryId: string;
+    const instrumentIds: string[] = [];
+    const units = (value: number): number => Math.round(value * 1e8);
+    const price = (value: number): number => Math.round(value * 1e6);
+    const auth = () => ({ authorization: `Bearer ${token}` });
+
+    async function inject(method: "GET" | "POST" | "PATCH", path: string, payload?: Record<string, unknown>, headers = auth()) {
+      return app.fastify.inject({
+        method,
+        url: `/workspaces/${closeWorkspaceId}${path}`,
+        headers,
+        ...(payload === undefined ? {} : { payload }),
+      });
+    }
+
+    async function account(type: "checking" | "brokerage"): Promise<string> {
+      const response = await inject("POST", "/accounts", { name: `Account ${randomUUID().slice(0, 8)}`, type, currency: "EUR" });
+      assert.equal(response.statusCode, 201, response.body);
+      return response.json().id;
+    }
+
+    async function transaction(accountId: string, occurredAt: string, amountCents: number): Promise<void> {
+      const response = await inject("POST", `/accounts/${accountId}/transactions`, { occurredAt, splits: [{ categoryId, amountCents }] });
+      assert.equal(response.statusCode, 201, response.body);
+    }
+
+    async function trade(payload: Record<string, unknown>): Promise<void> {
+      const response = await inject("POST", "/trades", payload);
+      assert.equal(response.statusCode, 201, response.body);
+    }
+
+    async function close(accountId: string, headers = auth()) {
+      return inject("PATCH", `/accounts/${accountId}/close`, undefined, headers);
+    }
+
+    async function closedAt(accountId: string): Promise<Date | null> {
+      const { rows } = await superuserPool.query<{ closed_at: Date | null }>("SELECT closed_at FROM accounts WHERE id = $1", [accountId]);
+      return rows[0]!.closed_at;
+    }
+
+    /** A brokerage account, a portfolio and an instrument to trade in it. */
+    async function brokerage(): Promise<{ accountId: string; portfolioId: string; instrumentId: string }> {
+      const accountId = await account("brokerage");
+      const { rows: portfolios } = await superuserPool.query<{ id: string }>(
+        "INSERT INTO portfolios (workspace_id, name) VALUES ($1, $2) RETURNING id",
+        [closeWorkspaceId, `Portfolio ${randomUUID()}`],
+      );
+      const { rows: instruments } = await superuserPool.query<{ id: string }>(
+        `INSERT INTO instruments (isin, ticker, exchange, name, type, currency, price_factor_e6)
+         VALUES (NULL, $1, 'XMIL', 'Test fund', 'fund', 'EUR', 1000000) RETURNING id`,
+        [`T${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`],
+      );
+      instrumentIds.push(instruments[0]!.id);
+      return { accountId, portfolioId: portfolios[0]!.id, instrumentId: instruments[0]!.id };
+    }
+
+    /** A token for a new user who is a member of this block's workspace with `role`; refreshes the owner's token after. */
+    async function memberToken(role: "editor" | "read_only"): Promise<string> {
+      const memberToken = await realm.getTokenForNewUser();
+      await app.fastify.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${memberToken}` } });
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [
+        decodeJwt(memberToken).sub,
+      ]);
+      await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)", [
+        rows[0]!.id,
+        closeWorkspaceId,
+        role,
+      ]);
+      token = await realm.getUserToken();
+      return memberToken;
+    }
+
+    before(async () => {
+      closeWorkspaceId = randomUUID();
+      await superuserPool.query(
+        "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Closing', 'EUR', 'Europe/Rome')",
+        [closeWorkspaceId],
+      );
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
+      await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, 'owner')", [rows[0]!.id, closeWorkspaceId]);
+      const group = await inject("POST", "/category-groups", { name: "Home" });
+      const category = await inject("POST", "/categories", { name: "Groceries", groupId: group.json().id });
+      categoryId = category.json().id;
+    });
+
+    after(async () => {
+      // The trades go with their workspace; only then can the instruments they referenced go.
+      await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [closeWorkspaceId]);
+      await superuserPool.query("DELETE FROM instruments WHERE id = ANY($1)", [instrumentIds]);
+    });
+
+    it("refuses an account with a balance, with the balance in the details, and leaves it open", async () => {
+      const accountId = await account("checking");
+      await transaction(accountId, "2026-09-01", 10_000);
+      await transaction(accountId, "2026-09-02", -2_550);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json(), { error: "account_not_empty", details: { balanceCents: 7_450, holdsPositions: false } });
+      assert.equal(await closedAt(accountId), null);
+    });
+
+    it("counts future-dated rows: an account empty today but not over all dates is refused", async () => {
+      const accountId = await account("checking");
+      await transaction(accountId, `${new Date().getUTCFullYear() + 2}-01-15`, -2_500);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json().details, { balanceCents: -2_500, holdsPositions: false });
+      assert.equal(await closedAt(accountId), null);
+    });
+
+    it("closes an account whose rows add up to zero", async () => {
+      const accountId = await account("checking");
+      await transaction(accountId, "2026-09-01", 10_000);
+      await transaction(accountId, `${new Date().getUTCFullYear() + 1}-03-01`, -10_000);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 200, response.body);
+      assert.ok(response.json().closedAt);
+    });
+
+    it("refuses a brokerage account that holds securities and no cash", async () => {
+      const { accountId, portfolioId, instrumentId } = await brokerage();
+      // Units transferred in from outside the app: a position, and no cash leg.
+      await trade({ type: "transfer", instrumentId, tradeDate: "2026-02-10", quantityE8: units(10), to: { accountId, portfolioId, costBasisCents: 100_000 } });
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json(), { error: "account_not_empty", details: { balanceCents: 0, holdsPositions: true } });
+      assert.equal(await closedAt(accountId), null);
+    });
+
+    it("closes a brokerage account whose positions are sold out and whose cash adds up to zero", async () => {
+      const { accountId, portfolioId, instrumentId } = await brokerage();
+      const common = { accountId, portfolioId, instrumentId, quantityE8: units(2), priceE6: price(50) };
+      await trade({ ...common, type: "buy", tradeDate: "2026-03-02" });
+      await trade({ ...common, type: "sell", tradeDate: "2026-03-03" });
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 200, response.body);
+      assert.ok(response.json().closedAt);
+    });
+
+    it("gives an editor the same refusal and lets an editor close an empty account", async () => {
+      const headers = { authorization: `Bearer ${await memberToken("editor")}` };
+      const withMoney = await account("checking");
+      await transaction(withMoney, "2026-09-01", 1);
+      const empty = await account("checking");
+
+      const refused = await close(withMoney, headers);
+      assert.equal(refused.statusCode, 409);
+      assert.deepEqual(refused.json().details, { balanceCents: 1, holdsPositions: false });
+
+      const closed = await close(empty, headers);
+      assert.equal(closed.statusCode, 200, closed.body);
+    });
+
+    it("refuses a read-only member with 403, empty account or not, closing nothing", async () => {
+      const headers = { authorization: `Bearer ${await memberToken("read_only")}` };
+      const withMoney = await account("checking");
+      await transaction(withMoney, "2026-09-01", 500);
+      const empty = await account("checking");
+
+      for (const accountId of [withMoney, empty]) {
+        assert.equal((await close(accountId, headers)).statusCode, 403);
+        assert.equal(await closedAt(accountId), null);
+      }
     });
   });
 });
