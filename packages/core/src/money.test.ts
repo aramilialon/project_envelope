@@ -68,6 +68,39 @@ describe("formatMoney", () => {
   });
 });
 
+describe("formatMoney and parseAmount in the next interface languages (#620)", () => {
+  const DE_EUR = { locale: "de-DE", currency: "EUR" };
+  const ES_EUR = { locale: "es-ES", currency: "EUR" };
+  const FR_EUR = { locale: "fr-FR", currency: "EUR" };
+
+  it("de-DE groups every amount from four digits up, with the symbol after a non-breaking space", () => {
+    assert.equal(formatMoney(123456, DE_EUR), "1.234,56\u00a0€");
+    assert.equal(formatMoney(-320, DE_EUR), "-3,20\u00a0€");
+    assert.equal(formatMoney(-123456, DE_EUR), "-1.234,56\u00a0€");
+    assert.equal(parseAmount("1.234,56", DE_EUR), 123456);
+    assert.equal(parseAmount("1234,56", DE_EUR), 123456);
+    assert.equal(parseAmount("-1.234,56", DE_EUR), -123456);
+  });
+
+  it("es-ES does not group a four-digit amount, and both forms parse", () => {
+    assert.equal(formatMoney(123456, ES_EUR), "1234,56\u00a0€");
+    assert.equal(formatMoney(1234567, ES_EUR), "12.345,67\u00a0€");
+    assert.equal(formatMoney(-123456, ES_EUR), "-1234,56\u00a0€");
+    assert.equal(parseAmount("1234,56", ES_EUR), 123456);
+    assert.equal(parseAmount("1.234,56", ES_EUR), 123456);
+    assert.equal(parseAmount("12.345,67", ES_EUR), 1234567);
+  });
+
+  it("fr-FR puts the minus first and the symbol last, and groups with a narrow non-breaking space", () => {
+    assert.equal(formatMoney(123456, FR_EUR), "1\u202f234,56\u00a0€");
+    assert.equal(formatMoney(-320, FR_EUR), "-3,20\u00a0€");
+    assert.equal(formatMoney(-123456, FR_EUR), "-1\u202f234,56\u00a0€");
+    assert.equal(parseAmount("-1\u202f234,56", FR_EUR), -123456);
+    assert.equal(parseAmount("-1 234,56", FR_EUR), -123456);
+    assert.equal(parseAmount("-3,20", FR_EUR), -320);
+  });
+});
+
 describe("currencyDecimals", () => {
   it("knows how many decimals each currency has", () => {
     assert.equal(currencyDecimals("EUR"), 2);

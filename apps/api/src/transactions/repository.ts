@@ -63,6 +63,12 @@ export interface TransactionRecord {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly transferId: string | null;
+  /**
+   * The account of a transfer's other leg (`transferId`'s own account), or null when this is not a
+   * transfer leg. Read, never written: it lets a client name where a transfer goes or comes from,
+   * and tell whether that account is off budget (#599), without fetching the other leg.
+   */
+  readonly transferAccountId: string | null;
   /** The bank's own transaction id, kept from a confirmed import row that carried one (OFX's FITID, #29), for a later re-import's duplicate detection. */
   readonly externalId: string | null;
   /**
@@ -100,7 +106,9 @@ export interface UpdateTransactionInput {
 const TRANSACTION_COLUMNS = `
   t.id, t.workspace_id, t.account_id, t.occurred_at,
   to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS budget_date,
-  t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.trade_id, t.created_at
+  t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.trade_id, t.created_at,
+  (SELECT partner.account_id FROM transactions partner
+    WHERE partner.id = t.transfer_id AND partner.workspace_id = t.workspace_id) AS transfer_account_id
 `;
 
 interface TransactionRow {
@@ -114,6 +122,7 @@ interface TransactionRow {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly transfer_id: string | null;
+  readonly transfer_account_id: string | null;
   readonly external_id: string | null;
   readonly trade_id: string | null;
   readonly created_at: Date;
@@ -937,6 +946,7 @@ function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]
     memo: row.memo,
     status: row.status,
     transferId: row.transfer_id,
+    transferAccountId: row.transfer_account_id,
     externalId: row.external_id,
     tradeId: row.trade_id,
     createdAt: row.created_at.toISOString(),

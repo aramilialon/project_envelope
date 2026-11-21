@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount } from "@envelope/core";
+import { formatMoney, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -116,21 +116,30 @@ export default function ImportScreen() {
   const otherAccounts = accounts.filter((a) => a.id !== accountId);
   const openCategories = categories.filter((c) => !c.archived);
 
-  // design.md, "Account register": "transfers to an off-budget account ask for a category" —
-  // money is leaving or entering the budget, the same as ordinary spending (#378, #379).
-  function needsTransferCategory(selection: string): boolean {
+  // A transfer with an off-budget account moves money into or out of the budget, so its on-budget
+  // leg's category follows `@envelope/core`'s `transferCategoryRule` (#378, #379, #598, #599), the
+  // same rule as the transaction form: required when the money leaves the budget or comes into an
+  // on-budget card; optional from an off-budget account into a cash account, where "Unassigned"
+  // (no category, income to assign) comes first and is the default. The row's sign says which way
+  // the money goes: in to this account, or out of it.
+  function transferRuleOf(selection: string, amountCents: number): TransferCategoryRule {
     if (!selection.startsWith(TRANSFER_PREFIX)) {
-      return false;
+      return "none";
     }
     const other = otherAccounts.find((a) => a.id === selection.slice(TRANSFER_PREFIX.length));
-    return other !== undefined && other.onBudget !== account.onBudget;
+    if (other === undefined) {
+      return "none";
+    }
+    const self = { onBudget: account.onBudget, creditCard: account.type === "credit_card" };
+    const them = { onBudget: other.onBudget, creditCard: other.type === "credit_card" };
+    return amountCents >= 0 ? transferCategoryRule(them, self) : transferCategoryRule(self, them);
   }
 
-  function rowIsReady(selection: string | undefined, transferCategoryId: string | undefined): boolean {
+  function rowIsReady(selection: string | undefined, transferCategoryId: string | undefined, amountCents: number): boolean {
     if (!selection) {
       return false;
     }
-    return !needsTransferCategory(selection) || !!transferCategoryId;
+    return transferRuleOf(selection, amountCents) !== "required" || !!transferCategoryId;
   }
 
   function closingBalanceCents(): number | undefined {
@@ -253,8 +262,10 @@ export default function ImportScreen() {
       if (row.duplicateOf !== null) {
         // Inert: the server clears a duplicate row from its own staged record, whatever decision it is given.
         decisions.push({ stagedTransactionId: row.id, kind: "income" });
-      } else if (includes[row.id] && rowIsReady(selections[row.id], transferCategories[row.id])) {
-        const decision = decisionFromSelection(row.id, selections[row.id]!, transferCategories[row.id]);
+      } else if (includes[row.id] && rowIsReady(selections[row.id], transferCategories[row.id], row.amountCents)) {
+        // A category left over from another choice is sent only where this transfer takes one.
+        const transferCategoryId = transferRuleOf(selections[row.id]!, row.amountCents) === "none" ? undefined : transferCategories[row.id];
+        const decision = decisionFromSelection(row.id, selections[row.id]!, transferCategoryId);
         if (decision) {
           decisions.push(decision);
         }
@@ -309,8 +320,8 @@ export default function ImportScreen() {
   const staged = stageResult?.staged ?? [];
   const newRows = staged.filter((r) => r.duplicateOf === null);
   const duplicateRows = staged.filter((r) => r.duplicateOf !== null);
-  const readyCount = newRows.filter((r) => includes[r.id] && rowIsReady(selections[r.id], transferCategories[r.id])).length;
-  const missingCount = newRows.filter((r) => includes[r.id] && !rowIsReady(selections[r.id], transferCategories[r.id])).length;
+  const readyCount = newRows.filter((r) => includes[r.id] && rowIsReady(selections[r.id], transferCategories[r.id], r.amountCents)).length;
+  const missingCount = newRows.filter((r) => includes[r.id] && !rowIsReady(selections[r.id], transferCategories[r.id], r.amountCents)).length;
   const canConfirm = readyCount > 0 || duplicateRows.length > 0;
 
   return (
@@ -526,7 +537,7 @@ export default function ImportScreen() {
                     </span>
                     {isDuplicate ? (
                       <span className="badge dup">{intl.formatMessage({ id: "import.check.badge.duplicate", defaultMessage: "Already there" })}</span>
-                    ) : !rowIsReady(selections[row.id], transferCategories[row.id]) ? (
+                    ) : !rowIsReady(selections[row.id], transferCategories[row.id], row.amountCents) ? (
                       <span className="badge need">{intl.formatMessage({ id: "import.check.badge.need", defaultMessage: "Needs a category" })}</span>
                     ) : (
                       <span className="badge new">{intl.formatMessage({ id: "import.check.badge.new", defaultMessage: "New" })}</span>
@@ -559,7 +570,7 @@ export default function ImportScreen() {
                           </option>
                         ))}
                       </select>
-                      {needsTransferCategory(selections[row.id] ?? "") && (
+                      {transferRuleOf(selections[row.id] ?? "", row.amountCents) !== "none" && (
                         <>
                           <label className="sr-only" htmlFor={`import-transfer-cat-${row.id}`}>
                             {intl.formatMessage({ id: "import.check.column.category", defaultMessage: "Category" })}
@@ -569,7 +580,11 @@ export default function ImportScreen() {
                             value={transferCategories[row.id] ?? ""}
                             onChange={(event) => setTransferCategories((current) => ({ ...current, [row.id]: event.target.value }))}
                           >
-                            <option value="">{intl.formatMessage({ id: "import.check.chooseCategory", defaultMessage: "Choose a category" })}</option>
+                            {transferRuleOf(selections[row.id] ?? "", row.amountCents) === "optional" ? (
+                              <option value="">{intl.formatMessage({ id: "import.check.unassigned", defaultMessage: "Unassigned" })}</option>
+                            ) : (
+                              <option value="">{intl.formatMessage({ id: "import.check.chooseCategory", defaultMessage: "Choose a category" })}</option>
+                            )}
                             {openCategories.map((category) => (
                               <option key={category.id} value={category.id}>
                                 {category.name}

@@ -2,18 +2,21 @@
   "name": "@envelope/i18n",
   "version": "0.0.0",
   "private": true,
-  "description": "Translation catalogs — English (the source language) and Italian (ADR 0004, ADR 0009)",
+  "description": "Interface translation catalogs: English (the source language) and every other shipped language (ADR 0004, ADR 0009)",
   "license": "AGPL-3.0-only",
   "type": "module",
   "exports": {
-    "./locales/en.json": "./locales/en.json",
-    "./locales/it.json": "./locales/it.json"
+    ".": "./src/index.ts",
+    "./locales/*.json": "./locales/*.json"
   },
   "scripts": {
+    "check": "node src/check.ts",
+    "extract": "formatjs extract '../../apps/web/src/**/*.{ts,tsx}' --ignore '../../apps/*/src/**/*.test.{ts,tsx}' --format ./extract-format.mjs --out-file locales/en.json --throws",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
+    "@formatjs/cli": "^6.16.33",
     "@formatjs/icu-messageformat-parser": "^3.5.21"
   }
 }
