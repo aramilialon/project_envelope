@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type FetchState<T> = { readonly status: "loading" } | { readonly status: "error" } | ({ readonly status: "ok" } & T);
+/** `error` is what the fetcher rejected with, for a screen that tells one refusal from another (#651). */
+export type FetchState<T> =
+  | { readonly status: "loading" }
+  | { readonly status: "error"; readonly error?: unknown }
+  | ({ readonly status: "ok" } & T);
 
 export interface UseFetchStateOptions {
   /**
@@ -57,9 +61,9 @@ export function useFetchState<T extends object>(
           setState({ status: "ok", ...result });
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled) {
-          setState({ status: "error" });
+          setState({ status: "error", error });
         }
       });
     return () => {

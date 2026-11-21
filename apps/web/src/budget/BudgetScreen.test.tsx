@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as accountsApi from "../accounts/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import * as categoriesApi from "../categories/api.ts";
 import type { CategoryGroup } from "../categories/api.ts";
 import { BandSecondRowSlotContext } from "../layout/bandSecondRowSlot.ts";
@@ -144,6 +145,27 @@ describe("BudgetScreen (#53, #324)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not load your budget.");
+  });
+
+  it("says why when the month's stored amounts add up beyond what can be computed exactly (#651)", async () => {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([]);
+    vi.spyOn(categoriesApi, "listCategoryGroups").mockResolvedValue([]);
+    vi.spyOn(budgetApi, "getBudgetMonth").mockRejectedValue(
+      new ApiError("GET failed: 422", 422, "amount_total_overflow", { label: "transactions", transactionIds: "t1,t2", count: 2 }),
+    );
+    vi.spyOn(budgetApi, "getBudgetMonthEvents").mockResolvedValue([]);
+    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
+    renderWithIntl(
+      <MemoryRouter initialEntries={["/ws-1"]}>
+        <Routes>
+          <Route path="/:workspaceId" element={<BudgetScreen />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This month cannot be shown: some amounts stored earlier add up to more than can be computed exactly. Edit or delete the transactions above €1,000,000,000.00 to see it again.",
+    );
   });
 
   it("shows an empty message when there are no categories yet", async () => {

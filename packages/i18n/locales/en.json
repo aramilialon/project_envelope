@@ -70,6 +70,7 @@
   "budget.daysOfBuffer": "Days of buffer",
   "budget.empty": "No categories yet: add some from Workspace settings.",
   "budget.error": "We could not load your budget.",
+  "budget.error.amountTotalOverflow": "This month cannot be shown: some amounts stored earlier add up to more than can be computed exactly. Edit or delete the transactions above {max} to see it again.",
   "budget.group.collapse": "Close {name}",
   "budget.group.expand": "Open {name}",
   "budget.groupMenu.addCategory": "Add a category",
