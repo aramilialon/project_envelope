@@ -62,19 +62,19 @@ const MAX_NAMED_TRANSACTIONS = 20;
 
 /**
  * The error for on-budget transactions whose sizes add up beyond the safe range: it names, in
- * `details.transactionIds` (comma-separated), the ones above the cap, or the largest ones if none
- * is, and how many it names in `details.count`.
+ * `details.transactionIds` (comma-separated, at most `MAX_NAMED_TRANSACTIONS`), the ones above the
+ * cap, or the largest ones if none is; `details.count` is how many there are in all (the
+ * transactions above the cap, or every on-budget transaction), so it can exceed the ids named.
  */
 function totalOverflow(transactions: readonly BudgetTransaction[], byId: ReadonlyMap<string, BudgetAccount>): ValidationError {
   const onBudget = transactions.filter((t) => byId.get(t.accountId)?.onBudget === true);
   const overCap = onBudget.filter((t) => Math.abs(t.amount) > MAX_AMOUNT_CENTS);
-  const named = (overCap.length > 0 ? overCap : [...onBudget].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)))
-    .slice(0, MAX_NAMED_TRANSACTIONS)
-    .map((t) => t.id);
+  const candidates = overCap.length > 0 ? overCap : [...onBudget].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const named = candidates.slice(0, MAX_NAMED_TRANSACTIONS).map((t) => t.id);
   return new ValidationError("amount_total_overflow", "the on-budget transactions add up beyond the safe range of minor units", {
     label: "transactions",
     transactionIds: named.join(","),
-    count: named.length,
+    count: candidates.length,
   });
 }
 

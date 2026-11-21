@@ -463,6 +463,19 @@ describe("amounts at the cap (#651, ADR 0002)", () => {
     );
   });
 
+  it("names at most 20 transactions, and counts them all", () => {
+    const legacy = Array.from({ length: 25 }, (_, i) =>
+      tx({ accountId: "checking", date: "2026-09-01", amount: Math.floor(Number.MAX_SAFE_INTEGER / 10) - i, categoryId: UNASSIGNED }),
+    );
+    assert.throws(
+      () => budgetOf(legacy, "2026-09"),
+      (error) =>
+        isValidationError(error, "amount_total_overflow") &&
+        String(error.details.transactionIds).split(",").length === 20 &&
+        error.details.count === 25,
+    );
+  });
+
   it("names the largest transactions when none is above the cap, and ignores off-budget accounts", () => {
     const rows = Array.from({ length: 3 }, (_, i) =>
       tx({ accountId: "checking", date: "2026-09-01", amount: MAX_AMOUNT_CENTS - i, categoryId: UNASSIGNED }),
