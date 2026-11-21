@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as accountsApi from "../accounts/api.ts";
 import type { Account } from "../accounts/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import * as budgetApi from "../budget/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import type { Category } from "../categories/api.ts";
@@ -683,5 +684,101 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       expect(document.querySelector(".time")).toBeNull();
       expect(document.querySelector(".todo")).toBeNull();
     });
+  });
+});
+
+describe("AccountRegisterScreen: a one-click action the API refuses (#741)", () => {
+  // A closed account's register is reached only by its address.
+  const CLOSED: Account = { ...CHECKING, closedAt: "2026-09-20T00:00:00.000Z" };
+  const closedRefusal = () => new ApiError("PATCH failed: 409", 409, "account_closed", {});
+  const otherFailure = () => new ApiError("PATCH failed: 500", 500, "internal_error", {});
+  const overdue: budgetApi.MonthEvent = {
+    date: "2026-09-01",
+    amountCents: -4_500,
+    payee: "Internet provider",
+    categoryId: null,
+    kind: "scheduled",
+    scheduledTransactionId: "s1",
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T10:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("says the account is closed when a status change is refused, and leaves the status as it was", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(closedRefusal());
+    renderScreen([transaction({ id: "t1", status: "pending" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pending: change status" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+    expect(screen.getByRole("button", { name: "Pending: change status" })).toBeEnabled();
+  });
+
+  it("says plainly that a status change failed for any other reason", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(otherFailure());
+    renderScreen([transaction({ id: "t1", status: "pending" })]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pending: change status" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not change this transaction's status.");
+  });
+
+  it("clears the message once a later action succeeds", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValueOnce(otherFailure()).mockResolvedValueOnce(transaction({ status: "cleared" }));
+    renderScreen([transaction({ id: "t1", status: "pending" })]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pending: change status" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Pending: change status" }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("says the account is closed when 'Mark' is refused, or plainly that it failed otherwise", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValueOnce(closedRefusal()).mockRejectedValueOnce(otherFailure());
+    renderScreen([transaction({ id: "t1", status: "pending", payee: "Streaming service" })], [], [CLOSED]);
+    await screen.findByText("Streaming service");
+
+    fireEvent.click(screen.getByRole("button", { name: /Mark Streaming service/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+
+    fireEvent.click(screen.getByRole("button", { name: /Mark Streaming service/ }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not change this transaction's status."));
+  });
+
+  it("says the account is closed when 'Record' is refused, or plainly that it failed otherwise", async () => {
+    vi.spyOn(budgetApi, "recordScheduledTransaction").mockRejectedValueOnce(closedRefusal()).mockRejectedValueOnce(otherFailure());
+    renderScreen([transaction({})], [overdue], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByRole("button", { name: /Record Internet provider/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so the transaction can't be added.");
+
+    fireEvent.click(screen.getByRole("button", { name: /Record Internet provider/ }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not record this scheduled transaction."));
+  });
+
+  it("says the account is closed in the panel when 'Unlock' is refused, or plainly that it failed otherwise", async () => {
+    vi.spyOn(reconciliationApi, "unlockReconciliation").mockRejectedValueOnce(closedRefusal()).mockRejectedValueOnce(otherFailure());
+    renderScreen([transaction({ id: "t1", status: "reconciled" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByText("Supermarket"));
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+    expect(screen.getByText(/reconciled and locked/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not unlock this transaction."));
   });
 });

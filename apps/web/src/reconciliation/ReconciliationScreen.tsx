@@ -4,10 +4,11 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
+import { accountClosedChangeMessage } from "../transactions/accountClosedMessages.ts";
 import { updateTransaction } from "../transactions/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
@@ -97,15 +98,32 @@ export default function ReconciliationScreen() {
   const unticked = candidates.clearedTransactions.filter((t) => offIds.has(t.id));
   const suggestion = findSuggestion(candidates.pendingTransactions, unticked, tally.differenceCents, date);
 
+  /** A lock or an adjustment refused because this account is closed (#729, #741): reached only by its address. */
+  function accountClosedReconcileMessage(): string {
+    return intl.formatMessage({ id: "reconcile.error.accountClosed", defaultMessage: "This account is closed, so it can't be reconciled." });
+  }
+
+  function saveErrorMessage(): string {
+    return intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." });
+  }
+
   async function handleTogglePending(transaction: CandidateTransaction) {
     const accessToken = auth.user?.access_token;
     if (!accessToken) {
       return;
     }
     setMarkingId(transaction.id);
+    setError(null);
     try {
       await updateTransaction(accessToken, workspaceId!, accountId!, transaction.id, { status: "cleared" });
       state.refetch();
+    } catch (caught) {
+      setError(
+        tooManyRequestsMessage(intl, caught) ??
+          (isAccountClosed(caught)
+            ? accountClosedChangeMessage(intl, "own")
+            : intl.formatMessage({ id: "reconcile.error.markCleared", defaultMessage: "We could not mark this transaction as cleared." })),
+      );
     } finally {
       setMarkingId(null);
     }
@@ -157,8 +175,8 @@ export default function ReconciliationScreen() {
         setError(intl.formatMessage({ id: "reconcile.outOfDate", defaultMessage: "Something changed in this account; refresh and try again." }));
         state.refetch();
       }
-    } catch {
-      setError(intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }));
+    } catch (caught) {
+      setError(tooManyRequestsMessage(intl, caught) ?? (isAccountClosed(caught) ? accountClosedReconcileMessage() : saveErrorMessage()));
     } finally {
       setSubmitting(false);
     }
@@ -200,7 +218,9 @@ export default function ReconciliationScreen() {
             : isAmountTooLarge(caught)
               ? // #651: the adjustment would be above the cap on a single amount.
                 amountTooLargeMessage(intl, currency)
-              : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." })),
+              : isAccountClosed(caught)
+                ? accountClosedReconcileMessage()
+                : saveErrorMessage()),
       );
     } finally {
       setSubmitting(false);

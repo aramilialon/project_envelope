@@ -14,6 +14,15 @@
   }
 }
 
+/* Why a one-click action (status, "Record", "Mark") failed (#741), under the balance. */
+.register-screen .reg-error {
+  max-width: 70ch;
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red-text);
+}
+
 .register-screen .acc-head {
   display: flex;
   flex-wrap: wrap;

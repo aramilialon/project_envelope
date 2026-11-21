@@ -4,7 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import type { Account } from "../accounts/api.ts";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -19,6 +19,7 @@ import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { unlockReconciliation } from "../reconciliation/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
+import { accountClosedAddMessage, accountClosedChangeMessage } from "./accountClosedMessages.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { buildCategoryNameById, categoryLabel } from "./categoryLabel.ts";
 import RegisterTodo from "./RegisterTodo.tsx";
@@ -234,6 +235,9 @@ export default function AccountRegisterScreen() {
   const [open, setOpen] = useState<"new" | { transaction: Transaction } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Why the last one-click action (status, "Record", "Mark") failed, and why "Unlock" did, in its panel (#741).
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<{ readonly transactionId: string; readonly message: string } | null>(null);
 
   // Computed before the early returns below (Rules of Hooks), so it never recomputes on a
   // keystroke in the search box or a filter change — only when the transactions themselves do.
@@ -311,17 +315,38 @@ export default function AccountRegisterScreen() {
   const later = visible.filter((row) => isAfterToday(row.transaction.budgetDate, today));
   const upToToday = visible.filter((row) => !isAfterToday(row.transaction.budgetDate, today));
 
+  /**
+   * Why one of the register's own one-click actions failed (#741): a closed account says so (the
+   * register of a closed account is reached only by its address), a rate limit says how long to
+   * wait, anything else is a plain failure.
+   */
+  function actionErrorMessage(caught: unknown, closedMessage: () => string, fallback: () => string): string {
+    return tooManyRequestsMessage(intl, caught) ?? (isAccountClosed(caught) ? closedMessage() : fallback());
+  }
+
+  /** The message for a status change that failed: a status change writes only this account's own row. */
+  function statusErrorMessage(caught: unknown): string {
+    return actionErrorMessage(
+      caught,
+      () => accountClosedChangeMessage(intl, "own"),
+      () => intl.formatMessage({ id: "register.error.status", defaultMessage: "We could not change this transaction's status." }),
+    );
+  }
+
   async function toggleStatus(t: Transaction) {
     const accessToken = auth.user?.access_token;
     if (!accessToken || t.status === "reconciled") {
       return;
     }
     setTogglingId(t.id);
+    setActionError(null);
     try {
       await updateTransaction(accessToken, workspaceId!, accountId!, t.id, {
         status: t.status === "pending" ? "cleared" : "pending",
       });
       state.refetch();
+    } catch (caught) {
+      setActionError(statusErrorMessage(caught));
     } finally {
       setTogglingId(null);
     }
@@ -333,8 +358,19 @@ export default function AccountRegisterScreen() {
     if (!accessToken) {
       return;
     }
-    await recordScheduledTransaction(accessToken, workspaceId!, scheduledTransactionId);
-    state.refetch();
+    setActionError(null);
+    try {
+      await recordScheduledTransaction(accessToken, workspaceId!, scheduledTransactionId);
+      state.refetch();
+    } catch (caught) {
+      setActionError(
+        actionErrorMessage(
+          caught,
+          () => accountClosedAddMessage(intl, "own", false),
+          () => intl.formatMessage({ id: "register.error.record", defaultMessage: "We could not record this scheduled transaction." }),
+        ),
+      );
+    }
   }
 
   /** "Mark" (the "To do" list, #337): the item is already filtered to this account's own pending transactions, so the target status is always "cleared". */
@@ -343,8 +379,13 @@ export default function AccountRegisterScreen() {
     if (!accessToken) {
       return;
     }
-    await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
-    state.refetch();
+    setActionError(null);
+    try {
+      await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
+      state.refetch();
+    } catch (caught) {
+      setActionError(statusErrorMessage(caught));
+    }
   }
 
   /** "Unlock" (#60): a separate, audited action (`POST .../unlock-reconciliation`), not a plain edit — see the docblock above. */
@@ -354,10 +395,20 @@ export default function AccountRegisterScreen() {
       return;
     }
     setUnlocking(true);
+    setUnlockError(null);
     try {
       await unlockReconciliation(accessToken, workspaceId!, transactionId);
       setOpen(null);
       state.refetch();
+    } catch (caught) {
+      setUnlockError({
+        transactionId,
+        message: actionErrorMessage(
+          caught,
+          () => accountClosedChangeMessage(intl, "own"),
+          () => intl.formatMessage({ id: "register.error.unlock", defaultMessage: "We could not unlock this transaction." }),
+        ),
+      });
     } finally {
       setUnlocking(false);
     }
@@ -520,6 +571,12 @@ export default function AccountRegisterScreen() {
         </div>
       </div>
 
+      {actionError !== null && (
+        <p className="hint bad reg-error" role="alert">
+          {actionError}
+        </p>
+      )}
+
       {/* The timeline and "To do" list fold away while a side sheet is open, to leave the
           register room (design.md) — and never show at all on the phone, where the first two
           "To do" items sit directly under the balance instead, no timeline (design.md). */}
@@ -658,6 +715,11 @@ export default function AccountRegisterScreen() {
               defaultMessage: "This transaction is reconciled and locked.",
             })}
           </p>
+          {unlockError?.transactionId === open.transaction.id && (
+            <p className="hint bad" role="alert">
+              {unlockError.message}
+            </p>
+          )}
           <div className="row-btns">
             <button type="button" className="btn" disabled={unlocking} onClick={() => void handleUnlock(open.transaction.id)}>
               {intl.formatMessage({ id: "register.unlock", defaultMessage: "Unlock" })}

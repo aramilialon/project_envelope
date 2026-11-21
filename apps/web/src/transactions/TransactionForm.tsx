@@ -21,6 +21,7 @@ import {
   type Transaction,
   type UpdateTransactionInput,
 } from "./api.ts";
+import { accountClosedAddMessage, accountClosedChangeMessage, accountClosedDeleteMessage, closedAccountOf } from "./accountClosedMessages.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
@@ -337,29 +338,19 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   }
 
   /**
-   * A write refused because an account is closed (#729): this account's own, reached only by its
-   * address since a closed account's register is not linked, or more often a transfer's other
-   * account, closed after the transfer was entered.
+   * A write refused because an account is closed (#729, #741): this account's own, reached only
+   * by its address since a closed account's register is not linked, or more often a transfer's
+   * other account, closed after the transfer was entered or after this form opened. A new
+   * transaction "can't be added"; an existing one "can't be changed" or "can't be deleted".
    */
   function accountClosedMessage(write: "save" | "delete"): string {
-    const own = accounts.find((a) => a.id === accountId);
-    if (own !== undefined && own.closedAt !== null) {
-      return write === "save"
-        ? intl.formatMessage({ id: "transactions.form.accountClosed", defaultMessage: "This account is closed, so its transactions can't be changed." })
-        : intl.formatMessage({
-            id: "transactions.form.accountClosedDelete",
-            defaultMessage: "This account is closed, so its transactions can't be deleted.",
-          });
+    const ownClosed = accounts.some((a) => a.id === accountId && a.closedAt !== null);
+    if (!isEditing) {
+      const isTransfer = kind === "transfer";
+      return accountClosedAddMessage(intl, closedAccountOf(ownClosed, isTransfer), isTransfer);
     }
-    return write === "save"
-      ? intl.formatMessage({
-          id: "transactions.form.transferAccountClosed",
-          defaultMessage: "This transfer's other account is closed, so this transfer can't be changed.",
-        })
-      : intl.formatMessage({
-          id: "transactions.form.transferAccountClosedDelete",
-          defaultMessage: "This transfer's other account is closed, so this transfer can't be deleted.",
-        });
+    const closed = closedAccountOf(ownClosed, isTransferLeg);
+    return write === "save" ? accountClosedChangeMessage(intl, closed) : accountClosedDeleteMessage(intl, closed);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
