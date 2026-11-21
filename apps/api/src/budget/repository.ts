@@ -146,7 +146,8 @@ function owedAsOf(transactions: readonly TransactionRecord[], accountId: string,
     if (compareMonths(monthOf(transaction.budgetDate), month) > 0) continue;
     balance += totalOf(transaction);
   }
-  return -balance;
+  // `0 - balance`, not `-balance`: a card with no transactions owes 0, never -0 (#699 returns it).
+  return 0 - balance;
 }
 
 function joinCategory(
