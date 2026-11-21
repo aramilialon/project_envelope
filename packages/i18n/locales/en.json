@@ -340,6 +340,8 @@
   "register.filter.pending": "Pending",
   "register.filter.reconciled": "Reconciled",
   "register.import": "Import",
+  "register.later": "Later",
+  "register.later.note": "Dated after today: not in today's balance.",
   "register.loading": "Loading this account…",
   "register.locked": "This transaction is reconciled and locked.",
   "register.new": "New transaction",

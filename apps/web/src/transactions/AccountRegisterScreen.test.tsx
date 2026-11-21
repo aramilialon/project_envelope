@@ -74,6 +74,14 @@ function renderScreen(transactions: Transaction[], events: readonly budgetApi.Mo
 }
 
 describe("AccountRegisterScreen (#54, #333)", () => {
+  beforeEach(() => {
+    // A fixed "today" after every sample row, so none of them is a "Later" row and their short
+    // dates stay in the current year whatever the real date (#702); tests that need another day
+    // set their own.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T10:00:00.000Z"));
+  });
+
   afterEach(() => {
     setWidth(ORIGINAL_WIDTH);
     vi.useRealTimers();
@@ -448,6 +456,127 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       expect(document.querySelector(".time")).toBeNull();
       expect(document.querySelectorAll(".todo-i")).toHaveLength(2);
       expect(screen.getByText("+1 more")).toBeInTheDocument();
+    });
+  });
+
+  describe("balances as of today, and the rows after it under 'Later' (#702)", () => {
+    // Today is 21 November 2026 in Rome.
+    beforeEach(() => {
+      vi.setSystemTime(new Date("2026-11-21T10:00:00.000Z"));
+    });
+
+    function row(id: string, budgetDate: string, payee: string, amountCents: number, status: Transaction["status"] = "cleared"): Transaction {
+      return transaction({
+        id,
+        occurredAt: `${budgetDate}T10:00:00.000Z`,
+        budgetDate,
+        payee,
+        status,
+        splits: [{ id: `s-${id}`, categoryId: amountCents > 0 ? null : "cat-groceries", amountCents, memo: null }],
+      });
+    }
+
+    const ROWS = [
+      row("t1", "2026-11-02", "Salary", 200_000),
+      row("t2", "2026-11-20", "Supermarket", -8_000, "pending"),
+      row("t3", "2026-11-28", "Gym", -4_000, "pending"),
+      row("t4", "2026-12-05", "Bonus", 50_000, "pending"),
+      row("t5", "2028-03-03", "Sale", 300_000),
+    ];
+    const SCHEDULED: budgetApi.MonthEvent[] = [
+      { date: "2026-11-15", amountCents: -4_500, payee: "Internet provider", categoryId: "cat-groceries", kind: "scheduled", scheduledTransactionId: "s1" },
+      { date: "2026-11-27", amountCents: -10_000, payee: "Boiler service", categoryId: "cat-groceries", kind: "scheduled", scheduledTransactionId: "s2" },
+    ];
+
+    it("counts only the rows up to today in the balance, cleared and pending", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      const facts = document.querySelector(".acc-bal")!;
+      expect(facts.querySelector(".big")).toHaveTextContent("€1,920.00");
+      expect(facts.textContent).toContain("Cleared €2,000.00");
+      expect(facts.textContent).toContain("Pending -€80.00");
+    });
+
+    it("projects today's balance, the rows after today up to the month end and the month's scheduled items not recorded yet", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      // 1,920.00 - 40.00 (Gym, 28 Nov) - 45.00 (overdue) - 100.00 (due 27 Nov); December and 2028 count in none.
+      expect(document.querySelector(".acc-bal")!.textContent).toContain("Projected at month end €1,735.00");
+    });
+
+    it("lists every row dated after today under 'Later', at the top, above today's rows", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      const groups = screen.getAllByRole("rowgroup");
+      // [0] is the header; [1] the "Later" rows; [2] the rows up to today.
+      const later = groups[1]!;
+      expect(within(later).getByRole("rowheader")).toHaveTextContent("Later");
+      expect(within(later).getByText("Sale")).toBeInTheDocument();
+      expect(within(later).getByText("Bonus")).toBeInTheDocument();
+      expect(within(later).getByText("Gym")).toBeInTheDocument();
+      expect(within(groups[2]!).queryByText("Gym")).not.toBeInTheDocument();
+      expect(within(groups[2]!).getByText("Supermarket")).toBeInTheDocument();
+    });
+
+    it("runs the balance from today's: each 'Later' row shows the balance it leads to", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      expect(screen.getByText("Supermarket").closest("tr")).toHaveTextContent("1,920.00");
+      expect(screen.getByText("Gym").closest("tr")).toHaveTextContent("1,880.00");
+      expect(screen.getByText("Bonus").closest("tr")).toHaveTextContent("2,380.00");
+      expect(screen.getByText("Sale").closest("tr")).toHaveTextContent("5,380.00");
+    });
+
+    it("never lists a row after today as still awaiting the bank", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      expect(screen.getByRole("button", { name: /Mark Supermarket/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Mark Gym/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Mark Bonus/ })).not.toBeInTheDocument();
+    });
+
+    it("shows the year in a short date of another year", async () => {
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      expect(screen.getByText("Mar 3, 2028")).toBeInTheDocument();
+      expect(screen.getByText("Dec 5")).toBeInTheDocument();
+    });
+
+    it("shows no 'Later' section when nothing is dated after today", async () => {
+      renderScreen([ROWS[0]!, ROWS[1]!]);
+      await screen.findByText("Salary");
+
+      expect(screen.queryByText("Later")).not.toBeInTheDocument();
+    });
+
+    it("draws today at the workspace's midnight, not the browser's or UTC's", async () => {
+      // 23:30 UTC on 30 November is already 1 December in Rome: a row dated 1 December is today's.
+      vi.setSystemTime(new Date("2026-11-30T23:30:00.000Z"));
+      renderScreen([row("t1", "2026-11-30", "Salary", 200_000), row("t2", "2026-12-01", "Rent", -50_000)]);
+      await screen.findByText("Rent");
+
+      expect(document.querySelector(".acc-bal .big")).toHaveTextContent("€1,500.00");
+      expect(screen.queryByText("Later")).not.toBeInTheDocument();
+    });
+
+    it("puts the 'Later' heading above the later days on the phone too", async () => {
+      setWidth(390);
+      renderScreen(ROWS, SCHEDULED);
+      await screen.findByText("Salary");
+
+      const heading = screen.getByRole("heading", { name: /Later/ });
+      expect(heading).toHaveTextContent("Dated after today: not in today's balance.");
+      const dayHeaders = [...document.querySelectorAll(".ph-day")].map((d) => d.textContent);
+      expect(dayHeaders[0]).toBe("Friday, March 3, 2028");
+      // The later days come first, then today's and the earlier ones.
+      expect(dayHeaders.indexOf("Saturday, November 28")).toBeLessThan(dayHeaders.indexOf("Friday, November 20"));
+      expect(heading.compareDocumentPosition(screen.getByText("Supermarket")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
   });
 
