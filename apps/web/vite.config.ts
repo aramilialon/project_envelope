@@ -39,7 +39,9 @@ export default defineConfig({
         // The default glob (js/css/html/ico/png/svg) does not include the self-hosted font
         // files (#323): without this, an installed, offline PWA would lose Bricolage
         // Grotesque/Figtree the moment the network is gone, even though self-hosting already
-        // solved the "no third-party server" half of the problem.
+        // solved the "no third-party server" half of the problem. Each interface language's
+        // catalog is a `.js` chunk of its own (`src/i18n/catalogs.ts`, #620), so `js` already
+        // precaches every one of them: offline works in whichever language was negotiated.
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,md}"],
       },
     }),
