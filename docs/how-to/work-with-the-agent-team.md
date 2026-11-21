@@ -1,6 +1,6 @@
 # Work with the agent team
 
-Besides the maintainer, work on `envelope` uses a small team of AI agents, each with one role. Their definitions are in [`.claude/agents/`](../../.claude/agents/). The main session acts as **coordinator**: it prepares the work, calls each role at the right moment, and brings their conclusions to the maintainer. The agents recommend; **decisions stay with the maintainer**, and so do merges and releases under the rules in [Work with issues, pull requests and releases](work-with-issues-and-pull-requests.md).
+Besides the maintainer, work on `envelope` uses a small team of AI agents, each with one role. Their definitions are in [`.claude/agents/`](../../.claude/agents/). The main session acts as **coordinator**: it prepares the work, calls each role at the right moment, and brings their conclusions to the maintainer. The agents recommend; **decisions stay with the maintainer**, while merges and releases follow the rules in [Work with issues, pull requests and releases](work-with-issues-and-pull-requests.md).
 
 ## The roles
 
