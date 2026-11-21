@@ -214,7 +214,7 @@ test.describe("budget month (#53)", () => {
       const assigned = page.getByLabel("Assigned this month");
       await assigned.fill("1000");
       await assigned.press("Enter");
-      await expect(assigned).toHaveValue("1000.00");
+      await expect(assigned).toHaveValue("1,000.00");
 
       await page.getByRole("button", { name: "Previous month" }).click();
       await expect(assigned).not.toBeVisible();
@@ -231,7 +231,7 @@ test.describe("budget month (#53)", () => {
       await expect(assigned).toHaveValue("0.00");
       await page.getByRole("button", { name: "Next month" }).click();
       await row.click();
-      await expect(assigned).toHaveValue("1000.00");
+      await expect(assigned).toHaveValue("1,000.00");
     } finally {
       await workspace?.teardown();
       await user.teardown();
