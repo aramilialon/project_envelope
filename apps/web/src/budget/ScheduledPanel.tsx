@@ -1,13 +1,15 @@
 import { formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, shiftMonth } from "@envelope/core";
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { useAccounts } from "../accounts/useAccounts.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { upsertGoal, type RepeatInterval } from "../targets/api.ts";
 import { useTargets, type TargetsState } from "../targets/useTargets.ts";
+import { accountClosedAddMessage } from "../transactions/accountClosedMessages.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
 import { createScheduledTransaction, recordScheduledTransaction, skipScheduledTransaction, type RecurUnit, type ScheduledTransaction } from "./api.ts";
 import type { BudgetGroup } from "./useBudgetMonth.ts";
@@ -65,6 +67,8 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
   const accounts = useAccounts(workspaceId);
   const [showNew, setShowNew] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Why the last Record or Skip failed, shown under its own item (#741).
+  const [itemError, setItemError] = useState<{ readonly id: string; readonly message: string } | null>(null);
 
   const categories = groups.flatMap((g) => g.categories.filter((c) => !c.isPaymentCategory).map((c) => ({ ...c, groupName: g.name })));
   const categoryNameById = new Map(categories.map((c) => [c.categoryId, c.name] as const));
@@ -96,14 +100,25 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
 
   const hasTargetByCategory = new Set(currentTargets.status === "ok" ? currentTargets.progressByCategory.keys() : []);
 
-  async function withBusy(id: string, action: () => Promise<void>) {
+  /**
+   * Runs Record or Skip on one item. A refusal says why under the item (#741): a rate limit says how
+   * long to wait, a closed account says so (only Record writes to the account), anything else is a
+   * plain failure.
+   */
+  async function withBusy(id: string, action: () => Promise<void>, closedMessage: (() => string) | null, fallback: () => string) {
     setBusyId(id);
+    setItemError(null);
     try {
       await action();
       scheduled.refetch();
       // Recording or skipping moves the item's due date, possibly into or out of next month.
       nextMonthTargets.refetch();
       onChanged();
+    } catch (caught) {
+      setItemError({
+        id,
+        message: tooManyRequestsMessage(intl, caught) ?? (closedMessage !== null && isAccountClosed(caught) ? closedMessage() : fallback()),
+      });
     } finally {
       setBusyId(null);
     }
@@ -114,7 +129,12 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
     if (!accessToken) {
       return;
     }
-    await withBusy(s.id, () => recordScheduledTransaction(accessToken, workspaceId, s.id).then(() => undefined));
+    await withBusy(
+      s.id,
+      () => recordScheduledTransaction(accessToken, workspaceId, s.id).then(() => undefined),
+      () => accountClosedAddMessage(intl, "own", false),
+      () => intl.formatMessage({ id: "scheduled.error.record", defaultMessage: "We could not record this scheduled transaction." }),
+    );
   }
 
   async function handleSkip(s: ScheduledTransaction) {
@@ -122,7 +142,12 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
     if (!accessToken) {
       return;
     }
-    await withBusy(s.id, () => skipScheduledTransaction(accessToken, workspaceId, s.id).then(() => undefined));
+    await withBusy(
+      s.id,
+      () => skipScheduledTransaction(accessToken, workspaceId, s.id).then(() => undefined),
+      null,
+      () => intl.formatMessage({ id: "scheduled.error.skip", defaultMessage: "We could not skip this scheduled transaction." }),
+    );
   }
 
   async function handleUseAsTarget(categoryId: string) {
@@ -147,24 +172,31 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
     const categoryNames = s.splits.map((split) => categoryNameById.get(split.categoryId) ?? "").join(", ");
     const account = accounts.status === "ok" ? accounts.accounts.find((a) => a.id === s.accountId) : undefined;
     return (
-      <div className={`sch${isLate ? " late" : ""}`} key={s.id}>
-        <small className="n">{new Intl.DateTimeFormat(intl.locale, { day: "numeric", month: "short" }).format(new Date(`${s.nextDueDate}T00:00:00`))}</small>
-        <span>
-          <b>{s.payee ?? categoryNames}</b>
-          <small>
-            {[s.payee ? categoryNames : null, account?.name].filter(Boolean).join(" · ")}
-          </small>
-        </span>
-        <span className="n">{money(-splitTotal(s))}</span>
-        <span className="sch-b">
-          <button type="button" className="plain" disabled={busyId === s.id} onClick={() => void handleRecord(s)}>
-            {intl.formatMessage({ id: "scheduled.record", defaultMessage: "Record" })}
-          </button>
-          <button type="button" className="plain quiet" disabled={busyId === s.id} onClick={() => void handleSkip(s)}>
-            {intl.formatMessage({ id: "scheduled.skip", defaultMessage: "Skip" })}
-          </button>
-        </span>
-      </div>
+      <Fragment key={s.id}>
+        <div className={`sch${isLate ? " late" : ""}`}>
+          <small className="n">{new Intl.DateTimeFormat(intl.locale, { day: "numeric", month: "short" }).format(new Date(`${s.nextDueDate}T00:00:00`))}</small>
+          <span>
+            <b>{s.payee ?? categoryNames}</b>
+            <small>
+              {[s.payee ? categoryNames : null, account?.name].filter(Boolean).join(" · ")}
+            </small>
+          </span>
+          <span className="n">{money(-splitTotal(s))}</span>
+          <span className="sch-b">
+            <button type="button" className="plain" disabled={busyId === s.id} onClick={() => void handleRecord(s)}>
+              {intl.formatMessage({ id: "scheduled.record", defaultMessage: "Record" })}
+            </button>
+            <button type="button" className="plain quiet" disabled={busyId === s.id} onClick={() => void handleSkip(s)}>
+              {intl.formatMessage({ id: "scheduled.skip", defaultMessage: "Skip" })}
+            </button>
+          </span>
+        </div>
+        {itemError?.id === s.id && (
+          <p className="hint bad sch-error" role="alert">
+            {itemError.message}
+          </p>
+        )}
+      </Fragment>
     );
   }
 

@@ -236,4 +236,69 @@ describe("ReconciliationScreen (#60)", () => {
 
     expect(await screen.findByText(AMOUNT_TOO_LARGE_EUR)).toBeInTheDocument();
   });
+
+  describe("a write the API refuses because the account is closed (#741)", () => {
+    const closedRefusal = () => new ApiError("POST failed: 409", 409, "account_closed", {});
+    const otherFailure = () => new ApiError("POST failed: 500", 500, "internal_error", {});
+    const pending = candidates({ pendingTransactions: [{ id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500 }] });
+
+    it("says the account is closed when an adjustment is refused", async () => {
+      renderScreen(candidates());
+      await screen.findByText(/Checking/);
+      vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValue(closedRefusal());
+
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "520.00" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €5.00" }));
+      fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so it can't be reconciled.");
+      expect(screen.queryByText("Reconciliation complete")).not.toBeInTheDocument();
+    });
+
+    it("keeps the plain failure for an adjustment refused for any other reason", async () => {
+      renderScreen(candidates());
+      await screen.findByText(/Checking/);
+      vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValue(otherFailure());
+
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "520.00" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €5.00" }));
+      fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("We could not complete this reconciliation.");
+    });
+
+    it("says the account is closed when locking is refused, and keeps the plain failure otherwise", async () => {
+      renderScreen(candidates());
+      await screen.findByText(/Checking/);
+      vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValueOnce(closedRefusal()).mockRejectedValueOnce(otherFailure());
+
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "515.00" } });
+      fireEvent.click(screen.getByRole("button", { name: "Lock 2 transactions" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so it can't be reconciled.");
+
+      fireEvent.click(screen.getByRole("button", { name: "Lock 2 transactions" }));
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not complete this reconciliation."));
+    });
+
+    it("says the account is closed when ticking a pending transaction is refused", async () => {
+      vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(closedRefusal());
+      renderScreen(pending);
+      await screen.findByText(/Checking/);
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /Gym/ }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+      expect(screen.getByRole("checkbox", { name: /Gym/ })).not.toBeChecked();
+    });
+
+    it("says plainly that ticking a pending transaction failed for any other reason", async () => {
+      vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(otherFailure());
+      renderScreen(pending);
+      await screen.findByText(/Checking/);
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /Gym/ }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("We could not mark this transaction as cleared.");
+    });
+  });
 });

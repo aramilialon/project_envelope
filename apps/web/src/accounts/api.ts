@@ -98,14 +98,18 @@ export interface AccountNotEmptyDetails {
   readonly laterRows: { readonly count: number; readonly firstDate: string | null };
   /** Whether it holds any security today. */
   readonly holdsPositions: boolean;
-  /** The scheduled transactions that use it. */
-  readonly scheduled: { readonly count: number };
+  /**
+   * The scheduled transactions that use it, and the one due first: its id and its next due date
+   * ("YYYY-MM-DD"), both null when there are none or the API sent none (an API older than #741).
+   */
+  readonly scheduled: { readonly count: number; readonly scheduledTransactionId: string | null; readonly nextDueDate: string | null };
 }
 
 /**
  * The API's refusal to close an account that is not empty today and later (#703, #729; 409
  * `account_not_empty`): today's balance, the rows dated after today, whether it holds securities
- * today and the scheduled transactions on it. A field left out is the empty account's.
+ * today and the scheduled transactions on it, with the one due first (#741). A field left out is
+ * the empty account's.
  */
 export class AccountNotEmptyError extends Error {
   readonly details: AccountNotEmptyDetails;
@@ -117,10 +121,13 @@ export class AccountNotEmptyError extends Error {
       balanceCents: details.balanceCents ?? 0,
       laterRows: details.laterRows ?? { count: 0, firstDate: null },
       holdsPositions: details.holdsPositions ?? false,
-      scheduled: details.scheduled ?? { count: 0 },
+      scheduled: details.scheduled ?? { count: 0, scheduledTransactionId: null, nextDueDate: null },
     };
   }
 }
+
+/** A calendar date as the API writes it, "YYYY-MM-DD". */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** A count from the API's details, or zero when it sent none or something else. */
 function countOf(value: unknown): number {
@@ -137,11 +144,16 @@ export async function closeAccount(accessToken: string, workspaceId: string, acc
     if (caught instanceof ApiError && caught.status === 409 && caught.code === "account_not_empty") {
       const details = caught.details as Readonly<Record<string, unknown>>;
       const firstDate = (details.laterRows as { firstDate?: unknown } | undefined)?.firstDate;
+      const scheduled = details.scheduled as { scheduledTransactionId?: unknown; nextDueDate?: unknown } | undefined;
       throw new AccountNotEmptyError({
         balanceCents: Number(details.balanceCents ?? 0),
         laterRows: { count: countOf(details.laterRows), firstDate: typeof firstDate === "string" ? firstDate : null },
         holdsPositions: details.holdsPositions === true,
-        scheduled: { count: countOf(details.scheduled) },
+        scheduled: {
+          count: countOf(details.scheduled),
+          scheduledTransactionId: typeof scheduled?.scheduledTransactionId === "string" ? scheduled.scheduledTransactionId : null,
+          nextDueDate: typeof scheduled?.nextDueDate === "string" && ISO_DATE.test(scheduled.nextDueDate) ? scheduled.nextDueDate : null,
+        },
       });
     }
     throw caught;
