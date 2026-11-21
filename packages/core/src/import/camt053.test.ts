@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { assertScalesLinearly } from "../testing/linear-time.ts";
 import { parseCamt053 } from "./camt053.ts";
 
 // Shaped like a real camt.053.001.02 statement: a salary credit and a card debit, each with
@@ -131,5 +132,15 @@ describe("parseCamt053", () => {
 
   it("returns an empty array for a statement with no entries", () => {
     assert.deepEqual(parseCamt053("<Document><BkToCstmrStmt><Stmt></Stmt></BkToCstmrStmt></Document>"), []);
+  });
+});
+
+describe("parseCamt053 on a hostile file (#675)", () => {
+  it("parses in linear time a file of opening tags that never close", () => {
+    assertScalesLinearly((size) => "<Ntry>".repeat(size), parseCamt053, 200_000);
+    assertScalesLinearly((size) => "<Ntry x".repeat(size), parseCamt053, 200_000);
+    assertScalesLinearly((size) => `<Ntry>${"<Amt>".repeat(size)}</Ntry>`, (content) => {
+      assert.throws(() => parseCamt053(content));
+    }, 200_000);
   });
 });
