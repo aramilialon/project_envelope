@@ -117,7 +117,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Days of buffer | Giorni di margine | Tage Puffer | Días de margen | Jours de marge | |
 | To do (the list of problems) | Da fare | Zu erledigen | Por hacer | À faire | |
 | Set aside (money for a card) | Messi da parte | Zurückgelegt | Apartado | Mis de côté | |
-| Paid beyond what was set aside (a card paid more than its payment category held) | Pagato oltre i soldi messi da parte | | | | The payment category's cash overspending (#699); neutral, never a warning. German, Spanish and French to be added by the translator |
+| Paid beyond what was set aside (a card paid more than its payment category held) | Pagato oltre i soldi messi da parte | Mehr bezahlt als zurückgelegt | Pagado por encima de lo apartado | Payé au-delà de l'argent mis de côté | The payment category's cash overspending (#699); neutral, never a warning. Italian agrees with the amount: *{amount} pagati oltre i soldi messi da parte* |
 | Payment category | Categoria di pagamento | Zahlungskategorie | Categoría de pago | Catégorie de paiement | One per credit card |
 | Credit card payments (the group) | Pagamenti delle carte di credito | Kreditkartenzahlungen | Pagos de tarjetas de crédito | Paiements des cartes de crédit | |
 | Card payment (paying the card) | Pagamento della carta | Kartenausgleich | Pago de la tarjeta | Règlement de la carte | Not *Kartenzahlung*, which means paying *with* a card |
