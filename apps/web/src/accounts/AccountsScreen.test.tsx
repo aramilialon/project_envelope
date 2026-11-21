@@ -363,7 +363,11 @@ describe("AccountsScreen (#51, #323)", () => {
     it("names every reason at once on the phone layout, the scheduled transactions included", async () => {
       setWidth(390);
       vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
-        new accountsApi.AccountNotEmptyError({ balanceCents: 50_000, holdsPositions: true, scheduled: { count: 3 } }),
+        new accountsApi.AccountNotEmptyError({
+          balanceCents: 50_000,
+          holdsPositions: true,
+          scheduled: { count: 3, scheduledTransactionId: "s1", nextDueDate: "2030-02-15" },
+        }),
       );
       renderScreen([{ ...CHECKING, type: "brokerage", onBudget: false }]);
       await screen.findByRole("button", { name: /Checking/ });
@@ -371,7 +375,37 @@ describe("AccountsScreen (#51, #323)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
       const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
-      expect(items).toEqual(["Its balance today is €500.00.", "It holds securities today.", "3 scheduled transactions use it."]);
+      expect(items).toEqual([
+        "Its balance today is €500.00.",
+        "It holds securities today.",
+        "3 scheduled transactions use this account, the first on Feb 15, 2030.",
+      ]);
+    });
+
+    it("names the due date of the one scheduled transaction that uses the account, so the user can find it (#741)", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ scheduled: { count: 1, scheduledTransactionId: "s1", nextDueDate: "2030-02-15" } }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
+      expect(items).toEqual(["A transaction scheduled for Feb 15, 2030 uses this account."]);
+    });
+
+    it("still counts the scheduled transactions when an older API sends no due date", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ scheduled: { count: 1, scheduledTransactionId: null, nextDueDate: null } }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
+      expect(items).toEqual(["A scheduled transaction uses it."]);
     });
 
     it("keeps the message on the phone inside the account's own row, above its divider", async () => {

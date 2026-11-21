@@ -142,7 +142,20 @@ export default function AccountsScreen() {
     if (holdsPositions) {
       reasons.push(intl.formatMessage({ id: "accounts.closeRefused.holdsSecurities", defaultMessage: "It holds securities today." }));
     }
-    if (scheduled.count > 0) {
+    if (scheduled.count > 0 && scheduled.nextDueDate !== null) {
+      // The due date lets the user find the schedule (#741).
+      reasons.push(
+        intl.formatMessage(
+          {
+            id: "accounts.closeRefused.scheduledDue",
+            defaultMessage:
+              "{count, plural, one {A transaction scheduled for {date} uses this account.} other {# scheduled transactions use this account, the first on {date}.}}",
+          },
+          { count: scheduled.count, date: shortDate(scheduled.nextDueDate, intl.locale, currentYear) },
+        ),
+      );
+    } else if (scheduled.count > 0) {
+      // An API older than #741 sends no due date.
       reasons.push(
         intl.formatMessage(
           {
