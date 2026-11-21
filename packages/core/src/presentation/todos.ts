@@ -15,7 +15,17 @@ import { cardDebt } from "./cardDebt.ts";
 
 export type TodoItem =
   | { readonly kind: "overassigned"; readonly amountCents: Cents }
-  | { readonly kind: "cashOverspending"; readonly categoryId: string; readonly amountCents: Cents }
+  | {
+      readonly kind: "cashOverspending";
+      readonly categoryId: string;
+      readonly amountCents: Cents;
+      /**
+       * The part of `amountCents` that is the category's reservation shortfall (#728), present
+       * only when it is above zero: an ordinary category with no credit overspending asks for its
+       * cash overspending and its reservation shortfall in one item, so the interface can say so.
+       */
+      readonly reservationShortfallCents?: Cents;
+    }
   | {
       readonly kind: "scheduledOverdue";
       readonly scheduledTransactionId: string;
@@ -116,7 +126,14 @@ export function computeTodos(input: TodosInput): readonly TodoItem[] {
 
   for (const category of input.categories) {
     if (category.cashOverspending > 0) {
-      items.push({ kind: "cashOverspending", categoryId: category.categoryId, amountCents: amountNeededToCover(category) });
+      const amountCents = amountNeededToCover(category);
+      const short = amountCents - category.cashOverspending;
+      items.push({
+        kind: "cashOverspending",
+        categoryId: category.categoryId,
+        amountCents,
+        ...(short > 0 ? { reservationShortfallCents: short } : {}),
+      });
     }
   }
   for (const category of input.paymentCategories) {

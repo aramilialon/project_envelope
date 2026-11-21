@@ -57,7 +57,7 @@ describe("computeTodos", () => {
   it("already-overspent categories do not also get a reservation-shortfall item: the cash item asks for both", () => {
     const over = category({ categoryId: "groceries", cashOverspending: 1_000, available: -1_500, reserved: 500 });
     const items = computeTodos(input({ categories: [over] }));
-    assert.deepEqual(items, [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_500 }]);
+    assert.deepEqual(items, [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_500, reservationShortfallCents: 500 }]);
   });
 
   it("a category overspent with a card gets no reservation-shortfall item either: money assigned there would go to the card first", () => {
