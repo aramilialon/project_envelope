@@ -150,7 +150,7 @@ describe("money coming back from an off-budget account (#598)", () => {
   const budget = (transactions: readonly BudgetTransaction[], month: string, extra: BudgetInput["assignments"] = []) => {
     const aggregated = aggregateTransactions(ACCOUNTS, transactions);
     return computeBudgetMonth(
-      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregated, assignments: [...assignments, ...extra] },
+      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregated, assignments: [...assignments, ...extra], today: "2026-12-31" },
       month,
     );
   };

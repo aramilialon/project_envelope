@@ -14,11 +14,15 @@ function category(categories: readonly CategoryMonth[], id: string): CategoryMon
   return found;
 }
 
-const EMPTY: BudgetInput = { categoryIds: [], income: [], assignments: [], activity: [] };
+/** A fixed today after all the data in these examples, unless a test says otherwise. */
+const TODAY = "2026-12-31";
+
+const EMPTY: BudgetInput = { categoryIds: [], income: [], assignments: [], activity: [], today: TODAY };
 
 describe("computeBudgetMonth", () => {
   it("only money that has arrived can be assigned", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["groceries", "rent"],
       income: [{ month: "2026-09", amount: 200000 }],
       assignments: [
@@ -37,6 +41,7 @@ describe("computeBudgetMonth", () => {
 
   it("a positive available balance rolls over to the next month", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["groceries"],
       income: [{ month: "2026-09", amount: 100000 }],
       assignments: [
@@ -54,6 +59,7 @@ describe("computeBudgetMonth", () => {
 
   it("overspending left at the end of a month is taken from unassigned money the next month", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["fun"],
       income: [{ month: "2026-09", amount: 50000 }],
       assignments: [{ categoryId: "fun", month: "2026-09", amount: 10000 }],
@@ -72,6 +78,7 @@ describe("computeBudgetMonth", () => {
 
   it("a scheduled item not yet recorded reserves its amount, net from available", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["rent"],
       income: [{ month: "2026-09", amount: 100000 }],
       assignments: [{ categoryId: "rent", month: "2026-09", amount: 90000 }],
@@ -89,6 +96,7 @@ describe("computeBudgetMonth", () => {
 
   it("a reservation beyond what a category can cover is a warning, not overspending", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["rent"],
       income: [{ month: "2026-09", amount: 50000 }],
       assignments: [{ categoryId: "rent", month: "2026-09", amount: 50000 }],
@@ -107,6 +115,7 @@ describe("computeBudgetMonth", () => {
 
   it("reservations do not carry over: a fresh month starts with none of the last one's shortfall", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["rent"],
       income: [
         { month: "2026-09", amount: 50000 },
@@ -137,6 +146,7 @@ describe("computeBudgetMonth", () => {
 
   it("money assigned to future months reduces unassigned money immediately", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["rent"],
       income: [{ month: "2026-09", amount: 100000 }],
       assignments: [{ categoryId: "rent", month: "2026-10", amount: 90000 }],
@@ -258,6 +268,7 @@ describe("computeBudgetMonth", () => {
 
   it("assigning more than is available takes unassigned money below zero", () => {
     const input: BudgetInput = {
+      today: TODAY,
       categoryIds: ["groceries"],
       income: [{ month: "2026-09", amount: 10000 }],
       assignments: [{ categoryId: "groceries", month: "2026-09", amount: 15000 }],

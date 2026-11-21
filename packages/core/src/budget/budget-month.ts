@@ -169,10 +169,9 @@ export interface BudgetInput {
   readonly cardTransfers?: readonly CardTransfer[];
   /**
    * Today, in the workspace's time zone (rule 1): income dated after it has not been received
-   * yet and counts nowhere. Without it, every income counts from its own month on, as if today
-   * were after all the data.
+   * yet and counts nowhere. Required, so that no caller silently counts every income as received.
    */
-  readonly today?: LocalDate;
+  readonly today: LocalDate;
 }
 
 export interface CategoryMonth {
@@ -268,7 +267,7 @@ function validate(input: BudgetInput, month: Month): void {
   const unknown = (id: string): never => {
     throw new ValidationError("unknown_category", `unknown category: "${id}"`, { categoryId: id });
   };
-  if (input.today !== undefined) assertDate(input.today);
+  assertDate(input.today);
   for (const item of input.income) {
     assertMonth(item.month);
     assertCents(item.amount, "income");
@@ -594,7 +593,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   // everything assigned up to N − cash overspending of the months before the requested one. A
   // later month's own unresolved overspending stays a separate concern (#489).
   const today = input.today;
-  const received = (item: Income): boolean => today === undefined || (item.date ?? `${item.month}-01`) <= today;
+  const received = (item: Income): boolean => (item.date ?? `${item.month}-01`) <= today;
   const receivedBy = new Map<Month, Cents>();
   for (const item of input.income) {
     if (received(item)) addTo(receivedBy, item.month, item.amount);
