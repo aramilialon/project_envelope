@@ -172,12 +172,16 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
-  /** Changing month closes a category's detail (#698): its "Assigned this month" was the old month's. */
+  const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
+  /**
+   * Changing month closes a category's detail and the Move money form (#698): their amounts, and
+   * the month they write to, were the old month's.
+   */
   function goToMonth(step: number) {
     setMonth((m) => shiftMonth(m, step));
     setOpenCategoryId(null);
+    setMoveMoney(null);
   }
-  const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
   const [nameEditing, setNameEditing] = useState<NameEditing>(null);
   // A group just added from here (#397) has no category yet, and the budget month only lists
   // groups that do: kept on screen, with its first category's field open, until it has one.
@@ -290,6 +294,9 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
             <button
               type="button"
               className="btn primary"
+              // Not while another month loads: the form would show this month's numbers and
+              // write to that one (#698).
+              disabled={state.month !== month}
               onClick={() => setMoveMoney((current) => (current?.kind === "assign" ? null : { kind: "assign" }))}
             >
               {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
@@ -370,8 +377,8 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   );
   const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
   // While a newly chosen month loads, the previous month's rows stay on screen: a category's
-  // detail waits for the new month's own numbers before opening, so it never measures an entry
-  // against one month and writes it to another (#698).
+  // detail and the Move money form wait for the new month's own numbers before opening, so
+  // neither measures an entry against one month and writes it to another (#698).
   const shownMonth = state.month;
   const detailReady = shownMonth === month;
 
@@ -817,7 +824,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
           onChanged={() => refetchAndCheckProblems()}
         />
       )}
-      {moveMoney && (
+      {moveMoney && detailReady && (
         <MoveMoneyForm
           workspaceId={workspaceId}
           month={month}

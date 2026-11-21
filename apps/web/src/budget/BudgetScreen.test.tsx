@@ -517,6 +517,57 @@ describe("BudgetScreen (#53, #324)", () => {
     ]);
   });
 
+  it("while the previous month loads, 'Assign' is not available, and opens on that month's own numbers once they arrive (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(
+      budgetMonth({ unassigned: 80_000, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 0, available: 0 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+    const previousMonth = shiftMonth(currentMonth, -1);
+    let resolvePrevious: (value: BudgetMonthResponse) => void = () => {};
+    getBudgetMonth.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePrevious = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth));
+
+    const band = within(document.querySelector(".rta")!);
+    const assign = band.getByRole("button", { name: "Assign" });
+    expect(assign).toBeDisabled();
+    fireEvent.click(assign);
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+
+    resolvePrevious(
+      budgetMonth({ month: previousMonth, unassigned: 30_000, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 0, available: 0 })] }),
+    );
+    await waitFor(() => expect(band.getByRole("button", { name: "Assign" })).toBeEnabled());
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+    expect(screen.getByLabelText("From")).toHaveTextContent("Unassigned (€300.00)");
+    expect(createAssignments).not.toHaveBeenCalled();
+  });
+
+  it("changing month closes an open Move money form (#698)", async () => {
+    renderScreen(budgetMonth({ unassigned: 5_000, categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    const band = within(document.querySelector(".rta")!);
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+    // Still closed once that month has loaded: nothing reopens it.
+    await waitFor(() => expect(band.getByRole("button", { name: "Assign" })).toBeEnabled());
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+  });
+
   it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
     renderScreen(
       budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0 })] }),
