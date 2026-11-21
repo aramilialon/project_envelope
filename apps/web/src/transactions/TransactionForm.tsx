@@ -8,6 +8,7 @@ import type { Category } from "../categories/api.ts";
 import { getBudgetMonth } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { ApiError } from "../apiFetch.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { useFetchState } from "../useFetchState.ts";
 import {
   createTransaction,
@@ -264,6 +265,10 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   }
 
   function saveErrorMessage(caught: unknown): string {
+    // A split line typed above the cap, or the API refusing an amount above it (#651).
+    if (isAmountTooLarge(caught)) {
+      return amountTooLargeMessage(intl, currency);
+    }
     if (caught instanceof ApiError && caught.code === "text_too_long") {
       const max = Number(caught.details.max);
       switch (caught.details.field) {
@@ -305,8 +310,12 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     let amount: number;
     try {
       amount = parsePositive(amountStr);
-    } catch {
-      setError(intl.formatMessage({ id: "transactions.form.invalidAmount", defaultMessage: "Enter an amount greater than zero." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "transactions.form.invalidAmount", defaultMessage: "Enter an amount greater than zero." }),
+      );
       return;
     }
 

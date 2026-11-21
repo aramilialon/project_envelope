@@ -218,6 +218,32 @@ describe("TransactionForm (#54)", () => {
     expect(createTransaction).not.toHaveBeenCalled();
   });
 
+  it("says how large an amount can be when the typed one is above the cap (#651)", async () => {
+    const createTransaction = vi.spyOn(transactionsApi, "createTransaction");
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1,000,000,000.01" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("An amount is too large: a single amount can be up to €1,000,000,000.00.");
+    expect(createTransaction).not.toHaveBeenCalled();
+  });
+
+  it("says the same when the API refuses an amount above the cap (#651)", async () => {
+    vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(
+      new ApiError("POST failed: 400", 400, "amount_too_large", { label: "total", max: 100_000_000_000, value: "100000000001" }),
+    );
+    const { onSaved } = renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1,000,000,000.00" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("An amount is too large: a single amount can be up to €1,000,000,000.00.");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it("splits an outflow across two categories", async () => {
     const createTransaction = vi.spyOn(transactionsApi, "createTransaction").mockResolvedValue({} as Transaction);
     renderForm();

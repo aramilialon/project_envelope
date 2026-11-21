@@ -99,6 +99,15 @@ describe("MoveMoneyForm (#328)", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("an amount above the cap says how large one can be (#651)", () => {
+    const { createAssignments } = renderForm({ kind: "assign" });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "groceries" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "1,000,000,000.01" } });
+
+    expect(screen.getByText("An amount is too large: a single amount can be up to €1,000,000,000.00.")).toBeInTheDocument();
+    expect(createAssignments).not.toHaveBeenCalled();
+  });
+
   it("assigning more than is unassigned shows a warning, but still allows it", () => {
     renderForm({ kind: "assign" });
     fireEvent.change(screen.getByLabelText("To"), { target: { value: "groceries" } });

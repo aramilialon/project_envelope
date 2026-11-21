@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { deleteGoal, upsertGoal, type GoalKind, type GoalRecord, type RepeatInterval } from "./api.ts";
 import { TARGET_KINDS, targetKindHint, targetKindLabel } from "./targetKindLabels.ts";
@@ -56,6 +57,7 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
 
   let preview: ReturnType<typeof computeTarget> | null = null;
   let previewAmount: number | null = null;
+  let amountTooLarge = false;
   try {
     previewAmount = amountStr.trim() ? parseAmount(amountStr, { locale: intl.locale, currency }) : null;
     if (previewAmount !== null && previewAmount > 0) {
@@ -64,8 +66,9 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
         preview = computeTarget(target, state, month);
       }
     }
-  } catch {
+  } catch (caught) {
     previewAmount = null;
+    amountTooLarge = isAmountTooLarge(caught);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -75,6 +78,10 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
       return;
     }
     setError(null);
+    if (amountTooLarge) {
+      setError(amountTooLargeMessage(intl, currency));
+      return;
+    }
     if (previewAmount === null || previewAmount <= 0) {
       setError(intl.formatMessage({ id: "targets.editor.invalidAmount", defaultMessage: "Enter an amount greater than zero." }));
       return;
@@ -92,8 +99,12 @@ export default function TargetEditor({ workspaceId, categoryId, categoryName, mo
         ...(kind === "repeating" ? { every } : {}),
       });
       onSaved();
-    } catch {
-      setError(intl.formatMessage({ id: "targets.editor.error", defaultMessage: "We could not save this target." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "targets.editor.error", defaultMessage: "We could not save this target." }),
+      );
       setSubmitting(false);
     }
   }

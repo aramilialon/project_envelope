@@ -1,7 +1,7 @@
 /** The accounts endpoints (#51): list, create and close an account in a workspace. */
 import type { TaxRegime } from "@envelope/core";
 
-import { apiFetch, authHeaders } from "../apiFetch.ts";
+import { ApiError, apiFetch, authHeaders } from "../apiFetch.ts";
 
 const API_URL: string = import.meta.env.VITE_API_URL;
 
@@ -58,6 +58,7 @@ export class AccountTaxError extends Error {
 
 /**
  * Creates an account. A 400 carrying one of the tax-settings codes becomes an `AccountTaxError`,
+ * `amount_too_large` (a starting balance above the cap, #651) an `ApiError` with its code,
  * every other failure the same generic error `apiFetch` throws — so this uses a plain `fetch`,
  * since `apiFetch` throws before the body's own `code` could be read.
  */
@@ -73,9 +74,14 @@ export async function createAccount(
     body: JSON.stringify(input),
   });
   if (response.status === 400) {
-    const { error } = (await response.json()) as { error?: unknown };
+    const { error, details } = (await response.json()) as { error?: unknown; details?: unknown };
     if (typeof error === "string" && ACCOUNT_TAX_ERROR_CODES.includes(error)) {
       throw new AccountTaxError(error as AccountTaxErrorCode);
+    }
+    if (error === "amount_too_large") {
+      // A starting balance above the cap (#651): kept as the API's own code, for the form's message.
+      const fields = typeof details === "object" && details !== null ? (details as Record<string, string | number>) : {};
+      throw new ApiError(`POST ${path} failed: 400`, 400, error, fields);
     }
   }
   if (!response.ok) {

@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { useAccounts } from "../accounts/useAccounts.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { upsertGoal, type RepeatInterval } from "../targets/api.ts";
 import { useTargets } from "../targets/useTargets.ts";
@@ -316,10 +317,12 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTar
   const offerUseAsTarget = canBecomeTarget(every, recurUnit) && !hasTargetByCategory.has(categoryId);
 
   let amount: number | null = null;
+  let amountTooLarge = false;
   try {
     amount = amountText.trim() ? parseAmount(amountText, { locale: intl.locale, currency }) : null;
-  } catch {
+  } catch (caught) {
     amount = null;
+    amountTooLarge = isAmountTooLarge(caught);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -335,6 +338,10 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTar
     }
     if (!categoryId || !accountId) {
       setError(intl.formatMessage({ id: "scheduled.needCategoryAccount", defaultMessage: "Choose a category and an account." }));
+      return;
+    }
+    if (amountTooLarge) {
+      setError(amountTooLargeMessage(intl, currency));
       return;
     }
     if (amount === null || amount <= 0) {
@@ -368,8 +375,12 @@ function NewScheduledTransactionForm({ workspaceId, categories, currency, hasTar
         await upsertGoal(accessToken, workspaceId, categoryId, goalInput);
       }
       onSaved();
-    } catch {
-      setError(intl.formatMessage({ id: "scheduled.error", defaultMessage: "We could not save this scheduled transaction." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "scheduled.error", defaultMessage: "We could not save this scheduled transaction." }),
+      );
       setSubmitting(false);
     }
   }

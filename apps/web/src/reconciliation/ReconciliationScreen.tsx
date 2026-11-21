@@ -5,6 +5,7 @@ import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError } from "../apiFetch.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
 import { updateTransaction } from "../transactions/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -78,10 +79,12 @@ export default function ReconciliationScreen() {
   const openCategories = categories.filter((c) => !c.archived);
 
   let statementCents: number | null = null;
+  let statementTooLarge = false;
   try {
     statementCents = statementStr.trim() ? parseAmount(statementStr, { locale: intl.locale, currency }) : null;
-  } catch {
+  } catch (caught) {
     statementCents = null;
+    statementTooLarge = isAmountTooLarge(caught);
   }
   const invalidStatement = statementStr.trim() !== "" && statementCents === null;
 
@@ -150,8 +153,12 @@ export default function ReconciliationScreen() {
         setError(intl.formatMessage({ id: "reconcile.outOfDate", defaultMessage: "Something changed in this account; refresh and try again." }));
         state.refetch();
       }
-    } catch {
-      setError(intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -189,7 +196,10 @@ export default function ReconciliationScreen() {
               id: "reconcile.adjustment.cardIncomeNotSupported",
               defaultMessage: "On a credit card, an adjustment needs a category.",
             })
-          : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
+          : isAmountTooLarge(caught)
+            ? // #651: the adjustment would be above the cap on a single amount.
+              amountTooLargeMessage(intl, currency)
+            : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
       );
     } finally {
       setSubmitting(false);
@@ -319,7 +329,9 @@ export default function ReconciliationScreen() {
             </b>
           </div>
 
-          {invalidStatement ? (
+          {statementTooLarge ? (
+            <span className="hint bad">{amountTooLargeMessage(intl, currency)}</span>
+          ) : invalidStatement ? (
             <span className="hint bad">{intl.formatMessage({ id: "reconcile.invalidAmount", defaultMessage: "Enter the amount as shown on your statement, for example 1,234.56." })}</span>
           ) : statementCents === null ? (
             <span className="hint">{intl.formatMessage({ id: "reconcile.enterStatement", defaultMessage: "Enter the statement balance to see the difference." })}</span>

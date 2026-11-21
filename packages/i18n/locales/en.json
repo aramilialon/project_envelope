@@ -160,6 +160,7 @@
   "common.action.close": "× Close",
   "common.action.save": "Save",
   "common.action.signOut": "Sign out",
+  "common.error.amountTooLarge": "An amount is too large: a single amount can be up to {max}.",
   "import.back": "Back",
   "import.check.already": "Already in the register",
   "import.check.alreadyRegistered": "Already in the register",

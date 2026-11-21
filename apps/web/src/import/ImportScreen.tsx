@@ -26,6 +26,7 @@ import {
 } from "./mapping.ts";
 import { useImportSetup } from "./useImportSetup.ts";
 import { shortDate } from "../format.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import "./ImportScreen.css";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
@@ -148,7 +149,11 @@ export default function ImportScreen() {
     }
     try {
       return parseAmount(closingBalanceStr, { locale: intl.locale, currency });
-    } catch {
+    } catch (caught) {
+      // Above the cap (#651): said, rather than silently left out like an unreadable balance.
+      if (isAmountTooLarge(caught)) {
+        throw caught;
+      }
       return undefined;
     }
   }
@@ -187,8 +192,12 @@ export default function ImportScreen() {
         setStageResult(result);
         initializeSelections(result.staged);
         setStep(3);
-      } catch {
-        setError(intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+      } catch (caught) {
+        setError(
+          isAmountTooLarge(caught)
+            ? amountTooLargeMessage(intl, currency)
+            : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }),
+        );
       } finally {
         setSubmitting(false);
       }
@@ -245,8 +254,12 @@ export default function ImportScreen() {
       setStageResult(result);
       initializeSelections(result.staged);
       setStep(3);
-    } catch {
-      setError(intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }),
+      );
     } finally {
       setSubmitting(false);
     }
