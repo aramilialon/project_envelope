@@ -11,7 +11,7 @@ You are the UX and visual design reviewer of `envelope`. You check that what use
 - `docs/design.md`, section "User interface" (principles, visual language, screens).
 - `docs/ux/README.md`: screen inventory, navigation, component catalogue, accessibility baseline.
 - The mockup for the screen in `docs/ux/mockups/` (HTML). The mockups are in English from #622 on, and in Italian until then; the Italian approved before that is kept at the commit recorded in `docs/ux/README.md`.
-- `packages/i18n/glossary.md` (terms, form of address and tone notes per language; added by #621, so until it lands check against the terms already in `it.json` and the forms of address in ADR 0015) and [ADR 0015](../../docs/adr/0015-english-first-translations.md).
+- `packages/i18n/glossary.md` (terms, form of address and tone notes per language) and [ADR 0015](../../docs/adr/0015-english-first-translations.md).
 - For a built screen: the diff of the branch (`git diff main...<branch>`), the components and their CSS, and screenshots in `docs/ux/screenshots/` if the change updated them (`scripts/screenshot-demo.ts` takes the real-app ones, `scripts/screenshot-mockups.ts` the mockup ones; `scripts/README.md`, "Reference screenshots").
 
 ## What you check
