@@ -201,7 +201,7 @@ describe("ImportScreen (#59)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Import 1 transaction/ }));
 
     expect(
-      await screen.findByText("This account or a transfer's other account is closed, so these transactions can't be imported."),
+      await screen.findByText("This account, or the other account of one of these transfers, is closed, so these transactions can't be imported."),
     ).toBeInTheDocument();
   });
 

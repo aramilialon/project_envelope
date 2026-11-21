@@ -322,7 +322,7 @@ export default function ImportScreen() {
             ? // #729: this account, or the other account of a transfer, was closed after the rows were staged.
               intl.formatMessage({
                 id: "import.error.accountClosedConfirm",
-                defaultMessage: "This account or a transfer's other account is closed, so these transactions can't be imported.",
+                defaultMessage: "This account, or the other account of one of these transfers, is closed, so these transactions can't be imported.",
               })
             : intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." })),
       );

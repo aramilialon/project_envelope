@@ -497,6 +497,33 @@ describe("TransactionForm (#54)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not delete this transaction.");
     expect(onSaved).not.toHaveBeenCalled();
   });
+
+  it("says how long to wait when the API refuses a delete over its rate limit (#729)", async () => {
+    vi.spyOn(transactionsApi, "deleteTransaction").mockRejectedValue(
+      new ApiError("DELETE failed: 429", 429, "too_many_requests", { retryAfterSeconds: 30 }),
+    );
+    const transaction: Transaction = {
+      id: "t1",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: "Supermarket",
+      memo: null,
+      status: "cleared",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
+    };
+    const { onSaved } = renderForm({ transaction });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests in a short time. Try again in 30 seconds.");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
 });
 
 describe("TransactionForm: each account in its own currency (#652)", () => {
@@ -1015,7 +1042,7 @@ describe("TransactionForm: a write the API refuses because an account is closed 
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so it can't be deleted.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so this transfer can't be deleted.");
     expect(onSaved).not.toHaveBeenCalled();
   });
 
@@ -1026,7 +1053,7 @@ describe("TransactionForm: a write the API refuses because an account is closed 
     fireEvent.click(screen.getByLabelText("Cleared against the bank"));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so it can't be changed.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so this transfer can't be changed.");
   });
 
   it("says this account is closed when a write to its own transaction is refused", async () => {

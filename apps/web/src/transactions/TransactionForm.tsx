@@ -354,11 +354,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     return write === "save"
       ? intl.formatMessage({
           id: "transactions.form.transferAccountClosed",
-          defaultMessage: "This transfer's other account is closed, so it can't be changed.",
+          defaultMessage: "This transfer's other account is closed, so this transfer can't be changed.",
         })
       : intl.formatMessage({
           id: "transactions.form.transferAccountClosedDelete",
-          defaultMessage: "This transfer's other account is closed, so it can't be deleted.",
+          defaultMessage: "This transfer's other account is closed, so this transfer can't be deleted.",
         });
   }
 
@@ -497,9 +497,10 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       onSaved();
     } catch (caught) {
       setError(
-        isAccountClosed(caught)
-          ? accountClosedMessage("delete")
-          : intl.formatMessage({ id: "transactions.form.deleteError", defaultMessage: "We could not delete this transaction." }),
+        tooManyRequestsMessage(intl, caught) ??
+          (isAccountClosed(caught)
+            ? accountClosedMessage("delete")
+            : intl.formatMessage({ id: "transactions.form.deleteError", defaultMessage: "We could not delete this transaction." })),
       );
       setSubmitting(false);
     }
