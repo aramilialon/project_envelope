@@ -573,6 +573,15 @@ on its gain at the sale; a sale on 5 January 2027 is under the self-declared reg
 goes into the investor's own annual return. Recording the switch does not change the 2026 sale. A
 switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start`).
 
+**Example.** The same account already holds a sale of a share on 10 February 2026, on which the
+broker withheld €26.00 of gain tax. Correcting the history to "self-declared since 2024" is refused
+(`tax_regime_conflicts_with_trade`, naming that sale): under self-declared a broker withholds no
+gain tax on a share, so the recorded sale would no longer make sense. Either the sale is wrong (edit
+or delete it first) or the history is (keep administered over February 2026). Had the sale been of
+a fund at an Italian withholding agent, the correction would be accepted, since such a broker still
+withholds on fund gains. A change only judges the trades it covers: a switch from 1 January 2027
+leaves that sale alone.
+
 **Example.** Two self-declared accounts each receive a foreign dividend of €100 gross, €15 of it
 withheld abroad, so €85 is left. At a broker that is an Italian withholding agent, €22.10 is
 withheld on the €85 and €62.90 arrives. At a foreign broker, €85 arrives and is reported in the
@@ -596,7 +605,10 @@ gains and income from securities; 12.5% applies to government bonds.
 A trade the regime does not allow is refused with `tax_kind_not_allowed_in_regime`, naming the
 regime and the field; the withholding on accrued interest at a foreign broker is refused with
 `domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
-takes no trade at all (`tax_regime_required`). The worked examples below follow the tests in
+takes no new trade (`tax_regime_required`). A workspace can still become `IT` while some of its
+brokerage accounts have trades and no regime: the change lists those accounts, their trades keep
+taking edits that leave the regime's inputs alone (a memo, a time, a quantity, a price), and the
+first regime recorded is checked against them like any other change of the history. The worked examples below follow the tests in
 `packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
 result tax, for one, is not).
 

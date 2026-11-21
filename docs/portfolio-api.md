@@ -161,11 +161,23 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 ```
 
 `taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace:
+`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+accounts that have no tax regime yet:
 
 ```json
-{ "id": "45fd02be-…", "name": "Household", "baseCurrency": "EUR", "timeZone": "Europe/Rome", "taxCountry": "IT" }
+{
+  "id": "45fd02be-…",
+  "name": "Household",
+  "baseCurrency": "EUR",
+  "timeZone": "Europe/Rome",
+  "taxCountry": "IT",
+  "accountsWithoutTaxRegime": ["9b1c…"]
+}
 ```
+
+`accountsWithoutTaxRegime` lists, by id and oldest first, every brokerage account of the workspace
+with an empty regime history when the tax country is `IT`, and is `[]` otherwise: a client can ask
+for their regimes right away.
 
 | Error | Details |
 | --- | --- |
@@ -173,9 +185,11 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
-them. Setting `IT` does not ask existing brokerage accounts for a regime retroactively: such an
-account keeps working until its first trade, which is refused while it has no regime (see
-below). `GET /me/workspaces` lists each workspace's `taxCountry`.
+them. Setting `IT` does not ask existing brokerage accounts for a regime retroactively, and is
+never refused for them: such an account keeps working, a new trade on it is refused while it has no
+regime (see below), and the trades it already has can still be edited in every field the regime
+rules do not read, their memo first of all ([Editing a trade](#editing-a-trade)). Its first regime
+is checked against those trades like any other change of the history. `GET /me/workspaces` lists each workspace's `taxCountry`.
 
 ## Brokerage accounts and their tax regime
 
@@ -248,7 +262,21 @@ start on the same day. What each regime means, with examples, is in the
 | `PUT …/tax-regimes` | owner, editor | `{ "taxRegimes": [ { "validFrom": "2024-03-15", "regime": "self_declared" }, { "validFrom": "2026-01-01", "regime": "administered" } ] }` | 200 `{ "taxRegimes": […] }`, the whole history replaced at once |
 
 `PUT` corrects the history: the old periods are deleted and the new ones inserted in one
-transaction, under a lock on the account, and checked by the same rules. `POST` can also add a
+transaction, under a lock on the account, and checked by the same rules.
+
+**A change reads the account's trades again.** Every trade of the account the change covers — its
+date now falls under another regime or, for a gain tax adjustment, the regimes in force on or before
+its date are no longer the same — is checked against the new history by the trade rules
+([What is checked, in order](#what-is-checked-in-order), step 7). If one of them breaks, the change
+is refused with `tax_regime_conflicts_with_trade`, naming the earliest such trade (by date, then id)
+and the code it would fail with, and nothing is written. For example, an administered account with
+a sale of a stock that carries gain tax cannot become `self_declared` over that sale's date (a fund
+sale at a domestic withholding agent can), and a managed account with a `managed_result_tax` cannot
+leave `managed` over that tax's date. Edit or delete the trade first, or start the new regime on a
+later 1 January. A trade whose period the change leaves alone is not checked again, and neither is
+the withholding on accrued interest, which depends on the broker, not on the regime. The check runs
+under the same account lock as the write, which a trade being recorded or edited on that account
+also waits for. `POST` can also add a
 period before the first one, but only when the first one starts on 1 January (it then becomes a
 change, and changes start on 1 January).
 
@@ -259,6 +287,7 @@ change, and changes start on 1 January).
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime" }`: any `administered` or `managed` period needs the flag set to true |
 | 400 `tax_regime_not_applicable` | `{ "field": "taxRegime", "type" }` (not a brokerage account) or `{ "field": "taxRegime", "taxCountry" }` (not an `IT` workspace) |
 | 400 `tax_regime_required` | `{ "field": "taxRegime", "taxCountry": "IT" }`: `PUT` with an empty list in an `IT` workspace |
+| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code |
 | 400 `invalid_date` | `{ "value" }` |
 
 ## Instruments
@@ -648,6 +677,12 @@ trade never changes: delete it and record another.
 - **The history is checked again.** The edited rows go through every check of a create, and the
   whole history of every instrument the edit touches (the old one and the new one) is replayed;
   an edit that would make any portfolio oversell, at any date, is refused.
+- **The tax regime only when something it reads changes.** In an `IT` workspace an edited row is
+  checked against the regime again (step 7, `tax_regime_required` included) only when its date,
+  account, instrument, tax kind, gain tax, transaction tax, either withholding or, on a tax, its
+  amount changes. An edit of the memo, the time, the quantity, the price or the portfolio alone
+  skips that check, so a trade recorded before the workspace's tax country became `IT`, or before
+  its account's regime history changed, keeps taking those edits.
 - **Archived portfolios.** A trade already in an archived portfolio can still be edited there, or
   moved out of it. Moving a trade or a transfer's leg (either one) into an archived portfolio is
   `portfolio_archived`. A split moved to another date covers the holdings on that date, archived

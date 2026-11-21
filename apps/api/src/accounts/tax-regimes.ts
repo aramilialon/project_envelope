@@ -3,15 +3,21 @@
  * force from its own `validFrom` until the next row's, the earliest also before it.
  * `@envelope/core`'s `validateTaxRegimeChange` checks the rules before anything is written;
  * migration 0028's primary key and trigger enforce the history rules in the database too, and a
- * violation of either is mapped to the same `ValidationError` code here.
+ * violation of either is mapped to the same `ValidationError` code here. A change is also checked
+ * against the account's trades it covers (`checkRegimeChange`, #653), under the same lock.
  */
 import {
+  checkRegimeChange,
   validateTaxRegimeChange,
   validateWithholdingAgentChange,
   ValidationError,
+  type InstrumentType,
   type LocalDate,
+  type RegimeCheckedTrade,
+  type TaxKind,
   type TaxRegime,
   type TaxRegimeEntry,
+  type TradeType,
 } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -52,7 +58,9 @@ export async function listTaxRegimes(
  * Returns undefined if the account is not in this workspace.
  *
  * @throws ValidationError "tax_regime_not_applicable" if the account is not a brokerage account
- * or the workspace's tax country is not `IT`; the codes of `validateTaxRegimeChange`.
+ * or the workspace's tax country is not `IT`; the codes of `validateTaxRegimeChange`;
+ * "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) when the new history would
+ * break a trade of the account (`checkRegimeChange`). Nothing is written then.
  */
 export async function addTaxRegime(
   db: DbPool | DbClient,
@@ -67,11 +75,8 @@ export async function addTaxRegime(
   assertBrokerage(account.type);
 
   const entry: TaxRegimeEntry = { validFrom: input.validFrom ?? account.today, regime: input.regime };
-  validateTaxRegimeChange({
-    taxCountry: account.tax_country,
-    domesticWithholdingAgent: account.domestic_withholding_agent,
-    history: [...(await loadHistory(db, workspaceId, accountId)), entry],
-  });
+  const before = await loadHistory(db, workspaceId, accountId);
+  await checkChange(db, workspaceId, accountId, account, before, [...before, entry]);
   await insertEntries(db, workspaceId, accountId, [entry], account.type);
   return entry;
 }
@@ -95,11 +100,7 @@ export async function replaceTaxRegimes(
     return undefined;
   }
   assertBrokerage(account.type);
-  validateTaxRegimeChange({
-    taxCountry: account.tax_country,
-    domesticWithholdingAgent: account.domestic_withholding_agent,
-    history,
-  });
+  await checkChange(db, workspaceId, accountId, account, await loadHistory(db, workspaceId, accountId), history);
 
   const sorted = [...history].sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
   await db.query("DELETE FROM account_tax_regimes WHERE account_id = $1 AND workspace_id = $2", [accountId, workspaceId]);
@@ -151,6 +152,78 @@ async function lockAccount(db: DbPool | DbClient, workspaceId: string, accountId
     [accountId, workspaceId],
   );
   return rows[0];
+}
+
+/**
+ * Checks a change from `before` to `after`: the history's own rules (`validateTaxRegimeChange`),
+ * then the account's trades the change covers (`checkRegimeChange`). The caller holds the
+ * account's lock (`lockAccount`), which a trade being written also waits for before it reads the
+ * history (trades/repository.ts, `checkRegimes`): no trade can slip in between this check and the
+ * write.
+ *
+ * @throws ValidationError the codes of `validateTaxRegimeChange`; "tax_regime_conflicts_with_trade".
+ */
+async function checkChange(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  account: LockedAccount,
+  before: readonly TaxRegimeEntry[],
+  after: readonly TaxRegimeEntry[],
+): Promise<void> {
+  validateTaxRegimeChange({
+    taxCountry: account.tax_country,
+    domesticWithholdingAgent: account.domestic_withholding_agent,
+    history: after,
+  });
+  checkRegimeChange(await loadTrades(db, workspaceId, accountId), {
+    before,
+    after,
+    domesticWithholdingAgent: account.domestic_withholding_agent,
+  });
+}
+
+interface RegimeCheckedTradeRow {
+  readonly id: string;
+  readonly type: TradeType;
+  readonly trade_date: string;
+  readonly instrument_type: InstrumentType | null;
+  readonly tax_kind: TaxKind | null;
+  readonly cost_basis_cents: string | null;
+  readonly gross_cents: string;
+  readonly fees_cents: string;
+  readonly transaction_tax_cents: string;
+  readonly accrued_interest_cents: string;
+  readonly withholding_foreign_cents: string;
+  readonly withholding_domestic_cents: string;
+  readonly gain_tax_cents: string;
+}
+
+/** The account's trades, with what `checkRegimeChange` reads of each. */
+async function loadTrades(db: DbPool | DbClient, workspaceId: string, accountId: string): Promise<RegimeCheckedTrade[]> {
+  const { rows } = await db.query<RegimeCheckedTradeRow>(
+    `SELECT t.id, t.type, to_char(t.trade_date, 'YYYY-MM-DD') AS trade_date, i.type AS instrument_type, t.tax_kind,
+            t.cost_basis_cents, t.gross_cents, t.fees_cents, t.transaction_tax_cents, t.accrued_interest_cents,
+            t.withholding_foreign_cents, t.withholding_domestic_cents, t.gain_tax_cents
+     FROM trades t LEFT JOIN instruments i ON i.id = t.instrument_id
+     WHERE t.workspace_id = $1 AND t.account_id = $2`,
+    [workspaceId, accountId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    date: row.trade_date,
+    instrumentType: row.instrument_type,
+    taxKind: row.tax_kind,
+    costBasisCents: row.cost_basis_cents === null ? null : Number(row.cost_basis_cents),
+    grossCents: Number(row.gross_cents),
+    feesCents: Number(row.fees_cents),
+    transactionTaxCents: Number(row.transaction_tax_cents),
+    accruedInterestCents: Number(row.accrued_interest_cents),
+    withholdingForeignCents: Number(row.withholding_foreign_cents),
+    withholdingDomesticCents: Number(row.withholding_domestic_cents),
+    gainTaxCents: Number(row.gain_tax_cents),
+  }));
 }
 
 function assertBrokerage(type: string): void {
