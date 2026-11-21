@@ -7,7 +7,8 @@ import { createAccount } from "../accounts/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { upsertGoal } from "../goals/repository.ts";
-import { createTransaction } from "../transactions/repository.ts";
+import { getBudgetMonth } from "../budget/repository.ts";
+import { createTransaction, createTransfer } from "../transactions/repository.ts";
 import { runQuickAssign } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -141,6 +142,55 @@ describe("quick assign repository", () => {
     // Uncovered is now 0: a second round has nothing left to cover.
     const secondRound = await runQuickAssign(pool, workspaceId, authorId, "2026-04", { kind: "all" }, "cover_card_debt");
     assert.equal(secondRound.some((e) => e.destinationCategoryId === paymentCategoryId), false);
+  });
+
+  it("cover_card_debt: a card paid beyond what was set aside gets its whole amount to cover in one run (#699)", async () => {
+    // The domain guide's worked example: opened owing €500, €45.67 spent on the card (covered by
+    // its category's own money), €300 paid from checking, nothing assigned to the payment category.
+    const card = await createAccount(pool, { workspaceId, name: "Paid beyond card", type: "credit_card", currency: "EUR", onBudget: true });
+    const paymentCategoryId = card.paymentCategoryId;
+    assert.ok(paymentCategoryId);
+    const food = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Food on the card', 3) RETURNING id",
+      [workspaceId, groupId],
+    );
+    const foodId = food.rows[0]!.id;
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: card.id,
+      occurredAt: "2026-11-01",
+      status: "cleared",
+      splits: [{ categoryId: paymentCategoryId, amountCents: -50_000 }],
+    });
+    await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2026-11", sourceCategoryId: null, destinationCategoryId: foodId, amountCents: 10_000 }],
+    });
+    await createTransaction(pool, { workspaceId, accountId: card.id, occurredAt: "2026-11-03", splits: [{ categoryId: foodId, amountCents: -4_567 }] });
+    await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: checkingAccountId,
+      destinationAccountId: card.id,
+      occurredAt: "2026-11-10",
+      amountCents: 30_000,
+    });
+    const before = (await getBudgetMonth(pool, workspaceId, "2026-11")).paymentCategories.find((c) => c.categoryId === paymentCategoryId);
+    assert.equal(before?.cashOverspending, 25_433);
+    assert.equal(before?.uncovered, 24_567);
+
+    // "Cover overspending" leaves payment categories alone.
+    const overspending = await runQuickAssign(pool, workspaceId, authorId, "2026-11", { kind: "all" }, "cover_overspending");
+    assert.equal(overspending.some((e) => e.destinationCategoryId === paymentCategoryId), false);
+
+    const entries = await runQuickAssign(pool, workspaceId, authorId, "2026-11", { kind: "all" }, "cover_card_debt");
+    assert.equal(entries.find((e) => e.destinationCategoryId === paymentCategoryId)?.amountCents, 50_000);
+
+    const after = (await getBudgetMonth(pool, workspaceId, "2026-11")).paymentCategories.find((c) => c.categoryId === paymentCategoryId);
+    assert.equal(after?.cashOverspending, 0);
+    assert.equal(after?.uncovered, 0);
+    assert.equal(after?.available, 24_567);
+    assert.equal(after?.owed, 24_567);
   });
 
   it("repeat_assigned: copies last month's assigned amount into the current month", async () => {
