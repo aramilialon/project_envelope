@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createAssignments } from "./api.ts";
@@ -146,8 +147,8 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
         },
       ]);
       onChanged();
-    } catch {
-      setSubmitError(intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." }));
+    } catch (caught) {
+      setSubmitError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." }));
       setSubmitting(false);
     }
   }

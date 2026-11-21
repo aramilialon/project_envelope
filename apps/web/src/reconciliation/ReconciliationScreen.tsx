@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { shortDate } from "../format.ts";
 import { updateTransaction } from "../transactions/api.ts";
@@ -183,13 +184,14 @@ export default function ReconciliationScreen() {
       }
     } catch (caught) {
       setError(
-        caught instanceof ApiError && caught.code === "card_income_not_supported"
-          ? // #548: an adjustment with no category would be income on an on-budget credit card, not supported yet.
-            intl.formatMessage({
-              id: "reconcile.adjustment.cardIncomeNotSupported",
-              defaultMessage: "On a credit card, an adjustment needs a category.",
-            })
-          : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
+        tooManyRequestsMessage(intl, caught) ??
+          (caught instanceof ApiError && caught.code === "card_income_not_supported"
+            ? // #548: an adjustment with no category would be income on an on-budget credit card, not supported yet.
+              intl.formatMessage({
+                id: "reconcile.adjustment.cardIncomeNotSupported",
+                defaultMessage: "On a credit card, an adjustment needs a category.",
+              })
+            : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." })),
       );
     } finally {
       setSubmitting(false);
