@@ -1,4 +1,4 @@
-import { availableAfterInflow, formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
+import { availableAfterInflow, currencyDecimals, formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -65,8 +65,10 @@ function endOf(account: Account): { onBudget: boolean; creditCard: boolean } {
   return { onBudget: account.onBudget, creditCard: account.type === "credit_card" };
 }
 
-function centsToInput(cents: number, locale: string): string {
-  return (cents / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** An amount in minor units as the amount field shows it, with the currency's own number of decimals (#652: none for JPY, three for KWD). */
+function centsToInput(cents: number, locale: string, currency: string): string {
+  const decimals = currencyDecimals(currency);
+  return (cents / 10 ** decimals).toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 /**
@@ -97,7 +99,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   const [kind, setKind] = useState<Kind>(kindOf(transaction));
   const [date, setDate] = useState(transaction?.budgetDate ?? today);
-  const [amountStr, setAmountStr] = useState(transaction ? centsToInput(Math.abs(totalOf(transaction)), intl.locale) : "");
+  const [amountStr, setAmountStr] = useState(transaction ? centsToInput(Math.abs(totalOf(transaction)), intl.locale, currency) : "");
   const [payee, setPayee] = useState(transaction?.payee ?? "");
   const [memo, setMemo] = useState(transaction?.memo ?? "");
   const [cleared, setCleared] = useState(transaction ? transaction.status !== "pending" : false);
@@ -107,7 +109,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   const [split, setSplit] = useState(!isTransferLeg && (transaction?.splits.length ?? 0) > 1);
   const [lines, setLines] = useState<SplitLine[]>(
     !isTransferLeg && (transaction?.splits.length ?? 0) > 1
-      ? transaction!.splits.map((s) => ({ categoryId: s.categoryId ?? "", amountStr: centsToInput(Math.abs(s.amountCents), intl.locale) }))
+      ? transaction!.splits.map((s) => ({ categoryId: s.categoryId ?? "", amountStr: centsToInput(Math.abs(s.amountCents), intl.locale, currency) }))
       : [{ categoryId: "", amountStr: "" }, { categoryId: "", amountStr: "" }],
   );
   const [direction, setDirection] = useState<Direction>(isTransferLeg && totalOf(transaction) > 0 ? "in" : "out");
