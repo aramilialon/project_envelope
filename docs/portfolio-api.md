@@ -793,7 +793,10 @@ transferred in.
 A household in an `IT` workspace funds an administered brokerage account from its budget and
 records two portfolios. These are the steps and figures of the milestone's smoke test
 (`apps/api/src/smoke/0.2.0-portfolio.smoke.test.ts`), which checks every number below against the
-real server. Paths are relative to `/workspaces/:workspaceId`, except `/instruments`.
+real server (it also spends from a second category, left out here, so its own budget figures
+differ from step 6's). Paths are relative to `/workspaces/:workspaceId`, except `/instruments`.
+Followed in this order on an empty workspace, such as a disposable environment's, every request
+answers as shown.
 
 **1. The workspace, the accounts and the money.**
 
@@ -802,9 +805,15 @@ real server. Paths are relative to `/workspaces/:workspaceId`, except `/instrume
 | `PATCH` (the workspace itself) | `{ "taxCountry": "IT" }` |
 | `POST /accounts` | `{ "name": "Checking", "type": "checking", "currency": "EUR" }` |
 | `POST /accounts` | `{ "name": "Broker", "type": "brokerage", "currency": "EUR", "taxRegime": "administered", "taxRegimeValidFrom": "2026-01-01", "domesticWithholdingAgent": true }` |
+| `POST /category-groups` | `{ "name": "Goals" }` |
+| `POST /categories` | `{ "name": "Investments", "groupId": "<goals>" }` |
 | `POST /accounts/<checking>/transactions` | `{ "occurredAt": "2026-03-02", "splits": [ { "categoryId": null, "amountCents": 4000000 } ] }`: €40,000.00 of income |
-| `POST /assignments` | €30,000.00 assigned to an "Investments" category for 2026-03 |
+| `POST /assignments` | `{ "entries": [ { "month": "2026-03", "sourceCategoryId": null, "destinationCategoryId": "<investments>", "amountCents": 3000000 } ] }`: €30,000.00 from Unassigned to "Investments" |
 | `POST /transfers` | `{ "sourceAccountId": "<checking>", "destinationAccountId": "<broker>", "occurredAt": "2026-03-10", "amountCents": 3000000, "categoryId": "<investments>" }` |
+
+Each `POST` answers 201 with the new row, whose `id` the later steps use. The transfer answers
+`{ "source": { … }, "destination": { … } }`, its two transactions: `destination.id` is the
+deposit on the broker, which step 7 reconciles.
 
 The transfer goes from an on-budget account to an off-budget one, so it needs `categoryId`
 (without one, 400 `uncategorized_transaction`): it is €30,000.00 of spending from "Investments",
@@ -815,7 +824,10 @@ month of its date (into an on-budget credit card a category is required, 400
 
 **2. Instruments.** `POST /instruments` three times: an ETF (`type: "fund"`), a share
 (`"stock"`), and a government bond quoted in percent of nominal (`"government_bond"`,
-`priceFactorE6: 10000`), all in EUR.
+`priceFactorE6: 10000`), all in EUR, each with a ticker and exchange of its own (or an ISIN), for
+example `{ "ticker": "BTP31", "exchange": "XMIL", "name": "Treasury bond 2031", "type":
+"government_bond", "currency": "EUR", "priceFactorE6": 10000 }`. The catalog is shared, so on a
+server where those tickers are taken, pick others (409 `ticker_taken`).
 
 **3. Portfolios.** `POST /portfolios` `{ "name": "Growth" }` and
 `{ "name": "Income", "purpose": "Coupons and dividends" }`.
@@ -859,9 +871,31 @@ gains €44.98.
 **6. The cash adds up.** The broker's balance is the deposit plus every cash leg:
 30,000.00 − 2,005.00 − 3,605.00 − 4,004.00 + 1,250.02 + 24.16 − 9,987.00 − 1.50 − 3.50 =
 €11,668.18. And realized + income − costs − taxes on gains = 173.00 − 10.84 − 5.00 − 44.98 =
-€112.18 = 11,668.18 + 18,444.00 − 30,000.00. The budget months are exactly what they were before
-the first trade.
+€112.18 = 11,668.18 + 18,444.00 − 30,000.00. The balance is the sum of the splits' `amountCents`
+of every transaction in `GET /accounts/<broker>/transactions`.
 
-**7. Reconciling locks.** Marking the deposit and Growth's first buy `cleared` and reconciling the
-account at 12 March against a statement balance of €27,995.00 (30,000.00 − 2,005.00) makes that
-buy `locked: true`; editing or deleting it then answers 409 `reconciled`.
+The budget months are exactly what they were before the first trade: `GET /budget-months/2026-03`
+and `GET /budget-months/2026-04` (the full path is
+`GET /workspaces/:workspaceId/budget-months/:month`) answer the same body as they did right after
+the transfer. In March `unassigned` is 1000000 (40,000.00 − 30,000.00), and "Investments" has
+`assigned` 3000000, `activity` −3000000 and `available` 0; April starts with the same 1000000
+unassigned and nothing in "Investments".
+
+**7. Reconciling locks.** The broker's statement of 12 March shows the deposit and Growth's first
+buy: 30,000.00 − 2,005.00 = €27,995.00.
+
+| Request | Body | Answer |
+| --- | --- | --- |
+| `PATCH /accounts/<broker>/transactions/<deposit>` | `{ "status": "cleared" }` | 200 |
+| `PATCH /accounts/<broker>/transactions/<buy's cashTransactionId>` | `{ "status": "cleared" }` | 200 |
+| `POST /accounts/<broker>/reconciliations` | `{ "date": "2026-03-12", "statementBalanceCents": 2799500, "tickedTransactionIds": [ "<deposit>", "<buy's cashTransactionId>" ] }` | 201 `{ "outcome": "reconciled", "reconciliation": { … } }` |
+| `GET /trades` | | the ETF buy of 12 March, alone, has `locked: true` |
+| `PATCH /trades/<buy>` | `{ "feesCents": 0 }` | 409 `{ "error": "a trade whose cash leg is reconciled cannot be edited; unlock it first", "code": "reconciled" }` |
+| `DELETE /trades/<buy>` | | 409, the same `code` |
+
+`<deposit>` is the transfer's `destination.id` from step 1; the buy's `cashTransactionId` is in
+its row in the answer to `POST /trades`. Positions do not change.
+
+Mind the two error shapes ([Before you start](#before-you-start)): a 409 carries its code in
+`code`, next to English text in `error`, while a 400 carries the code in `error` itself (the
+`uncategorized_transaction` of step 1 is `{ "error": "uncategorized_transaction", "details": {} }`).
