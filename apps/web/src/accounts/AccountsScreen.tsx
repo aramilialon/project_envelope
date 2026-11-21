@@ -149,7 +149,7 @@ export default function AccountsScreen() {
           {
             id: "accounts.closeRefused.scheduledDue",
             defaultMessage:
-              "{count, plural, one {A transaction scheduled for {date} uses this account.} other {# scheduled transactions use this account, the first on {date}.}}",
+              "{count, plural, one {A transaction scheduled for {date} uses it.} other {# scheduled transactions use it, the first on {date}.}}",
           },
           { count: scheduled.count, date: shortDate(scheduled.nextDueDate, intl.locale, currentYear) },
         ),

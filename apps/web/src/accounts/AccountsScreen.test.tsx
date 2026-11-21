@@ -378,7 +378,7 @@ describe("AccountsScreen (#51, #323)", () => {
       expect(items).toEqual([
         "Its balance today is €500.00.",
         "It holds securities today.",
-        "3 scheduled transactions use this account, the first on Feb 15, 2030.",
+        "3 scheduled transactions use it, the first on Feb 15, 2030.",
       ]);
     });
 
@@ -392,7 +392,7 @@ describe("AccountsScreen (#51, #323)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
       const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
-      expect(items).toEqual(["A transaction scheduled for Feb 15, 2030 uses this account."]);
+      expect(items).toEqual(["A transaction scheduled for Feb 15, 2030 uses it."]);
     });
 
     it("still counts the scheduled transactions when an older API sends no due date", async () => {
