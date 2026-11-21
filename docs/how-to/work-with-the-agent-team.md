@@ -52,6 +52,7 @@ Role agents run locally, on the developer machine and on disposable environments
 - The automatic AI review on GitHub (`.github/workflows/claude-code-review.yml`) gives every pull request one independent read, once, when it is opened or marked ready, not again on every push. It may read the pull request (`gh pr diff`, `gh pr view`) and the checked-out files, and post inline and summary comments; it runs no other commands and cannot change the repository.
 - Dependencies are audited weekly by a token-free workflow (`.github/workflows/security-audit.yml`, `pnpm audit`) that keeps one issue open with its findings; the team fixes them locally like any other issue.
 - Exploratory runs, QA and the security review stay local.
+- Before every release the coordinator also checks the open Dependabot, code-scanning and secret-scanning alerts ([Releasing a milestone](work-with-issues-and-pull-requests.md#releasing-a-milestone)): the `security-reviewer` triages them, each real one is fixed by a `developer` through the usual reviews, and the maintainer approves any dismissal.
 
 ## Exploratory runs before a release
 
