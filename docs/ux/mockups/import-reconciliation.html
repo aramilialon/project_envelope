@@ -330,6 +330,7 @@ table.map .raw{color:var(--muted);font-size:12px}
 .recon{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px;padding:18px;border:1px solid var(--rule-strong);background:var(--paper)}
 .recon .field input{min-height:40px;padding:0 10px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
 .recon .field input[type=date]{width:100%;min-width:0;font-size:13px;padding:0 6px}
+.recon .field{min-width:0}
 .recon .money-in input{min-width:0}
 .diff{display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--rule-strong)}
 .diff b{font-size:28px;font-stretch:85%}
@@ -662,7 +663,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       '<p class="hint" style="margin:0 0 6px">Togli la spunta a quelle che non compaiono sull’estratto conto.</p>' + cleared.map(function (t) { return line(t, false); }).join('') + '</div>' +
       (pending.length ? '<div class="sec" style="margin-top:18px"><h5><span>In attesa</span><span class="n">' + pending.length + '</span></h5><p class="hint" style="margin:0 0 6px">Non entrano nel conteggio finché non le spunti come verificate.</p>' + pending.map(function (t) { return line(t, true); }).join('') + '</div>' : '') + '</div>';
     var right = '<aside class="recon" aria-label="Conteggio">' +
-      '<div class="two" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="field"><label for="st-amt">Saldo sull’estratto</label><span class="money-in"><input type="text" inputmode="decimal" id="st-amt" value="' + esc(rec.statement) + '"><span>€</span></span></div>' +
+      '<div class="two" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px"><div class="field"><label for="st-amt">Saldo sull’estratto</label><span class="money-in"><input type="text" inputmode="decimal" id="st-amt" value="' + esc(rec.statement) + '"><span>€</span></span></div>' +
       '<div class="field"><label for="st-date">Alla data</label><input type="date" id="st-date" value="' + rec.date + '"></div></div>' +
       '<div class="sec"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Riconciliato il 5 set</span><span class="dots"></span><span class="n">' + f(LAST_REC) + '</span></div>' +
       '<div class="qa" style="cursor:default;color:var(--ink-2)"><span>Verificate spuntate</span><span class="dots"></span><span class="n">' + f(ticked - LAST_REC) + '</span></div>' +
