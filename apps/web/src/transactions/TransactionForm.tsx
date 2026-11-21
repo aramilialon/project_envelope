@@ -196,6 +196,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   function changeKind(next: Kind) {
     setKind(next);
+    // A split belongs to an outflow: every kind change starts back without one (the mockup), so a
+    // split left on never hides a transfer's or an inflow's category.
+    setSplit(false);
     // Into a transfer from an off-budget account to a cash account, the category starts back at "Unassigned" (the mockup).
     if (next === "transfer" && transferRuleOfAccounts === "optional") {
       setCategoryId("");
@@ -204,10 +207,18 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   function changeDirection(next: Direction) {
     setDirection(next);
+    // A message about the other direction's choices no longer applies.
+    setError(null);
     // Switching direction keeps the account already chosen, except a card as the source.
     if (next === "in" && otherAccount?.type === "credit_card") {
       setOtherAccountId("");
     }
+  }
+
+  function changeOtherAccount(next: string) {
+    setOtherAccountId(next);
+    // The category rule may have changed with the account: a stale "Choose a category." goes.
+    setError(null);
   }
 
   function parsePositive(text: string): number {
@@ -420,11 +431,10 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   const hint = inflowHint();
 
-  const title = intl.formatMessage(
-    isEditing
-      ? { id: "transactions.form.editTitle", defaultMessage: "Edit transaction" }
-      : { id: "transactions.form.newTitle", defaultMessage: "New transaction" },
-  );
+  // Separate literal calls, not one call with a chosen descriptor, so the extractor sees both ids.
+  const title = isEditing
+    ? intl.formatMessage({ id: "transactions.form.editTitle", defaultMessage: "Edit transaction" })
+    : intl.formatMessage({ id: "transactions.form.newTitle", defaultMessage: "New transaction" });
 
   return (
     <SideSheet title={title} onClose={onClose}>
@@ -490,7 +500,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
                   ? intl.formatMessage({ id: "transactions.form.source", defaultMessage: "From account" })
                   : intl.formatMessage({ id: "transactions.form.destination", defaultMessage: "To account" })}
               </label>
-              <select id="tx-other-account" value={otherAccountId} disabled={isEditing} onChange={(event) => setOtherAccountId(event.target.value)}>
+              <select id="tx-other-account" value={otherAccountId} disabled={isEditing} onChange={(event) => changeOtherAccount(event.target.value)}>
                 <option value="">{intl.formatMessage({ id: "transactions.form.chooseAccount", defaultMessage: "Choose an account" })}</option>
                 {otherAccounts.map((account) => (
                   <option key={account.id} value={account.id}>
@@ -512,7 +522,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         {(kind === "transfer" ? transferRule !== "none" : !isTransferLeg) && !split && (
           <div className="field">
             <label htmlFor="tx-category">{intl.formatMessage({ id: "transactions.form.category", defaultMessage: "Category" })}</label>
-            <select id="tx-category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+            <select
+              id="tx-category"
+              value={categoryId}
+              {...(kind === "transfer" && hint !== null ? { "aria-describedby": "tx-category-hint" } : {})}
+              onChange={(event) => setCategoryId(event.target.value)}>
               {kind === "transfer" && transferRule === "optional" ? (
                 <option value="">
                   {budgetMonth
@@ -536,7 +550,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           </div>
         )}
 
-        {kind === "transfer" && hint !== null && <p className="hint">{hint}</p>}
+        {kind === "transfer" && hint !== null && (
+          <p className="hint" id="tx-category-hint">
+            {hint}
+          </p>
+        )}
 
         {kind === "out" && !isTransferLeg && (
           <>
@@ -617,11 +635,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             {intl.formatMessage({ id: "common.action.cancel", defaultMessage: "Cancel" })}
           </button>
           <button type="submit" className="btn primary" disabled={submitting}>
-            {intl.formatMessage(
-              isEditing
-                ? { id: "transactions.form.save", defaultMessage: "Save" }
-                : { id: "transactions.form.add", defaultMessage: "Add" },
-            )}
+            {isEditing
+              ? intl.formatMessage({ id: "transactions.form.save", defaultMessage: "Save" })
+              : intl.formatMessage({ id: "transactions.form.add", defaultMessage: "Add" })}
           </button>
           {isEditing && (
             <button type="button" className="plain danger" disabled={submitting} onClick={() => void handleDelete()}>

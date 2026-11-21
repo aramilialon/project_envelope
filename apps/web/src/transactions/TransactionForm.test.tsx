@@ -1,5 +1,7 @@
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import it_ from "@envelope/i18n/locales/it.json";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { IntlProvider } from "react-intl";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Account } from "../accounts/api.ts";
@@ -689,5 +691,95 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
       transaction: leg({ accountId: "acc-broker", transferAccountId: "acc-checking", splits: [{ id: "s-out", categoryId: null, amountCents: -500_000, memo: null }] }),
     });
     expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+  });
+
+  it("links the hint to the category it describes", async () => {
+    mockBudgetMonth();
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Category")).toHaveAccessibleDescription(
+        "The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.",
+      ),
+    );
+  });
+
+  it("drops a split left on when the kind changes, so a transfer still shows its category", () => {
+    renderForm({ accounts: [CHECKING, BROKER] });
+    fireEvent.click(screen.getByRole("button", { name: "Split across categories" }));
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-broker" } });
+    expect(screen.getByLabelText("Category")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Outflow" }));
+    expect(screen.getByLabelText("Category")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split across categories" })).toBeInTheDocument();
+  });
+
+  it("clears a stale message when the direction or the account changes", async () => {
+    renderForm({ accounts: [CHECKING, SAVINGS, BROKER] });
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "50.00" } });
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-broker" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+
+    fireEvent.click(screen.getByRole("radio", { name: "From another account" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "To another account" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Choose a category.");
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-savings" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("TransactionForm in Italian (#599)", () => {
+  function renderInItalian(transaction?: Transaction) {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    return render(
+      <IntlProvider locale="it" defaultLocale="en" messages={it_}>
+        <TransactionForm
+          workspaceId="ws-1"
+          accountId="acc-checking"
+          accounts={[CHECKING, SAVINGS]}
+          categories={[GROCERIES]}
+          currency="EUR"
+          today="2026-09-01"
+          {...(transaction ? { transaction } : {})}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </IntlProvider>,
+    );
+  }
+
+  it("translates the title and the main button of a new and an edited transaction", () => {
+    const { unmount } = renderInItalian();
+    expect(screen.getByRole("heading", { name: "Nuova transazione" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aggiungi" })).toBeInTheDocument();
+    unmount();
+
+    renderInItalian({
+      id: "tx-1",
+      workspaceId: "ws-1",
+      accountId: "acc-checking",
+      occurredAt: "2026-09-12T00:00:00.000Z",
+      budgetDate: "2026-09-12",
+      payee: null,
+      memo: null,
+      status: "pending",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      createdAt: "2026-09-12T00:00:00.000Z",
+      splits: [{ id: "s-1", categoryId: "cat-groceries", amountCents: -1250, memo: null }],
+    });
+    expect(screen.getByRole("heading", { name: "Modifica transazione" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Salva" })).toBeInTheDocument();
   });
 });
