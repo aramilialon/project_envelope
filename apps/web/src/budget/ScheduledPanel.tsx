@@ -257,6 +257,8 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
             onSaved={() => {
               setShowNew(false);
               scheduled.refetch();
+              // It may have set the category's target too ("Use it as this category's target").
+              nextMonthTargets.refetch();
               onChanged();
             }}
           />
