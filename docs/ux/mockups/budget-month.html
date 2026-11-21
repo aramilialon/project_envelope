@@ -1014,7 +1014,7 @@ button{cursor:pointer}
     // #699: what was paid beyond what was set aside comes first, then where the uncovered debt
     // comes from; after it, the starting-balance sentence drops "takes nothing from unassigned
     // money", which the first sentence would seem to contradict.
-    var beyond = x.cash > 0 ? 'La ' + card + ' è stata pagata ' + f(x.cash) + ' in più dei soldi messi da parte per lei. Coprili qui questo mese, altrimenti vengono tolti da «da assegnare» di ottobre.' : '';
+    var beyond = x.cash > 0 ? 'La ' + card + ' è stata pagata ' + f(x.cash) + ' in più di quanto messo da parte per lei. Copri questa cifra qui questo mese, altrimenti viene tolta da «Da assegnare» di ottobre.' : '';
     var explain;
     if (c.start && x.uncovered > 0 && beyond) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
     else if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
