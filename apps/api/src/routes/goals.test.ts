@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { decodeJwt } from "jose";
+
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
@@ -115,5 +117,128 @@ describe("goals routes", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     assert.equal(response.statusCode, 400);
+  });
+
+  describe("GET /workspaces/:workspaceId/goals", () => {
+    const otherWorkspaceIds: string[] = [];
+    const auth = () => ({ authorization: `Bearer ${token}` });
+    const list = (month: string | undefined, ws = workspaceId) =>
+      app.fastify.inject({
+        method: "GET",
+        url: `/workspaces/${ws}/goals${month === undefined ? "" : `?month=${month}`}`,
+        headers: auth(),
+      });
+
+    async function addCategory(ws: string, name: string): Promise<string> {
+      const group = await superuserPool.query<{ id: string }>(
+        "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, $2, 2) RETURNING id",
+        [ws, `${name} group`],
+      );
+      const category = await superuserPool.query<{ id: string }>(
+        "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, $3, 1) RETURNING id",
+        [ws, group.rows[0]!.id, name],
+      );
+      return category.rows[0]!.id;
+    }
+
+    async function addWorkspace(role?: "read_only"): Promise<string> {
+      const id = randomUUID();
+      otherWorkspaceIds.push(id);
+      await superuserPool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Other', 'EUR', 'Europe/Rome')", [id]);
+      if (role) {
+        const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
+        await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)", [rows[0]!.id, id, role]);
+      }
+      return id;
+    }
+
+    after(async () => {
+      for (const id of otherWorkspaceIds) {
+        await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [id]);
+      }
+    });
+
+    it("lists every goal's progress for a month, each the same as the per-category GET", async () => {
+      const monthly = await addCategory(workspaceId, "Groceries");
+      const byDate = await addCategory(workspaceId, "Holidays 2027");
+      const repeating = await addCategory(workspaceId, "Insurance");
+      const balance = await addCategory(workspaceId, "Buffer");
+      const withoutGoal = await addCategory(workspaceId, "No goal");
+      const goals: [string, Record<string, unknown>][] = [
+        [monthly, { kind: "monthly", amountCents: 40_000 }],
+        [byDate, { kind: "by_date", amountCents: 360_000, dueMonth: "2027-06" }],
+        [repeating, { kind: "repeating", amountCents: 60_000, dueMonth: "2026-12", every: 6 }],
+        [balance, { kind: "balance", amountCents: 50_000 }],
+      ];
+      for (const [id, payload] of goals) {
+        const set = await app.fastify.inject({ method: "PUT", url: `/workspaces/${workspaceId}/categories/${id}/goal`, headers: auth(), payload });
+        assert.equal(set.statusCode, 200);
+      }
+      const assigned = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/assignments`,
+        headers: auth(),
+        payload: { entries: [{ month: "2026-09", sourceCategoryId: null, destinationCategoryId: monthly, amountCents: 10_000 }] },
+      });
+      assert.ok(assigned.statusCode < 300, `assignment failed: ${assigned.statusCode}`);
+
+      const response = await list("2026-09");
+      assert.equal(response.statusCode, 200);
+      const listed = (response.json() as { goals: { goal: { categoryId: string } }[] }).goals;
+      const byCategory = new Map(listed.map((p) => [p.goal.categoryId, p]));
+      assert.equal(byCategory.has(withoutGoal), false);
+      assert.deepEqual([...byCategory.keys()].sort(), goals.map(([id]) => id).sort());
+      for (const [id] of goals) {
+        const single = await app.fastify.inject({
+          method: "GET",
+          url: `/workspaces/${workspaceId}/categories/${id}/goal?month=2026-09`,
+          headers: auth(),
+        });
+        assert.equal(single.statusCode, 200);
+        assert.deepEqual(byCategory.get(id), single.json());
+      }
+    });
+
+    it("rejects a request with no month", async () => {
+      assert.equal((await list(undefined)).statusCode, 400);
+    });
+
+    it("rejects a malformed month", async () => {
+      const response = await list("2026-13");
+      assert.equal(response.statusCode, 400);
+    });
+
+    it("lets a read_only member read the goals", async () => {
+      const readOnlyWorkspace = await addWorkspace("read_only");
+      const category = await addCategory(readOnlyWorkspace, "Shared");
+      await superuserPool.query("INSERT INTO goals (workspace_id, category_id, kind, amount_cents) VALUES ($1, $2, 'monthly', 5000)", [
+        readOnlyWorkspace,
+        category,
+      ]);
+      const response = await list("2026-09", readOnlyWorkspace);
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(
+        response.json().goals.map((p: { goal: { categoryId: string }; asks: number }) => [p.goal.categoryId, p.asks]),
+        [[category, 5000]],
+      );
+    });
+
+    it("never shows another workspace's goals", async () => {
+      const foreign = await addWorkspace();
+      const category = await addCategory(foreign, "Theirs");
+      await superuserPool.query("INSERT INTO goals (workspace_id, category_id, kind, amount_cents) VALUES ($1, $2, 'monthly', 5000)", [
+        foreign,
+        category,
+      ]);
+
+      const mine = await list("2026-09");
+      assert.equal(mine.statusCode, 200);
+      assert.equal(
+        mine.json().goals.some((p: { goal: { categoryId: string } }) => p.goal.categoryId === category),
+        false,
+      );
+      const theirs = await list("2026-09", foreign);
+      assert.ok(theirs.statusCode === 403 || theirs.statusCode === 404, `expected 403 or 404, got ${theirs.statusCode}`);
+    });
   });
 });
