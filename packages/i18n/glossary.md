@@ -40,7 +40,7 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 
 | Language | Quotation marks | Apostrophe | Other |
 | --- | --- | --- | --- |
-| Italian | « » with no inner spaces (*«Da assegnare»*) | ’ (U+2019) | `it.json` mixes ’ and the straight ' today; new strings use ’. |
+| Italian | « » with no inner spaces (*«Da assegnare»*) | ’ (U+2019) | Never the straight ' in a string. |
 | German | „ “ (*„Nicht zugewiesen“*) | ’ | Nouns capitalized; a label that is an adjective or participle starts with a capital (*Verfügbar*). |
 | Spanish | « » with no inner spaces | ’ | Opening ¿ and ¡ where a question or exclamation occurs (the English has almost none). |
 | French | « » with a no-break space inside (U+00A0 or U+202F) | ’ | A no-break space before `:` (U+00A0) and a narrow no-break space (U+202F) before `;`, `!`, `?`, never an ordinary space: *Dette à couvrir : {category}*. |
@@ -74,7 +74,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Group (of categories) | Gruppo | Gruppe | Grupo | Groupe | |
 | Assign (money to a category) | Assegnare | Zuweisen | Asignar | Attribuer | Verb for budgeting only; not for the portfolio's target allocation |
 | Assigned | Assegnato | Zugewiesen | Asignado | Attribué | "Assigned this month" |
-| Unassigned (money not assigned yet) | Da assegnare | Nicht zugewiesen | Por asignar | À attribuer | As a name in running text, quoted: *«Da assegnare»*. The Italian variants *quelli non assegnati* (`budget.payment.assignFromUnassigned`, `moveMoney.moveExplain`) are inconsistent with it |
+| Unassigned (money not assigned yet) | Da assegnare | Nicht zugewiesen | Por asignar | À attribuer | As a name in running text, quoted and capitalized: *«Da assegnare»*, never *quelli non assegnati* |
 | Available | Disponibile | Verfügbar | Disponible | Disponible | Also as a noun: *il disponibile*, *das Verfügbare*, *lo disponible*, *le disponible* |
 | Activity | Movimenti (m. pl.) | Umsätze (pl.) | Movimientos | Mouvements | "No activity": *Nessun movimento*, *Keine Umsätze*, *Sin movimientos*, *Aucun mouvement* |
 | Carried over | Riportato | Übertragen | Remanente | Reporté | *Riportato da agosto*, *Übertragen aus August*, *Remanente de agosto*, *Reporté d'août* |
@@ -82,7 +82,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Overspent | Sforato | Überzogen | Excedido | Dépassé | Of a category: *categoria sforata*, *Kategorie überzogen*, *categoría excedida*, *catégorie dépassée* |
 | Overspending | Sforamento | Überziehung | Exceso | Dépassement | |
 | Overspent in cash | Sforato in contanti | Bar überzogen | Excedido en efectivo | Dépassé en espèces | Cash overspending |
-| Overspent with a card | Sforato con una carta | Mit Karte überzogen | Excedido con tarjeta | Dépassé par carte | Credit overspending. The mockup says *con la carta*, `it.json` *con una carta* |
+| Overspent with a card | Sforato con la carta | Mit Karte überzogen | Excedido con tarjeta | Dépassé par carte | Credit overspending |
 | Cover (overspending, a debt, a reservation) | Coprire | Ausgleichen (overspending), decken (debt, reservation) | Cubrir | Couvrir | *Copri {category}*, *{category} ausgleichen*, *Cubre {category}*, *Couvre {category}* |
 | Debt (card debt) | Debito | Schuld (Kartenschuld) | Deuda | Dette | "Debt to cover" |
 | Money | Soldi | Geld | Dinero | Argent | |
@@ -112,14 +112,14 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | English | Italian | German | Spanish | French | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Account | Conto | Konto | Cuenta | Compte | |
-| On budget | In budget | Im Budget | En el presupuesto | Dans le budget | *Conto in budget*. `quickEntry.nothingYet` says *conto a budget*, inconsistent |
+| On budget | In budget | Im Budget | En el presupuesto | Dans le budget | *Conto in budget*, never *a budget* |
 | Off budget | Fuori budget | Nicht im Budget | Fuera del presupuesto | Hors budget | |
 | Checking | Conto corrente | Girokonto | Cuenta corriente | Compte courant | Account type |
 | Savings | Risparmio | Sparkonto | Ahorro | Épargne | Account type |
-| Cash | Contanti | Bargeld | Efectivo | Espèces | Account type, and "in cash" |
+| Cash | Contanti | Bargeld | Efectivo | Espèces | Account type, and "in cash". Never *portafoglio* in Italian: that is only the securities Portfolio |
 | Credit card | Carta di credito | Kreditkarte | Tarjeta de crédito | Carte de crédit | Short form *carta*, *Karte*, *tarjeta*, *carte* |
 | Brokerage (account) | Conto titoli | Depot | Cuenta de valores | Compte-titres | Always off budget |
-| Wallet (the cash account's hint) | Portafoglio | Geldbörse | Monedero | Porte-monnaie | Never the word used for Portfolio: Spanish *cartera* and French *portefeuille* would clash. Italian has the clash today (*Il tuo portafoglio*, `accounts.type.cash.hint`) |
+| Wallet (the cash account's hint) | Contanti (*I contanti che hai con te*) | Geldbörse | Monedero | Porte-monnaie | Never the word used for Portfolio: Italian *portafoglio*, Spanish *cartera* and French *portefeuille* would clash |
 | Balance | Saldo | Saldo | Saldo | Solde | |
 | Starting balance | Saldo iniziale | Anfangssaldo | Saldo inicial | Solde initial | |
 | Net worth | Patrimonio netto | Nettovermögen | Patrimonio neto | Patrimoine net | |
@@ -131,14 +131,14 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | --- | --- | --- | --- | --- | --- |
 | Transaction | Transazione | Buchung | Transacción | Transaction | |
 | Payee | Beneficiario | Empfänger | Beneficiario | Bénéficiaire | Also the payer of an inflow |
-| Memo | Nota | Notiz | Nota | Note | `reconcile.adjustment.memo` says *Memo*, inconsistent |
+| Memo | Nota | Notiz | Nota | Note | Never *Memo* in Italian |
 | Inflow | Entrata | Eingang | Entrada | Entrée | Column and kind of transaction |
 | Outflow | Uscita | Ausgang | Salida | Sortie | German *Ausgang*, so that *Ausgabe* stays Expense |
 | Income | Entrata | Einnahme | Ingreso | Revenu | `import.check.income` is *Da assegnare* in Italian, since income lands there |
 | Expense | Spesa | Ausgabe | Gasto | Dépense | "New expense" |
 | Transfer (between accounts) | Trasferimento | Umbuchung | Transferencia | Virement | *Trasferimento da / verso {account}*, *Umbuchung von / auf {account}*, *Transferencia desde / hacia {account}*, *Virement depuis / vers {account}* |
-| Split (a transaction across categories) | Frazionamento; *dividere* as the verb | Aufteilung; *aufteilen* | División; *dividir* | Répartition; *répartir* | "Split across categories". `it.json` says *Frazionamento tra più categorie*, the account register mockup *Dividi su più categorie*, the domain glossary *Suddivisione*. Not the stock split |
-| Cleared | Verificata | Bestätigt | Confirmada | Pointée | Status of a transaction the bank shows. `transactions.form.cleared` *Verificata in banca*, mockup *Verificata con l'estratto conto* |
+| Split (a transaction across categories) | Suddivisione; *suddividere* as the verb | Aufteilung; *aufteilen* | División; *dividir* | Répartition; *répartir* | Action "Split across categories": *Suddividi su più categorie*; heading: *Suddivisione su più categorie*. Never *Frazionamento*, which is the stock split (maintainer decision, 2026-11-21) |
+| Cleared | Verificata | Bestätigt | Confirmada | Pointée | Status of a transaction the bank shows. "Cleared against the bank": *Verificata con l'estratto conto* |
 | Pending | In attesa | Ausstehend | Pendiente | En attente | Not cleared yet |
 | Reconcile | Riconciliare | Abgleichen | Conciliar | Rapprocher | |
 | Reconciliation | Riconciliazione | Abgleich | Conciliación | Rapprochement | |
@@ -169,7 +169,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Dividend | Dividendo | Dividende | Dividendo | Dividende | |
 | Coupon | Cedola | Kupon | Cupón | Coupon | |
 | Fee | Commissione | Gebühr | Comisión | Frais (m. pl.) | |
-| Stock split | Split azionario | Aktiensplit | Split de acciones | Division d'actions | The portfolio mockup says *Frazionamento*, which `it.json` uses for a transaction split: one of the two must change |
+| Stock split | Frazionamento | Aktiensplit | Split de acciones | Division d'actions | Not the split of a transaction across categories (*Suddivisione*) (maintainer decision, 2026-11-21) |
 | Transfer of securities | Trasferimento titoli | Depotübertrag | Traspaso de valores | Transfert de titres | |
 | Quantity | Quantità | Stückzahl | Cantidad | Quantité | The portfolio mockup's column says *Quote* |
 | Price | Prezzo | Kurs | Precio | Cours | |
