@@ -52,19 +52,45 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
   const [error, setError] = useState<string | null>(null);
   const cancelingRef = useRef(false);
   const committingRef = useRef(false);
+  const enterRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // The text the field last showed as an amount (not typed by the user), and what it shows now:
+  // read by the effect below without making every keystroke one of its dependencies.
+  const shownRef = useRef(value);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+
+  function show(amount: number) {
+    const text = plainAmount(amount, intl.locale, currency);
+    shownRef.current = text;
+    setValue(text);
+  }
 
   // A new assigned amount from the budget month (a refetch, someone else's change) replaces what
-  // the field shows: it never keeps a value that no longer matches (#698).
+  // the field shows: it never keeps a value that no longer matches (#698). Except while the user
+  // is typing their next entry: that text is theirs, and is measured against the new amount once
+  // they press Enter.
   useEffect(() => {
     setCurrent(assigned);
-    setValue(plainAmount(assigned, intl.locale, currency));
+    const typing = document.activeElement === inputRef.current && valueRef.current !== shownRef.current;
+    if (typing) {
+      return;
+    }
+    show(assigned);
+    setError(null);
+    // `show` only reads the locale and currency listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assigned, intl.locale, currency]);
 
   function revert() {
-    setValue(plainAmount(current, intl.locale, currency));
+    show(current);
   }
 
-  async function commit(raw: string) {
+  function capError() {
+    setError(amountTooLargeMessage(intl, currency));
+  }
+
+  async function commit(raw: string, viaEnter: boolean) {
     if (!raw.trim()) {
       revert();
       return;
@@ -72,7 +98,7 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
     const entry = parseAssignedEntry(raw, current, { locale: intl.locale, currency });
     if (!entry.ok) {
       if (entry.code === "amount_too_large") {
-        setError(amountTooLargeMessage(intl, currency));
+        capError();
       }
       // Otherwise not a parseable amount: left as the user typed it, rather than silently
       // discarding what they are still in the middle of correcting.
@@ -96,11 +122,15 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
       // The new assigned amount, never the text typed: "-15" left in the field would take another
       // 15 on the next Enter.
       setCurrent(entry.newAssigned);
-      setValue(plainAmount(entry.newAssigned, intl.locale, currency));
+      show(entry.newAssigned);
       onChanged();
     } catch (caught) {
       if (isAmountTooLarge(caught)) {
-        setError(amountTooLargeMessage(intl, currency));
+        capError();
+        // Back to the field the refused Enter came from, unless the user has since moved on.
+        if (viaEnter && (document.activeElement === null || document.activeElement === document.body)) {
+          inputRef.current?.focus();
+        }
         return;
       }
       throw caught;
@@ -142,19 +172,28 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
           <label htmlFor={`asg-${categoryId}`}>{intl.formatMessage({ id: "budget.row.assigned", defaultMessage: "Assigned this month" })}</label>
           <span className="dots" />
           <input
+            ref={inputRef}
             id={`asg-${categoryId}`}
             type="text"
             inputMode="decimal"
             className="asg-in n"
             value={value}
             readOnly={readOnly}
-            aria-describedby={`asg-h-${categoryId}`}
+            aria-describedby={error ? `asg-h-${categoryId} asg-e-${categoryId}` : `asg-h-${categoryId}`}
+            aria-invalid={error !== null}
             onChange={(event) => {
               setValue(event.target.value);
               setError(null);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
+                // An amount above the cap is refused here, keeping the focus in the field to correct it.
+                const entry = parseAssignedEntry(event.currentTarget.value, current, { locale: intl.locale, currency });
+                if (!entry.ok && entry.code === "amount_too_large") {
+                  capError();
+                  return;
+                }
+                enterRef.current = true;
                 event.currentTarget.blur();
               } else if (event.key === "Escape") {
                 cancelingRef.current = true;
@@ -168,7 +207,9 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
                 revert();
                 return;
               }
-              void commit(event.target.value);
+              const viaEnter = enterRef.current;
+              enterRef.current = false;
+              void commit(event.target.value, viaEnter);
             }}
           />
         </div>
@@ -176,7 +217,7 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
           {intl.formatMessage({ id: "budget.row.assignedHint", defaultMessage: "Type an amount, or +20 / -15, then Enter." })}
         </small>
         {error && (
-          <p className="hint bad" role="alert">
+          <p className="hint bad" role="alert" id={`asg-e-${categoryId}`}>
             {error}
           </p>
         )}

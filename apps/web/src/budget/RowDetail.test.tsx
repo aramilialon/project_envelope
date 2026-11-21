@@ -135,7 +135,7 @@ describe("RowDetail (#327)", () => {
   });
 
   describe("never keeps a stale value (#698)", () => {
-    function renderControlled(assigned: number, createImpl?: () => Promise<void>) {
+    function renderControlled(assigned: number, createImpl?: () => Promise<void>, currency = "EUR") {
       useAuth.mockReturnValue({ user: { access_token: "t" } });
       const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockImplementation(createImpl ?? (() => Promise.resolve()));
       const onChanged = vi.fn();
@@ -148,7 +148,7 @@ describe("RowDetail (#327)", () => {
             categoryId="cat-1"
             categoryName="Groceries"
             assigned={value}
-            currency="EUR"
+            currency={currency}
             onClose={vi.fn()}
             onChanged={onChanged}
             onMoveMoney={vi.fn()}
@@ -243,6 +243,90 @@ describe("RowDetail (#327)", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
       expect(createAssignments).not.toHaveBeenCalled();
+    });
+
+    it("keeps an entry being typed when a refetch brings a new assigned amount, and measures it against the new one", async () => {
+      const { createAssignments, rerender } = renderControlled(60_000);
+      const input = focusedInput();
+
+      fireEvent.change(input, { target: { value: "800" } });
+      rerender(75_000);
+      expect(input).toHaveValue("800");
+
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() =>
+        expect(createAssignments).toHaveBeenCalledWith("t", "ws-1", [
+          { month: "2026-10", sourceCategoryId: null, destinationCategoryId: "cat-1", amountCents: 5_000 },
+        ]),
+      );
+    });
+
+    it("follows a refetch while focused when nothing has been typed", () => {
+      const { rerender } = renderControlled(60_000);
+      const input = focusedInput();
+      rerender(75_000);
+      expect(input).toHaveValue("750.00");
+    });
+
+    it("marks the field invalid, names the cap message and keeps the focus when Enter is refused for the cap", async () => {
+      renderControlled(60_000);
+      const input = focusedInput();
+      expect(input).toHaveAttribute("aria-invalid", "false");
+
+      fireEvent.change(input, { target: { value: "10000000000.01" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      const alert = await screen.findByRole("alert");
+      expect(alert.id).not.toBe("");
+      expect(input).toHaveAttribute("aria-invalid", "true");
+      expect(input.getAttribute("aria-describedby")?.split(" ")).toEqual(["asg-h-cat-1", alert.id]);
+      expect(input).toHaveFocus();
+    });
+
+    it("returns the focus to the field when the API refuses an Enter for the cap", async () => {
+      renderControlled(60_000, () => Promise.reject(new ApiError("failed", 400, "amount_too_large", { max: MAX_AMOUNT_CENTS })));
+      const input = focusedInput();
+
+      fireEvent.change(input, { target: { value: "+20" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      await waitFor(() => expect(input).toHaveFocus());
+      expect(input).toHaveAttribute("aria-invalid", "true");
+    });
+
+    it("clears the cap message when a new assigned amount replaces the field", async () => {
+      const { rerender } = renderControlled(60_000, () => Promise.reject(new ApiError("failed", 400, "amount_too_large", { max: MAX_AMOUNT_CENTS })));
+      const input = focusedInput();
+
+      fireEvent.change(input, { target: { value: "+20" } });
+      input.blur();
+      expect(await screen.findByRole("alert")).toBeInTheDocument();
+      expect(input).not.toHaveFocus();
+
+      rerender(75_000);
+      expect(input).toHaveValue("750.00");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(input).toHaveAttribute("aria-invalid", "false");
+    });
+
+    it("shows and re-reads whole units for a currency without minor units (JPY)", async () => {
+      const { createAssignments } = renderControlled(600, undefined, "JPY");
+      const input = focusedInput();
+      expect(input).toHaveValue("600");
+
+      fireEvent.change(input, { target: { value: "650" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(input).toHaveValue("650"));
+      expect(createAssignments).toHaveBeenCalledWith("t", "ws-1", [
+        { month: "2026-10", sourceCategoryId: null, destinationCategoryId: "cat-1", amountCents: 50 },
+      ]);
+
+      // The amount shown after the commit reads back as the same amount: Enter sends nothing more.
+      input.focus();
+      fireEvent.keyDown(input, { key: "Enter" });
+      await waitFor(() => expect(input).toHaveValue("650"));
+      expect(createAssignments).toHaveBeenCalledTimes(1);
     });
 
     it("shows the cap message when the API refuses the amount as too large", async () => {
