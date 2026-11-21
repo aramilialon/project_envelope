@@ -8,7 +8,7 @@ import SideSheet from "../layout/SideSheet.tsx";
 import { runQuickAssign, type GoalKind } from "./api.ts";
 import TargetEditor from "./TargetEditor.tsx";
 import { targetKindLabel } from "./targetKindLabels.ts";
-import { useTargets } from "./useTargets.ts";
+import type { TargetsState } from "./useTargets.ts";
 import "./TargetsPanel.css";
 
 interface Props {
@@ -16,8 +16,10 @@ interface Props {
   readonly month: string;
   readonly categories: readonly BudgetMonthCategory[];
   readonly currency: string;
+  /** This month's targets, fetched once by the budget screen (`useTargets`, #682) rather than again here. */
+  readonly targets: TargetsState;
   onClose(): void;
-  /** Called after a target is added, changed, removed, or "Fund all targets" runs — the budget month needs refetching. */
+  /** Called after a target is added, changed, removed, or "Fund all targets" runs — the budget month and `targets` need refetching. */
   onChanged(): void;
 }
 
@@ -28,11 +30,9 @@ interface Props {
  * closing the editor (Save, Cancel or Remove) comes back here rather than all the way out,
  * matching the mockup's own nested navigation.
  */
-export default function TargetsPanel({ workspaceId, month, categories, currency, onClose, onChanged }: Props) {
+export default function TargetsPanel({ workspaceId, month, categories, currency, targets, onClose, onChanged }: Props) {
   const intl = useIntl();
   const auth = useAuth();
-  const categoryIds = categories.map((c) => c.categoryId);
-  const targets = useTargets(workspaceId, month, categoryIds);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [fundingAll, setFundingAll] = useState(false);
 
@@ -56,7 +56,6 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
         onClose={() => setEditingId(null)}
         onSaved={() => {
           setEditingId(null);
-          targets.refetch();
           onChanged();
         }}
       />
@@ -71,7 +70,6 @@ export default function TargetsPanel({ workspaceId, month, categories, currency,
     setFundingAll(true);
     try {
       await runQuickAssign(accessToken, workspaceId, month, { kind: "all" }, "fund_targets");
-      targets.refetch();
       onChanged();
     } finally {
       setFundingAll(false);

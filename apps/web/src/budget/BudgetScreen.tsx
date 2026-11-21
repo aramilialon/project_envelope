@@ -178,7 +178,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const navigate = useNavigate();
   const state = useBudgetMonth(workspaceId, month);
   const eventsState = useBudgetMonthEvents(workspaceId, month);
-  const targetsState = useTargets(workspaceId, month, state.status === "ok" ? state.budgetMonth.categories.map((c) => c.categoryId) : []);
+  const targetsState = useTargets(workspaceId, month);
   const scheduledState = useScheduledTransactions(workspaceId);
   const daysOfBufferState = useDaysOfBuffer(workspaceId);
 
@@ -209,9 +209,15 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     }
   }, [state]);
 
-  /** Every write action goes through this instead of `state.refetch()` directly, so a problem that appears because of it gets the instant toast above. */
+  /**
+   * Every write action goes through this instead of `state.refetch()` directly, so a problem that
+   * appears because of it gets the instant toast above. The targets are refetched too: an
+   * assignment, a transaction or a changed target moves what each one still misses, and the
+   * "To do" list's "targets needed" entries come from them (#682).
+   */
   function refetchAndCheckProblems() {
     state.refetch();
+    targetsState.refetch();
   }
 
   // The quick-entry overlay (#367) is not a route: this screen never unmounts to pick up a
@@ -514,10 +520,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                 // it, so those are simply left out (not the whole list) until it resolves, or if it
                 // fails outright.
                 overdueScheduledItems: eventsState.status === "ok" ? toOverdueScheduledItems(eventsState.events, today) : [],
+                // The targets endpoint lists every target of the workspace, payment categories'
+                // included; only the month's own categories belong in this list, as before #682.
                 targetsNeeded:
                   targetsState.status === "ok"
                     ? [...targetsState.progressByCategory.entries()]
-                        .filter(([, progress]) => progress.missing > 0)
+                        .filter(([categoryId, progress]) => progress.missing > 0 && state.budgetMonth.categories.some((c) => c.categoryId === categoryId))
                         .map(([categoryId, progress]) => ({ categoryId, missingCents: progress.missing }))
                     : [],
               })}
@@ -752,6 +760,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
           month={month}
           categories={state.budgetMonth.categories}
           currency={currency ?? "EUR"}
+          targets={targetsState}
           onClose={() => setPanel(null)}
           onChanged={() => refetchAndCheckProblems()}
         />
@@ -775,6 +784,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
           groups={groups}
           currency={currency ?? "EUR"}
           timeZone={timeZone}
+          currentTargets={targetsState}
           onClose={() => setPanel(null)}
           onChanged={() => refetchAndCheckProblems()}
         />

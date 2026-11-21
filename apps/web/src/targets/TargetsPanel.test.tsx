@@ -6,6 +6,7 @@ import { renderWithIntl } from "../test-utils.tsx";
 import * as targetsApi from "./api.ts";
 import type { GoalProgress } from "./api.ts";
 import TargetsPanel from "./TargetsPanel.tsx";
+import type { TargetsState } from "./useTargets.ts";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
@@ -49,26 +50,41 @@ function goalProgress(overrides: Partial<GoalProgress["goal"]> = {}): GoalProgre
   };
 }
 
-function renderPanel(categories: BudgetMonthCategory[]) {
+/** The panel no longer fetches its own targets (#682): the budget screen hands them down. */
+function loaded(...goals: GoalProgress[]): TargetsState {
+  return { status: "ok", progressByCategory: new Map(goals.map((g) => [g.goal.categoryId, g] as const)), refetch: vi.fn() };
+}
+
+function renderPanel(categories: BudgetMonthCategory[], targets: TargetsState = loaded()) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   const onClose = vi.fn();
   const onChanged = vi.fn();
   const rendered = renderWithIntl(
-    <TargetsPanel workspaceId="ws-1" month="2026-09" categories={categories} currency="EUR" onClose={onClose} onChanged={onChanged} />,
+    <TargetsPanel
+      workspaceId="ws-1"
+      month="2026-09"
+      categories={categories}
+      currency="EUR"
+      targets={targets}
+      onClose={onClose}
+      onChanged={onChanged}
+    />,
   );
   return { ...rendered, onClose, onChanged };
 }
 
 describe("TargetsPanel (#55)", () => {
   it("shows a loading state", () => {
-    useAuth.mockReturnValue({ user: { access_token: "t" } });
-    vi.spyOn(targetsApi, "getGoal").mockReturnValue(new Promise(() => {}));
-    renderWithIntl(<TargetsPanel workspaceId="ws-1" month="2026-09" categories={[category({})]} currency="EUR" onClose={vi.fn()} onChanged={vi.fn()} />);
+    renderPanel([category({})], { status: "loading", refetch: vi.fn() });
     expect(screen.getByRole("status")).toHaveTextContent("Loading your targets…");
   });
 
+  it("shows an error state", () => {
+    renderPanel([category({})], { status: "error", refetch: vi.fn() });
+    expect(screen.getByRole("alert")).toHaveTextContent("We could not load your targets.");
+  });
+
   it("lists a category without a target under 'No target yet', with '+ Add'", async () => {
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(undefined);
     renderPanel([category({})]);
 
     expect(await screen.findByText("No target yet")).toBeInTheDocument();
@@ -77,8 +93,7 @@ describe("TargetsPanel (#55)", () => {
   });
 
   it("groups a category with a target by its kind, showing what it still asks", async () => {
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(goalProgress());
-    renderPanel([category({})]);
+    renderPanel([category({})], loaded(goalProgress()));
 
     expect(await screen.findByText("Monthly amount")).toBeInTheDocument();
     expect(screen.getByText("Groceries")).toBeInTheDocument();
@@ -86,8 +101,7 @@ describe("TargetsPanel (#55)", () => {
   });
 
   it("opens the target editor for a category, and back again on close", async () => {
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(goalProgress());
-    renderPanel([category({})]);
+    renderPanel([category({})], loaded(goalProgress()));
     await screen.findByText("Groceries");
 
     fireEvent.click(screen.getByRole("button", { name: /Groceries/ }));
@@ -96,9 +110,8 @@ describe("TargetsPanel (#55)", () => {
   });
 
   it("funds all targets and reports the change", async () => {
-    vi.spyOn(targetsApi, "getGoal").mockResolvedValue(goalProgress());
     const runQuickAssign = vi.spyOn(targetsApi, "runQuickAssign").mockResolvedValue(undefined);
-    const { onChanged } = renderPanel([category({})]);
+    const { onChanged } = renderPanel([category({})], loaded(goalProgress()));
     await screen.findByText("Groceries");
 
     fireEvent.click(screen.getByRole("button", { name: "Fund all targets" }));

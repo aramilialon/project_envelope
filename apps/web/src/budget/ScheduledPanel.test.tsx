@@ -5,6 +5,7 @@ import * as accountsApi from "../accounts/api.ts";
 import type { Account } from "../accounts/api.ts";
 import * as targetsApi from "../targets/api.ts";
 import type { GoalProgress } from "../targets/api.ts";
+import type { TargetsState } from "../targets/useTargets.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as budgetApi from "./api.ts";
 import type { ScheduledTransaction } from "./api.ts";
@@ -71,13 +72,24 @@ function renderPanel(scheduledTransactions: readonly ScheduledTransaction[], goa
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([ACCOUNT]);
   vi.spyOn(budgetApi, "listScheduledTransactions").mockResolvedValue(scheduledTransactions);
-  vi.spyOn(targetsApi, "getGoal").mockImplementation((_t, _w, categoryId) => Promise.resolve(goalsByCategory.get(categoryId)));
+  // Next month's targets are this panel's own request; this month's come from the budget screen (#682).
+  const listGoalProgress = vi.spyOn(targetsApi, "listGoalProgress").mockResolvedValue([...goalsByCategory.values()]);
+  const currentTargets: TargetsState = { status: "ok", progressByCategory: goalsByCategory, refetch: vi.fn() };
   const onClose = vi.fn();
   const onChanged = vi.fn();
   renderWithIntl(
-    <ScheduledPanel workspaceId="ws-1" month="2026-09" groups={GROUPS} currency="EUR" timeZone="Europe/Rome" onClose={onClose} onChanged={onChanged} />,
+    <ScheduledPanel
+      workspaceId="ws-1"
+      month="2026-09"
+      groups={GROUPS}
+      currency="EUR"
+      timeZone="Europe/Rome"
+      currentTargets={currentTargets}
+      onClose={onClose}
+      onChanged={onChanged}
+    />,
   );
-  return { onClose, onChanged };
+  return { onClose, onChanged, listGoalProgress };
 }
 
 function goalProgress(overrides: Partial<GoalProgress> = {}): GoalProgress {
@@ -226,6 +238,13 @@ describe("ScheduledPanel (#330)", () => {
     await screen.findByText("Checking");
     fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "day" } });
     expect(screen.queryByLabelText("Use it as this category's target")).not.toBeInTheDocument();
+  });
+
+  it("requests only next month's targets itself, this month's coming from the budget screen (#682)", async () => {
+    const { listGoalProgress } = renderPanel([scheduledTransaction({ nextDueDate: "2026-10-05" })], new Map([["rent", goalProgress()]]));
+    expect(await screen.findByText("Within the target")).toBeInTheDocument();
+    expect(listGoalProgress).toHaveBeenCalledTimes(1);
+    expect(listGoalProgress).toHaveBeenCalledWith("t", "ws-1", "2026-10");
   });
 
   it("the '× Close' button calls onClose", async () => {
