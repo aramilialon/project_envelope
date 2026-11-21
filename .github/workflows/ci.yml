@@ -5,9 +5,10 @@
 # PostgreSQL and Keycloak for apps/api's own integration and smoke tests; "e2e"
 # brings up a disposable environment (scripts/explore-env/, #536) on a
 # PostgreSQL of its own and a Keycloak container, and runs apps/web's Playwright
-# suite against it. No job waits on
-# another, so a push is not held up by services that most of the test suite does
-# not need.
+# suite against it. The three test jobs wait only on
+# the small "changes" job, which skips them for a documentation-only pull
+# request, and not on each other, so a push is not held up by services that most
+# of the test suite does not need.
 name: CI
 
 on:
@@ -19,7 +20,43 @@ permissions:
   contents: read
 
 jobs:
+  # Decides whether the application jobs below need to run. A pull request that
+  # changes only documentation (every changed file is Markdown, anywhere in the
+  # repository, or lives under docs/: mockups, screenshots, ADRs) skips them; the
+  # decision is made from the files themselves, never from the title. Pushes to
+  # main always run everything.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename')
+          echo "$files"
+          code=$(printf '%s\n' "$files" | grep -Ev '(\.md$|^docs/)' | grep -c . || true)
+          if [ -z "$files" ] || [ "$code" -gt 0 ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Documentation-only change: application jobs skipped."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   unit:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -77,6 +114,8 @@ jobs:
           fi
 
   integration:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -170,6 +209,8 @@ jobs:
   # explore-env manages locally (EXPLORE_DATABASE_URL tells it so). Keycloak's start-dev keeps
   # its own data, so the job needs no other database.
   e2e:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 20

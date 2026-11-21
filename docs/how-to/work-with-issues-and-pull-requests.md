@@ -63,6 +63,8 @@ Every change reaches `main` through a pull request. Claude Code, like any contri
    ```
    The title must follow the commit convention too, for example `feat(api): add the migration runner`: it becomes the commit message on `main`. The template asks for `Closes #12`, the tests run and the checklist.
 5. **Review and merge (a person).** Read the changes on GitHub, wait for a green CI, then merge with **Squash and merge**: `main` gets one commit per pull request, and the issue closes automatically.
+
+   A pull request whose changed files are all Markdown (anywhere, including `.claude/agents/`) or under `docs/` (mockups, screenshots, ADRs) skips CI's `unit`, `integration` and `e2e` jobs: they show as skipped, and the pull request can be merged once the remaining checks pass. The decision comes from the files, not from the title, so a `docs:` pull request that also touches code still runs everything.
 6. **Clean up**:
    ```bash
    git switch main && git pull
