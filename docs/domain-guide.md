@@ -182,14 +182,24 @@ until exchange rates exist (#86, #652):
 - **Every balance is shown in its account's own currency.**
 - **The net worth adds up base-currency accounts only.** What accounts in other currencies hold is
   listed beside it, each in its own currency ("Not included: $3,000.00 (no exchange rates yet)").
-  Securities are not in it either until prices exist (#125): only the cash in the brokerage
-  account counts, so €10,000 sent to the broker and spent on an ETF leaves the net worth €10,000
-  lower, and a line says so whenever the workspace holds securities.
+  Balances in one currency are netted: a −$100 card and a $3,000 broker show as $2,900, and a
+  lone −$5,000 loan as −$5,000. Securities are not in the net worth either until prices exist
+  (#125): only the cash in the brokerage account counts. Sending €10,000 to a broker in euros
+  leaves the net worth unchanged (the money only moves between two accounts in the net worth);
+  spending it on an ETF lowers the net worth by what the purchase cost, fees included. A line says
+  so whenever the workspace holds securities.
 
-**Example.** Base currency EUR: checking €5,000, a card −€500, a broker in euros holding €2,000 of
-cash and some ETFs, a broker in dollars holding $3,000 of cash. Net worth: 5,000 − 500 + 2,000 =
-**€6,500**, with "Not included: $3,000.00 (no exchange rates yet)" and "Does not include securities
-(no prices yet)".
+**Example.** Base currency EUR: checking €5,000, an on-budget card −€500, a broker in euros holding
+€2,000 of cash and some ETFs, a broker in dollars holding $3,000 of cash. Net worth:
+5,000 − 500 + 2,000 = **€6,500**, with "Not included: $3,000.00 (no exchange rates yet)" and "Net
+worth does not include securities (no prices yet)".
+
+**Example, continued.** €1,000 moves from checking to the dollar broker, which receives $1,080. It
+cannot be a transfer: checking records an outflow of €1,000 with a category (which one is the
+household's choice), and the broker an inflow of $1,080. Checking now holds €4,000 and the broker
+$4,080, so the net worth drops to 4,000 − 500 + 2,000 = **€5,500**, and the note becomes "Not
+included: $4,080.00 (no exchange rates yet)". The euros reappear in the net worth, as dollars
+converted at a rate, only once exchange rates exist (#86).
 
 ### Days of buffer
 
