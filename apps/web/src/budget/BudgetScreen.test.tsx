@@ -587,7 +587,8 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(screen.getByText(/day by day/)).toBeInTheDocument();
-    expect(document.querySelector(".time svg .t-line.t-out")).not.toBeNull();
+    // The events are a fetch of their own, independent of the budget month: their lines can come later.
+    await waitFor(() => expect(document.querySelector(".time svg .t-line.t-out")).not.toBeNull());
     expect(document.querySelector(".time svg .t-line.t-in")).not.toBeNull();
     expect(screen.getByText("Cover Groceries")).toBeInTheDocument();
     expect(screen.getByText("€50.00")).toBeInTheDocument(); // the cash-overspending item's own amount
@@ -660,7 +661,8 @@ describe("BudgetScreen (#53, #324)", () => {
     await screen.findByText("Groceries");
 
     expect(await screen.findByText("Debt to cover: Visa")).toBeInTheDocument();
-    expect(screen.getByText("Fund the Groceries target")).toBeInTheDocument();
+    // The goals are fetched only once the budget month is in, so they can arrive a render later.
+    expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
   });
 
   it("opens a category's own detail full screen on a phone, with a back link, replacing the whole list (#331)", async () => {
