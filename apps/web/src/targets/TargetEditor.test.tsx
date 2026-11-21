@@ -1,7 +1,9 @@
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { renderWithIntl } from "../test-utils.tsx";
+import { ApiError } from "../apiFetch.ts";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as targetsApi from "./api.ts";
 import type { GoalRecord } from "./api.ts";
 import TargetEditor from "./TargetEditor.tsx";
@@ -115,6 +117,30 @@ describe("TargetEditor (#55)", () => {
 
     await waitFor(() => expect(deleteGoal).toHaveBeenCalledWith("t", "ws-1", "cat-1"));
     expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it("says how large an amount can be when the typed one is above the cap (#651)", async () => {
+    const upsertGoal = vi.spyOn(targetsApi, "upsertGoal");
+    renderEditor();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS + 1) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(upsertGoal).not.toHaveBeenCalled();
+    upsertGoal.mockRestore();
+  });
+
+  it("says the same when the API answers amount_too_large (#651)", async () => {
+    const upsertGoal = vi
+      .spyOn(targetsApi, "upsertGoal")
+      .mockRejectedValue(new ApiError("PUT failed: 400", 400, "amount_too_large", { label: "amount", max: MAX_AMOUNT_CENTS, value: String(MAX_AMOUNT_CENTS + 1) }));
+    const { onSaved } = renderEditor();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(onSaved).not.toHaveBeenCalled();
+    upsertGoal.mockRestore();
   });
 
   it("omits Remove for a new target", () => {

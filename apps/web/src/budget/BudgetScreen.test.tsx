@@ -1,3 +1,4 @@
+import { formatMoney, MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -164,7 +165,7 @@ describe("BudgetScreen (#53, #324)", () => {
       </MemoryRouter>,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This month cannot be shown: some amounts stored earlier add up to more than can be computed exactly. Edit or delete the transactions above €1,000,000,000.00 to see it again.",
+      `This month cannot be shown: some amounts stored earlier add up to more than can be computed exactly. Edit or delete the transactions above ${formatMoney(MAX_AMOUNT_CENTS, { locale: "en", currency: "EUR" })} to see it again.`,
     );
   });
 

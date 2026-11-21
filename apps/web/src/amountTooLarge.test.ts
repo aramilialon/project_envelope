@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "./amountTooLarge.ts";
+import { AMOUNT_TOO_LARGE_EUR, typedAmount } from "./test-utils.tsx";
 
 describe("the cap on a single amount (#651)", () => {
   const intl = createIntl({ locale: "en", defaultLocale: "en" });
@@ -11,7 +12,7 @@ describe("the cap on a single amount (#651)", () => {
   it("recognises parseAmount's refusal and the API's 400 amount_too_large, and nothing else", () => {
     let parsed: unknown;
     try {
-      parseAmount("1,000,000,000.01", { locale: "en", currency: "EUR" });
+      parseAmount(typedAmount(MAX_AMOUNT_CENTS + 1), { locale: "en", currency: "EUR" });
     } catch (caught) {
       parsed = caught;
     }
@@ -22,7 +23,9 @@ describe("the cap on a single amount (#651)", () => {
   });
 
   it("names the cap in the workspace's currency, in minor units of that currency", () => {
-    expect(amountTooLargeMessage(intl, "EUR")).toBe("An amount is too large: a single amount can be up to €1,000,000,000.00.");
-    expect(amountTooLargeMessage(intl, "JPY")).toBe("An amount is too large: a single amount can be up to ¥100,000,000,000.");
+    expect(amountTooLargeMessage(intl, "EUR")).toBe(AMOUNT_TOO_LARGE_EUR);
+    // The same number of minor units: yen have none below the unit, so the cap reads 100 times larger.
+    const yen = new Intl.NumberFormat("en").format(MAX_AMOUNT_CENTS);
+    expect(amountTooLargeMessage(intl, "JPY")).toBe(`An amount is too large: a single amount can be up to ¥${yen}.`);
   });
 });

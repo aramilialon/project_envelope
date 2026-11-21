@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import { useAccounts } from "../accounts/useAccounts.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { useBudgetMonth } from "../budget/useBudgetMonth.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -87,10 +88,14 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
   const decimals = currencyDecimals(currency);
 
   let cents = 0;
+  // The keypad's own length limit keeps an amount far below the cap on a single amount (#651);
+  // should it ever reach it, say so instead of leaving Save disabled without a reason.
+  let amountTooLarge = false;
   try {
     cents = amountStr.trim() ? parseAmount(amountStr, { locale: intl.locale, currency }) : 0;
-  } catch {
+  } catch (caught) {
     cents = 0;
+    amountTooLarge = isAmountTooLarge(caught);
   }
 
   function pressKey(key: string) {
@@ -143,8 +148,12 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
       });
       budgetMonth.refetch();
       onSaved();
-    } catch {
-      setError(intl.formatMessage({ id: "quickEntry.error", defaultMessage: "We could not save this expense." }));
+    } catch (caught) {
+      setError(
+        isAmountTooLarge(caught)
+          ? amountTooLargeMessage(intl, currency)
+          : intl.formatMessage({ id: "quickEntry.error", defaultMessage: "We could not save this expense." }),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -253,9 +262,9 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
             ))}
           </div>
 
-          {error && (
+          {(error ?? amountTooLarge) && (
             <p className="hint bad" role="alert">
-              {error}
+              {error ?? amountTooLargeMessage(intl, currency)}
             </p>
           )}
 

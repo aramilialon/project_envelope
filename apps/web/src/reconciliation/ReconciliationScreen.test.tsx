@@ -1,3 +1,4 @@
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +8,7 @@ import * as accountsApi from "../accounts/api.ts";
 import { ApiError } from "../apiFetch.ts";
 import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
-import { renderWithIntl } from "../test-utils.tsx";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as reconciliationApi from "./api.ts";
@@ -206,32 +207,33 @@ describe("ReconciliationScreen (#60)", () => {
   });
 
   it("takes a statement balance above the cap on a single amount: a balance is not capped (#651)", async () => {
-    renderScreen(candidates({ lastReconciledBalanceCents: 120_000_000_000 - 1_500 }));
+    const BALANCE = (MAX_AMOUNT_CENTS / 10) * 12;
+    renderScreen(candidates({ lastReconciledBalanceCents: BALANCE - 1_500 }));
     await screen.findByText(/Checking/);
     const reconcile = vi.spyOn(reconciliationApi, "reconcileAccount").mockResolvedValue({
       outcome: "reconciled",
-      reconciliation: { id: "r1", workspaceId: "ws-1", accountId: "acc-checking", reconciledAt: "2026-09-26", statementBalanceCents: 120_000_000_000, userId: "u1", brokenAt: null, createdAt: "2026-09-26" },
+      reconciliation: { id: "r1", workspaceId: "ws-1", accountId: "acc-checking", reconciledAt: "2026-09-26", statementBalanceCents: BALANCE, userId: "u1", brokenAt: null, createdAt: "2026-09-26" },
     });
 
-    fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "1,200,000,000.00" } });
+    fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: typedAmount(BALANCE) } });
     expect(screen.getByText("Everything matches.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Lock 2 transactions" }));
 
     await waitFor(() => expect(screen.getByText("Reconciliation complete")).toBeInTheDocument());
-    expect(reconcile).toHaveBeenCalledWith("t", "ws-1", "acc-checking", expect.objectContaining({ statementBalanceCents: 120_000_000_000 }));
+    expect(reconcile).toHaveBeenCalledWith("t", "ws-1", "acc-checking", expect.objectContaining({ statementBalanceCents: BALANCE }));
   });
 
   it("says how large an amount can be when the API refuses an adjustment above the cap (#651)", async () => {
     renderScreen(candidates());
     await screen.findByText(/Checking/);
     vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValue(
-      new ApiError("POST failed: 400", 400, "amount_too_large", { label: "adjustment", max: 100_000_000_000, value: "110000000000" }),
+      new ApiError("POST failed: 400", 400, "amount_too_large", { label: "adjustment", max: MAX_AMOUNT_CENTS, value: String((MAX_AMOUNT_CENTS / 10) * 11) }),
     );
 
     fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "520.00" } });
     fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €5.00" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
 
-    expect(await screen.findByText("An amount is too large: a single amount can be up to €1,000,000,000.00.")).toBeInTheDocument();
+    expect(await screen.findByText(AMOUNT_TOO_LARGE_EUR)).toBeInTheDocument();
   });
 });
