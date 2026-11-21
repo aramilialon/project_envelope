@@ -239,6 +239,89 @@ test.describe("account register (#54)", () => {
     }
   });
 
+  test("a row dated after today waits under 'Later', not in today's balance and not awaiting the bank (#702)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Group name").fill("Everyday");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await page.getByRole("button", { name: "+ Add a category" }).click();
+      await page.getByLabel("Category name").fill("Insurance");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Insurance")).toBeVisible();
+
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Checking");
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+      await expect(page.getByRole("heading", { name: "Checking" })).toBeVisible();
+
+      // One row today (the form's default date), one on 15 January next year.
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await page.getByLabel("Amount").fill("10.00");
+      await page.getByLabel("Payee").fill("Bakery");
+      await page.getByLabel("Category").selectOption({ label: "Insurance" });
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      // Next year in the workspace's own time zone (Europe/Rome, db.ts), not UTC's or the browser's:
+      // around New Year they can disagree, and the row must land after today either way.
+      const nextYear = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric" }).format(new Date())) + 1;
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await page.getByLabel("Date").fill(`${nextYear}-01-15`);
+      await page.getByLabel("Amount").fill("30.00");
+      await page.getByLabel("Payee").fill("Home insurer");
+      await page.getByLabel("Category").selectOption({ label: "Insurance" });
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      // Today's balance leaves the later row out; the row shows the balance it leads to.
+      const balances = page.getByLabel("Account balances");
+      await expect(balances).toContainText(/^Balance\s*-€10\.00/);
+      await expect(balances).toContainText("Pending -€10.00");
+      // The later row is next year, past the month end: not even in the projected balance.
+      await expect(balances).toContainText("Projected at month end -€10.00");
+      await expect(balances).not.toContainText("40.00");
+      const later = page.getByRole("rowgroup").filter({ has: page.getByRole("rowheader", { name: "Later Dated after today: not in today's balance." }) });
+      const laterRow = later.getByRole("row").filter({ hasText: "Home insurer" });
+      await expect(laterRow).toContainText(`Jan 15, ${nextYear}`);
+      await expect(laterRow).toContainText("-40.00");
+      await expect(later.getByText("Bakery")).toHaveCount(0);
+      // Pending, but it has not happened yet: only today's row awaits the bank.
+      await expect(page.getByText("Mark Bakery")).toBeVisible();
+      await expect(page.getByText("Mark Home insurer")).toHaveCount(0);
+
+      // The Accounts screen shows the same balance as of today.
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      const checking = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Checking", exact: true }) });
+      await expect(checking).toContainText("-€10.00");
+      await expect(checking).not.toContainText("40.00");
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
+
   test("money coming in from an off-budget account lands as Unassigned by default, and can be moved to a category (#599)", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;

@@ -27,6 +27,8 @@ import {
 } from "./mapping.ts";
 import { useImportSetup } from "./useImportSetup.ts";
 import { shortDate } from "../format.ts";
+import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import "./ImportScreen.css";
 
@@ -83,6 +85,10 @@ export default function ImportScreen() {
   const auth = useAuth();
   const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   const setup = useImportSetup(workspaceId!, accountId!);
+  const workspaces = useWorkspaces();
+  const timeZone = (workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.timeZone : undefined) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // A short date shows its year when it is not the workspace's current one (#702).
+  const currentYear = Number(todayIsoIn(timeZone).slice(0, 4));
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [dragOver, setDragOver] = useState(false);
@@ -547,7 +553,7 @@ export default function ImportScreen() {
                       onChange={(event) => setIncludes((current) => ({ ...current, [row.id]: event.target.checked }))}
                     />
                   )}
-                  <span className="n">{shortDate(row.occurredAt, intl.locale)}</span>
+                  <span className="n">{shortDate(row.occurredAt, intl.locale, currentYear)}</span>
                   <span>
                     <span className="raw" title={row.payee ?? ""}>
                       {row.payee ?? ""}

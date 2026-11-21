@@ -61,6 +61,8 @@ function renderPanel(
     balances?: Record<string, number>;
     /** Accounts whose transactions never arrive, so their balance stays unknown. */
     pending?: string[];
+    /** Each account's own rows, in place of one row carrying its whole balance. */
+    transactions?: Record<string, Transaction[]>;
   } = {},
 ) {
   const balances = options.balances ?? BALANCES;
@@ -69,12 +71,14 @@ function renderPanel(
   const listTransactions = vi
     .spyOn(transactionsApi, "listTransactionsForAccount")
     .mockImplementation((_token, _workspaceId, accountId) =>
-      options.pending?.includes(accountId) ? new Promise(() => {}) : Promise.resolve([transactionOf(balances[accountId] ?? 0)]),
+      options.pending?.includes(accountId)
+        ? new Promise(() => {})
+        : Promise.resolve(options.transactions?.[accountId] ?? [transactionOf(balances[accountId] ?? 0)]),
     );
   const onClose = options.onClose ?? vi.fn();
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
-      <AccountsPanel workspaceId="ws-1" currency="EUR" currentAccountId={options.currentAccountId} refreshKey="" onClose={onClose} />
+      <AccountsPanel workspaceId="ws-1" currency="EUR" timeZone="Europe/Rome" currentAccountId={options.currentAccountId} refreshKey="" onClose={onClose} />
       <Routes>
         <Route path="/:workspaceId" element={<p>Budget screen</p>} />
         <Route path="/:workspaceId/accounts" element={<p>Accounts screen</p>} />
@@ -92,6 +96,17 @@ describe("AccountsPanel (#412)", () => {
     // 3,412.58 + 8,000.00 + 21,500.00 − 642.30
     expect(await screen.findByText("€32,270.28")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Net worth" })).toBeInTheDocument();
+  });
+
+  it("counts each balance, and so the net worth, as of today: a row dated later is in neither (#702)", async () => {
+    const later = { ...transactionOf(70_000), id: "t-later", budgetDate: "2999-01-01", occurredAt: "2999-01-01" };
+    renderPanel({
+      accounts: [CHECKING, BROKER],
+      transactions: { checking: [transactionOf(100_000), later], broker: [transactionOf(500_000), { ...later, id: "t-sale" }] },
+    });
+
+    expect(await screen.findByText("€6,000.00")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "On budget" })).getByRole("button")).toHaveTextContent("Checking€1,000.00");
   });
 
   it("groups accounts as on budget, credit cards and off budget, leaving closed accounts out", async () => {
@@ -161,7 +176,7 @@ describe("AccountsPanel (#412)", () => {
     vi.spyOn(transactionsApi, "listTransactionsForAccount").mockReturnValue(new Promise(() => {}));
     renderWithIntl(
       <MemoryRouter>
-        <AccountsPanel workspaceId="ws-1" currency="EUR" currentAccountId={undefined} refreshKey="" onClose={vi.fn()} />
+        <AccountsPanel workspaceId="ws-1" currency="EUR" timeZone="Europe/Rome" currentAccountId={undefined} refreshKey="" onClose={vi.fn()} />
       </MemoryRouter>,
     );
 

@@ -9,14 +9,14 @@ const money = (cents: number) => `€${(cents / 100).toFixed(2)}`;
 
 describe("RegisterTodo (#337)", () => {
   it("renders nothing when there is nothing to do", () => {
-    const { container } = renderWithIntl(<RegisterTodo items={[]} money={money} locale="en" onRecord={vi.fn()} onMark={vi.fn()} />);
+    const { container } = renderWithIntl(<RegisterTodo items={[]} money={money} locale="en" currentYear={2026} onRecord={vi.fn()} onMark={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("shows an overdue scheduled transaction and calls onRecord when clicked", () => {
     const items: RegisterTodoItem[] = [{ kind: "recordOverdue", scheduledTransactionId: "s1", payee: "Internet provider", date: "2026-10-01", amountCents: 4_500 }];
     const onRecord = vi.fn();
-    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" onRecord={onRecord} onMark={vi.fn()} />);
+    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" currentYear={2026} onRecord={onRecord} onMark={vi.fn()} />);
 
     expect(screen.getByText("Record Internet provider")).toBeInTheDocument();
     expect(screen.getByText(/scheduled for Oct 1, not yet in the account/)).toBeInTheDocument();
@@ -29,7 +29,7 @@ describe("RegisterTodo (#337)", () => {
   it("shows a pending transaction and calls onMark when clicked", () => {
     const items: RegisterTodoItem[] = [{ kind: "markPending", transactionId: "t1", payee: "Streaming service", date: "2026-10-06", amountCents: 999 }];
     const onMark = vi.fn();
-    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" onRecord={vi.fn()} onMark={onMark} />);
+    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" currentYear={2026} onRecord={vi.fn()} onMark={onMark} />);
 
     expect(screen.getByText("Mark Streaming service")).toBeInTheDocument();
     expect(screen.getByText(/still awaiting the bank/)).toBeInTheDocument();
@@ -44,7 +44,7 @@ describe("RegisterTodo (#337)", () => {
       { kind: "markPending", transactionId: "t1", payee: "B", date: "2026-10-02", amountCents: 100 },
       { kind: "markPending", transactionId: "t2", payee: "C", date: "2026-10-03", amountCents: 100 },
     ];
-    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" limit={2} onRecord={vi.fn()} onMark={vi.fn()} />);
+    renderWithIntl(<RegisterTodo items={items} money={money} locale="en" currentYear={2026} limit={2} onRecord={vi.fn()} onMark={vi.fn()} />);
 
     expect(document.querySelectorAll(".todo-i")).toHaveLength(2);
     expect(screen.getByText("+1 more")).toBeInTheDocument();
