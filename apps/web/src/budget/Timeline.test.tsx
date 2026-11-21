@@ -119,6 +119,35 @@ describe("Timeline (#326, redesigned #390)", () => {
     expect(document.querySelectorAll(".t-grid").length).toBe(layout.valueTicks.length - 1);
   });
 
+  it("keeps the value labels in a gutter left of the plot, clear of the line, gridlines and future ground (#591)", () => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: 12,
+      events: [
+        { day: 1, amountCents: 400_000, direction: "in", status: "recorded" },
+        { day: 3, amountCents: 150_000, direction: "out", status: "recorded" },
+        { day: 20, amountCents: 90_000, direction: "out", status: "scheduled" },
+      ],
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" monthAbbrev="Sep" money={money} />);
+
+    const num = (el: Element, name: string): number => Number(el.getAttribute(name));
+    const labels = [...document.querySelectorAll(".t-grid-l")];
+    expect(labels.length).toBe(layout.valueTicks.length);
+    // Everything drawn in the plot starts at or right of the plot's own left edge...
+    const plotLeft = Math.min(
+      ...[...document.querySelectorAll(".t-grid, .t-axis, .t-line, .t-cur")].flatMap((el) => [num(el, "x1"), num(el, "x2")]),
+      ...[...document.querySelectorAll(".t-future")].map((el) => num(el, "x")),
+    );
+    expect(plotLeft).toBe(layout.axisX0);
+    // ...and every label ends, right-aligned, before it.
+    for (const label of labels) {
+      expect(label.getAttribute("text-anchor")).toBe("end");
+      expect(num(label, "x")).toBeLessThan(plotLeft);
+      expect(num(label, "x")).toBeGreaterThanOrEqual(70);
+    }
+  });
+
   it("drops the vertical scale's own reference lines in compact mode", () => {
     const layout = computeTimeline({
       daysInMonth: 30,

@@ -135,6 +135,18 @@ describe("computeTimeline", () => {
     assert.equal(last.to.x, layout.axisX1);
   });
 
+  it("reserves a gutter left of the plot for the value labels in full mode, none in compact mode (#591)", () => {
+    const full = computeTimeline({ daysInMonth: 30, today: 12, events: [event({ day: 5 })] });
+    assert.ok(full.valueLabelX < full.axisX0);
+    assert.ok(full.valueLabelX >= 70, "room for a label of about twelve characters at 10px");
+    for (const segment of full.segments) assert.ok(segment.from.x >= full.axisX0);
+    assert.ok(full.todayX! > full.valueLabelX);
+
+    const compact = computeTimeline({ daysInMonth: 30, today: 12, events: [event({ day: 5 })], compact: true });
+    assert.equal(compact.valueLabelX, compact.axisX0);
+    assert.equal(compact.axisX0, 12);
+  });
+
   it("zero sits wherever it falls in the month's own value range, not always the canvas's own center", () => {
     const allNegative = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 15, direction: "out" })] });
     const allPositive = computeTimeline({ daysInMonth: 30, today: undefined, events: [event({ day: 15, direction: "in" })] });

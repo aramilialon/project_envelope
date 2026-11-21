@@ -54,7 +54,8 @@ export default function Timeline({ layout, monthLabel, monthAbbrev, money, compa
               {Math.abs(tick.y - layout.zeroY) > 0.5 && (
                 <line x1={layout.axisX0} y1={tick.y} x2={layout.axisX1} y2={tick.y} className="t-grid" />
               )}
-              <text x={layout.axisX0 + 2} y={tick.y - 3} textAnchor="start" className="t-grid-l">
+              {/* In the gutter left of the plot, right-aligned and centred on its own gridline, so the line never crosses it (#591). */}
+              <text x={layout.valueLabelX} y={tick.y + 3.5} textAnchor="end" className="t-grid-l">
                 {money(tick.amountCents)}
               </text>
             </g>

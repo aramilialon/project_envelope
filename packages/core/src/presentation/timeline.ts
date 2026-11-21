@@ -85,6 +85,13 @@ export interface TimelineLayout {
   readonly dayTicks: readonly TimelineDayTick[];
   /** A handful of round money amounts spanning the month's own range, each at its own height — the chart's own vertical scale, there was previously no reference at all for what a given height on the line actually means in money (`#405`). Full (non-compact) mode only, the same restraint `monthAbbrev` already follows. */
   readonly valueTicks: readonly TimelineValueTick[];
+  /**
+   * Where the `valueTicks` labels end (they are right-aligned to it): inside a gutter reserved
+   * on the left of the plot, so the running total, the gridlines and the "future" ground never
+   * run over them (`#591`). Always left of `axisX0`. Full mode only, like `valueTicks`; in compact
+   * mode, which has no labels and no gutter, it is `axisX0` itself.
+   */
+  readonly valueLabelX: number;
   readonly segments: readonly TimelineSegment[];
   /** Present only when `today` is given. */
   readonly current: TimelineCurrent | undefined;
@@ -115,12 +122,18 @@ interface Size {
   readonly width: number;
   readonly height: number;
   readonly inset: number;
+  /** The left edge of the plot: wider than `inset` in full mode, to leave a gutter for the `valueTicks` labels (`#591`). */
+  readonly insetLeft: number;
+  /** The gap between a value label's right edge and the plot (full mode only). */
+  readonly labelGap: number;
   readonly padTop: number;
   readonly padBottom: number;
 }
 
-const FULL: Size = { width: 660, height: 200, inset: 20, padTop: 10, padBottom: 20 };
-const COMPACT: Size = { width: 330, height: 120, inset: 12, padTop: 8, padBottom: 16 };
+// The full-mode gutter (76 units, labels ending 6 units short of the plot) fits a 10px label of
+// about twelve characters ("-€120,000.00"), the widest a month's own round amounts usually get.
+const FULL: Size = { width: 660, height: 200, inset: 20, insetLeft: 76, labelGap: 6, padTop: 10, padBottom: 20 };
+const COMPACT: Size = { width: 330, height: 120, inset: 12, insetLeft: 12, labelGap: 0, padTop: 8, padBottom: 16 };
 
 /** Weekly-ish ticks (1, 8, 15, 22...), always ending on the month's own last day. */
 function dayTicks(daysInMonth: number, compact: boolean): readonly number[] {
@@ -148,7 +161,7 @@ function stepDirection(before: number, after: number): TimelineStepDirection {
  */
 export function computeTimeline(input: TimelineInput): TimelineLayout {
   const size = input.compact ? COMPACT : FULL;
-  const x0 = size.inset;
+  const x0 = size.insetLeft;
   const x1 = size.width - size.inset;
   const span = Math.max(1, input.daysInMonth - 1);
   const x = (day: number): number => x0 + ((day - 1) * (x1 - x0)) / span;
@@ -249,6 +262,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     todayX,
     dayTicks: dayTicks(input.daysInMonth, input.compact ?? false).map((day) => ({ day, x: x(day) })),
     valueTicks,
+    valueLabelX: x0 - size.labelGap,
     segments,
     current,
   };
