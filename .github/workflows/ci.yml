@@ -280,29 +280,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The browser is cached under the Playwright version the lockfile resolves for apps/web
-      # (#640); on a hit only the system packages it needs are installed.
-      - name: Read the Playwright version
-        id: playwright
-        run: |
-          version=$(pnpm --filter @envelope/web exec playwright --version | awk '{print $2}')
-          test -n "$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Restore the Playwright browser
-        id: playwright_cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
-
       - name: Install the Playwright browser
-        if: steps.playwright_cache.outputs.cache-hit != 'true'
         run: pnpm --filter @envelope/web exec playwright install --with-deps chromium
-
-      - name: Install the Playwright browser's system dependencies
-        if: steps.playwright_cache.outputs.cache-hit == 'true'
-        run: pnpm --filter @envelope/web exec playwright install-deps chromium
 
       - name: Wait for Keycloak
         run: |
