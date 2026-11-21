@@ -103,6 +103,16 @@
   line-height: 1.55;
 }
 
+/* A category overspent with a card: one line and one link per card (#728). */
+.inl-c .card-part {
+  display: flex;
+  flex-direction: column;
+}
+
+.inl-c .card-part + .card-part {
+  margin-top: 8px;
+}
+
 /* A card paid beyond what was set aside explains that first, then its uncovered debt (#699). */
 .inl-c .explain + .explain {
   margin-top: 8px;
@@ -119,6 +129,11 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+/* Every plain action in the phone's detail is a 44px touch target, like its back link (#728). */
+.ph-detail .plain {
+  min-height: 44px;
 }
 
 .ph-back {

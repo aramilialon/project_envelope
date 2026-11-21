@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../apiFetch.ts";
 import { AMOUNT_TOO_LARGE_EUR, renderWithIntl } from "../test-utils.tsx";
 import * as budgetApi from "./api.ts";
-import RowDetail from "./RowDetail.tsx";
+import RowDetail, { type CardPart } from "./RowDetail.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
 vi.mock("react-oidc-context", () => ({ useAuth }));
@@ -379,5 +379,51 @@ describe("RowDetail (#327)", () => {
     const { onMoveMoney } = renderRowDetail(60_000);
     fireEvent.click(screen.getByRole("button", { name: "Move money" }));
     expect(onMoveMoney).toHaveBeenCalled();
+  });
+});
+
+describe("RowDetail: a category overspent with a card (#728)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function renderWithCardParts(parts: readonly CardPart[]) {
+    useAuth.mockReturnValue({ user: { access_token: "t" } });
+    const onOpenPaymentCategory = vi.fn();
+    renderWithIntl(
+      <RowDetail
+        workspaceId="ws-1"
+        month="2026-10"
+        categoryId="groceries"
+        categoryName="Groceries"
+        assigned={0}
+        currency="EUR"
+        onClose={vi.fn()}
+        onChanged={vi.fn()}
+        onMoveMoney={vi.fn()}
+        cardParts={parts}
+        onOpenPaymentCategory={onOpenPaymentCategory}
+      />,
+    );
+    return { onOpenPaymentCategory };
+  }
+
+  it("says each card's part is now in that card's debt, with a link opening the card's payment category, and no way to cover it here", () => {
+    const { onOpenPaymentCategory } = renderWithCardParts([
+      { paymentCategoryId: "mc", paymentCategoryName: "Mastercard payment", amount: 4_567 },
+      { paymentCategoryId: "visa", paymentCategoryName: "Visa payment", amount: 4_567 },
+    ]);
+    expect(screen.getByText("€45.67 spent with a card beyond what was available is now part of the card's debt, in Mastercard payment.")).toBeInTheDocument();
+    expect(screen.getByText("€45.67 spent with a card beyond what was available is now part of the card's debt, in Visa payment.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Cover/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Visa payment" }));
+    expect(onOpenPaymentCategory).toHaveBeenCalledWith("visa");
+  });
+
+  it("says nothing about cards when the category is not overspent with one", () => {
+    renderWithCardParts([]);
+    expect(screen.queryByText(/part of that card's debt/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Open / })).not.toBeInTheDocument();
   });
 });

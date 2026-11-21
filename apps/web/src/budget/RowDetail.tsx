@@ -1,4 +1,4 @@
-import { parseAssignedEntry } from "@envelope/core";
+import { formatMoney, parseAssignedEntry } from "@envelope/core";
 import { useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -24,10 +24,28 @@ interface Props {
   onMoveMoney(): void;
   /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
   readonly fullScreen?: boolean;
+  /** Brings the detail into view and focuses its heading when it changes (`DetailFrame`'s own `focusRequest`, #728). */
+  readonly focusRequest?: string | number | undefined;
   /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own edit controls. */
   readonly readOnly?: boolean;
   /** Renames the category (#397); its "Rename" only shows when given, and never for a read-only member. */
   onRename?(name: string): Promise<void>;
+  /**
+   * The category's credit overspending this month, per card (#728): each part is already in that
+   * card's debt, asked once on the card's payment category, so the detail only says so and links
+   * there — no "Cover" for it here. Empty or absent when the category is not overspent with a card.
+   */
+  readonly cardParts?: readonly CardPart[];
+  /** Opens a card's payment category (its own detail, where "Assign" is). */
+  onOpenPaymentCategory?(paymentCategoryId: string): void;
+}
+
+/** One card's share of a category's credit overspending (`BudgetMonthCategory.overspendingBy`, read from the card's side). */
+export interface CardPart {
+  readonly paymentCategoryId: string;
+  /** The card's payment category's own name. */
+  readonly paymentCategoryName: string;
+  readonly amount: number;
 }
 
 /**
@@ -40,7 +58,23 @@ interface Props {
  * history) is later issues' own job, layered onto this same row. Its name heads it, with
  * "Rename" next to it (#397) opening the same inline field the budget month's own group menu uses.
  */
-export default function RowDetail({ workspaceId, month, categoryId, categoryName, assigned, currency, onClose, onChanged, onMoveMoney, fullScreen, readOnly, onRename }: Props) {
+export default function RowDetail({
+  workspaceId,
+  month,
+  categoryId,
+  categoryName,
+  assigned,
+  currency,
+  onClose,
+  onChanged,
+  onMoveMoney,
+  fullScreen,
+  focusRequest,
+  readOnly,
+  onRename,
+  cardParts,
+  onOpenPaymentCategory,
+}: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const [renaming, setRenaming] = useState(false);
@@ -146,6 +180,7 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
     <DetailFrame
       label={intl.formatMessage({ id: "budget.row.detailLabel", defaultMessage: "Detail for {category}" }, { category: categoryName })}
       fullScreen={fullScreen ?? false}
+      focusRequest={focusRequest}
       onClose={onClose}
     >
       {renaming && onRename ? (
@@ -162,12 +197,37 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
         />
       ) : (
         <div className="det-h">
-          <h3>{categoryName}</h3>
+          <h3 tabIndex={-1}>{categoryName}</h3>
           {!readOnly && onRename && (
             <button type="button" className="plain" onClick={() => setRenaming(true)}>
               {intl.formatMessage({ id: "budget.row.rename", defaultMessage: "Rename" })}
             </button>
           )}
+        </div>
+      )}
+      {cardParts && cardParts.length > 0 && (
+        <div className="sec">
+          {cardParts.map((part) => (
+            <div key={part.paymentCategoryId} className="card-part">
+              <p className="explain">
+                {intl.formatMessage(
+                  {
+                    id: "budget.row.cardPart",
+                    defaultMessage: "{amount} spent with a card beyond what was available is now part of the card's debt, in {category}.",
+                  },
+                  { amount: formatMoney(part.amount, { locale: intl.locale, currency }), category: part.paymentCategoryName },
+                )}
+              </p>
+              {onOpenPaymentCategory && (
+                <button type="button" className="plain" onClick={() => onOpenPaymentCategory(part.paymentCategoryId)}>
+                  {intl.formatMessage(
+                    { id: "budget.row.openPaymentCategory", defaultMessage: "Open {category}" },
+                    { category: part.paymentCategoryName },
+                  )}
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       )}
       <div className="sec">

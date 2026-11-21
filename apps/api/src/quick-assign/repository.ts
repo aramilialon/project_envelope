@@ -1,4 +1,4 @@
-import { cardDebt, computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
+import { amountNeededToCover, cardDebt, computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
 
 import { createAssignmentBatch, listAssignmentTotals, type AssignmentEntryRecord } from "../assignments/repository.ts";
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
@@ -36,9 +36,12 @@ async function desiredAmounts(
       return desired;
     }
     case "cover_overspending":
+      // `amountNeededToCover` (#728): a category's cash overspending, plus its reservation
+      // shortfall when it has no credit overspending — never its credit overspending, which is
+      // already part of its card's uncovered debt and is covered once, by "cover_card_debt".
       return budgetMonth.categories
-        .filter((c) => c.available < 0)
-        .map((c) => ({ categoryId: c.categoryId, amountCents: -c.available }));
+        .map((c) => ({ categoryId: c.categoryId, amountCents: amountNeededToCover(c) }))
+        .filter((d) => d.amountCents > 0);
     case "cover_card_debt":
       // The whole of `cardDebt`'s `toCover` (#699): a card paid beyond what was set aside needs
       // its cash overspending covered as well as its uncovered debt, in one run. Payment
