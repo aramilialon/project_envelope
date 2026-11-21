@@ -15,7 +15,16 @@ export interface BudgetGroup {
   readonly categories: readonly BudgetGroupCategory[];
 }
 
-export type BudgetMonthState = FetchState<{ budgetMonth: BudgetMonthResponse; groups: readonly BudgetGroup[] }>;
+export type BudgetMonthState = FetchState<{
+  budgetMonth: BudgetMonthResponse;
+  groups: readonly BudgetGroup[];
+  /**
+   * The month these numbers are for. While another month loads, the previous month's data stays
+   * on screen (see below), so this can differ from the `month` just asked for: anything that
+   * writes against what is shown checks it first (#698).
+   */
+  month: string;
+}>;
 
 /**
  * Fetches a workspace's budget month (#53) and groups its categories (ordinary and payment
@@ -59,7 +68,7 @@ export function useBudgetMonth(workspaceId: string, month: string): BudgetMonthS
               categories: (byGroup.get(g.id) ?? []).toSorted((a, b) => a.sortOrder - b.sortOrder),
             }))
             .filter((g) => g.categories.length > 0);
-          return { budgetMonth, groups };
+          return { budgetMonth, groups, month };
         },
       );
     },

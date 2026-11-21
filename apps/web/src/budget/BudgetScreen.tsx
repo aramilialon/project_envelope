@@ -369,6 +369,11 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
   const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
+  // While a newly chosen month loads, the previous month's rows stay on screen: a category's
+  // detail waits for the new month's own numbers before opening, so it never measures an entry
+  // against one month and writes it to another (#698).
+  const shownMonth = state.month;
+  const detailReady = shownMonth === month;
 
   /** Same content either way (design.md, "Budget month on the phone") — `fullScreen` only swaps the chrome around it (`DetailFrame.tsx`). */
   // Adding and renaming categories and groups from here (#397, `budget-categories.html`); reordering
@@ -446,9 +451,9 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     ) : (
       <RowDetail
         // One detail per month and category (#698): nothing typed for one carries over to another.
-        key={`${month}:${category.categoryId}`}
+        key={`${shownMonth}:${category.categoryId}`}
         workspaceId={workspaceId}
-        month={month}
+        month={shownMonth}
         categoryId={category.categoryId}
         categoryName={category.name}
         onRename={(name) => renameOneCategory(category.categoryId, name)}
@@ -480,7 +485,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     setOpenCategoryId(item.categoryId);
   }
 
-  const phoneOpenCategory = isPhone && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
+  const phoneOpenCategory = isPhone && detailReady && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
 
   return (
     <div className="budget-screen">
@@ -644,7 +649,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                       group.categories.map((category) => {
                         const bar = barFor(category);
                         const status = statusOf(category, bar);
-                        const isOpen = !isPhone && openCategoryId === category.categoryId;
+                        const isOpen = !isPhone && detailReady && openCategoryId === category.categoryId;
                         const rowContent = (
                           <>
                             <span className="cn">

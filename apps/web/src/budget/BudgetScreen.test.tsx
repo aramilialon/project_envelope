@@ -481,6 +481,42 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(createAssignments).toHaveBeenCalledTimes(1);
   });
 
+  it("while the previous month loads, a row's detail waits for its numbers and never writes the shown month's amount to it (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 100_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+    const previousMonth = shiftMonth(currentMonth, -1);
+    let resolvePrevious: (value: BudgetMonthResponse) => void = () => {};
+    getBudgetMonth.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePrevious = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth));
+
+    // The current month's rows are still on screen: clicking one opens nothing yet.
+    fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+    const anyInput = document.activeElement ?? document.body;
+    fireEvent.keyDown(anyInput, { key: "Enter" });
+    expect(createAssignments).not.toHaveBeenCalled();
+
+    resolvePrevious(budgetMonth({ month: previousMonth, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 50_000 })] }));
+    const input = await screen.findByLabelText("Assigned this month");
+    expect(input).toHaveValue("500.00");
+    input.focus();
+    fireEvent.change(input, { target: { value: "250" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(createAssignments).toHaveBeenCalledTimes(1));
+    expect(createAssignments.mock.calls[0]?.[2]).toEqual([
+      { month: previousMonth, sourceCategoryId: "c1", destinationCategoryId: null, amountCents: 25_000 },
+    ]);
+  });
+
   it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
     renderScreen(
       budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0 })] }),

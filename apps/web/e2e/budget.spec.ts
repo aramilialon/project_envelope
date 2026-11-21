@@ -238,6 +238,75 @@ test.describe("budget month (#53)", () => {
     }
   });
 
+  test("a category's detail clicked while another month loads waits for that month's own amount (#698)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Name of the new group").fill("Everyday");
+      await page.getByLabel("Name of the new group").press("Enter");
+      const newCategory = page.getByLabel("Name of the new category in Everyday");
+      await newCategory.fill("Groceries");
+      await newCategory.press("Enter");
+      await newCategory.press("Escape");
+      const row = page.getByRole("button", { name: /^Groceries/ });
+      await expect(row).toBeVisible();
+
+      await row.click();
+      const assigned = page.getByLabel("Assigned this month");
+      await assigned.fill("1000");
+      await assigned.press("Enter");
+      await expect(assigned).toHaveValue("1,000.00");
+
+      // Hold back the previous month's budget month until the row has been clicked.
+      let release: () => void = () => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let holding = true;
+      await page.route(/\/budget-months\/[^/]+$/, async (route) => {
+        if (holding && route.request().method() === "GET") {
+          holding = false;
+          await held;
+        }
+        await route.continue();
+      });
+
+      await page.getByRole("button", { name: "Previous month" }).click();
+      await expect(assigned).not.toBeVisible();
+      await row.click();
+      await expect(assigned).not.toBeVisible();
+
+      release();
+      await expect(assigned).toHaveValue("0.00");
+      await assigned.fill("250");
+      await assigned.press("Enter");
+      await expect(assigned).toHaveValue("250.00");
+      await page.unroute(/\/budget-months\/[^/]+$/);
+
+      await page.reload();
+      await row.click();
+      await expect(assigned).toHaveValue("1,000.00");
+      await page.getByRole("button", { name: "Previous month" }).click();
+      await row.click();
+      await expect(assigned).toHaveValue("250.00");
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
+
   test("adds and renames groups and categories right from the budget month (#397)", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
