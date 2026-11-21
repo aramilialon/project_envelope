@@ -161,7 +161,8 @@ function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
  * (`insufficient_quantity` and the rest), the entry and regime checks, and the cash leg's status
  * read `FOR UPDATE` (a reconciled leg locks its trade; `isLocked` above reads it without the row
  * lock). `beforeApply`/`afterApply` only keep the cash leg derived from the trade; they check
- * nothing.
+ * nothing. A change of `trades.portfolio_id` must refuse an archived portfolio as `updateTrade`
+ * does (`portfolio_archived`, #597). Sync creates no trade rows today.
  *
  * The leg's date is midnight of the trade date in the workspace's time zone, computed when it is
  * written. After a change of the workspace's time zone, the next edit of the trade (or a synced

@@ -16,6 +16,10 @@
  * split), refuse a group whose cash leg is reconciled, and replay every instrument they touch the
  * same way, without the old rows and with the new ones.
  *
+ * An archived portfolio takes no new trades (#597): creating one in it, or moving one into it, is
+ * refused with "portfolio_archived"; the rows it already has stay editable and deletable, a split
+ * still writes its row there, and a transfer out of it is allowed.
+ *
  * Nothing is written before every check has passed: a request answered with a 400 commits nothing.
  */
 import { randomUUID } from "node:crypto";
@@ -514,12 +518,17 @@ async function loadAccounts(db: DbClient, workspaceId: string, ids: readonly str
   );
 }
 
-async function loadPortfolioIds(db: DbClient, workspaceId: string, ids: readonly string[]): Promise<Set<string>> {
-  const { rows } = await db.query<{ id: string }>("SELECT id FROM portfolios WHERE workspace_id = $1 AND id = ANY($2)", [
-    workspaceId,
-    ids,
-  ]);
-  return new Set(rows.map((row) => row.id));
+/**
+ * The workspace's portfolios among `ids`, each with whether it is archived (#597). The rows are
+ * read `FOR SHARE`: archiving a portfolio waits for a trade being written into it to commit, and a
+ * trade waits for an archiving in progress, so neither can slip past the other.
+ */
+async function loadPortfolios(db: DbClient, workspaceId: string, ids: readonly string[]): Promise<Map<string, { archived: boolean }>> {
+  const { rows } = await db.query<{ id: string; archived: boolean }>(
+    "SELECT id, archived_at IS NOT NULL AS archived FROM portfolios WHERE workspace_id = $1 AND id = ANY($2) FOR SHARE",
+    [workspaceId, ids],
+  );
+  return new Map(rows.map((row) => [row.id, { archived: row.archived }]));
 }
 
 async function loadInstrument(db: DbClient, instrumentId: string): Promise<InstrumentRef | undefined> {
@@ -652,12 +661,37 @@ function singleRow(input: SingleTradeInput, instrument: InstrumentRef | undefine
   return row;
 }
 
-/** Checks every row's account and portfolio, and the instrument against each account. */
+/**
+ * The portfolio each row of a trade group is stored in, by row id: an edit passes it, so that a
+ * row already in an archived portfolio can still be edited there (#597).
+ */
+type StoredPortfolios = ReadonlyMap<string, string>;
+
+/**
+ * Whether `row` may be written into an archived portfolio (#597): a row `stored` already in it
+ * (an edit of a trade the portfolio has), any split row (a split is a fact about the instrument:
+ * an archived holder must not block it for the other portfolios, on create or edit), and a new
+ * outgoing leg of a transfer (so the portfolio can be emptied without unarchiving it). Anything
+ * else — a buy, sell, dividend, fee or tax, an incoming leg, or a trade or leg an edit moves
+ * there — is a new trade in it.
+ */
+function mayBeInArchived(row: NewTradeRow, stored: StoredPortfolios): boolean {
+  if (row.type === "split" || stored.get(row.id) === row.portfolioId) {
+    return true;
+  }
+  return row.type === "transfer" && row.quantityE8 < 0 && !stored.has(row.id);
+}
+
+/**
+ * Checks every row's account and portfolio, and the instrument against each account. A row may
+ * not be put into an archived portfolio unless `mayBeInArchived` allows it (#597).
+ */
 async function checkReferences(
   db: DbClient,
   workspaceId: string,
   rows: readonly NewTradeRow[],
   instrument: InstrumentRef | undefined,
+  stored: StoredPortfolios,
 ): Promise<Map<string, AccountRef>> {
   const accountIds = [...new Set(rows.map((row) => row.accountId))];
   const accounts = await loadAccounts(db, workspaceId, accountIds);
@@ -683,10 +717,16 @@ async function checkReferences(
     }
   }
   const portfolioIds = [...new Set(rows.map((row) => row.portfolioId))];
-  const known = await loadPortfolioIds(db, workspaceId, portfolioIds);
+  const known = await loadPortfolios(db, workspaceId, portfolioIds);
   const unknown = portfolioIds.find((id) => !known.has(id));
   if (unknown !== undefined) {
     throw new ValidationError("unknown_portfolio", `unknown portfolio: "${unknown}"`, { portfolioId: unknown });
+  }
+  const intoArchived = rows.find((row) => known.get(row.portfolioId)!.archived && !mayBeInArchived(row, stored));
+  if (intoArchived) {
+    throw new ValidationError("portfolio_archived", "an archived portfolio takes no new trades; unarchive it first", {
+      portfolioId: intoArchived.portfolioId,
+    });
   }
   return accounts;
 }
@@ -802,8 +842,9 @@ async function checkRows(
   workspaceId: string,
   rows: readonly NewTradeRow[],
   instrument: InstrumentRef | undefined,
+  stored: StoredPortfolios = new Map(),
 ): Promise<Map<string, AccountRef>> {
-  const accounts = await checkReferences(db, workspaceId, rows, instrument);
+  const accounts = await checkReferences(db, workspaceId, rows, instrument, stored);
   for (const row of rows) {
     checkTradeEntry(row, instrument?.type ?? null);
   }
@@ -872,7 +913,9 @@ async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * a transaction: the request's own.
  *
  * @throws ValidationError "unknown_account", "account_not_brokerage", "unknown_portfolio",
- *   "unknown_instrument", "currency_mismatch", "split_without_holdings", "tax_regime_required",
+ *   "portfolio_archived" (details: portfolioId; a row in an archived portfolio other than a split
+ *   row or a transfer's outgoing leg, #597), "unknown_instrument",
+ *   "currency_mismatch", "split_without_holdings", "tax_regime_required",
  *   the codes of `checkTradeEntry`, of `checkTradeRegime` and of `validatePositionHistory` ("insufficient_quantity",
  *   "split_missing_for_portfolio", "split_duplicate", "split_ratio_mismatch",
  *   "split_leaves_no_quantity", "invalid_trade", "invalid_date", "invalid_amount",
@@ -1284,6 +1327,9 @@ async function updateTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * same checks as `createTrades` on the edited rows, then replays the workspace's whole history of
  * every instrument the edit touches (the old one and the new one), every account, under their
  * locks; writes a `trade.update` audit log entry. `db` must be in a transaction: the request's own.
+ * A row already in an archived portfolio stays editable there, and a split covers holdings in one
+ * on any date; a trade or a transfer's leg the edit moves into one is refused with
+ * "portfolio_archived" (#597).
  *
  * @returns the rows as written; "not_found" when the workspace has no trade with this id;
  *   "reconciled" when a cash leg of the group is reconciled (ADR 0012), and nothing is written.
@@ -1337,7 +1383,8 @@ export async function updateTrade(
       : kind === "transfer"
         ? editedTransferRows(group, patch)
         : editedSplitRows(group, patch, histories.get(instrumentId)!.filter((trade) => !oldIds.has(trade.id)));
-  const accounts = await checkRows(db, workspaceId, rows, instrument);
+  const stored = new Map(group.map((record) => [record.id, record.portfolioId]));
+  const accounts = await checkRows(db, workspaceId, rows, instrument, stored);
 
   // Each instrument's history as it would be after the edit: a row that stays on its instrument
   // is an update (keeping its creation time, so its place in the replay order), a row that leaves
