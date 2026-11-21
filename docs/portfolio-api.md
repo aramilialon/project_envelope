@@ -834,7 +834,7 @@ server where those tickers are taken, pick others (409 `ticker_taken`).
 
 **4. Trades**, each `POST /trades` with `"accountId": "<broker>"`:
 
-| Trade | Body (besides account and portfolio) | `cashCents` | Arithmetic |
+| Trade | Body (besides `accountId`, `portfolioId` and, for buys and sales, `"type"` and `instrumentId` as in "Recording a trade") | `cashCents` | Arithmetic |
 | --- | --- | --- | --- |
 | Growth buys 20 ETF | `type: "buy"`, `tradeDate: "2026-03-12"`, `quantityE8: 2000000000`, `priceE6: 100000000`, `feesCents: 500` | −200500 | gross 20 × 100.00 = 2,000.00, + 5.00 fee |
 | Income buys 30 ETF | `"2026-03-13"`, 30 at 120.00, fee 5.00 | −360500 | the account holds 50 for 2,005.00 + 3,605.00 = €5,610.00 |
@@ -844,9 +844,9 @@ server where those tickers are taken, pick others (409 `ticker_taken`).
 | Correct the share buy | `PATCH /trades/<id>` `{ "quantityE8": 8000000000, "feesCents": 400 }` | −400400 | gross computed again: 80 × 50.00 = 4,000.00, + 4.00 |
 | Delete the mistake | `DELETE /trades/<id>` | — | 204; its cash leg goes with it |
 | Dividend on Growth's shares | `type: "dividend"`, `"2026-04-01"`, `grossCents: 4000`, `withholdingForeignCents: 600`, `withholdingDomesticCents: 884`, `feesCents: 100` | +2416 | 26% domestic on the 34.00 left after foreign tax is 8.84; 40.00 − 6.00 − 8.84 − 1.00 |
-| ETF split 1:2 | `{ "type": "split", "instrumentId": "<etf>", "tradeDate": "2026-04-10", "splitFrom": 1, "splitTo": 2 }` | 0, 0 | two rows: Growth 10 → 20, Income 30 → 60; cost still 4,488.00, now on 80 units |
+| ETF split 1:2 | `{ "type": "split", "instrumentId": "<etf>", "tradeDate": "2026-04-10", "splitFrom": 1, "splitTo": 2 }` | 0, 0 | two rows with `quantityE8: 0` in the answer; the positions (step 5) show Growth 10 → 20, Income 30 → 60; cost still 4,488.00, now on 80 units |
 | Bond buy on Income | `"2026-04-15"`, `quantityE8: 1000000000000` (10,000 nominal), `priceE6: 99500000`, `feesCents: 200`, `accruedInterestCents: 4000`, `withholdingDomesticCents: 500` | −998700 | gross 10,000 × 99.50 × 0.01 = 9,950.00; 12.5% of the 40.00 accrued interest credited back; −(9,950.00 + 2.00 + 40.00 − 5.00) |
-| Income moves 5 ETF to Growth | transfer, `"2026-04-20"`, `quantityE8: 500000000`, `from` Income with `feesCents: 150`, `to` Growth | −150, 0 | same account: Growth 25, Income 55, cost and average unchanged |
+| Income moves 5 ETF to Growth | transfer, `"2026-04-20"`, `quantityE8: 500000000`, `from` Income with `feesCents: 150`, `to` Growth | −150 (from), 0 (to); the answer lists the to leg first | same account: Growth 25, Income 55, cost and average unchanged |
 | Custody fee on Growth | `type: "fee"`, `"2026-04-30"`, `feesCents: 350`, no instrument | −350 | |
 
 **5. Positions.** `GET /portfolios/<growth>/positions`:
