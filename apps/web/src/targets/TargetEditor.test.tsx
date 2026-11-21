@@ -143,6 +143,19 @@ describe("TargetEditor (#55)", () => {
     upsertGoal.mockRestore();
   });
 
+  it("asks for an amount greater than zero when the API answers invalid_goal_amount (#701)", async () => {
+    const upsertGoal = vi
+      .spyOn(targetsApi, "upsertGoal")
+      .mockRejectedValue(new ApiError("PUT failed: 400", 400, "invalid_goal_amount", { field: "amountCents" }));
+    const { onSaved } = renderEditor();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "60.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Enter an amount greater than zero.");
+    expect(onSaved).not.toHaveBeenCalled();
+    upsertGoal.mockRestore();
+  });
+
   it("omits Remove for a new target", () => {
     renderEditor();
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { isValidationError, MAX_AMOUNT_CENTS } from "@envelope/core";
+
 import { createAssignmentBatch } from "../assignments/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
@@ -57,6 +59,24 @@ describe("goals repository", () => {
     assert.equal(goal.amountCents, 60000);
     assert.equal(goal.dueMonth, null);
     assert.equal(goal.every, null);
+  });
+
+  it("refuses an amount of 0 or less or a fraction with invalid_goal_amount, and one above the cap with amount_too_large (#701)", async () => {
+    for (const amountCents of [0, -100, 0.5]) {
+      await assert.rejects(upsertGoal(pool, workspaceId, categoryId, { kind: "balance", amountCents }), (error: unknown) => {
+        assert.ok(isValidationError(error, "invalid_goal_amount"), String(error));
+        assert.deepEqual(error.details, { field: "amountCents" });
+        return true;
+      });
+    }
+    await assert.rejects(upsertGoal(pool, workspaceId, categoryId, { kind: "balance", amountCents: MAX_AMOUNT_CENTS + 1 }), (error: unknown) => {
+      assert.ok(isValidationError(error, "amount_too_large"), String(error));
+      return true;
+    });
+    // The goal the previous test set is left as it was.
+    const goal = await getGoal(pool, workspaceId, categoryId);
+    assert.equal(goal?.kind, "monthly");
+    assert.equal(goal?.amountCents, 60000);
   });
 
   it("replaces a category's existing goal instead of adding a second one", async () => {
