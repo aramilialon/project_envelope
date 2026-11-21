@@ -211,8 +211,16 @@ export interface AccountNotEmptyDetails {
   readonly laterRows: { readonly count: number; readonly firstDate: LocalDate | null };
   /** Whether it holds any security today (a position with a quantity other than zero). */
   readonly holdsPositions: boolean;
-  /** The scheduled transactions on it, which would keep writing to it. */
-  readonly scheduled: { readonly count: number };
+  /**
+   * The scheduled transactions on it, which would keep writing to it, and the one due first (#741):
+   * the earliest next due date ("YYYY-MM-DD"), ties broken by the lowest id, so the user can find
+   * it. Both are null when there are none.
+   */
+  readonly scheduled: {
+    readonly count: number;
+    readonly scheduledTransactionId: string | null;
+    readonly nextDueDate: LocalDate | null;
+  };
 }
 
 /**
@@ -301,11 +309,19 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
   const { accounts: positions } = computePositions(trades);
   const holdsPositions = positions.some((position) => position.accountId === accountId && position.quantity !== 0);
 
-  const { rows: scheduledRows } = await db.query<{ count: number }>(
-    "SELECT count(*)::int AS count FROM scheduled_transactions WHERE workspace_id = $1 AND account_id = $2",
+  // The count, and the schedule due first (earliest next due date, then lowest id) for the user to find (#741).
+  const { rows: scheduledRows } = await db.query<{ count: number; id: string; next_due_date: string }>(
+    `SELECT count(*) OVER ()::int AS count, id, to_char(next_due_date, 'YYYY-MM-DD') AS next_due_date
+     FROM scheduled_transactions WHERE workspace_id = $1 AND account_id = $2
+     ORDER BY next_due_date, id LIMIT 1`,
     [workspaceId, accountId],
   );
-  const scheduled = { count: scheduledRows[0]?.count ?? 0 };
+  const first = scheduledRows[0];
+  const scheduled = {
+    count: first?.count ?? 0,
+    scheduledTransactionId: first?.id ?? null,
+    nextDueDate: first === undefined ? null : (first.next_due_date as LocalDate),
+  };
 
   if (balanceCents !== 0 || later.count > 0 || holdsPositions || scheduled.count > 0) {
     return { status: "not_empty", balanceCents, laterRows: later, holdsPositions, scheduled };

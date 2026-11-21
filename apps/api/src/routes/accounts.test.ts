@@ -658,7 +658,7 @@ describe("accounts routes", () => {
 
     /** A refusal's details: an empty account's, with `changes` applied. */
     function details(changes: Record<string, unknown>): Record<string, unknown> {
-      return { balanceCents: 0, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 }, ...changes };
+      return { balanceCents: 0, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null }, ...changes };
     }
 
     async function inject(method: "GET" | "POST" | "PATCH", path: string, payload?: Record<string, unknown>, headers = auth()) {
@@ -796,23 +796,39 @@ describe("accounts routes", () => {
       assert.ok(response.json().closedAt);
     });
 
-    it("refuses an account a scheduled transaction uses, with how many (#729)", async () => {
+    it("refuses an account a scheduled transaction uses, with how many and the one due first (#729, #741)", async () => {
       const accountId = await account("checking");
-      for (const nextDueDate of [`${nextYear}-01-01`, `${nextYear}-06-01`]) {
+      const ids = new Map<string, string[]>();
+      // Created out of order, and two due on the same first date: the earliest date wins, then the lowest id.
+      for (const nextDueDate of [`${nextYear}-06-01`, `${nextYear}-02-15`, `${nextYear}-02-15`]) {
         const scheduled = await inject("POST", "/scheduled-transactions", {
           accountId,
           nextDueDate,
           recurEvery: 1,
-          recurUnit: "month",
+          recurUnit: "year",
           splits: [{ categoryId, amountCents: 100 }],
         });
         assert.equal(scheduled.statusCode, 201, scheduled.body);
+        ids.set(nextDueDate, [...(ids.get(nextDueDate) ?? []), scheduled.json().id as string]);
       }
+      const first = [...ids.get(`${nextYear}-02-15`)!].sort()[0];
 
       const response = await close(accountId);
       assert.equal(response.statusCode, 409);
-      assert.deepEqual(response.json().details, details({ scheduled: { count: 2 } }));
+      assert.deepEqual(
+        response.json().details,
+        details({ scheduled: { count: 3, scheduledTransactionId: first, nextDueDate: `${nextYear}-02-15` } }),
+      );
       assert.equal(await closedAt(accountId), null);
+    });
+
+    it("gives null for the first schedule when none uses the account (#741)", async () => {
+      const accountId = await account("checking");
+      await transaction(accountId, "2020-01-15T12:00:00Z", 500);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json().details.scheduled, { count: 0, scheduledTransactionId: null, nextDueDate: null });
     });
 
     it("refuses a brokerage account that holds securities and no cash", async () => {
