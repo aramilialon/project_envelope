@@ -239,7 +239,7 @@ test.describe("account register (#54)", () => {
     }
   });
 
-  test("a row dated after today waits under 'Later', in no balance and not awaiting the bank (#702)", async ({ page }) => {
+  test("a row dated after today waits under 'Later', not in today's balance and not awaiting the bank (#702)", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
     try {
@@ -283,7 +283,9 @@ test.describe("account register (#54)", () => {
       await page.getByRole("button", { name: "Add", exact: true }).click();
       await expect(page.getByRole("dialog")).not.toBeVisible();
 
-      const nextYear = new Date().getUTCFullYear() + 1;
+      // Next year in the workspace's own time zone (Europe/Rome, db.ts), not UTC's or the browser's:
+      // around New Year they can disagree, and the row must land after today either way.
+      const nextYear = Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric" }).format(new Date())) + 1;
       await page.getByRole("button", { name: "New transaction" }).click();
       await page.getByLabel("Date").fill(`${nextYear}-01-15`);
       await page.getByLabel("Amount").fill("30.00");
@@ -293,8 +295,13 @@ test.describe("account register (#54)", () => {
       await expect(page.getByRole("dialog")).not.toBeVisible();
 
       // Today's balance leaves the later row out; the row shows the balance it leads to.
-      await expect(page.locator(".acc-bal .big")).toHaveText("-€10.00");
-      const later = page.getByRole("rowgroup").filter({ has: page.getByRole("rowheader", { name: /Later/ }) });
+      const balances = page.getByLabel("Account balances");
+      await expect(balances).toContainText(/^Balance\s*-€10\.00/);
+      await expect(balances).toContainText("Pending -€10.00");
+      // The later row is next year, past the month end: not even in the projected balance.
+      await expect(balances).toContainText("Projected at month end -€10.00");
+      await expect(balances).not.toContainText("40.00");
+      const later = page.getByRole("rowgroup").filter({ has: page.getByRole("rowheader", { name: "Later Dated after today: not in today's balance." }) });
       const laterRow = later.getByRole("row").filter({ hasText: "Home insurer" });
       await expect(laterRow).toContainText(`Jan 15, ${nextYear}`);
       await expect(laterRow).toContainText("-40.00");
@@ -306,8 +313,9 @@ test.describe("account register (#54)", () => {
       // The Accounts screen shows the same balance as of today.
       await page.getByRole("link", { name: "Accounts" }).click();
       await page.waitForURL(`/${workspace.id}/accounts`);
-      await expect(page.getByText("-€10.00").first()).toBeVisible();
-      await expect(page.getByText("-€40.00")).toHaveCount(0);
+      const checking = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Checking", exact: true }) });
+      await expect(checking).toContainText("-€10.00");
+      await expect(checking).not.toContainText("40.00");
     } finally {
       await workspace?.teardown();
       await user.teardown();
