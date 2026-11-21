@@ -1,4 +1,4 @@
-import { computeProjectedBalance, computeTimeline, formatMoney } from "@envelope/core";
+import { computeAccountBalance, computeTimeline, formatMoney, isAfterToday } from "@envelope/core";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -23,7 +23,7 @@ import { updateTransaction, type Transaction, type TransactionStatus } from "./a
 import { buildCategoryNameById, categoryLabel } from "./categoryLabel.ts";
 import RegisterTodo from "./RegisterTodo.tsx";
 import type { RegisterTodoItem } from "./registerTodo.ts";
-import { totalOf } from "./transactionAmount.ts";
+import { balanceRowOf, totalOf } from "./transactionAmount.ts";
 import TransactionForm from "./TransactionForm.tsx";
 import { useAccountRegister } from "./useAccountRegister.ts";
 import "./AccountRegisterScreen.css";
@@ -39,7 +39,12 @@ interface TransactionWithBalance {
   readonly balance: number;
 }
 
-/** The running balance after each transaction, oldest first then reversed — newest on top, matching the register's own reading order. */
+/**
+ * The running balance after each transaction, oldest first then reversed — newest on top, matching
+ * the register's own reading order. Every row dated on or before today comes before every later
+ * one, so the last of them carries today's balance and each "Later" row the balance it leads to on
+ * top of it (#702).
+ */
 function withRunningBalance(transactions: readonly Transaction[]): TransactionWithBalance[] {
   const chronological = [...transactions].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   return chronological
@@ -106,10 +111,29 @@ function rowLabel(
   return categoryLabel(transaction.splits[0]?.categoryId ?? null, categoryNameById, unassignedLabel);
 }
 
-/** A day-group header on the phone layout: "Friday, 9 October". */
-function longDay(iso: string, locale: string): string {
+/** A day-group header on the phone layout: "Friday, 9 October", with the year when it is not `currentYear`'s (#702). */
+function longDay(iso: string, locale: string, currentYear: number): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];
-  return new Intl.DateTimeFormat(locale, { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
+  const options: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" };
+  if (y !== currentYear) {
+    options.year = "numeric";
+  }
+  return new Intl.DateTimeFormat(locale, options).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/** Consecutive rows of the same day, in the order given — the phone layout's own grouping. */
+function groupByDay(rows: readonly TransactionWithBalance[]): { day: string; rows: TransactionWithBalance[] }[] {
+  const groups: { day: string; rows: TransactionWithBalance[] }[] = [];
+  for (const row of rows) {
+    const day = row.transaction.budgetDate;
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) {
+      last.rows.push(row);
+    } else {
+      groups.push({ day, rows: [row] });
+    }
+  }
+  return groups;
 }
 
 function StatusIcon({ status }: { readonly status: TransactionStatus }) {
@@ -137,11 +161,13 @@ function StatusIcon({ status }: { readonly status: TransactionStatus }) {
 }
 
 /**
- * The account register (#54, #323, #333, #337): reached from the Accounts screen. Balances
- * (cleared, pending and projected at month end), the same timeline the budget month uses but fed
+ * The account register (#54, #323, #333, #337): reached from the Accounts screen. Balances as of
+ * today in the workspace's time zone (cleared, pending and projected at month end,
+ * `computeAccountBalance`, #702), the same timeline the budget month uses but fed
  * this account's own events only, a "To do" list of its own (Record an overdue scheduled
  * transaction, Mark a pending one cleared), filter tabs with counts, search, the transaction list
- * with a running balance (newest first), the "+ New transaction"/edit side panel
+ * with a running balance (newest first; rows dated after today apart, in a "Later" section at the
+ * top, #702), the "+ New transaction"/edit side panel
  * (`TransactionForm`) for outflows, inflows, transfers and splits, "Reconcile" (opens
  * `ReconciliationScreen`, `#60`) and "Import" (opens `ImportScreen`, `#59`). A reconciled
  * transaction opens a read-only summary with an "Unlock" action instead of the form (`#60`):
@@ -245,8 +271,19 @@ export default function AccountRegisterScreen() {
   for (const t of transactions) {
     counts[t.status]++;
   }
-  const total = withBalance.length > 0 ? withBalance[0]!.balance : 0;
-  const pendingTotal = transactions.filter((t) => t.status === "pending").reduce((sum, t) => sum + totalOf(t), 0);
+  // "Today" in the workspace's own zone, the browser's while it has not loaded yet: it draws the
+  // line between today's balance and the "Later" rows (#702), and picks the day header that reads
+  // "Today".
+  const today = todayIsoIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const currentYear = Number(today.slice(0, 4));
+  // Every balance in the header is as of today (#702); the projected one adds this month's later
+  // rows and its scheduled items not recorded yet, from the same events fetch as the timeline.
+  const scheduledThisMonth = events.filter((e) => e.kind === "scheduled");
+  const balances = computeAccountBalance(
+    transactions.map(balanceRowOf),
+    today,
+    scheduledThisMonth.map((e) => ({ date: e.date, amountCents: e.amountCents })),
+  );
 
   function matchesFilter(status: TransactionStatus): boolean {
     return filter === "all" || filter === status;
@@ -269,6 +306,10 @@ export default function AccountRegisterScreen() {
   }
 
   const visible = withBalance.filter((row) => matchesFilter(row.transaction.status) && matchesSearch(row.transaction));
+  // Rows dated after today, this month or later, sit apart at the top ("Later", #702): they have
+  // not happened yet, so they are not in today's balance and never "still awaiting the bank".
+  const later = visible.filter((row) => isAfterToday(row.transaction.budgetDate, today));
+  const upToToday = visible.filter((row) => !isAfterToday(row.transaction.budgetDate, today));
 
   async function toggleStatus(t: Transaction) {
     const accessToken = auth.user?.access_token;
@@ -343,20 +384,6 @@ export default function AccountRegisterScreen() {
         );
   }
 
-  // A reasonable guess in the browser's own zone while the workspace's own has not loaded yet
-  // (this just picks which day header reads "Today" — a display nicety, not business logic).
-  const today = todayIsoIn(currentWorkspace?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
-  const groups: { day: string; rows: typeof visible }[] = [];
-  for (const row of visible) {
-    const day = row.transaction.budgetDate;
-    const last = groups[groups.length - 1];
-    if (last && last.day === day) {
-      last.rows.push(row);
-    } else {
-      groups.push({ day, rows: [row] });
-    }
-  }
-
   // The same timeline the budget month uses, fed this account's own events only (#337); the
   // events fetch also feeds "Record" below and the projected balance, so none of it needs its own
   // separate request.
@@ -367,8 +394,6 @@ export default function AccountRegisterScreen() {
     events: toTimelineEvents(events, todayInfo),
     valueLabelWidth: timelineValueLabelWidth(money),
   });
-  const scheduledThisMonth = events.filter((e) => e.kind === "scheduled");
-  const projectedBalance = computeProjectedBalance(total, scheduledThisMonth.map((e) => e.amountCents));
 
   const recordItems: RegisterTodoItem[] = todayInfo
     ? scheduledThisMonth
@@ -376,9 +401,93 @@ export default function AccountRegisterScreen() {
         .map((e) => ({ kind: "recordOverdue", scheduledTransactionId: e.scheduledTransactionId!, payee: e.payee ?? "", date: e.date, amountCents: Math.abs(e.amountCents) }))
     : [];
   const markItems: RegisterTodoItem[] = transactions
-    .filter((t) => t.status === "pending")
+    // A row dated after today has not reached the bank yet, so it is not waiting for it either (#702).
+    .filter((t) => t.status === "pending" && !isAfterToday(t.budgetDate, today))
     .map((t) => ({ kind: "markPending", transactionId: t.id, payee: t.payee ?? "", date: t.budgetDate, amountCents: Math.abs(totalOf(t)) }));
   const registerTodoItems: RegisterTodoItem[] = [...recordItems, ...markItems];
+
+  const laterHeading = intl.formatMessage({ id: "register.later", defaultMessage: "Later" });
+  const laterNote = intl.formatMessage({ id: "register.later.note", defaultMessage: "Dated after today: not in today's balance." });
+
+  /** One day of the phone layout's list: its header ("Today", or the day) and its rows. */
+  function renderPhoneGroup({ day, rows }: { day: string; rows: readonly TransactionWithBalance[] }) {
+    return (
+      <div key={day}>
+        <div className="ph-day">{day === today ? intl.formatMessage({ id: "register.today", defaultMessage: "Today" }) : longDay(day, intl.locale, currentYear)}</div>
+        {rows.map(({ transaction }) => {
+          const amount = totalOf(transaction);
+          const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
+          const subtitle = [rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel), transaction.memo ?? ""]
+            .filter((part) => part !== "")
+            .join(" · ");
+          return (
+            <div key={transaction.id} className="ph-tx">
+              <button type="button" className="open" onClick={() => setOpen({ transaction })}>
+                <span className="what">
+                  <b>{transaction.payee ?? ""}</b>
+                  <small>{subtitle}</small>
+                </span>
+                <span className={`amt n${amount > 0 ? " in" : ""}`}>{money(amount)}</span>
+              </button>
+              <button
+                type="button"
+                className={`st status-${transaction.status}`}
+                disabled={transaction.status === "reconciled" || togglingId === transaction.id}
+                aria-label={statusAriaLabel(transaction.status)}
+                onClick={() => void toggleStatus(transaction)}
+              >
+                <StatusIcon status={transaction.status} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  /** One row of the desktop table, with the running balance it leads to. */
+  function renderTableRow({ transaction, balance }: TransactionWithBalance) {
+    const amount = totalOf(transaction);
+    const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
+    const categoryCell = rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel);
+    return (
+      <tr key={transaction.id}>
+        <td>
+          <button
+            type="button"
+            className={`status status-${transaction.status}`}
+            disabled={transaction.status === "reconciled" || togglingId === transaction.id}
+            aria-label={statusAriaLabel(transaction.status)}
+            onClick={() => void toggleStatus(transaction)}
+          >
+            <StatusIcon status={transaction.status} />
+          </button>
+        </td>
+        <td>
+          <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+            {shortDate(transaction.budgetDate, intl.locale, currentYear)}
+          </button>
+        </td>
+        <td>
+          <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+            {transaction.payee ?? ""}
+            {transaction.memo && <small>{transaction.memo}</small>}
+          </button>
+        </td>
+        <td>
+          {/* An off-budget account's own rows have no category: an empty cell, never an unnamed button (#652). */}
+          {categoryCell !== "" && (
+            <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+              {categoryCell}
+            </button>
+          )}
+        </td>
+        <td className="n">{amount < 0 ? plain(-amount) : ""}</td>
+        <td className="n">{amount > 0 ? plain(amount) : ""}</td>
+        <td className="n">{plain(balance)}</td>
+      </tr>
+    );
+  }
 
   return (
     <div className="register-screen">
@@ -395,16 +504,17 @@ export default function AccountRegisterScreen() {
         </div>
         <div className="acc-bal" aria-label={intl.formatMessage({ id: "register.balances", defaultMessage: "Account balances" })}>
           <small>{intl.formatMessage({ id: "register.total", defaultMessage: "Balance" })}</small>
-          <span className="big n">{money(total)}</span>
+          <span className="big n">{money(balances.balanceCents)}</span>
           <div className="acc-facts">
             <span>
-              {intl.formatMessage({ id: "register.cleared", defaultMessage: "Cleared" })} <b className="n">{money(total - pendingTotal)}</b>
+              {intl.formatMessage({ id: "register.cleared", defaultMessage: "Cleared" })} <b className="n">{money(balances.clearedCents)}</b>
             </span>
             <span>
-              {intl.formatMessage({ id: "register.pending", defaultMessage: "Pending" })} <b className="n">{money(pendingTotal)}</b>
+              {intl.formatMessage({ id: "register.pending", defaultMessage: "Pending" })} <b className="n">{money(balances.pendingCents)}</b>
             </span>
             <span>
-              {intl.formatMessage({ id: "register.projected", defaultMessage: "Projected at month end" })} <b className="n">{money(projectedBalance)}</b>
+              {intl.formatMessage({ id: "register.projected", defaultMessage: "Projected at month end" })}{" "}
+              <b className="n">{money(balances.projectedAtMonthEndCents)}</b>
             </span>
           </div>
         </div>
@@ -420,6 +530,7 @@ export default function AccountRegisterScreen() {
             limit={2}
             money={money}
             locale={intl.locale}
+            currentYear={currentYear}
             onRecord={(id) => void handleRecordScheduled(id)}
             onMark={(id) => void handleMarkCleared(id)}
           />
@@ -435,6 +546,7 @@ export default function AccountRegisterScreen() {
               items={registerTodoItems}
               money={money}
               locale={intl.locale}
+              currentYear={currentYear}
               onRecord={(id) => void handleRecordScheduled(id)}
               onMark={(id) => void handleMarkCleared(id)}
             />
@@ -479,38 +591,16 @@ export default function AccountRegisterScreen() {
         <p className="empty">{intl.formatMessage({ id: "register.empty", defaultMessage: "No transactions match this filter." })}</p>
       ) : isPhone ? (
         <div className="phone-register">
-          {groups.map(({ day, rows }) => (
-            <div key={day}>
-              <div className="ph-day">{day === today ? intl.formatMessage({ id: "register.today", defaultMessage: "Today" }) : longDay(day, intl.locale)}</div>
-              {rows.map(({ transaction }) => {
-                const amount = totalOf(transaction);
-                const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-                const subtitle = [rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel), transaction.memo ?? ""]
-                  .filter((part) => part !== "")
-                  .join(" · ");
-                return (
-                  <div key={transaction.id} className="ph-tx">
-                    <button type="button" className="open" onClick={() => setOpen({ transaction })}>
-                      <span className="what">
-                        <b>{transaction.payee ?? ""}</b>
-                        <small>{subtitle}</small>
-                      </span>
-                      <span className={`amt n${amount > 0 ? " in" : ""}`}>{money(amount)}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`st status-${transaction.status}`}
-                      disabled={transaction.status === "reconciled" || togglingId === transaction.id}
-                      aria-label={statusAriaLabel(transaction.status)}
-                      onClick={() => void toggleStatus(transaction)}
-                    >
-                      <StatusIcon status={transaction.status} />
-                    </button>
-                  </div>
-                );
-              })}
+          {later.length > 0 && (
+            <div className="reg-later">
+              <div className="reg-later-h">
+                <h2>{laterHeading}</h2>
+                <p>{laterNote}</p>
+              </div>
+              {groupByDay(later).map(renderPhoneGroup)}
             </div>
-          ))}
+          )}
+          {groupByDay(upToToday).map(renderPhoneGroup)}
         </div>
       ) : (
         <table className="register-table">
@@ -525,50 +615,20 @@ export default function AccountRegisterScreen() {
               <th className="n">{intl.formatMessage({ id: "register.column.balance", defaultMessage: "Balance" })}</th>
             </tr>
           </thead>
-          <tbody>
-            {visible.map(({ transaction, balance }) => {
-              const amount = totalOf(transaction);
-              const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-              const categoryCell = rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel);
-              return (
-                <tr key={transaction.id}>
-                  <td>
-                    <button
-                      type="button"
-                      className={`status status-${transaction.status}`}
-                      disabled={transaction.status === "reconciled" || togglingId === transaction.id}
-                      aria-label={statusAriaLabel(transaction.status)}
-                      onClick={() => void toggleStatus(transaction)}
-                    >
-                      <StatusIcon status={transaction.status} />
-                    </button>
-                  </td>
-                  <td>
-                    <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {shortDate(transaction.budgetDate, intl.locale)}
-                    </button>
-                  </td>
-                  <td>
-                    <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {transaction.payee ?? ""}
-                      {transaction.memo && <small>{transaction.memo}</small>}
-                    </button>
-                  </td>
-                  <td>
-                    {/* An off-budget account's own rows have no category: an empty cell, never an unnamed button (#652). */}
-                    {categoryCell !== "" && (
-                      <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                        {categoryCell}
-                      </button>
-                    )}
-                  </td>
-                  <td className="n">{amount < 0 ? plain(-amount) : ""}</td>
-                  <td className="n">{amount > 0 ? plain(amount) : ""}</td>
-                  <td className="n">{plain(balance)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
+          {later.length > 0 && (
+            <tbody className="reg-later">
+              <tr className="reg-later-h">
+                {/* Empty under the status column, so the heading starts where the dates do. */}
+                <td aria-hidden="true"></td>
+                <th colSpan={6} scope="rowgroup">
+                  {laterHeading}{" "}
+                  <small>{laterNote}</small>
+                </th>
+              </tr>
+              {later.map(renderTableRow)}
+            </tbody>
+          )}
+          {upToToday.length > 0 && <tbody>{upToToday.map(renderTableRow)}</tbody>}
         </table>
       )}
 

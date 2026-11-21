@@ -8,6 +8,8 @@ interface Props {
   readonly items: readonly RegisterTodoItem[];
   readonly money: (cents: number) => string;
   readonly locale: string;
+  /** The current year in the workspace's time zone: a date of another year shows it (#702). */
+  readonly currentYear: number;
   /** Shows only the first `limit` items plus "+N more" — the phone layout (design.md: "the first two things to do under the balance"). Every item shows on the desktop, without this prop. */
   readonly limit?: number;
   onRecord(scheduledTransactionId: string): void;
@@ -19,7 +21,7 @@ interface Props {
  * structure and tokens (`Todo.css`), with this screen's own two actions instead — Record, Mark —
  * never `@envelope/core`'s `computeTodos` (a different list, `registerTodo.ts`).
  */
-export default function RegisterTodo({ items, money, locale, limit, onRecord, onMark }: Props) {
+export default function RegisterTodo({ items, money, locale, currentYear, limit, onRecord, onMark }: Props) {
   const intl = useIntl();
   const shown = limit === undefined ? items : items.slice(0, limit);
   const hiddenCount = items.length - shown.length;
@@ -44,7 +46,7 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
                 <small>
                   {intl.formatMessage(
                     { id: "register.todo.mark.sub", defaultMessage: "{date}, still awaiting the bank" },
-                    { date: shortDate(item.date, locale) },
+                    { date: shortDate(item.date, locale, currentYear) },
                   )}
                 </small>
               </span>
@@ -60,7 +62,7 @@ export default function RegisterTodo({ items, money, locale, limit, onRecord, on
               <small>
                 {intl.formatMessage(
                   { id: "register.todo.record.sub", defaultMessage: "scheduled for {date}, not yet in the account" },
-                  { date: shortDate(item.date, locale) },
+                  { date: shortDate(item.date, locale, currentYear) },
                 )}
               </small>
             </span>

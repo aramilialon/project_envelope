@@ -124,7 +124,8 @@ export type {
 export { computeTimeline } from "./presentation/timeline.ts";
 export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
 export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";
-export { computeProjectedBalance } from "./presentation/projectedBalance.ts";
+export type { AccountBalance, BalanceRow, NotYetRecordedAmount } from "./presentation/accountBalance.ts";
+export { computeAccountBalance, isAfterToday } from "./presentation/accountBalance.ts";
 export type { AvailableChange, InflowTiming, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";
 export { availableAfterInflow, transferCategoryRule } from "./presentation/transferCategory.ts";
 export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetProblemKind } from "./presentation/budgetProblems.ts";

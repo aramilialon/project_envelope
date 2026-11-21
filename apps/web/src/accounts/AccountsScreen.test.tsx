@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
+import type { Transaction } from "../transactions/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as accountsApi from "./api.ts";
 import type { Account } from "./api.ts";
@@ -35,13 +36,13 @@ afterEach(() => {
   setWidth(ORIGINAL_WIDTH);
 });
 
-function renderScreen(accounts: Account[]) {
+function renderScreen(accounts: Account[], transactions: Transaction[] = []) {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
     { id: "ws-1", name: "Famiglia", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
   ]);
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
-  vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue([]);
+  vi.spyOn(transactionsApi, "listTransactionsForAccount").mockResolvedValue(transactions);
   return renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1/accounts"]}>
       <Routes>
@@ -206,6 +207,35 @@ describe("AccountsScreen (#51, #323)", () => {
     );
 
     expect(await screen.findByText("€1,460.00")).toBeInTheDocument();
+  });
+
+  it("shows each balance as of today in the workspace's time zone, leaving later rows out (#702)", async () => {
+    // 23:30 UTC on 30 November is already 1 December in Rome.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-30T23:30:00.000Z"));
+    const row = (id: string, budgetDate: string, amountCents: number): Transaction => ({
+      id,
+      workspaceId: "ws-1",
+      accountId: "a1",
+      occurredAt: `${budgetDate}T09:00:00.000Z`,
+      budgetDate,
+      payee: null,
+      memo: null,
+      status: "cleared",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      createdAt: `${budgetDate}T09:00:00.000Z`,
+      splits: [{ id: `s-${id}`, categoryId: null, amountCents, memo: null }],
+    });
+    renderScreen([CHECKING], [row("t1", "2026-12-01", 50_000), row("t2", "2026-12-02", 70_000)]);
+
+    try {
+      expect(await screen.findByText("€500.00")).toBeInTheDocument();
+      expect(screen.queryByText("€1,200.00")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows each balance in its account's own currency, not the workspace's (#652)", async () => {

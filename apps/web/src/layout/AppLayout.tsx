@@ -107,6 +107,7 @@ export default function AppLayout() {
           <AccountsPanel
             workspaceId={workspaceId}
             currency={currentWorkspace?.baseCurrency ?? "EUR"}
+            timeZone={currentWorkspace?.timeZone}
             currentAccountId={registerMatch?.params.accountId}
             refreshKey={`${location.pathname}|${budgetDataVersion}`}
             onClose={closeAccountsPanel}

@@ -344,6 +344,8 @@
   "register.filter.pending": "In attesa",
   "register.filter.reconciled": "Riconciliate",
   "register.import": "Importa",
+  "register.later": "Più avanti",
+  "register.later.note": "Con data dopo oggi: non entrano nel saldo di oggi.",
   "register.loading": "Caricamento del conto…",
   "register.locked": "Questa transazione è riconciliata e bloccata.",
   "register.new": "Nuova transazione",
