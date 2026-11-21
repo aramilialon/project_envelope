@@ -389,11 +389,42 @@ describe("BudgetScreen (#53, #324)", () => {
     renderScreen(
       budgetMonth({
         categories: [],
-        paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 70_000 })],
+        paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 70_000, owed: 120_000 })],
       }),
       [HOME],
     );
     expect(await screen.findByText("€700.00 to cover of €1,200.00 of debt")).toBeInTheDocument();
+  });
+
+  it("a card paid beyond what was set aside: its real debt in the status line, one To do item for the whole amount to cover (#699)", async () => {
+    // The domain guide's worked example: opened owing €500, €45.67 spent on it (covered), €300
+    // paid from checking, nothing assigned to the payment category.
+    renderScreen(
+      budgetMonth({
+        categories: [],
+        paymentCategories: [
+          category({
+            categoryId: "pc1",
+            name: "Visa payment",
+            activity: -25_433,
+            available: -25_433,
+            cashOverspending: 25_433,
+            uncovered: 24_567,
+            owed: 24_567,
+          }),
+        ],
+      }),
+      [HOME],
+    );
+    expect(await screen.findByText("€245.67 to cover of €245.67 of debt")).toBeInTheDocument();
+    const todo = document.querySelector(".todo")!;
+    expect(within(todo as HTMLElement).getByText("Cover Visa payment")).toBeInTheDocument();
+    expect(todo).toHaveTextContent("€500.00");
+    expect(within(todo as HTMLElement).queryByText(/Debt to cover/)).not.toBeInTheDocument();
+
+    fireEvent.click(within(document.querySelector(".bars")!).getByRole("button", { name: /Visa payment/ }));
+    expect(await screen.findByText("Paid beyond what was set aside")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assign €500.00 from unassigned money" })).toBeInTheDocument();
   });
 
   it("collapses and expands a group", async () => {
@@ -453,7 +484,7 @@ describe("BudgetScreen (#53, #324)", () => {
 
   it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
     renderScreen(
-      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0 })] }),
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0, owed: 50_000 })] }),
       [HOME],
     );
     await screen.findByText("Visa payment");
@@ -466,7 +497,7 @@ describe("BudgetScreen (#53, #324)", () => {
 
   it("opens a card's own payment category row with its own debt still to cover, and 'Move money here' opens the move-money form (#329)", async () => {
     renderScreen(
-      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000 })] }),
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000, owed: 57_000 })] }),
       [HOME],
     );
     await screen.findByText("Visa payment");
@@ -776,7 +807,7 @@ describe("BudgetScreen (#53, #324)", () => {
   it("opens a card's own payment category detail full screen on a phone too", async () => {
     setWidth(390);
     renderScreen(
-      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000 })] }),
+      budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 7_000, owed: 57_000 })] }),
       [HOME],
     );
     await screen.findByText("Visa payment");

@@ -1,4 +1,4 @@
-import { formatMoney } from "@envelope/core";
+import { cardDebt, formatMoney } from "@envelope/core";
 import { useIntl } from "react-intl";
 
 import DetailFrame from "./DetailFrame.tsx";
@@ -6,10 +6,12 @@ import "./RowDetail.css";
 
 interface Props {
   readonly categoryName: string;
-  /** Money set aside to pay the card — `BudgetGroupCategory.available`. */
+  /** The payment category's own available amount — `BudgetGroupCategory.available`; negative when the card was paid beyond what was set aside. */
   readonly available: number;
   /** How much of the card's real balance no assigned money covers yet. */
   readonly uncovered: number;
+  /** The card's real debt, what is owed on it (#699) — `BudgetGroupCategory.owed`; undefined when the API does not know it. */
+  readonly owed: number | undefined;
   /** Whether the card had a starting balance when added (#355) — picks the specific "already had debt" sentence over the generic one. */
   readonly hasStartingBalance?: boolean;
   /** Which ordinary categories' credit overspending this month is attributable to this card, with their own names and amounts (#355). */
@@ -29,8 +31,9 @@ interface Props {
 /**
  * A card's own payment category detail, opening in its own row exactly like an ordinary
  * category's (`RowDetail.tsx`, #327) — design.md's "Card payment category": money set aside, a
- * sentence about the card's debt, the debt itself (balance, set aside, to cover) when any of it
- * is uncovered, and the two actions #328's `MoveMoneyForm` already provides (reused here, not a
+ * sentence about the card's debt, the debt itself (balance, set aside, what was paid beyond what
+ * was set aside when the card was, to cover) when any of it is uncovered — every figure from
+ * `@envelope/core`'s `cardDebt` (#699), none derived here — and the two actions #328's `MoveMoneyForm` already provides (reused here, not a
  * separate one-click commit the way the reference mockup's own shortcut button does). Picks the
  * mockup's own two more specific sentences when the data for them is available (#355): a starting
  * balance (`hasStartingBalance`, priority over the other when both apply, same as the mockup's own
@@ -48,6 +51,7 @@ export default function PaymentCategoryDetail({
   categoryName,
   available,
   uncovered,
+  owed,
   hasStartingBalance,
   overspendingBy,
   currency,
@@ -59,8 +63,8 @@ export default function PaymentCategoryDetail({
 }: Props) {
   const intl = useIntl();
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
-  const covered = uncovered <= 0;
-  const debt = covered ? 0 : available + uncovered;
+  const debt = cardDebt({ available, uncovered, ...(owed !== undefined ? { owed } : {}) });
+  const covered = debt.toCover <= 0;
 
   function explanation(): string {
     if (covered) {
@@ -103,7 +107,7 @@ export default function PaymentCategoryDetail({
     >
       <div className="sec">
         <span className="state-l">{intl.formatMessage({ id: "budget.payment.setAside", defaultMessage: "Set aside to pay the card" })}</span>
-        <span className="big n">{money(available)}</span>
+        <span className="big n">{money(debt.setAside)}</span>
         <p className="explain">{explanation()}</p>
       </div>
 
@@ -112,22 +116,29 @@ export default function PaymentCategoryDetail({
           <div className="qa static">
             <span>{intl.formatMessage({ id: "budget.payment.cardBalance", defaultMessage: "Card balance" })}</span>
             <span className="dots" />
-            <span className="n">{money(debt)}</span>
+            <span className="n">{money(debt.owed)}</span>
           </div>
           <div className="qa static">
             <span>{intl.formatMessage({ id: "budget.payment.setAsideLine", defaultMessage: "Set aside" })}</span>
             <span className="dots" />
-            <span className="n">{money(Math.max(0, available))}</span>
+            <span className="n">{money(debt.setAside)}</span>
           </div>
+          {debt.paidBeyondSetAside > 0 && (
+            <div className="qa static">
+              <span>{intl.formatMessage({ id: "budget.payment.paidBeyondSetAside", defaultMessage: "Paid beyond what was set aside" })}</span>
+              <span className="dots" />
+              <span className="n">{money(debt.paidBeyondSetAside)}</span>
+            </div>
+          )}
           <div className="qa static">
             <span>{intl.formatMessage({ id: "budget.payment.toCover", defaultMessage: "To cover" })}</span>
             <span className="dots" />
-            <span className="n warnl">{money(uncovered)}</span>
+            <span className="n warnl">{money(debt.toCover)}</span>
           </div>
           {!readOnly && (
             <>
               <button type="button" className="plain" onClick={onAssignFromUnassigned}>
-                {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(uncovered) })}
+                {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(debt.toCover) })}
               </button>
               <button type="button" className="plain" onClick={onMoveMoneyHere}>
                 {intl.formatMessage({ id: "budget.payment.moveMoneyHere", defaultMessage: "Move money here" })}

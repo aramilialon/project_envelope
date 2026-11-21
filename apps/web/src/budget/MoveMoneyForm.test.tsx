@@ -160,6 +160,21 @@ describe("MoveMoneyForm (#328)", () => {
     expect(screen.getByText(/Unassigned will go below zero/)).toBeInTheDocument();
   });
 
+  it("'Assign from unassigned money' on a card paid beyond what was set aside asks for the overspending plus the uncovered debt (#699)", () => {
+    const visa = categoryIn({
+      categoryId: "visa",
+      name: "Visa payment",
+      available: -25_433,
+      cashOverspending: 25_433,
+      uncovered: 24_567,
+      owed: 24_567,
+      isPaymentCategory: true,
+    });
+    renderForm({ kind: "assignTo", categoryId: "visa" }, { groups: [{ id: "g1", name: "Home", categories: [visa] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("500.00");
+    expect(screen.getByText("The card's debt is fully covered.")).toBeInTheDocument();
+  });
+
   it("preselects a category able to cover the gap as the source, when unassigned money cannot", () => {
     renderForm({ kind: "moveTo", categoryId: "restaurants" }, { unassignedCents: 500 }); // needs €20.00, only €5.00 unassigned
     expect(screen.getByLabelText("From")).toHaveValue("groceries"); // the first other category with enough available

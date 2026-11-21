@@ -95,6 +95,7 @@
   "budget.payment.cardBalance": "Card balance",
   "budget.payment.covered": "The card's debt is fully covered by money set aside. When you pay the card from the checking account, the payment counts against it.",
   "budget.payment.moveMoneyHere": "Move money here",
+  "budget.payment.paidBeyondSetAside": "Paid beyond what was set aside",
   "budget.payment.setAside": "Set aside to pay the card",
   "budget.payment.setAsideLine": "Set aside",
   "budget.payment.toCover": "To cover",
