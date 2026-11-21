@@ -227,7 +227,7 @@ Obtaining and configuring these (and, later, APNs/FCM) for a real self-hosted de
 
 The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` must match the realm and client the previous section's `bootstrap.sh` created (its own defaults, `envelope`/`envelope-api`, already do) — the web app's own sign-in (`#49`, next section) is a real token from this Keycloak, verified against it on every request. Letting another device on your own network reach the API directly (section 8's own alternative to the SSH tunnel) needs `KEYCLOAK_ISSUER` and `WEB_ORIGIN` changed to `https://<that address>:8443/realms/envelope` and `https://<that address>` respectively — `HOST` stays `127.0.0.1`: Caddy (section 8) is what the network actually reaches.
 
-Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm and their own `envelope_app` login through the admin API (no manual setup needed for tests specifically):
+Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm through the admin API and their own login roles (no manual setup needed for tests specifically):
 
 ```bash
 $ createdb -h 127.0.0.1 -U envelope envelope_test     # once; asks for the password in infra/.env
@@ -236,7 +236,7 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
   pnpm --filter @envelope/api test
 ```
 
-Roles are cluster-wide, not per-database, so the tests log in as `envelope_app` and `envelope_queue` with the same passwords this `.env` gives them (`APP_DATABASE_URL`, `QUEUE_DATABASE_URL`; the environment wins if it sets them too), and set them only when a role cannot already log in with them. Running the tests therefore never breaks a dev server started from this section. `scripts/dev/reset-role-passwords.sh` is only for repairing a database whose passwords no longer match this `.env` (for example after a test run from before this change); it sets both back, no arguments needed.
+Roles are cluster-wide, not per-database, so the tests never change the login or password of `envelope_app` and `envelope_queue`: each test database gets two login roles of its own, members of those two, named and given passwords derived from `DATABASE_URL` (`apps/api/README.md`, "Running the integration tests locally"). Running the tests therefore never breaks a dev server started from this section, nor another test run on the same server. `scripts/dev/reset-role-passwords.sh` is only for repairing a server whose `envelope_app`/`envelope_queue` passwords no longer match this `.env` (for example after a test run from before this change); it sets both back, no arguments needed, and must not run while a dev server or tests from another checkout rely on the old ones.
 
 Two test runs can share this machine at the same time, as long as each has a database of its own (another `createdb`, and its name in `DATABASE_URL`): the smoke tests listen on ports the operating system picks, test tokens live a minute, and the tests of the scheduled-transactions job create and drop a throwaway database of their own, so the `envelope` user needs to be allowed to create databases (it is, as the superuser `infra/docker-compose.yml` creates).
 

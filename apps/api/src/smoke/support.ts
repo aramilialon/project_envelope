@@ -12,6 +12,11 @@
  * process could take in between, a far smaller window than a fixed one).
  * main.ts prints one `{"msg":"listening","address":…,"port":…}` line once it
  * is listening, whatever LOG_LEVEL says; this resolves on that line.
+ *
+ * The server's stdout and stderr are kept for its whole life, the last
+ * `OUTPUT_CAP_CHARS` of them, so a test that fails can show what the server
+ * logged (`printServerOutputOnFailure`): a 500 in a test only says that the
+ * server failed, its log says why (#585).
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
@@ -21,12 +26,35 @@ const MAIN_TS = fileURLToPath(new URL("../main.ts", import.meta.url));
 const APPS_API_DIR = fileURLToPath(new URL("../..", import.meta.url));
 const READY_TIMEOUT_MS = 10_000;
 const STOP_TIMEOUT_MS = 5_000;
-/** How much of the server's own output is kept, only to report a failure to start. */
+/** How much of the server's own output is kept (the most recent part), to report a failure. */
 const OUTPUT_CAP_CHARS = 64 * 1024;
 
 export interface RunningServer {
   readonly baseUrl: string;
+  /** The last `OUTPUT_CAP_CHARS` characters the server wrote to stdout and stderr, interleaved. */
+  output(): string;
   stop(): Promise<void>;
+}
+
+/**
+ * An `afterEach` hook that prints the output of `servers()` when the test that just ran failed:
+ * `afterEach(printServerOutputOnFailure(() => [server]))`. Servers not started yet are skipped.
+ */
+export function printServerOutputOnFailure(
+  servers: () => ReadonlyArray<RunningServer | undefined>,
+): (context: { readonly name: string }) => void {
+  return (context) => {
+    // Node.js gives an `afterEach` hook the test's own context, whose `passed` (Node.js 22.16+ and
+    // 24) the installed type definitions do not declare yet.
+    if ((context as { readonly passed?: boolean }).passed !== false) {
+      return;
+    }
+    for (const server of servers()) {
+      if (server) {
+        console.error(`--- output of the server at ${server.baseUrl} (test "${context.name}" failed) ---\n${server.output()}--- end of server output ---`);
+      }
+    }
+  };
 }
 
 export async function startServer(env: Record<string, string>): Promise<RunningServer> {
@@ -37,36 +65,36 @@ export async function startServer(env: Record<string, string>): Promise<RunningS
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  let output = "";
+  const record = (chunk: Buffer): void => {
+    output = (output + chunk.toString()).slice(-OUTPUT_CAP_CHARS);
+  };
+  // Listening for "data" for the server's whole life also keeps both pipes drained, so a chatty
+  // server never blocks on a full one.
+  child.stdout.on("data", record);
+  child.stderr.on("data", record);
+
   try {
-    const baseUrl = await waitUntilListening(child);
-    return { baseUrl, stop: () => stopServer(child) };
+    const baseUrl = await waitUntilListening(child, () => output);
+    return { baseUrl, output: () => output, stop: () => stopServer(child) };
   } catch (error) {
     child.kill("SIGKILL");
     throw error;
   }
 }
 
-function waitUntilListening(child: ChildProcess): Promise<string> {
+function waitUntilListening(child: ChildProcess, output: () => string): Promise<string> {
   return new Promise((resolve, reject) => {
-    let output = "";
     let pendingLine = "";
 
-    const record = (chunk: string): void => {
-      output = (output + chunk).slice(-OUTPUT_CAP_CHARS);
-    };
     const finish = (settle: () => void): void => {
       clearTimeout(timer);
       child.stdout?.off("data", onStdout);
-      child.stderr?.off("data", onStderr);
       child.off("exit", onExit);
-      // Keep draining the pipes once nobody reads them, so a chatty server never blocks on a full one.
-      child.stdout?.resume();
-      child.stderr?.resume();
       settle();
     };
     const onStdout = (chunk: Buffer): void => {
       const text = chunk.toString();
-      record(text);
       const lines = (pendingLine + text).split("\n");
       pendingLine = lines.pop() ?? "";
       for (const line of lines) {
@@ -77,16 +105,14 @@ function waitUntilListening(child: ChildProcess): Promise<string> {
         }
       }
     };
-    const onStderr = (chunk: Buffer): void => record(chunk.toString());
     const onExit = (): void =>
-      finish(() => reject(new Error(`Server process exited before becoming ready:\n${output}`)));
+      finish(() => reject(new Error(`Server process exited before becoming ready:\n${output()}`)));
     const timer = setTimeout(
-      () => finish(() => reject(new Error(`Server did not become ready within ${READY_TIMEOUT_MS}ms:\n${output}`))),
+      () => finish(() => reject(new Error(`Server did not become ready within ${READY_TIMEOUT_MS}ms:\n${output()}`))),
       READY_TIMEOUT_MS,
     );
 
     child.stdout?.on("data", onStdout);
-    child.stderr?.on("data", onStderr);
     child.once("exit", onExit);
   });
 }

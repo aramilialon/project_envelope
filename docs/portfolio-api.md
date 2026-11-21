@@ -349,8 +349,12 @@ accounts its trades are on, and one account can hold several portfolios.
 
 - `purpose` is free text; `null` or a blank string clears it.
 - `archived: true` archives (keeping the first `archivedAt`), `false` unarchives. An archived
-  portfolio keeps its trades and positions, is left out of the list unless asked for, and still
-  accepts trades today; refusing new trades in an archived portfolio is planned (#597).
+  portfolio keeps its trades and positions and is left out of the list unless asked for. It takes
+  no new trades (400 `portfolio_archived`): no buy, sell, dividend, fee or tax, and no transfer
+  into it. The trades it already has can still be edited and deleted, a transfer out of it is
+  allowed so it can be emptied into another portfolio or account, and a split of an instrument it
+  holds still writes its row there (a split is a fact about the instrument). Unarchive it to
+  record trades in it again.
 - Two non-archived portfolios of a workspace cannot share a name, ignoring case and surrounding
   spaces: 409 `name_taken`, on create, rename and unarchive. An archived one does not block its
   name.
@@ -495,7 +499,8 @@ Nothing is written until every check has passed:
    holdings on its date (`split_without_holdings`); a client-generated id is not taken (409
    `id_taken`);
 4. each account exists in the workspace and is a brokerage account, the instrument is in its
-   currency, each portfolio exists;
+   currency, each portfolio exists and, unless the row is a split row, a transfer's outgoing leg
+   or a row already stored there, is not archived (`portfolio_archived`);
 5. the trade's own rules (amounts not negative, a tax kind only on a tax, accrued interest only
    on a bond, withholdings not above what they are withheld from);
 6. `occurredAt` falls on `tradeDate` in the workspace's time zone;
@@ -517,6 +522,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `unknown_account` | `{ "accountId" }` | not an account of this workspace |
 | `account_not_brokerage` | `{ "accountId", "accountType" }` | trades go on brokerage accounts only |
 | `unknown_portfolio` | `{ "portfolioId" }` | not a portfolio of this workspace |
+| `portfolio_archived` | `{ "portfolioId" }` | the portfolio is archived and takes no new trades: a buy, sell, dividend, fee or tax filed under it, a transfer into it, or an edit that moves a trade or a transfer's leg into it. A transfer out of it and a split's rows are allowed. Unarchive it first |
 | `unknown_instrument` | `{ "instrumentId" }` | not in the catalog |
 | `currency_mismatch` | `{ "accountId", "accountCurrency", "instrumentCurrency" }` | the instrument is quoted in another currency than the account's |
 | `negative_amount_not_allowed` | `{ "field" }` | an amount or cost below zero |
@@ -642,6 +648,10 @@ trade never changes: delete it and record another.
 - **The history is checked again.** The edited rows go through every check of a create, and the
   whole history of every instrument the edit touches (the old one and the new one) is replayed;
   an edit that would make any portfolio oversell, at any date, is refused.
+- **Archived portfolios.** A trade already in an archived portfolio can still be edited there, or
+  moved out of it. Moving a trade or a transfer's leg (either one) into an archived portfolio is
+  `portfolio_archived`. A split moved to another date covers the holdings on that date, archived
+  portfolios included.
 - **The cash leg is rewritten in place.** It keeps its id, payee and memo; it is created when the
   trade starts moving cash and deleted when it stops. A `cleared` leg whose amount, account or
   date changes goes back to `pending`, since it no longer matches the statement it was ticked

@@ -21,7 +21,7 @@ You are the developer of `envelope`. The coordinator gives you a brief for one i
 
 ## Before you report
 
-Run and get green: `pnpm typecheck`, `pnpm test`, the API integration tests if the API changed, and the e2e tests if a user flow changed (they need the local stack; say so if it is not running).
+Run and get green: `pnpm typecheck`, `pnpm test`, the API integration tests if the API changed (against a database of your own; the tests create their own login roles for it, so never change a PostgreSQL role's password or login yourself), and the e2e tests if a user flow changed (they need the local stack; say so if it is not running).
 
 ## Never
 
