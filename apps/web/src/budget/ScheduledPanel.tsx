@@ -100,6 +100,8 @@ export default function ScheduledPanel({ workspaceId, month, groups, currency, t
     try {
       await action();
       scheduled.refetch();
+      // Recording or skipping moves the item's due date, possibly into or out of next month.
+      nextMonthTargets.refetch();
       onChanged();
     } finally {
       setBusyId(null);

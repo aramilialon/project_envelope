@@ -125,26 +125,32 @@ describe("ScheduledPanel (#330)", () => {
     const recordScheduledTransaction = vi
       .spyOn(budgetApi, "recordScheduledTransaction")
       .mockResolvedValue({ transaction: { id: "tx-1" }, scheduledTransaction: scheduledTransaction({ nextDueDate: "2026-10-05" }) });
-    const { onChanged } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    const { onChanged, listGoalProgress } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
     await screen.findByText("Landlord");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]!);
 
     await waitFor(() => expect(recordScheduledTransaction).toHaveBeenCalledWith("t", "ws-1", "sched-1"));
     expect(onChanged).toHaveBeenCalled();
+    // Next month's preview follows the moved due date (#682).
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", "2026-10");
   });
 
   it("'Skip' advances the due date without creating a transaction", async () => {
     const skipScheduledTransaction = vi
       .spyOn(budgetApi, "skipScheduledTransaction")
       .mockResolvedValue(scheduledTransaction({ nextDueDate: "2026-10-05" }));
-    const { onChanged } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    const { onChanged, listGoalProgress } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
     await screen.findByText("Landlord");
 
     fireEvent.click(screen.getAllByRole("button", { name: "Skip" })[0]!);
 
     await waitFor(() => expect(skipScheduledTransaction).toHaveBeenCalledWith("t", "ws-1", "sched-1"));
     expect(onChanged).toHaveBeenCalled();
+    // Next month's preview follows the moved due date (#682).
+    await waitFor(() => expect(listGoalProgress).toHaveBeenCalledTimes(2));
+    expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", "2026-10");
   });
 
   it("next month's preview shows 'within the target' when the target already asks enough", async () => {

@@ -667,6 +667,30 @@ describe("BudgetScreen (#53, #324)", () => {
     expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
   });
 
+  it("lists only the month's own ordinary categories' targets under 'To do', not a payment category's or a missing one's (#682)", async () => {
+    const goal = (categoryId: string, id: string): GoalProgress => ({
+      goal: { id, workspaceId: "ws-1", categoryId, kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" },
+      asks: 6_000,
+      missing: 1_000,
+      progress: 0.83,
+    });
+    const goalsByCategory = new Map<string, GoalProgress>([
+      ["c1", goal("c1", "g1")],
+      ["visa", goal("visa", "g2")],
+      ["gone", goal("gone", "g3")],
+    ]);
+    renderScreen(
+      budgetMonth({ categories: [category({})], paymentCategories: [category({ categoryId: "visa", name: "Visa" })] }),
+      [HOME],
+      [],
+      goalsByCategory,
+    );
+
+    expect(await screen.findByText("Fund the Groceries target")).toBeInTheDocument();
+    expect(screen.getAllByText(/^Fund the .* target$/)).toHaveLength(1);
+    expect(screen.queryByText("Fund the Visa target")).not.toBeInTheDocument();
+  });
+
   it("makes one targets request for the month, Targets and Scheduled panels included (#682)", async () => {
     const goalsByCategory = new Map<string, GoalProgress>([
       ["c1", { goal: { id: "g1", workspaceId: "ws-1", categoryId: "c1", kind: "monthly", amountCents: 6_000, dueMonth: null, every: null, createdAt: "", updatedAt: "" }, asks: 6_000, missing: 1_000, progress: 0.83 }],
