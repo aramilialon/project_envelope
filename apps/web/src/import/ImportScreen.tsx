@@ -15,6 +15,7 @@ import {
   type StagedTransactionDecision,
   type StageImportResult,
 } from "./api.ts";
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { detectImportFormat } from "./detectFormat.ts";
 import {
   buildCsvMapping,
@@ -188,8 +189,8 @@ export default function ImportScreen() {
         setStageResult(result);
         initializeSelections(result.staged);
         setStep(3);
-      } catch {
-        setError(intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+      } catch (caught) {
+        setError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
       } finally {
         setSubmitting(false);
       }
@@ -246,8 +247,8 @@ export default function ImportScreen() {
       setStageResult(result);
       initializeSelections(result.staged);
       setStep(3);
-    } catch {
-      setError(intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+    } catch (caught) {
+      setError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
     } finally {
       setSubmitting(false);
     }
@@ -286,8 +287,11 @@ export default function ImportScreen() {
         stillStaged: stageResult.staged.length - decisions.length,
       });
       setStep(4);
-    } catch {
-      setError(intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." }));
+    } catch (caught) {
+      setError(
+        tooManyRequestsMessage(intl, caught) ??
+          intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." }),
+      );
     } finally {
       setSubmitting(false);
     }

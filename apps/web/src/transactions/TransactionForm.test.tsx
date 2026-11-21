@@ -145,6 +145,21 @@ describe("TransactionForm (#54)", () => {
     expect(onSaved).not.toHaveBeenCalled();
   });
 
+  it("says how long to wait when the API refuses a save over its rate limit (#566)", async () => {
+    vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(
+      new ApiError("POST failed: 429", 429, "too_many_requests", { retryAfterSeconds: 30 }),
+    );
+    const { onSaved } = renderForm({ accountId: "acc-visa", accounts: [CHECKING, VISA] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Inflow" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "5.00" } });
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Cashback" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByText("Too many requests in a short time. Try again in 30 seconds.")).toBeInTheDocument();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it("creates a transfer to another account", async () => {
     const createTransfer = vi.spyOn(transactionsApi, "createTransfer").mockResolvedValue({} as transactionsApi.Transfer);
     renderForm();
