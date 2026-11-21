@@ -5,6 +5,7 @@ import { isValidationError } from "../errors.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
 import { shiftMonth } from "../month.ts";
+import { MAX_AMOUNT_CENTS } from "../money.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 
 /** Finds a category in the result, failing the test if it is missing. */
@@ -514,7 +515,7 @@ describe("totals beyond the safe range (#651)", () => {
   });
 
   it("still computes a month whose figures go above the per-amount cap", () => {
-    const cap = 100_000_000_000;
+    const cap = MAX_AMOUNT_CENTS;
     const result = computeBudgetMonth(
       {
         ...EMPTY,

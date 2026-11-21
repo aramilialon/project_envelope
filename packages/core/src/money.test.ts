@@ -171,9 +171,15 @@ describe("the cap on a single amount (#651, ADR 0002)", () => {
   const tooLarge = (max: number) => (error: unknown) =>
     isValidationError(error, "amount_too_large") && error.details.max === max && error.details.label === "amount";
 
-  it("is 10^11 minor units: €1,000,000,000.00", () => {
-    assert.equal(MAX_AMOUNT_CENTS, 100_000_000_000);
-    assert.equal(formatMoney(MAX_AMOUNT_CENTS, US_USD), "$1,000,000,000.00");
+  // Every figure below is derived from the constant, so that changing the cap changes the tests
+  // with it; only this first test pins its value.
+  const typed = (minorUnits: number, locale: string, decimals = 2): string =>
+    new Intl.NumberFormat(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(minorUnits / 10 ** decimals);
+  const plain = (minorUnits: number, decimals = 2): string => (minorUnits / 10 ** decimals).toFixed(decimals);
+
+  it("is 10^12 minor units: €10,000,000,000.00", () => {
+    assert.equal(MAX_AMOUNT_CENTS, 1_000_000_000_000);
+    assert.equal(formatMoney(MAX_AMOUNT_CENTS, US_USD), "$10,000,000,000.00");
   });
 
   it("assertAmount accepts the cap either way and refuses one minor unit more, naming the cap", () => {
@@ -186,10 +192,10 @@ describe("the cap on a single amount (#651, ADR 0002)", () => {
   });
 
   it("parseAmount accepts the cap and refuses one cent more, in either sign", () => {
-    assert.equal(parseAmount("1.000.000.000,00", IT_EUR), MAX_AMOUNT_CENTS);
-    assert.equal(parseAmount("-1,000,000,000.00", US_USD), -MAX_AMOUNT_CENTS);
-    assert.throws(() => parseAmount("1.000.000.000,01", IT_EUR), tooLarge(MAX_AMOUNT_CENTS));
-    assert.throws(() => parseAmount("-1000000000.01", US_USD), tooLarge(MAX_AMOUNT_CENTS));
+    assert.equal(parseAmount(typed(MAX_AMOUNT_CENTS, "it-IT"), IT_EUR), MAX_AMOUNT_CENTS);
+    assert.equal(parseAmount(`-${typed(MAX_AMOUNT_CENTS, "en-US")}`, US_USD), -MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount(typed(MAX_AMOUNT_CENTS + 1, "it-IT"), IT_EUR), tooLarge(MAX_AMOUNT_CENTS));
+    assert.throws(() => parseAmount(`-${plain(MAX_AMOUNT_CENTS + 1)}`, US_USD), tooLarge(MAX_AMOUNT_CENTS));
   });
 
   it("parseAmount answers amount_too_large, not invalid_amount, for more digits than can be exact", () => {
@@ -197,20 +203,21 @@ describe("the cap on a single amount (#651, ADR 0002)", () => {
   });
 
   it("parseBalance reads a balance above the cap, and refuses only what cannot be exact", () => {
-    assert.equal(parseBalance("1.200.000.000,00", IT_EUR), 120_000_000_000);
-    assert.equal(parseBalance("-1,200,000,000.00", US_USD), -120_000_000_000);
+    const balance = (MAX_AMOUNT_CENTS / 10) * 12;
+    assert.equal(parseBalance(typed(balance, "it-IT"), IT_EUR), balance);
+    assert.equal(parseBalance(`-${typed(balance, "en-US")}`, US_USD), -balance);
     assert.equal(parseBalance("-0,00", IT_EUR), 0);
     assert.throws(() => parseBalance("90071992547409930", US_USD), (error) => isValidationError(error, "invalid_amount"));
     assert.throws(() => parseBalance("12.345", US_USD), (error) => isValidationError(error, "invalid_amount_format"));
   });
 
-  it("counts minor units whatever the currency: 100,000,000,000 yen, 100,000,000.000 dinars", () => {
+  it("counts minor units whatever the currency: the cap in yen, with no decimals, and in dinars, with three", () => {
     const JPY = { locale: "en-US", currency: "JPY" };
     const KWD = { locale: "en-US", currency: "KWD" };
-    assert.equal(parseAmount("100,000,000,000", JPY), MAX_AMOUNT_CENTS);
-    assert.throws(() => parseAmount("100,000,000,001", JPY), tooLarge(MAX_AMOUNT_CENTS));
-    assert.equal(parseAmount("100,000,000.000", KWD), MAX_AMOUNT_CENTS);
-    assert.throws(() => parseAmount("100,000,000.001", KWD), tooLarge(MAX_AMOUNT_CENTS));
+    assert.equal(parseAmount(typed(MAX_AMOUNT_CENTS, "en-US", 0), JPY), MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount(typed(MAX_AMOUNT_CENTS + 1, "en-US", 0), JPY), tooLarge(MAX_AMOUNT_CENTS));
+    assert.equal(parseAmount(typed(MAX_AMOUNT_CENTS, "en-US", 3), KWD), MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount(typed(MAX_AMOUNT_CENTS + 1, "en-US", 3), KWD), tooLarge(MAX_AMOUNT_CENTS));
   });
 
   it("leaves sums alone: a total above the cap is still a valid total", () => {

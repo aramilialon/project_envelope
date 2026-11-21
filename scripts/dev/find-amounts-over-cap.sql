@@ -1,5 +1,6 @@
--- Lists the stored amounts above the cap on a single amount (#651, ADR 0002): 10^11 minor units,
--- €1,000,000,000.00 in a currency with two decimals. The API refuses these on every write path
+-- Lists the stored amounts above the cap on a single amount (#651, ADR 0002): 10^12 minor units,
+-- €10,000,000,000.00 in a currency with two decimals (`@envelope/core`'s `MAX_AMOUNT_CENTS`; a test
+-- in apps/api/src/routes/amount-cap.test.ts checks that the value below matches it). The API refuses these on every write path
 -- since #651, but a database written before that may still hold some. Such a row still reads,
 -- but a few of them can make the sum of a workspace's amounts leave the safe integer range, and
 -- every budget-month read of that workspace then fails with 422 `amount_total_overflow`.
@@ -16,7 +17,7 @@
 -- No rows means there is nothing to fix. How to fix one by hand: apps/api/README.md,
 -- "Amounts above the cap stored before #651".
 
-WITH cap AS (SELECT 100000000000::bigint AS max)
+WITH cap AS (SELECT 1000000000000::bigint AS max)
 SELECT 'transaction' AS kind, t.workspace_id, t.id, t.account_id AS account_id,
        sum(s.amount_cents)::numeric AS amount_cents, max(abs(s.amount_cents))::numeric AS largest_part_cents
 FROM transactions t

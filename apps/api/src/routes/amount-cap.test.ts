@@ -1,5 +1,5 @@
 /**
- * The cap on a single amount (#651, ADR 0002): 10^11 minor units, €1,000,000,000.00. Every write
+ * The cap on a single amount (#651, ADR 0002): `MAX_AMOUNT_CENTS`, 10^12 minor units. Every write
  * path accepts an amount at the cap and refuses one minor unit more with 400 `amount_too_large`
  * and the cap in `details.max`. Two transfers at the cap still give a readable budget month; rows
  * stored before the cap that add up beyond the safe range make it answer 422
@@ -19,7 +19,10 @@ import { requireIntegrationTestEnv, setupIntegrationTest, teardownIntegrationTes
 
 requireIntegrationTestEnv();
 
+// Every figure is derived from the cap, so that the tests follow it if it ever changes.
 const CAP = MAX_AMOUNT_CENTS;
+/** An amount as a CSV file writes it, with a dot and two decimals. */
+const csvAmount = (minorUnits: number): string => (minorUnits / 100).toFixed(2);
 const PRECHECK = new URL("../../../../scripts/dev/find-amounts-over-cap.sql", import.meta.url);
 
 interface ErrorBody {
@@ -107,6 +110,13 @@ describe("the cap on a single amount (#651)", () => {
     await teardownIntegrationTest({ superuserPool, realm, app, workspaceId, token });
   });
 
+  it("the pre-check query uses the same cap as the API", async () => {
+    const sql = await readFile(PRECHECK, "utf8");
+    const literal = /WITH cap AS \(SELECT (\d+)::bigint AS max\)/.exec(sql);
+    assert.ok(literal, "the query declares its cap as WITH cap AS (SELECT <n>::bigint AS max)");
+    assert.equal(Number(literal[1]), MAX_AMOUNT_CENTS);
+  });
+
   it("transactions: a split, and a transaction's own total, at the cap and one cent over", async () => {
     const path = `/accounts/${checkingId}/transactions`;
     const create = (splits: unknown) => ({ occurredAt: "2026-09-01", splits });
@@ -140,6 +150,11 @@ describe("the cap on a single amount (#651)", () => {
     await tooLarge("POST", "/transfers", transfer(CAP + 1));
     await tooLarge("PATCH", `/accounts/${checkingId}/transactions/${created.source.id}`, {
       splits: [{ categoryId: groceriesId, amountCents: -CAP - 1 }],
+    });
+    // A smaller transfer whose leg is edited up to the cap: accepted.
+    const small = await accepted<{ source: { id: string } }>("POST", "/transfers", transfer(100));
+    await accepted("PATCH", `/accounts/${checkingId}/transactions/${small.source.id}`, {
+      splits: [{ categoryId: groceriesId, amountCents: -CAP }],
     });
   });
 
@@ -180,17 +195,33 @@ describe("the cap on a single amount (#651)", () => {
   it("imports: a row of the file, and the closing balance", async () => {
     const path = `/accounts/${checkingId}/import`;
     const mapping = { hasHeaderRow: false, dateColumn: 0, dateFormat: "YYYY-MM-DD", descriptionColumn: 1, amountColumn: 2, decimalSeparator: "." };
-    await accepted("POST", path, { format: "csv", mapping, content: "2026-09-03,Sale,1000000000.00\n" });
-    await tooLarge("POST", path, { format: "csv", mapping, content: "2026-09-03,Sale,1000000000.01\n" });
+    await accepted("POST", path, { format: "csv", mapping, content: `2026-09-03,Sale,${csvAmount(CAP)}\n` });
+    await tooLarge("POST", path, { format: "csv", mapping, content: `2026-09-03,Sale,${csvAmount(CAP + 1)}\n` });
     const content = "2026-09-03,Coffee,-3.00\n";
     // The closing balance is only compared with the account's, never written: it is not capped.
     const staged = await accepted<{ closingBalance: { statementCents: number } }>("POST", path, {
       format: "csv",
       mapping,
       content,
-      closingBalanceCents: 120_000_000_000,
+      closingBalanceCents: (CAP / 10) * 12,
     });
-    assert.equal(staged.closingBalance.statementCents, 120_000_000_000);
+    assert.equal(staged.closingBalance.statementCents, (CAP / 10) * 12);
+  });
+
+  it("imports: a staged row stored above the cap is rejected at confirmation and stays staged", async () => {
+    const { rows } = await superuserPool.query<{ id: string }>(
+      `INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, payee, amount_cents)
+       VALUES ($1, $2, '2026-09-03', 'Legacy', $3) RETURNING id`,
+      [workspaceId, checkingId, -CAP - 1],
+    );
+    const stagedTransactionId = rows[0]!.id;
+    const confirmed = await accepted<{ outcomes: unknown[] }>("POST", `/accounts/${checkingId}/staged-transactions/confirm`, {
+      decisions: [{ stagedTransactionId, kind: "category", categoryId: groceriesId }],
+    });
+    assert.deepEqual(confirmed.outcomes, [{ stagedTransactionId, outcome: "rejected", code: "amount_too_large" }]);
+    const still = await superuserPool.query("SELECT 1 FROM staged_transactions WHERE id = $1", [stagedTransactionId]);
+    assert.equal(still.rowCount, 1);
+    await superuserPool.query("DELETE FROM staged_transactions WHERE id = $1", [stagedTransactionId]);
   });
 
   it("reconciliation: the statement balance is not capped, the adjustment is", async () => {
@@ -209,36 +240,44 @@ describe("the cap on a single amount (#651)", () => {
         })
       ).id;
 
-    // Cleared €1,200,000,000.00 (two deposits at €600,000,000.00), and the same on the statement: no adjustment.
+    // Cleared 1.2 × the cap (two deposits at 0.6 × the cap), and the same on the statement: no adjustment.
     const richId = await insertAccount("Treasury", "savings", true);
-    const deposits = [await cleared(richId, 60_000_000_000), await cleared(richId, 60_000_000_000)];
+    const deposits = [await cleared(richId, (CAP / 10) * 6), await cleared(richId, (CAP / 10) * 6)];
     const matched = await accepted<{ outcome: string; reconciliation: { statementBalanceCents: number } }>(
       "POST",
       `/accounts/${richId}/reconciliations`,
-      reconcile(120_000_000_000, deposits),
+      reconcile((CAP / 10) * 12, deposits),
     );
     assert.equal(matched.outcome, "reconciled");
-    assert.equal(matched.reconciliation.statementBalanceCents, 120_000_000_000);
+    assert.equal(matched.reconciliation.statementBalanceCents, (CAP / 10) * 12);
     const listed = await request<{ transactions: unknown[] }>("GET", `/accounts/${richId}/transactions`);
     assert.equal(listed.body.transactions.length, 2, "no adjustment transaction");
 
-    // €900,000,000.00 on the statement, −€200,000,000.00 cleared: the adjustment of €1,100,000,000.00 is refused.
+    // 0.9 × the cap on the statement, −0.2 × the cap cleared: the adjustment of 1.1 × the cap is refused.
     const owedId = await insertAccount("Savings", "savings", true);
-    const spent = await cleared(owedId, -20_000_000_000);
-    assert.equal((await tooLarge("POST", `/accounts/${owedId}/reconciliations`, reconcile(90_000_000_000, [spent]))).label, "adjustment");
+    const spent = await cleared(owedId, -(CAP / 10) * 2);
+    assert.equal((await tooLarge("POST", `/accounts/${owedId}/reconciliations`, reconcile((CAP / 10) * 9, [spent]))).label, "adjustment");
   });
 
-  it("trades: gross, fees and taxes", async () => {
+  it("trades: gross, fees and taxes, created and edited", async () => {
     const base = { accountId: brokerageId, portfolioId, tradeDate: "2026-09-05" };
     await accepted("POST", "/trades", { ...base, type: "fee", feesCents: CAP });
     assert.equal((await tooLarge("POST", "/trades", { ...base, type: "fee", feesCents: CAP + 1 })).label, "feesCents");
     await accepted("POST", "/trades", { ...base, type: "tax", taxKind: "stamp_duty", grossCents: CAP });
     assert.equal((await tooLarge("POST", "/trades", { ...base, type: "tax", taxKind: "stamp_duty", grossCents: CAP + 1 })).label, "grossCents");
-    const buy = { ...base, type: "buy", instrumentId, quantityE8: 100_000_000, priceE6: 1_000_000 };
+    // Ten units at a tenth of the cap each, so that quantity × price is the cap and the price stays
+    // inside the range of ADR 0011 (about 9 billion per unit).
+    const units = 10;
+    const buy = { ...base, type: "buy", instrumentId, quantityE8: units * 100_000_000, priceE6: (CAP / 100 / units) * 1_000_000 };
     await accepted("POST", "/trades", { ...buy, grossCents: CAP });
     assert.equal((await tooLarge("POST", "/trades", { ...buy, grossCents: CAP + 1 })).label, "grossCents");
     // Each figure at the cap, but the cash leg one cent over it.
     assert.equal((await tooLarge("POST", "/trades", { ...buy, grossCents: CAP, feesCents: 1 })).label, "cash");
+
+    const fee = await accepted<{ trades: { id: string }[] }>("POST", "/trades", { ...base, type: "fee", feesCents: 100 });
+    const tradePath = `/trades/${fee.trades[0]!.id}`;
+    assert.equal((await tooLarge("PATCH", tradePath, { feesCents: CAP + 1 })).label, "feesCents");
+    await accepted("PATCH", tradePath, { feesCents: CAP });
   });
 
   it("trades stored before the cap: a position cost beyond the safe range answers 422 naming the trade", async () => {

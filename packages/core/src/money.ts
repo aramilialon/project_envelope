@@ -24,17 +24,17 @@ export type CurrencyCode = string;
 export type Locale = string;
 
 /**
- * The largest single amount the app accepts, in minor units: 10^11, which is
- * €1,000,000,000.00 for a currency with two decimals (ADR 0002). Every amount
+ * The largest single amount the app accepts, in minor units: 10^12, which is
+ * €10,000,000,000.00 for a currency with two decimals (ADR 0002). Every amount
  * a user or a file writes (a transaction, a split, a transfer, an assignment,
- * a trade's figures, a target, a statement balance…) is checked against it
- * with `assertAmount`, so that adding up all of a workspace's amounts stays
- * far inside the safe integer range: about 90,000 amounts at the cap before
- * any sum could lose precision. It is a number of minor units, whatever the
- * currency: ¥100,000,000,000 for one with no decimals, 100,000,000.000 for
- * one with three.
+ * a trade's figures, a target…) is checked against it with `assertAmount`, so
+ * that adding up all of a workspace's amounts stays inside the safe integer
+ * range: about 9,000 amounts at the cap before any sum could lose precision.
+ * Sums and balances, a statement's balance included, are not capped. It is a
+ * number of minor units, whatever the currency: ¥1,000,000,000,000 for one
+ * with no decimals, 1,000,000,000.000 for one with three.
  */
-export const MAX_AMOUNT_CENTS: Cents = 100_000_000_000;
+export const MAX_AMOUNT_CENTS: Cents = 1_000_000_000_000;
 
 /**
  * Checks that a value is a valid amount: a "safe" integer, meaning it can be
