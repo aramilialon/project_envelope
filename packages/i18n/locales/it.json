@@ -51,7 +51,7 @@
   "budget.actions.quickAssign": "Assegnazione rapida",
   "budget.actions.scheduled": "Programmate",
   "budget.actions.targets": "Obiettivi",
-  "budget.assignedInFuture": "Già assegnati a mesi futuri",
+  "budget.assignedInFuture": "Da questo mese, assegnati ai mesi successivi",
   "budget.bar.cardTag": "Carta",
   "budget.bar.debtToCover": "{uncovered} da coprire di {debt} di debito",
   "budget.bar.noActivity": "Nessun movimento",

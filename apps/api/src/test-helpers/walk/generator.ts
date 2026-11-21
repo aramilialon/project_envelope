@@ -170,5 +170,5 @@ export class WalkRandom {
   }
 }
 
-/** Every date in the window is on or before this one: the month the model-free budget invariant is read in. */
+/** Every date in the window is on or before this one: the month the budget invariant is read in after each step. */
 export const LAST_MONTH = WINDOW_MONTHS[WINDOW_MONTHS.length - 1]!;
