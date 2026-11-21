@@ -6,6 +6,7 @@ import type { Account } from "../accounts/api.ts";
 import * as accountsApi from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as importApi from "./api.ts";
@@ -178,6 +179,30 @@ describe("ImportScreen (#59)", () => {
     expect(await screen.findByText(/differs from the account by/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Reconcile now" })).toHaveClass("primary");
     expect(screen.getByRole("button", { name: "Import another file" })).not.toHaveClass("primary");
+  });
+
+  it("says the account is closed when the API refuses staging or confirming into it (#729)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(new ApiError("409", 409, "account_closed", {}));
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+    expect(await screen.findByText("This account is closed, so nothing can be imported into it.")).toBeInTheDocument();
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [{ id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Supermarket", memo: null, amountCents: -4_250, externalId: null, duplicateOf: null, createdAt: "2026-09-01" }],
+      duplicateCount: 0,
+    });
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement2.ofx")] } });
+    await screen.findByText("Supermarket");
+    fireEvent.change(screen.getByLabelText("Category", { selector: "select" }), { target: { value: "cat-groceries" } });
+    vi.spyOn(importApi, "confirmStagedTransactions").mockRejectedValue(new ApiError("409", 409, "account_closed", {}));
+    fireEvent.click(screen.getByRole("button", { name: /Import 1 transaction/ }));
+
+    expect(
+      await screen.findByText("This account or a transfer's other account is closed, so these transactions can't be imported."),
+    ).toBeInTheDocument();
   });
 
   it("sends a closing balance above the cap on a single amount: a balance is not capped (#651)", async () => {

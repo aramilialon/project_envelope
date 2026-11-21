@@ -2,6 +2,14 @@ import type { IntlShape } from "react-intl";
 
 import { ApiError } from "./apiFetch.ts";
 
+/**
+ * Whether `caught` is the API refusing a write to a closed account (#729, ADR 0018: 409
+ * `account_closed`): a row of the account itself, or a transfer whose other leg is on it.
+ */
+export function isAccountClosed(caught: unknown): caught is ApiError {
+  return caught instanceof ApiError && caught.code === "account_closed";
+}
+
 /** Whether `caught` is the API refusing a request over one of its rate limits (#566, 429 `too_many_requests`). */
 export function isTooManyRequests(caught: unknown): caught is ApiError {
   return caught instanceof ApiError && caught.code === "too_many_requests";

@@ -987,4 +987,59 @@ describe("TransactionForm in Italian (#599)", () => {
     expect(screen.getByRole("heading", { name: "Modifica transazione" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Salva" })).toBeInTheDocument();
   });
+
+});
+
+describe("TransactionForm: a write the API refuses because an account is closed (#729)", () => {
+  const leg: Transaction = {
+    id: "t2",
+    workspaceId: "ws-1",
+    accountId: "acc-checking",
+    occurredAt: "2026-09-10T00:00:00.000Z",
+    budgetDate: "2026-09-10",
+    payee: null,
+    memo: null,
+    status: "pending",
+    transferId: "t2-other",
+    transferAccountId: "acc-savings",
+    externalId: null,
+    createdAt: "2026-09-10T00:00:00.000Z",
+    splits: [{ id: "s2", categoryId: null, amountCents: -5000, memo: null }],
+  };
+  const closedSavings: Account = { ...SAVINGS, closedAt: "2026-10-01T00:00:00.000Z" };
+  const refusal = () => new ApiError("409", 409, "account_closed", {});
+
+  it("says the transfer's other account is closed when deleting the open leg is refused", async () => {
+    vi.spyOn(transactionsApi, "deleteTransaction").mockRejectedValue(refusal());
+    const { onSaved } = renderForm({ transaction: leg, accounts: [CHECKING, closedSavings] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so it can't be deleted.");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("says the transfer's other account is closed when saving the open leg is refused", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(refusal());
+    renderForm({ transaction: leg, accounts: [CHECKING, closedSavings] });
+
+    fireEvent.click(screen.getByLabelText("Cleared against the bank"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so it can't be changed.");
+  });
+
+  it("says this account is closed when a write to its own transaction is refused", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(refusal());
+    vi.spyOn(transactionsApi, "deleteTransaction").mockRejectedValue(refusal());
+    const own: Transaction = { ...leg, transferId: null, transferAccountId: null, splits: [{ id: "s2", categoryId: "cat-groceries", amountCents: -5000, memo: null }] };
+    renderForm({ transaction: own, accounts: [{ ...CHECKING, closedAt: "2026-10-01T00:00:00.000Z" }, SAVINGS] });
+
+    fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "late" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be deleted."));
+  });
 });

@@ -15,7 +15,7 @@ import {
   type StagedTransactionDecision,
   type StageImportResult,
 } from "./api.ts";
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import { detectImportFormat } from "./detectFormat.ts";
 import {
   buildCsvMapping,
@@ -152,6 +152,11 @@ export default function ImportScreen() {
     return transferRuleOf(selection, amountCents) !== "required" || !!transferCategoryId;
   }
 
+  /** Staging refused because this account is closed (#729): closed after this screen opened. */
+  function accountClosedOnStageMessage(): string {
+    return intl.formatMessage({ id: "import.error.accountClosed", defaultMessage: "This account is closed, so nothing can be imported into it." });
+  }
+
   function closingBalanceCents(): number | undefined {
     if (!closingBalanceStr.trim()) {
       return undefined;
@@ -203,6 +208,8 @@ export default function ImportScreen() {
           tooManyRequestsMessage(intl, caught) ??
             (isAmountTooLarge(caught)
               ? amountTooLargeMessage(intl, currency)
+              : isAccountClosed(caught)
+              ? accountClosedOnStageMessage()
               : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
         );
       } finally {
@@ -266,7 +273,9 @@ export default function ImportScreen() {
         tooManyRequestsMessage(intl, caught) ??
           (isAmountTooLarge(caught)
             ? amountTooLargeMessage(intl, currency)
-            : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
+            : isAccountClosed(caught)
+              ? accountClosedOnStageMessage()
+              : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
       );
     } finally {
       setSubmitting(false);
@@ -309,7 +318,13 @@ export default function ImportScreen() {
     } catch (caught) {
       setError(
         tooManyRequestsMessage(intl, caught) ??
-          intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." }),
+          (isAccountClosed(caught)
+            ? // #729: this account, or the other account of a transfer, was closed after the rows were staged.
+              intl.formatMessage({
+                id: "import.error.accountClosedConfirm",
+                defaultMessage: "This account or a transfer's other account is closed, so these transactions can't be imported.",
+              })
+            : intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." })),
       );
     } finally {
       setSubmitting(false);

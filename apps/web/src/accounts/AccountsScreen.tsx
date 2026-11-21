@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { shortDate } from "../format.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
@@ -93,27 +94,30 @@ export default function AccountsScreen() {
    * failure with no reasons.
    */
   function closeRefusalOf(caught: unknown, account: Account): CloseRefusal {
+    const failed: CloseRefusal = {
+      accountId: account.id,
+      message:
+        tooManyRequestsMessage(intl, caught) ??
+        intl.formatMessage({ id: "accounts.closeError", defaultMessage: "We could not close this account." }),
+      reasons: [],
+    };
     if (!(caught instanceof AccountNotEmptyError)) {
-      return {
-        accountId: account.id,
-        message:
-          tooManyRequestsMessage(intl, caught) ??
-          intl.formatMessage({ id: "accounts.closeError", defaultMessage: "We could not close this account." }),
-        reasons: [],
-      };
+      return failed;
     }
     const { balanceCents, laterRows, holdsPositions, scheduled } = caught.details;
+    // A date in the workspace's own year shows no year (#702).
+    const currentYear = timeZone === undefined ? undefined : Number(todayIsoIn(timeZone).slice(0, 4));
     const reasons: string[] = [];
     if (balanceCents !== 0) {
       reasons.push(
         intl.formatMessage(
-          { id: "accounts.closeRefused.balanceToday", defaultMessage: "Its balance today is {balance}, not zero." },
+          { id: "accounts.closeRefused.balanceToday", defaultMessage: "Its balance today is {balance}." },
           { balance: money(balanceCents, account.currency) },
         ),
       );
     }
     if (laterRows.count > 0 && laterRows.firstDate !== null) {
-      const values = { count: laterRows.count, firstDate: shortDate(laterRows.firstDate, intl.locale) };
+      const values = { count: laterRows.count, firstDate: shortDate(laterRows.firstDate, intl.locale, currentYear) };
       // Only a brokerage account has trades of its own that move no cash.
       reasons.push(
         account.type === "brokerage"
@@ -149,13 +153,13 @@ export default function AccountsScreen() {
         ),
       );
     }
+    if (reasons.length === 0) {
+      // A refusal that names no reason the screen knows of: say only that the close failed.
+      return failed;
+    }
     return {
       accountId: account.id,
-      message: intl.formatMessage({
-        id: "accounts.closeRefused.intro",
-        defaultMessage:
-          "This account can be closed once its balance today is zero, nothing is dated after today, it holds no securities and no scheduled transaction uses it. Right now:",
-      }),
+      message: intl.formatMessage({ id: "accounts.closeRefused.intro", defaultMessage: "This account can't be closed yet. Right now:" }),
       reasons,
     };
   }

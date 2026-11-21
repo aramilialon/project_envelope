@@ -7,7 +7,7 @@ import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import { getBudgetMonth } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
@@ -323,6 +323,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           );
       }
     }
+    if (isAccountClosed(caught)) {
+      return accountClosedMessage("save");
+    }
     if (caught instanceof ApiError && caught.code === "card_income_not_supported") {
       // #548: income (an inflow with no category) on an on-budget credit card is not supported yet.
       return intl.formatMessage({
@@ -331,6 +334,32 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       });
     }
     return intl.formatMessage({ id: "transactions.form.error", defaultMessage: "We could not save this transaction." });
+  }
+
+  /**
+   * A write refused because an account is closed (#729): this account's own, reached only by its
+   * address since a closed account's register is not linked, or more often a transfer's other
+   * account, closed after the transfer was entered.
+   */
+  function accountClosedMessage(write: "save" | "delete"): string {
+    const own = accounts.find((a) => a.id === accountId);
+    if (own !== undefined && own.closedAt !== null) {
+      return write === "save"
+        ? intl.formatMessage({ id: "transactions.form.accountClosed", defaultMessage: "This account is closed, so its transactions can't be changed." })
+        : intl.formatMessage({
+            id: "transactions.form.accountClosedDelete",
+            defaultMessage: "This account is closed, so its transactions can't be deleted.",
+          });
+    }
+    return write === "save"
+      ? intl.formatMessage({
+          id: "transactions.form.transferAccountClosed",
+          defaultMessage: "This transfer's other account is closed, so it can't be changed.",
+        })
+      : intl.formatMessage({
+          id: "transactions.form.transferAccountClosedDelete",
+          defaultMessage: "This transfer's other account is closed, so it can't be deleted.",
+        });
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -466,8 +495,12 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     try {
       await deleteTransaction(accessToken, workspaceId, accountId, transaction.id);
       onSaved();
-    } catch {
-      setError(intl.formatMessage({ id: "transactions.form.deleteError", defaultMessage: "We could not delete this transaction." }));
+    } catch (caught) {
+      setError(
+        isAccountClosed(caught)
+          ? accountClosedMessage("delete")
+          : intl.formatMessage({ id: "transactions.form.deleteError", defaultMessage: "We could not delete this transaction." }),
+      );
       setSubmitting(false);
     }
   }

@@ -6,6 +6,7 @@ import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
 import type { Transaction } from "../transactions/api.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as accountsApi from "./api.ts";
 import type { Account } from "./api.ts";
@@ -288,8 +289,7 @@ describe("AccountsScreen (#51, #323)", () => {
   });
 
   describe("an account the API refuses to close because it is not empty (#703, #729)", () => {
-    const intro =
-      "This account can be closed once its balance today is zero, nothing is dated after today, it holds no securities and no scheduled transaction uses it. Right now:";
+    const intro = "This account can't be closed yet. Right now:";
 
     it("names today's balance, in the account's own currency, under the account's row", async () => {
       vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError({ balanceCents: -12_345 }));
@@ -300,7 +300,7 @@ describe("AccountsScreen (#51, #323)", () => {
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(intro);
-      expect(within(alert).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Its balance today is -$123.45, not zero."]);
+      expect(within(alert).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Its balance today is -$123.45."]);
       expect(alert.parentElement?.closest("li")).toHaveTextContent("Checking");
       expect(screen.queryByText("Closed")).not.toBeInTheDocument();
     });
@@ -317,6 +317,33 @@ describe("AccountsScreen (#51, #323)", () => {
       const items = within(await screen.findByRole("alert")).getAllByRole("listitem");
       expect(items).toHaveLength(1);
       expect(items[0]).toHaveTextContent(/^2 transactions are dated after today, the first on .*2030\.$/);
+    });
+
+    it("leaves out the year of a later row dated in the workspace's own year", async () => {
+      const thisYear = todayIsoIn("Europe/Rome").slice(0, 4);
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ laterRows: { count: 1, firstDate: `${thisYear}-12-31` } }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem");
+      expect(items.map((item) => item.textContent)).toEqual(["A transaction is dated after today, on Dec 31."]);
+    });
+
+    it("says only that the close failed when the refusal names no reason the screen knows of", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError({}));
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("We could not close this account.");
+      expect(alert).not.toHaveTextContent(intro);
+      expect(within(alert).queryAllByRole("listitem")).toHaveLength(0);
     });
 
     it("says the account holds securities, and counts a brokerage account's later trades with its transactions", async () => {
@@ -344,7 +371,7 @@ describe("AccountsScreen (#51, #323)", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
       const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
-      expect(items).toEqual(["Its balance today is €500.00, not zero.", "It holds securities today.", "3 scheduled transactions use it."]);
+      expect(items).toEqual(["Its balance today is €500.00.", "It holds securities today.", "3 scheduled transactions use it."]);
     });
 
     it("keeps the message on the phone inside the account's own row, above its divider", async () => {
