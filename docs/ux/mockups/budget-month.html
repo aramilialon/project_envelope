@@ -748,6 +748,16 @@ button{cursor:pointer}
     var left = rta() + sum(keys, function (k) { return byId[k].avail + byId[k].reserved + byId[k].credit; }) + future();
     if (left !== cashTotal()) console.error('Invariant broken', left, cashTotal());
   }
+  // What a category asks for itself (#728), the same figure in "Da fare", "Sposta denaro" and quick
+  // assign: card debt is asked once, on the card's payment category. An ordinary category asks for
+  // its cash overspending, plus what its scheduled transactions are missing when it has no card
+  // overspending (with card overspending, money assigned here goes to the card first); never its
+  // card overspending, which is already part of its card's debt. A payment category asks for what
+  // was paid beyond what was set aside plus the debt still uncovered.
+  function needOf(x) {
+    if (x.c.payment) return x.cash + x.uncovered;
+    return x.credit > 0 ? x.cash : x.cash + x.short;
+  }
   function status(x) {
     if (x.credit > 0) return 'credit';
     if (x.cash > 0) return 'cash';
@@ -957,13 +967,21 @@ button{cursor:pointer}
     var LABEL = { pos: 'Disponibile', zero: 'Disponibile', credit: 'Sforato con la carta', cash: 'Sforato', short: 'Non basta per le programmate' };
     var explain;
     if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
-    else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la carta. Se non lo copri, a ottobre la categoria riparte da zero e l’importo resta come debito da coprire nella riga della carta, tra i pagamenti delle carte. Non tocca «da assegnare».';
+    else if (st === 'credit' && x.cash > 0) explain = 'Hai speso ' + f(deficit) + ' più del disponibile: ' + f(x.cash) + ' da un conto e ' + f(x.credit) + ' con la carta. La parte da un conto, se non la copri entro fine mese, viene tolta da «da assegnare» di ottobre. A ottobre la categoria riparte da zero.';
+    else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la carta. Non tocca «da assegnare». A ottobre la categoria riparte da zero.';
     else if (st === 'short') explain = 'Hai prenotato ' + f(x.reserved) + ' per spese programmate, ma la categoria ne ha solo ' + f(Math.max(0, x.real)) + ': mancano ' + f(x.short) + '. È un avviso, non uno sforamento: la spesa non è ancora avvenuta. Assegna o sposta denaro prima della data.';
     else if (st === 'pos') explain = 'Questi soldi sono già assegnati' + (x.reserved ? ', al netto di ' + f(x.reserved) + ' prenotati per spese programmate' : '') + '. Quello che resta a fine mese passa a ottobre.';
     else explain = 'Nessun disponibile: una spesa qui renderebbe la categoria sforata.';
 
+    // #728: the card part is already in the card's debt and is covered there, once; this line only
+    // says so, with a way to open the card's payment category.
+    var cardPart = x.credit > 0 ? '<div class="sec" style="gap:6px">' + Object.keys(x.creditBy).filter(function (k) { return x.creditBy[k] > 0; }).map(function (k) {
+      var card = byId[k].c.name;
+      return '<p class="explain">' + f(x.creditBy[k]) + ' spesi con la ' + esc(card) + ' oltre il disponibile ora fanno parte del debito della carta.</p>' +
+        '<button type="button" class="plain" style="align-self:flex-start" data-' + (p ? 'phcat' : 'cat') + '="' + k + '" data-todo="1">Apri la categoria di pagamento della ' + esc(card) + '</button>';
+    }).join('') + '</div>' : '';
     var cover = '';
-    var gap = deficit > 0 ? deficit : x.short;
+    var gap = needOf(x);
     if (gap > 0) {
       var keys = Object.keys(byId);
       var sources = keys.filter(function (k) { var y = byId[k]; return !y.c.payment && k !== x.c.id && y.avail > 0; })
@@ -987,12 +1005,12 @@ button{cursor:pointer}
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
     var sch = state.sched.filter(function (s) { return s.cat === x.c.id; }).sort(function (a, b) { return ymOf(a.due) * 40 + a.due.d - (ymOf(b.due) * 40 + b.due.d); });
-    var mv = '<button type="button" class="plain" data-mvopen="' + (deficit > 0 || x.short > 0 ? 'to:' : 'from:') + x.c.id + '">Sposta denaro</button>';
+    var mv = '<button type="button" class="plain" data-mvopen="' + (gap > 0 ? 'to:' : 'from:') + x.c.id + '">Sposta denaro</button>';
 
     return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(x.c.name) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">' + LABEL[st] + '</span>' +
       '<span class="big n ' + st + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
-      cover +
+      cardPart + cover +
       '<div class="sec"><h5><span>Conto del mese</span>' + mv + '</h5>' + line('Riportato da agosto', f(x.c.carried)) + asgLine(x, p) +
       line('Movimenti', f(x.activity)) + (x.reserved ? line('Prenotato per le programmate', f(-x.reserved)) : '') + line('Disponibile', f(x.avail)) + '</div>' +
       (sch.length ? '<div class="sec"><h5>Spese programmate</h5>' + sch.map(function (s) { return schedRow(s, false); }).join('') + '</div>' : '') +
@@ -1134,8 +1152,8 @@ button{cursor:pointer}
     else {
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
-      var gap = (Math.max(0, -y.real) > 0 ? Math.max(0, -y.real) + (y.uncovered || 0) : 0) || y.short || y.uncovered || 0;
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
+      var gap = needOf(y);
+      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.credit > 0 ? 'La parte da un conto è coperta.' : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
     }
     var warn = from === null && amount > r ? 'Da assegnare scenderà sotto zero: stai assegnando soldi che non sono ancora arrivati.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1164,7 +1182,7 @@ button{cursor:pointer}
     if (spec && spec.indexOf('to:') === 0) {
       var t = spec.slice(3), y = byId[t];
       m.to = t;
-      var gap = (Math.max(0, -y.real) > 0 ? Math.max(0, -y.real) + (y.uncovered || 0) : 0) || y.short || y.uncovered || 0;
+      var gap = needOf(y);
       if (gap > 0) m.amt = amountStr(gap);
       if (rta() < gap) {
         var srcs = Object.keys(byId).filter(function (k) { return k !== t && !byId[k].c.payment && byId[k].avail >= gap; });
@@ -1181,7 +1199,7 @@ button{cursor:pointer}
   var QK = [
     ['targets', 'Finanzia gli obiettivi', 'Porta ogni categoria a quanto chiede il suo obiettivo questo mese.'],
     ['res', 'Copri le spese programmate', 'Aggiunge quello che manca alle categorie che non bastano per le spese programmate del mese.'],
-    ['over', 'Copri gli sforamenti', 'Riporta a zero le categorie sforate, in contanti o con la carta.'],
+    ['over', 'Copri gli sforamenti', 'Copre quanto le categorie hanno speso in contanti oltre il disponibile. Quanto speso con la carta fa già parte del debito delle carte.'],
     ['debt', 'Copri il debito delle carte', 'Mette da parte quello che manca per pagare le carte, saldo iniziale compreso.'],
     ['lastA', 'Come assegnato ad agosto', 'Porta l’assegnato di ogni categoria almeno a quello di agosto.'],
     ['lastS', 'Come speso ad agosto', 'Porta l’assegnato di ogni categoria almeno a quanto ci hai speso ad agosto.']
@@ -1195,7 +1213,7 @@ button{cursor:pointer}
         if (c.payment) { if (kind === 'debt') n = x.cash + x.uncovered; }
         else if (kind === 'targets') n = t ? t.need : 0;
         else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
-        else if (kind === 'over') n = x.credit + x.cash;
+        else if (kind === 'over') n = x.cash > 0 ? needOf(x) : 0;
         else if (kind === 'lastA') n = Math.max(0, c.lastAssigned - x.assigned);
         else if (kind === 'lastS') n = Math.max(0, c.lastSpent - x.assigned);
         if (n > 0) out.push([c.id, n]);
@@ -1343,6 +1361,8 @@ button{cursor:pointer}
   function spentLine(x) {
     if (x.c.payment) return '';
     var B = budgetOf(x), S = spentOf(x);
+    // #728: overspent both ways, the two parts are named apart.
+    if (x.cash > 0 && x.credit > 0) return '<small class="spent n">' + f(x.cash) + ' sforati in contanti, ' + f(x.credit) + ' con la carta</small>';
     var card = x.credit > 0 ? ' con la carta' : '';
     return '<small class="spent n">' + (S > 0 ? f(S) + ' spesi' + card + (B > 0 ? ' di ' + f(B) : '') : (B > 0 ? f(B) + ' da spendere' : 'nessun movimento')) + '</small>';
   }
@@ -1444,8 +1464,8 @@ button{cursor:pointer}
     var list = [];
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
-      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: 'sforata in contanti: va coperta entro il 30', amount: x.cash + x.credit + (x.uncovered || 0), cat: k });
-      else if (x.credit > 0) list.push({ dot: 'w', title: 'Coprire ' + x.c.name, sub: 'sforata con la carta: altrimenti resta debito sulla carta', amount: x.credit, cat: k });
+      // #728: card overspending is no item of its own here; it is already in the card's debt below.
+      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: 'sforata in contanti: va coperta entro il 30', amount: needOf(x), cat: k });
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
       list.push({ dot: '', title: 'Registrare ' + s.payee, sub: 'programmata del ' + dLabel(s.due) + ', non ancora nel conto', amount: s.amount, rec: s.id });
