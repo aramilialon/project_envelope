@@ -61,6 +61,11 @@ interface FieldApplier {
  * and so is clearing it on the on-budget credit card leg of a transfer from one
  * (`card_income_not_supported`); clearing it on the on-budget cash leg of a transfer from an
  * off-budget account is allowed, and leaves that money unassigned.
+ *
+ * A closed account takes no writes (#729, ADR 0018): `writesToClosedAccount` reads the account a
+ * change's entity is on now. Wiring a field whose new value names an account, or that also writes
+ * another row (a transfer's other leg), must check that account too, or the trigger's refusal
+ * would end the whole upload.
  */
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {
@@ -153,25 +158,46 @@ export async function isLocked(db: DbPool | DbClient, workspaceId: string, field
 }
 
 /**
- * Whether the change writes to a closed account (#729, ADR 0018): a field of `transactions` names
- * the transaction, whose account it reads. Migration 0033's trigger would refuse the write, and the
- * error would abort the whole upload, the other changes in it included; asked first, the change
- * alone is refused. The account is read `FOR KEY SHARE`, as the trigger does, so a close of it
- * waits for this upload, or this upload sees it closed: the trigger is never reached for it.
- * Extend this when a field of another table that belongs to an account is wired up.
+ * The accounts a change's entity is on now, by the table its field names: a transaction's own
+ * account; a split's transaction's account; a trade's account and, for a transfer, its other
+ * leg's, since an edit of one leg rewrites both. Tables with no account have no entry.
  */
-async function writesToClosedAccount(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
-  if (!fieldName.startsWith("transactions.")) {
+const ENTITY_ACCOUNTS: Readonly<Record<string, string>> = {
+  transactions: `SELECT a.closed_at IS NOT NULL AS closed
+    FROM transactions t JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
+    WHERE t.id = $1 AND t.workspace_id = $2
+    FOR KEY SHARE OF a`,
+  splits: `SELECT a.closed_at IS NOT NULL AS closed
+    FROM splits s
+    JOIN transactions t ON t.workspace_id = s.workspace_id AND t.id = s.transaction_id
+    JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
+    WHERE s.id = $1 AND s.workspace_id = $2
+    FOR KEY SHARE OF a`,
+  trades: `SELECT a.closed_at IS NOT NULL AS closed
+    FROM trades t
+    LEFT JOIN trades other ON other.workspace_id = t.workspace_id AND other.id = t.transfer_trade_id
+    JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id IN (t.account_id, other.account_id)
+    WHERE t.id = $1 AND t.workspace_id = $2
+    FOR KEY SHARE OF a`,
+};
+
+/**
+ * Whether the change writes to a closed account (#729, ADR 0018), by the account its entity is on
+ * now (`ENTITY_ACCOUNTS`). Migration 0033's trigger would refuse the write, and the error would
+ * abort the whole upload, the other changes in it included; asked first, the change alone is
+ * refused. The account is read `FOR KEY SHARE`, as the trigger does, so a close of it waits for
+ * this upload, or this upload sees it closed: the trigger is never reached for it. Only
+ * `transactions` fields are wired up today; `splits` and `trades` are covered ahead of time, so
+ * wiring one of their fields cannot forget it. A field whose new value names an account must
+ * check that account as well (see `FIELD_APPLIERS`).
+ */
+export async function writesToClosedAccount(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+  const query = ENTITY_ACCOUNTS[fieldName.split(".", 1)[0] ?? ""];
+  if (query === undefined || !isUuid(entityId)) {
     return false;
   }
-  const { rows } = await db.query<{ closed: boolean }>(
-    `SELECT a.closed_at IS NOT NULL AS closed
-     FROM transactions t JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
-     WHERE t.id = $1 AND t.workspace_id = $2
-     FOR KEY SHARE OF a`,
-    [entityId, workspaceId],
-  );
-  return rows[0]?.closed === true;
+  const { rows } = await db.query<{ closed: boolean }>(query, [entityId, workspaceId]);
+  return rows.some((row) => row.closed);
 }
 
 /** What a change already recorded under the same id answers (#513): its own outcome, if it is the same change. */

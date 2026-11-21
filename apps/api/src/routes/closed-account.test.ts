@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
 import { type App } from "../app.ts";
+import { writesToClosedAccount } from "../sync/apply.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
@@ -126,6 +127,13 @@ describe("writes to a closed account (#729)", () => {
     it("refuses deleting a transaction", async () => {
       await assertRefused(() => inject("DELETE", `/accounts/${closedId}/transactions/${rowId}`));
     });
+
+    it("answers a sync change to a closed account's split as one to a closed account", async () => {
+      // No field of `splits` is a sync field yet; the check is in place before one is.
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM splits WHERE transaction_id = $1", [rowId]);
+      assert.equal(await writesToClosedAccount(superuserPool, workspaceId, "splits.memo", rows[0]!.id), true);
+      assert.equal(await writesToClosedAccount(superuserPool, workspaceId, "categories.name", rowId), false);
+    });
   });
 
   describe("transfers", () => {
@@ -181,6 +189,8 @@ describe("writes to a closed account (#729)", () => {
     let buyId: string;
     let sellId: string;
     let openFeeId: string;
+    let splitInstrumentId: string;
+    let openSplitRowId: string;
 
     before(async () => {
       closedId = await account("brokerage");
@@ -216,6 +226,48 @@ describe("writes to a closed account (#729)", () => {
       const fee = await inject("POST", "/trades", { type: "fee", accountId: openId, portfolioId, tradeDate: "2026-04-01", feesCents: 250 });
       assert.equal(fee.statusCode, 201, fee.body);
       openFeeId = fee.json().trades[0].id;
+
+      // A second instrument both accounts held on a split's date, the closed one selling out after it.
+      const { rows: splitInstruments } = await superuserPool.query<{ id: string }>(
+        `INSERT INTO instruments (isin, ticker, exchange, name, type, currency, price_factor_e6)
+         VALUES (NULL, $1, 'XMIL', 'Split fund', 'fund', 'EUR', 1000000) RETURNING id`,
+        [`S${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`],
+      );
+      splitInstrumentId = splitInstruments[0]!.id;
+      instrumentIds.push(splitInstrumentId);
+      const splitBuy = await inject("POST", "/trades", {
+        type: "buy",
+        accountId: closedId,
+        portfolioId,
+        instrumentId: splitInstrumentId,
+        tradeDate: "2026-05-04",
+        quantityE8: units(1),
+        priceE6: price(10),
+      });
+      assert.equal(splitBuy.statusCode, 201, splitBuy.body);
+      const openHolding = await inject("POST", "/trades", {
+        type: "transfer",
+        instrumentId: splitInstrumentId,
+        tradeDate: "2026-05-04",
+        quantityE8: units(1),
+        to: { accountId: openId, portfolioId, costBasisCents: 1_000 },
+      });
+      assert.equal(openHolding.statusCode, 201, openHolding.body);
+      const split = await inject("POST", "/trades", { type: "split", instrumentId: splitInstrumentId, tradeDate: "2026-05-05", splitFrom: 1, splitTo: 2 });
+      assert.equal(split.statusCode, 201, split.body);
+      const splitRows = split.json().trades as { id: string; accountId: string }[];
+      assert.deepEqual(splitRows.map((row) => row.accountId).sort(), [closedId, openId].sort());
+      openSplitRowId = splitRows.find((row) => row.accountId === openId)!.id;
+      const splitSell = await inject("POST", "/trades", {
+        type: "sell",
+        accountId: closedId,
+        portfolioId,
+        instrumentId: splitInstrumentId,
+        tradeDate: "2026-05-06",
+        quantityE8: units(2),
+        priceE6: price(5),
+      });
+      assert.equal(splitSell.statusCode, 201, splitSell.body);
       await close(closedId);
     });
 
@@ -243,8 +295,32 @@ describe("writes to a closed account (#729)", () => {
       await assertRefused(() => inject("PATCH", `/trades/${openFeeId}`, { accountId: closedId }));
     });
 
+    it("answers a sync change to a closed account's trade as one to a closed account, and not one to an open account's trades", async () => {
+      // No field of `trades` is a sync field yet; the check is in place before one is.
+      assert.equal(await writesToClosedAccount(superuserPool, workspaceId, "trades.memo", buyId), true);
+      assert.equal(await writesToClosedAccount(superuserPool, workspaceId, "trades.memo", openFeeId), false);
+      const { rows } = await superuserPool.query<{ id: string }>(
+        "SELECT id FROM trades WHERE workspace_id = $1 AND account_id = $2 AND type = 'transfer' AND transfer_trade_id IS NULL",
+        [workspaceId, openId],
+      );
+      assert.equal(await writesToClosedAccount(superuserPool, workspaceId, "trades.memo", rows[0]!.id), false);
+    });
+
     it("refuses deleting a closed account's trade", async () => {
       await assertRefused(() => inject("DELETE", `/trades/${sellId}`));
+    });
+
+    // A split is one row per holding, in every account: one dated while the closed account held
+    // the instrument writes a row of the closed account too (ADR 0018, "Consequences").
+    it("refuses a split backdated to when the closed account held the instrument", async () => {
+      await assertRefused(() => inject("POST", "/trades", { type: "split", instrumentId, tradeDate: "2026-03-03", splitFrom: 1, splitTo: 2 }));
+    });
+
+    it("refuses editing a split that has a row on the closed account, from an open account's row", async () => {
+      // An edit of a split edits every row it stands for, the closed account's included. (Deleting
+      // this one is refused earlier: the closed account sold the units the split gave it.)
+      await assertRefused(() => inject("PATCH", `/trades/${openSplitRowId}`, { memo: "Ratio confirmed" }));
+      await assertRefused(() => inject("PATCH", `/trades/${openSplitRowId}`, { splitTo: 3 }));
     });
   });
 
