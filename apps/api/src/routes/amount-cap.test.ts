@@ -189,10 +189,7 @@ describe("the cap on a single amount (#651)", () => {
   it("targets", async () => {
     const path = `/categories/${groceriesId}/goal`;
     await accepted("PUT", path, { kind: "monthly", amountCents: CAP });
-    // A target has its own code for every amount it refuses, the cap included (#701).
-    const response = await request<ErrorBody>("PUT", path, { kind: "monthly", amountCents: CAP + 1 });
-    assert.equal(response.status, 400);
-    assert.deepEqual(response.body, { error: "invalid_goal_amount", details: { field: "amountCents" } });
+    await tooLarge("PUT", path, { kind: "monthly", amountCents: CAP + 1 });
   });
 
   it("imports: a row of the file, and the closing balance", async () => {

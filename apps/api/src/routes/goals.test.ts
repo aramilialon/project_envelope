@@ -107,8 +107,6 @@ describe("goals routes", () => {
       ["a negative amount", { kind: "balance", amountCents: -100 }],
       ["a negative amount on a dated goal", { kind: "by_date", amountCents: -1, dueMonth: "2026-12" }],
       ["a fraction of a minor unit", { kind: "monthly", amountCents: 100.5 }],
-      ["an amount beyond the safe integer range", { kind: "monthly", amountCents: 1e300 }],
-      ["an amount above the cap", { kind: "repeating", amountCents: MAX_AMOUNT_CENTS + 1, dueMonth: "2026-12", every: 12 }],
     ];
 
     for (const [name, payload] of cases) {
@@ -121,6 +119,28 @@ describe("goals routes", () => {
         });
         assert.equal(response.statusCode, 400, response.body);
         assert.deepEqual(response.json(), { error: "invalid_goal_amount", details: { field: "amountCents" } });
+
+        const stored = await superuserPool.query("SELECT 1 FROM goals WHERE category_id = $1", [categoryId]);
+        assert.equal(stored.rowCount, 0);
+      });
+    }
+
+    for (const [name, amountCents] of [
+      ["an amount above the cap", MAX_AMOUNT_CENTS + 1],
+      ["an amount beyond the safe integer range", 1e300],
+    ] as const) {
+      it(`answers 400 amount_too_large for ${name}, like every other amount, and stores nothing`, async () => {
+        const response = await app.fastify.inject({
+          method: "PUT",
+          url: `/workspaces/${workspaceId}/categories/${categoryId}/goal`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { kind: "repeating", amountCents, dueMonth: "2026-12", every: 12 },
+        });
+        assert.equal(response.statusCode, 400, response.body);
+        assert.deepEqual(response.json(), {
+          error: "amount_too_large",
+          details: { label: "amount", max: MAX_AMOUNT_CENTS, value: String(amountCents) },
+        });
 
         const stored = await superuserPool.query("SELECT 1 FROM goals WHERE category_id = $1", [categoryId]);
         assert.equal(stored.rowCount, 0);

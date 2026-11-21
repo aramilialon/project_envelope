@@ -1,4 +1,4 @@
-import { assertMonth, computeTarget, MAX_AMOUNT_CENTS, ValidationError, type Target } from "@envelope/core";
+import { assertAmount, assertMonth, computeTarget, ValidationError, type Target } from "@envelope/core";
 
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -70,18 +70,21 @@ function toGoalRecord(row: GoalRow): GoalRecord {
 }
 
 /**
- * Checks a goal's amount (#701): a whole number of minor units, more than 0 and at most
- * `MAX_AMOUNT_CENTS`. Anything else would otherwise fail the table's own
- * `CHECK (amount_cents > 0)` and surface as a 500, so every case is refused with one stable code.
+ * Checks a goal's amount (#701): a whole number of minor units, more than 0. Anything else would
+ * otherwise fail the table's own `CHECK (amount_cents > 0)` and surface as a 500. A positive whole
+ * number then goes through `assertAmount`, so one above the cap is refused with `amount_too_large`
+ * like every other amount (ADR 0002, #651).
  *
- * @throws ValidationError "invalid_goal_amount" (details: `field: "amountCents"`).
+ * @throws ValidationError "invalid_goal_amount" (details: `field: "amountCents"`) for 0, a
+ *   negative amount or a fraction; "amount_too_large" for one above `MAX_AMOUNT_CENTS`.
  */
 export function assertGoalAmount(value: number): void {
-  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_AMOUNT_CENTS) {
-    throw new ValidationError("invalid_goal_amount", `a goal amount must be an integer from 1 to ${MAX_AMOUNT_CENTS}: ${value}`, {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ValidationError("invalid_goal_amount", `a goal amount must be a whole number of minor units above 0: ${value}`, {
       field: "amountCents",
     });
   }
+  assertAmount(value);
 }
 
 /**

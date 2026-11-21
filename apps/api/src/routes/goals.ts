@@ -13,7 +13,8 @@ const INTERVALS: readonly RepeatInterval[] = [2, 3, 4, 6, 12, 24];
 /**
  * Reads a goal from the request body. Returns a string for a body of the wrong shape (a plain
  * 400), and throws a `ValidationError` for an `amountCents` that is a number but not a valid goal
- * amount: 0 or less, not a whole number, or above the cap (400 `invalid_goal_amount`, #701).
+ * amount: 0 or less or not a whole number (400 `invalid_goal_amount`, #701), or above the cap
+ * (400 `amount_too_large`, like every other amount).
  */
 function parseGoalInput(body: Record<string, unknown>): GoalInput | string {
   const rawKind = body.kind;
