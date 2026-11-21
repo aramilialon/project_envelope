@@ -4,7 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import type { Account } from "../accounts/api.ts";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -19,6 +19,7 @@ import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { unlockReconciliation } from "../reconciliation/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
+import { accountClosedAddMessage, accountClosedChangeMessage } from "./accountClosedMessages.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { buildCategoryNameById, categoryLabel } from "./categoryLabel.ts";
 import RegisterTodo from "./RegisterTodo.tsx";
@@ -234,6 +235,18 @@ export default function AccountRegisterScreen() {
   const [open, setOpen] = useState<"new" | { transaction: Transaction } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [unlocking, setUnlocking] = useState(false);
+  // Why the last one-click action (status, "Record", "Mark") failed, and why "Unlock" did, in its panel (#741).
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<{ readonly transactionId: string; readonly message: string } | null>(null);
+  const actionErrorRef = useRef<HTMLParagraphElement>(null);
+
+  // A refused one-click action may be far down the list from the line that says why: bring the
+  // line into view without moving focus off the control that was pressed (#741).
+  useEffect(() => {
+    if (actionError !== null) {
+      actionErrorRef.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [actionError]);
 
   // Computed before the early returns below (Rules of Hooks), so it never recomputes on a
   // keystroke in the search box or a filter change — only when the transactions themselves do.
@@ -311,17 +324,53 @@ export default function AccountRegisterScreen() {
   const later = visible.filter((row) => isAfterToday(row.transaction.budgetDate, today));
   const upToToday = visible.filter((row) => !isAfterToday(row.transaction.budgetDate, today));
 
+  /**
+   * Opens or closes the side sheet. Opening one clears the line under the balance, closing one its
+   * "Unlock" error, so the same refusal never shows twice nor outlives the sheet it was about (#741).
+   */
+  function changeSheet(next: "new" | { transaction: Transaction } | null) {
+    if (next === null) {
+      setUnlockError(null);
+    } else {
+      setActionError(null);
+    }
+    setOpen(next);
+  }
+
+  /**
+   * Why one of the register's own one-click actions failed (#741): a closed account says so (the
+   * register of a closed account is reached only by its address), a rate limit says how long to
+   * wait, anything else is a plain failure.
+   */
+  function actionErrorMessage(caught: unknown, closedMessage: () => string, fallback: () => string): string {
+    return tooManyRequestsMessage(intl, caught) ?? (isAccountClosed(caught) ? closedMessage() : fallback());
+  }
+
+  /** The message for a status change that failed: a status change writes only this account's own row. */
+  function statusErrorMessage(caught: unknown): string {
+    return actionErrorMessage(
+      caught,
+      () => accountClosedChangeMessage(intl, "own"),
+      () => intl.formatMessage({ id: "register.error.status", defaultMessage: "We could not change this transaction's status." }),
+    );
+  }
+
   async function toggleStatus(t: Transaction) {
     const accessToken = auth.user?.access_token;
-    if (!accessToken || t.status === "reconciled") {
+    // While its request runs, the status button stays focusable (`aria-disabled`, not `disabled`,
+    // so focus does not fall to the page after a refusal) and a second press does nothing.
+    if (!accessToken || t.status === "reconciled" || togglingId === t.id) {
       return;
     }
     setTogglingId(t.id);
+    setActionError(null);
     try {
       await updateTransaction(accessToken, workspaceId!, accountId!, t.id, {
         status: t.status === "pending" ? "cleared" : "pending",
       });
       state.refetch();
+    } catch (caught) {
+      setActionError(statusErrorMessage(caught));
     } finally {
       setTogglingId(null);
     }
@@ -333,8 +382,19 @@ export default function AccountRegisterScreen() {
     if (!accessToken) {
       return;
     }
-    await recordScheduledTransaction(accessToken, workspaceId!, scheduledTransactionId);
-    state.refetch();
+    setActionError(null);
+    try {
+      await recordScheduledTransaction(accessToken, workspaceId!, scheduledTransactionId);
+      state.refetch();
+    } catch (caught) {
+      setActionError(
+        actionErrorMessage(
+          caught,
+          () => accountClosedAddMessage(intl, "own", false),
+          () => intl.formatMessage({ id: "register.error.record", defaultMessage: "We could not record this scheduled transaction." }),
+        ),
+      );
+    }
   }
 
   /** "Mark" (the "To do" list, #337): the item is already filtered to this account's own pending transactions, so the target status is always "cleared". */
@@ -343,21 +403,38 @@ export default function AccountRegisterScreen() {
     if (!accessToken) {
       return;
     }
-    await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
-    state.refetch();
+    setActionError(null);
+    try {
+      await updateTransaction(accessToken, workspaceId!, accountId!, transactionId, { status: "cleared" });
+      state.refetch();
+    } catch (caught) {
+      setActionError(statusErrorMessage(caught));
+    }
   }
 
   /** "Unlock" (#60): a separate, audited action (`POST .../unlock-reconciliation`), not a plain edit — see the docblock above. */
   async function handleUnlock(transactionId: string) {
     const accessToken = auth.user?.access_token;
-    if (!accessToken) {
+    // Like the status buttons, "Unlock" stays focusable while its request runs (`aria-disabled`).
+    if (!accessToken || unlocking) {
       return;
     }
     setUnlocking(true);
+    setUnlockError(null);
+    setActionError(null);
     try {
       await unlockReconciliation(accessToken, workspaceId!, transactionId);
-      setOpen(null);
+      changeSheet(null);
       state.refetch();
+    } catch (caught) {
+      setUnlockError({
+        transactionId,
+        message: actionErrorMessage(
+          caught,
+          () => accountClosedChangeMessage(intl, "own"),
+          () => intl.formatMessage({ id: "register.error.unlock", defaultMessage: "We could not unlock this transaction." }),
+        ),
+      });
     } finally {
       setUnlocking(false);
     }
@@ -422,7 +499,7 @@ export default function AccountRegisterScreen() {
             .join(" · ");
           return (
             <div key={transaction.id} className="ph-tx">
-              <button type="button" className="open" onClick={() => setOpen({ transaction })}>
+              <button type="button" className="open" onClick={() => changeSheet({ transaction })}>
                 <span className="what">
                   <b>{transaction.payee ?? ""}</b>
                   <small>{subtitle}</small>
@@ -432,7 +509,8 @@ export default function AccountRegisterScreen() {
               <button
                 type="button"
                 className={`st status-${transaction.status}`}
-                disabled={transaction.status === "reconciled" || togglingId === transaction.id}
+                disabled={transaction.status === "reconciled"}
+                aria-disabled={togglingId === transaction.id}
                 aria-label={statusAriaLabel(transaction.status)}
                 onClick={() => void toggleStatus(transaction)}
               >
@@ -456,7 +534,8 @@ export default function AccountRegisterScreen() {
           <button
             type="button"
             className={`status status-${transaction.status}`}
-            disabled={transaction.status === "reconciled" || togglingId === transaction.id}
+            disabled={transaction.status === "reconciled"}
+            aria-disabled={togglingId === transaction.id}
             aria-label={statusAriaLabel(transaction.status)}
             onClick={() => void toggleStatus(transaction)}
           >
@@ -464,12 +543,12 @@ export default function AccountRegisterScreen() {
           </button>
         </td>
         <td>
-          <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+          <button type="button" className="open-row" onClick={() => changeSheet({ transaction })}>
             {shortDate(transaction.budgetDate, intl.locale, currentYear)}
           </button>
         </td>
         <td>
-          <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+          <button type="button" className="open-row" onClick={() => changeSheet({ transaction })}>
             {transaction.payee ?? ""}
             {transaction.memo && <small>{transaction.memo}</small>}
           </button>
@@ -477,7 +556,7 @@ export default function AccountRegisterScreen() {
         <td>
           {/* An off-budget account's own rows have no category: an empty cell, never an unnamed button (#652). */}
           {categoryCell !== "" && (
-            <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+            <button type="button" className="open-row" onClick={() => changeSheet({ transaction })}>
               {categoryCell}
             </button>
           )}
@@ -519,6 +598,12 @@ export default function AccountRegisterScreen() {
           </div>
         </div>
       </div>
+
+      {actionError !== null && (
+        <p ref={actionErrorRef} className="hint bad reg-error" role="alert">
+          {actionError}
+        </p>
+      )}
 
       {/* The timeline and "To do" list fold away while a side sheet is open, to leave the
           register room (design.md) — and never show at all on the phone, where the first two
@@ -581,7 +666,7 @@ export default function AccountRegisterScreen() {
           <Link className="btn" to={`/${workspaceId}/accounts/${accountId}/import`}>
             {intl.formatMessage({ id: "register.import", defaultMessage: "Import" })}
           </Link>
-          <button type="button" className="btn primary" onClick={() => setOpen((current) => (current === "new" ? null : "new"))}>
+          <button type="button" className="btn primary" onClick={() => changeSheet(open === "new" ? null : "new")}>
             {intl.formatMessage({ id: "register.new", defaultMessage: "New transaction" })}
           </button>
         </div>
@@ -640,9 +725,9 @@ export default function AccountRegisterScreen() {
           categories={categories}
           currency={resolvedCurrency}
           today={today}
-          onClose={() => setOpen(null)}
+          onClose={() => changeSheet(null)}
           onSaved={() => {
-            setOpen(null);
+            changeSheet(null);
             state.refetch();
           }}
         />
@@ -650,7 +735,7 @@ export default function AccountRegisterScreen() {
       {open !== null && open !== "new" && open.transaction.status === "reconciled" && (
         <SideSheet
           title={open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}
-          onClose={() => setOpen(null)}
+          onClose={() => changeSheet(null)}
         >
           <p className="hint">
             {intl.formatMessage({
@@ -658,8 +743,13 @@ export default function AccountRegisterScreen() {
               defaultMessage: "This transaction is reconciled and locked.",
             })}
           </p>
+          {unlockError?.transactionId === open.transaction.id && (
+            <p className="hint bad" role="alert">
+              {unlockError.message}
+            </p>
+          )}
           <div className="row-btns">
-            <button type="button" className="btn" disabled={unlocking} onClick={() => void handleUnlock(open.transaction.id)}>
+            <button type="button" className="btn" aria-disabled={unlocking} onClick={() => void handleUnlock(open.transaction.id)}>
               {intl.formatMessage({ id: "register.unlock", defaultMessage: "Unlock" })}
             </button>
           </div>
@@ -674,9 +764,9 @@ export default function AccountRegisterScreen() {
           currency={resolvedCurrency}
           today={today}
           transaction={open.transaction}
-          onClose={() => setOpen(null)}
+          onClose={() => changeSheet(null)}
           onSaved={() => {
-            setOpen(null);
+            changeSheet(null);
             state.refetch();
           }}
         />

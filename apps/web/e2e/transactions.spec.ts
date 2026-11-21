@@ -94,6 +94,73 @@ test.describe("account register (#54)", () => {
     }
   });
 
+  test("on a closed account's register, reached by its address, a refused status change says the account is closed (#741)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto("/");
+      await page.waitForURL(`/${workspace.id}`);
+
+      await page.getByRole("button", { name: "Famiglia" }).click();
+      await page.getByRole("menuitem", { name: "Workspace settings" }).click();
+      await page.waitForURL(`/${workspace.id}/settings/categories`);
+      await page.getByRole("button", { name: "+ Add a group" }).click();
+      await page.getByLabel("Group name").fill("Everyday");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await page.getByRole("button", { name: "+ Add a category" }).click();
+      await page.getByLabel("Category name").fill("Groceries");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByText("Groceries")).toBeVisible();
+
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Checking");
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      // An outflow and an inflow of the same amount, both pending, leave a balance of zero, so
+      // the account can be closed with transactions still on it.
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+      const registerUrl = page.url();
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await page.getByLabel("Amount").fill("10.00");
+      await page.getByLabel("Payee").fill("Grocery store");
+      await page.getByLabel("Category").selectOption({ label: "Groceries" });
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await page.getByRole("dialog").getByText("Inflow", { exact: true }).click();
+      await page.getByLabel("Amount").fill("10.00");
+      await page.getByLabel("Payee").fill("Refund");
+      await page.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+
+      await page.getByRole("link", { name: "Accounts" }).click();
+      await page.waitForURL(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "Close" }).click();
+      await expect(page.getByText("Closed")).toBeVisible();
+
+      await page.goto(registerUrl);
+      await expect(page.getByRole("heading", { name: "Checking" })).toBeVisible();
+      await page.getByRole("button", { name: "Pending: change status" }).first().click();
+      await expect(page.getByRole("alert")).toHaveText("This account is closed, so its transactions can't be changed.");
+      await expect(page.getByRole("button", { name: "Pending: change status" })).toHaveCount(2);
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
+
   test("the register's own 'To do' list: Record an overdue scheduled transaction, Mark a pending one cleared, and the timeline folds away while a side sheet is open (#337)", async ({ page }) => {
     const user = await createTestUser();
     let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;

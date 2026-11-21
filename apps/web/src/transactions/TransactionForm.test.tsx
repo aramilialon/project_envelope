@@ -1069,4 +1069,52 @@ describe("TransactionForm: a write the API refuses because an account is closed 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be deleted."));
   });
+
+  /** Fills in a new transfer from Checking to Savings and adds it. */
+  function addTransfer() {
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "50.00" } });
+    fireEvent.change(screen.getByLabelText("To account"), { target: { value: "acc-savings" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  }
+
+  it("says the transfer can't be added, not changed, when its other account was closed meanwhile (#741)", async () => {
+    vi.spyOn(transactionsApi, "createTransfer").mockRejectedValue(refusal());
+    // The form's list still shows Savings open: it was closed after the form opened.
+    const { onSaved } = renderForm();
+
+    addTransfer();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transfer's other account is closed, so the transfer can't be added.");
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("says this account is closed when adding a transfer from it is refused (#741)", async () => {
+    vi.spyOn(transactionsApi, "createTransfer").mockRejectedValue(refusal());
+    renderForm({ accounts: [{ ...CHECKING, closedAt: "2026-10-01T00:00:00.000Z" }, SAVINGS] });
+
+    addTransfer();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so the transfer can't be added.");
+  });
+
+  it("says this account is closed when adding a transaction to it is refused, even before the form knew (#741)", async () => {
+    vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(refusal());
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "12.50" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so the transaction can't be added.");
+  });
+
+  it("keeps the plain failure for any other refusal of a new transfer", async () => {
+    vi.spyOn(transactionsApi, "createTransfer").mockRejectedValue(new ApiError("500", 500, "internal_error", {}));
+    renderForm();
+
+    addTransfer();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not save this transaction.");
+  });
 });

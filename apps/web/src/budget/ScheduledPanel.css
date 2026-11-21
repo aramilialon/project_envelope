@@ -58,6 +58,14 @@
   gap: 16px;
 }
 
+/* Why Record or Skip failed (#741), under its item. */
+.scheduled-panel .sch-error {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--red-text);
+}
+
 .scheduled-panel .sch-b .plain.quiet {
   color: var(--ink-2);
 }
