@@ -8,7 +8,7 @@
 | [Portfolio API](portfolio-api.md) | Recording a portfolio through the API: the schema, every portfolio endpoint with its bodies and validation codes, and how positions are worked out |
 | [How-to guides](how-to/) | Step-by-step recipes for changing the project |
 | [Decisions (ADR)](adr/) | Why a solution was chosen, and which alternatives were discarded |
-| [Glossary](glossary.md) | Financial and technical terms used in the code |
+| [Glossary](glossary.md) | Financial and technical terms used in the code; interface wording in every language is in the [translation glossary](../packages/i18n/glossary.md) |
 | [Mockups](ux/mockups/) | Interactive mockups of the interface, open them in a browser; described in the design document's "User interface" section |
 | [UX and visual design](ux/README.md) | Screen inventory, navigation structure, reusable component catalog and accessibility baseline (#70) |
 
