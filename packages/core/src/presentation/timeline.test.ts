@@ -162,6 +162,9 @@ describe("computeTimeline", () => {
     const absurd = computeTimeline({ daysInMonth: 30, today: undefined, events, valueLabelWidth: () => 1000 });
     assert.ok(absurd.axisX0 <= absurd.width * 0.4, "the gutter never takes more than 40% of the canvas");
 
+    const unmeasured = computeTimeline({ daysInMonth: 30, today: undefined, events });
+    assert.equal(computeTimeline({ daysInMonth: 30, today: undefined, events, valueLabelWidth: () => Number.NaN }).axisX0, unmeasured.axisX0, "a width that is not a finite number falls back to the default");
+
     const compact = computeTimeline({ daysInMonth: 30, today: undefined, events, compact: true, valueLabelWidth: () => 76 });
     assert.equal(compact.axisX0, 12, "compact mode has no labels, so no gutter");
   });

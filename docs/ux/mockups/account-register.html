@@ -668,14 +668,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     // the line never runs over a label and a long negative amount is never cut off (#405, #591).
     var ticks = [];
     function tickLabel(v) { return (v < 0 ? '-' : '') + (Math.abs(v) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
-    if (!false) {
-      var rough = (maxV - minV) / 4, ex = Math.pow(10, Math.floor(Math.log10(rough))), fr = rough / ex;
-      var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 5 ? 5 : 10) * ex;
-      for (var tv = Math.ceil(minV / step) * step; tv <= maxV; tv += step) ticks.push(tv);
-      var widest = 0;
-      ticks.forEach(function (t) { widest = Math.max(widest, tickLabel(t).length * 6.2); });
-      X0 = Math.max(X0, 2 + widest + 6);
-    }
+    var rough = (maxV - minV) / 4, ex = Math.pow(10, Math.floor(Math.log10(rough))), fr = rough / ex;
+    var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 5 ? 5 : 10) * ex;
+    for (var tv = Math.ceil(minV / step) * step; tv <= maxV; tv += step) ticks.push(tv);
+    var widest = 0;
+    ticks.forEach(function (t) { widest = Math.max(widest, tickLabel(t).length * 6.2); });
+    X0 = Math.max(X0, 2 + widest + 6);
     var tx = x(TODAY), zeroY = y(0), curY = y(actual[TODAY]);
 
     var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' +

@@ -144,6 +144,10 @@ const LABEL_GAP = 6;
 const LABEL_MARGIN = 2;
 /** The assumed label width when the caller does not measure its labels (`valueLabelWidth`). */
 const DEFAULT_LABEL_WIDTH = 68;
+/** A measured label width, or the default when the caller measures nothing usable (none, `NaN`, infinite or negative). */
+function labelWidth(measured: number | undefined): number {
+  return measured !== undefined && Number.isFinite(measured) && measured >= 0 ? measured : DEFAULT_LABEL_WIDTH;
+}
 /** The widest a gutter may get, so an absurdly long label cannot squeeze the plot away. */
 const MAX_GUTTER_SHARE = 0.4;
 
@@ -225,7 +229,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
   // The plot starts right of a gutter as wide as the widest value label (`#591`); the ticks only
   // depend on the value range, so they are known before the horizontal scale.
   const widestLabel = size.labels
-    ? Math.max(0, ...valueTicks.map((tick) => input.valueLabelWidth?.(tick.amountCents) ?? DEFAULT_LABEL_WIDTH))
+    ? Math.max(0, ...valueTicks.map((tick) => labelWidth(input.valueLabelWidth?.(tick.amountCents))))
     : 0;
   const x0 = size.labels
     ? Math.min(size.width * MAX_GUTTER_SHARE, Math.max(size.inset, LABEL_MARGIN + widestLabel + LABEL_GAP))
