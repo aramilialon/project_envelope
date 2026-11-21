@@ -1,4 +1,5 @@
 import {
+  cardDebt,
   computeBudgetProblems,
   computeCategoryBar,
   computePaymentCategoryBar,
@@ -129,10 +130,8 @@ function toOverdueScheduledItems(events: readonly MonthEvent[], today: { iso: st
  * Deferred, deliberately not this issue's job: a category's own target meter and reservation
  * clock status lines (need each category's target and scheduled transactions, not fetched here —
  * #327's row detail is the natural place to add them); a card's payment category "debt covered"
- * line when its debt is fully covered (`uncovered` is 0 in that case exactly the same as "no debt
- * at all" — the API has no separate field for the card's real balance — so nothing is shown
- * rather than guessing a figure; only "still to cover" is shown, since that debt is recoverable
- * from `available + uncovered`); the toolbar's filter tabs, Summary/Undo (need data or forms no
+ * line when its debt is fully covered (not built yet, though the API's `owed`, #699, now gives the
+ * figure it needs; only "still to cover" is shown, against that real debt); the toolbar's filter tabs, Summary/Undo (need data or forms no
  * earlier issue built yet); the group name's summary side sheet — a group row is plain,
  * non-interactive text until then, not a button with nowhere to go.
  */
@@ -446,6 +445,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         categoryName={category.name}
         available={category.available}
         uncovered={category.uncovered}
+        owed={category.owed}
         {...(category.hasStartingBalance !== undefined ? { hasStartingBalance: category.hasStartingBalance } : {})}
         {...(category.overspendingBy !== undefined ? { overspendingBy: category.overspendingBy } : {})}
         currency={currency ?? "EUR"}
@@ -853,15 +853,35 @@ interface StatusLineProps {
 /** The muted line under a category's name: what was spent of what it was given, or a card's own debt still to cover. */
 function StatusLine({ category, money, intl }: StatusLineProps) {
   if (category.isPaymentCategory) {
-    if (category.uncovered <= 0) {
+    // "To cover" is always `cardDebt`'s `toCover` (#699): with nothing paid beyond what was set
+    // aside it is the uncovered debt; otherwise the line names both parts of it.
+    const debt = cardDebt(category);
+    if (debt.toCover <= 0) {
       return null;
     }
-    const debt = category.available + category.uncovered;
+    if (debt.paidBeyondSetAside > 0) {
+      return (
+        <small className="spent n">
+          {debt.owed > 0
+            ? intl.formatMessage(
+                {
+                  id: "budget.bar.debtToCoverPaidBeyond",
+                  defaultMessage: "{toCover} to cover: {debt} of debt and {paidBeyond} paid beyond what was set aside",
+                },
+                { toCover: money(debt.toCover), debt: money(debt.owed), paidBeyond: money(debt.paidBeyondSetAside) },
+              )
+            : intl.formatMessage(
+                { id: "budget.bar.toCoverPaidBeyond", defaultMessage: "{toCover} to cover: paid beyond what was set aside" },
+                { toCover: money(debt.toCover) },
+              )}
+        </small>
+      );
+    }
     return (
       <small className="spent n">
         {intl.formatMessage(
           { id: "budget.bar.debtToCover", defaultMessage: "{uncovered} to cover of {debt} of debt" },
-          { uncovered: money(category.uncovered), debt: money(debt) },
+          { uncovered: money(debt.toCover), debt: money(debt.owed) },
         )}
       </small>
     );

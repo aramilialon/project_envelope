@@ -388,7 +388,7 @@ interface BudgetMonthResponse {
   readonly paymentCategories: readonly Record<string, unknown>[];
 }
 
-const CATEGORY_KEYS = ["categoryId", "carriedOver", "assigned", "activity", "available", "creditOverspending", "cashOverspending", "reserved", "uncovered"];
+const CATEGORY_KEYS = ["categoryId", "carriedOver", "assigned", "activity", "available", "creditOverspending", "cashOverspending", "reserved", "uncovered", "owed"];
 
 function pickCategory(row: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(CATEGORY_KEYS.map((key) => [key, row[key]]));

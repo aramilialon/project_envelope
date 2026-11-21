@@ -206,6 +206,33 @@ describe("credit cards", () => {
 
       const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
       assert.equal(card.uncovered, 0);
+      assert.equal(card.owed, undefined);
+    });
+
+    it("exposes the card's real balance as `owed` (#699), only on the payment category", () => {
+      const september = computeBudgetMonth(budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }] }), "2026-09");
+      assert.equal(find(september.paymentCategories, CARD).owed, 120000);
+      assert.equal(find(september.categories, "groceries").owed, undefined);
+    });
+
+    it("a card paid beyond what was set aside: the debt is `owed`, never `available + uncovered` (#699)", () => {
+      // The domain guide's worked example: opened owing €500, €45.67 of groceries on the card
+      // (covered by Groceries), €300 paid from checking, nothing assigned to the payment category.
+      const input = budget({
+        assignments: [{ categoryId: "groceries", month: "2026-09", amount: 10000 }],
+        activity: [{ categoryId: "groceries", month: "2026-09", amount: -4567, paymentCategoryId: CARD }],
+        cardPayments: [{ paymentCategoryId: CARD, month: "2026-09", amount: 30000 }],
+        cardBalances: [{ paymentCategoryId: CARD, owed: 50000 + 4567 - 30000, hasStartingBalance: true }],
+      });
+
+      const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
+
+      assert.equal(card.activity, -25433); // 45.67 moved in − 300 paid
+      assert.equal(card.available, -25433);
+      assert.equal(card.cashOverspending, 25433);
+      assert.equal(card.owed, 24567);
+      assert.equal(card.uncovered, 24567);
+      assert.notEqual(card.available + card.uncovered, card.owed); // the old reading: −8.66
     });
   });
 

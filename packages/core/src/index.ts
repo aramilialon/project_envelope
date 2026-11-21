@@ -108,6 +108,8 @@ export type { Hlc } from "./sync/hlc.ts";
 export { compareHlc, nextHlc } from "./sync/hlc.ts";
 export type { Bar, BarSegment, CategoryBar, PaymentCategoryBar, TailKind } from "./presentation/bars.ts";
 export { computeCategoryBar, computePaymentCategoryBar, TAIL_PERCENT, TRACK_PERCENT } from "./presentation/bars.ts";
+export type { CardDebt } from "./presentation/cardDebt.ts";
+export { cardDebt } from "./presentation/cardDebt.ts";
 export type {
   TimelineCurrent,
   TimelineDayTick,

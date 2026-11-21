@@ -40,6 +40,8 @@ export interface BudgetMonthCategory {
   readonly overspendingBy?: readonly { readonly categoryId: string; readonly name: string; readonly amount: number }[];
   /** Payment categories only (#355): whether the card had a starting balance when added. */
   readonly hasStartingBalance?: boolean;
+  /** Payment categories only (#699): the card's real balance at the end of the month, what is owed on it — the debt the interface shows. */
+  readonly owed?: number;
 }
 
 export interface BudgetMonthResponse {
@@ -144,7 +146,8 @@ function owedAsOf(transactions: readonly TransactionRecord[], accountId: string,
     if (compareMonths(monthOf(transaction.budgetDate), month) > 0) continue;
     balance += totalOf(transaction);
   }
-  return -balance;
+  // `0 - balance`, not `-balance`: a card with no transactions owes 0, never -0 (#699 returns it).
+  return 0 - balance;
 }
 
 function joinCategory(
@@ -181,6 +184,7 @@ function joinCategory(
         }
       : {}),
     ...(categoryMonth.hasStartingBalance !== undefined ? { hasStartingBalance: categoryMonth.hasStartingBalance } : {}),
+    ...(categoryMonth.owed !== undefined ? { owed: categoryMonth.owed } : {}),
   };
 }
 

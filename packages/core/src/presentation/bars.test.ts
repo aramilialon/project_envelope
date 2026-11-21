@@ -103,20 +103,37 @@ describe("computePaymentCategoryBar", () => {
   });
 
   it("fully covered debt (uncovered is 0 despite real debt) draws no uncovered segment", () => {
-    const bar = computePaymentCategoryBar(category({ available: 60_000, uncovered: 0 }));
+    const bar = computePaymentCategoryBar(category({ available: 60_000, uncovered: 0, owed: 60_000 }));
     assert.equal(bar.uncovered, undefined);
   });
 
   it("partially covered debt draws the uncovered fraction of the card's own real debt", () => {
-    // Available 50 000 assigned toward it; uncovered 70 000 means the real debt is 120 000.
-    const bar = computePaymentCategoryBar(category({ available: 50_000, uncovered: 70_000 }));
+    // Available 50 000 assigned toward a real debt of 120 000: 70 000 uncovered.
+    const bar = computePaymentCategoryBar(category({ available: 50_000, uncovered: 70_000, owed: 120_000 }));
     assert.ok(bar.uncovered);
     assert.equal(bar.uncovered?.leftPercent, (50_000 / 120_000) * 100);
     assert.equal(bar.uncovered?.widthPercent, 100 - (50_000 / 120_000) * 100);
   });
 
   it("nothing assigned yet against a real debt is fully uncovered", () => {
-    const bar = computePaymentCategoryBar(category({ available: 0, uncovered: 120_000 }));
+    const bar = computePaymentCategoryBar(category({ available: 0, uncovered: 120_000, owed: 120_000 }));
+    assert.equal(bar.uncovered?.leftPercent, 0);
+    assert.equal(bar.uncovered?.widthPercent, 100);
+  });
+
+  it("a card paid beyond what was set aside draws its real debt, all of it uncovered (#699)", () => {
+    // Opened owing 50 000, 4 567 spent on it and covered by its own category, 30 000 paid from
+    // checking, nothing assigned: owed 24 567, available -25 433. The old `available + uncovered`
+    // reading made the debt -866 here, yet it drew this same bar: no budget month can make the two
+    // readings draw different geometry. With available >= 0 and some debt uncovered,
+    // `uncovered = owed - available`, so `available + uncovered` is `owed` exactly; with
+    // available < 0 nothing is set aside, so the covered part is 0 against either denominator
+    // (`pct` gives 0 for one that is not positive) and the hatching fills the whole bar. The bar
+    // only reads `cardDebt` now so no figure is derived twice; what the fix changes is the debt
+    // figure itself, which `cardDebt.test.ts` covers.
+    const bar = computePaymentCategoryBar(
+      category({ activity: -25_433, available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567 }),
+    );
     assert.equal(bar.uncovered?.leftPercent, 0);
     assert.equal(bar.uncovered?.widthPercent, 100);
   });

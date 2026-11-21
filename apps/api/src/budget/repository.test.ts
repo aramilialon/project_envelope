@@ -197,6 +197,8 @@ describe("budget month repository", () => {
       budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategoryWithoutBalance.rows[0]!.id)?.hasStartingBalance,
       false,
     );
+    assert.equal(budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategoryWithBalance.rows[0]!.id)?.owed, 5_000);
+    assert.equal(budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategoryWithoutBalance.rows[0]!.id)?.owed, 0);
   });
 
   it("attributes a card's uncovered debt to the categories whose overspending caused it, with their own names (#355)", async () => {
@@ -228,6 +230,59 @@ describe("budget month repository", () => {
     const card = budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategory.rows[0]!.id);
     assert.deepEqual(card?.overspendingBy, [{ categoryId: spendingCategory.rows[0]!.id, name: "Hobbies", amount: 7_500 }]);
     assert.equal(card?.hasStartingBalance, false);
+    assert.equal(card?.owed, 7_500);
+  });
+
+  it("returns a card's real debt as `owed` when it was paid beyond what was set aside (#699)", async () => {
+    // The domain guide's worked example: opened owing €500, €45.67 of groceries on the card
+    // (covered by the category's own money), €300 paid from checking, nothing assigned to the
+    // payment category.
+    const cardAccount = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Paid beyond card', 'credit_card', 'EUR', true) RETURNING id",
+      [workspaceId],
+    );
+    const paymentCategory = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Paid beyond card payment', 8) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await pool.query("UPDATE accounts SET payment_category_id = $1 WHERE id = $2", [paymentCategory.rows[0]!.id, cardAccount.rows[0]!.id]);
+    const food = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Food on the card', 9) RETURNING id",
+      [workspaceId, groupId],
+    );
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: cardAccount.rows[0]!.id,
+      occurredAt: "2026-08-01",
+      status: "cleared",
+      splits: [{ categoryId: paymentCategory.rows[0]!.id, amountCents: -50_000 }],
+    });
+    await createAssignmentBatch(pool, {
+      workspaceId,
+      author: authorId,
+      entries: [{ month: "2026-11", sourceCategoryId: null, destinationCategoryId: food.rows[0]!.id, amountCents: 10_000 }],
+    });
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: cardAccount.rows[0]!.id,
+      occurredAt: "2026-11-03",
+      splits: [{ categoryId: food.rows[0]!.id, amountCents: -4_567 }],
+    });
+    await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: checkingAccountId,
+      destinationAccountId: cardAccount.rows[0]!.id,
+      occurredAt: "2026-11-10",
+      amountCents: 30_000,
+    });
+
+    const budgetMonth = await getBudgetMonth(pool, workspaceId, "2026-11");
+    const card = budgetMonth.paymentCategories.find((c) => c.categoryId === paymentCategory.rows[0]!.id);
+    assert.equal(card?.available, -25_433);
+    assert.equal(card?.cashOverspending, 25_433);
+    assert.equal(card?.uncovered, 24_567);
+    assert.equal(card?.owed, 24_567);
+    assert.equal(budgetMonth.categories.find((c) => c.categoryId === food.rows[0]!.id)?.owed, undefined);
   });
 
   it("a packages/core ValidationError surfaces with its stable code, not a raw message", async () => {

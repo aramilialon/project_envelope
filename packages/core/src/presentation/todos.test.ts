@@ -70,6 +70,15 @@ describe("computeTodos", () => {
     assert.deepEqual(items, [{ kind: "cardDebtUncovered", categoryId: "visa-payment", amountCents: 12_000 }]);
   });
 
+  it("a card paid beyond what was set aside is one cash overspending item, for the overspending plus the uncovered debt (#699)", () => {
+    const visa = category({ categoryId: "visa-payment", available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567 });
+    const items = computeTodos(input({ categories: [category({ categoryId: "groceries", cashOverspending: 1_000 })], paymentCategories: [visa] }));
+    assert.deepEqual(items, [
+      { kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 },
+      { kind: "cashOverspending", categoryId: "visa-payment", amountCents: 50_000 },
+    ]);
+  });
+
   it("every target still missing money becomes one combined item", () => {
     const items = computeTodos(
       input({ targetsNeeded: [{ categoryId: "vacation", missingCents: 2_000 }, { categoryId: "emergency-fund", missingCents: 3_000 }] }),
@@ -131,6 +140,10 @@ describe("amountNeededToCover", () => {
 
   it("a payment category's uncovered card debt, when nothing else applies", () => {
     assert.equal(amountNeededToCover(category({ uncovered: 4_000 })), 4_000);
+  });
+
+  it("a card paid beyond what was set aside: its cash overspending plus its uncovered debt (#699)", () => {
+    assert.equal(amountNeededToCover(category({ available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567 })), 50_000);
   });
 });
 

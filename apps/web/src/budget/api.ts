@@ -19,6 +19,8 @@ export interface BudgetMonthCategory {
   readonly overspendingBy?: readonly { readonly categoryId: string; readonly name: string; readonly amount: number }[];
   /** Payment categories only (#355): whether the card had a starting balance when added. */
   readonly hasStartingBalance?: boolean;
+  /** Payment categories only (#699): the card's real debt, what is owed on it. */
+  readonly owed?: number;
 }
 
 export interface BudgetMonthResponse {

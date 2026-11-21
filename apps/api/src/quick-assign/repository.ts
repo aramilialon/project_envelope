@@ -1,4 +1,4 @@
-import { computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
+import { cardDebt, computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
 
 import { createAssignmentBatch, listAssignmentTotals, type AssignmentEntryRecord } from "../assignments/repository.ts";
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
@@ -40,9 +40,12 @@ async function desiredAmounts(
         .filter((c) => c.available < 0)
         .map((c) => ({ categoryId: c.categoryId, amountCents: -c.available }));
     case "cover_card_debt":
+      // The whole of `cardDebt`'s `toCover` (#699): a card paid beyond what was set aside needs
+      // its cash overspending covered as well as its uncovered debt, in one run. Payment
+      // categories stay out of "cover_overspending", which reads `categories` only.
       return budgetMonth.paymentCategories
-        .filter((c) => c.uncovered > 0)
-        .map((c) => ({ categoryId: c.categoryId, amountCents: c.uncovered }));
+        .map((c) => ({ categoryId: c.categoryId, amountCents: cardDebt(c).toCover }))
+        .filter((d) => d.amountCents > 0);
     case "repeat_assigned": {
       const priorMonth = shiftMonth(month, -1);
       const totals = await listAssignmentTotals(db, workspaceId);

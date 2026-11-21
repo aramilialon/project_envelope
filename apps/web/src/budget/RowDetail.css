@@ -103,6 +103,11 @@
   line-height: 1.55;
 }
 
+/* A card paid beyond what was set aside explains that first, then its uncovered debt (#699). */
+.inl-c .explain + .explain {
+  margin-top: 8px;
+}
+
 .inl-c .warnl {
   color: var(--warn);
 }

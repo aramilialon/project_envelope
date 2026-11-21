@@ -582,7 +582,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var RTA_ID = 'rta';
   CAT[RTA_ID] = { id: RTA_ID, name: 'Da assegnare', avail: 31200, group: '' };
   var ACCOUNTS = [
-    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['broker', 'Broker ETF', 'cash', false], ['mutuo', 'Mutuo casa', 'loan', false]
+    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['tv', 'Carta viaggi', 'credit', true], ['broker', 'Broker ETF', 'cash', false], ['mutuo', 'Mutuo casa', 'loan', false]
   ];
   var ACC = {};
   ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3] }; });
@@ -599,6 +599,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     tx({ date: '2026-09-16', payee: 'Fornitore energia', amount: -9640, cat: 'luce', status: 'cleared' }),
     tx({ date: '2026-09-17', payee: 'Supermercato', amount: -11205, cat: 'spesa', status: 'cleared' }),
     tx({ date: '2026-09-18', payee: 'Clinica veterinaria', amount: -8500, cat: 'vet', memo: 'Vaccino', status: 'cleared' }),
+    tx({ date: '2026-09-20', payee: 'Pagamento della carta', amount: -30000, transfer: 'tv', status: 'cleared' }),
     tx({ date: '2026-09-20', payee: 'Grande magazzino', amount: -6730, splits: [['spesa', -4230], ['regali', -2500]], memo: 'Spesa e regalo per Anna', status: 'cleared' }),
     tx({ date: '2026-09-24', payee: 'Supermercato', amount: -8740, cat: 'spesa', status: 'pending' }),
     tx({ date: '2026-09-25', payee: 'Stipendio', amount: 265000, cat: RTA_ID, memo: 'Settembre', status: 'cleared' }),
