@@ -498,6 +498,123 @@ describe("BudgetScreen (#53, #324)", () => {
     await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledTimes(2));
   });
 
+  it("closes the row detail on a month change, so an amount typed for one month is never written to another (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 60_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+
+    fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+    const input = await screen.findByLabelText("Assigned this month");
+    input.focus();
+    fireEvent.change(input, { target: { value: "1000" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(createAssignments).toHaveBeenCalledTimes(1));
+    expect(createAssignments.mock.calls[0]?.[2]).toEqual([
+      { month: currentMonth, sourceCategoryId: null, destinationCategoryId: "c1", amountCents: 40_000 },
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", shiftMonth(currentMonth, -1)));
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+
+    // Opened again, it shows the previous month's own amount, and Enter on it sends nothing.
+    fireEvent.click(await screen.findByRole("button", { name: /^Groceries/ }));
+    const again = await screen.findByLabelText("Assigned this month");
+    expect(again).toHaveValue("600.00");
+    again.focus();
+    fireEvent.keyDown(again, { key: "Enter" });
+    await waitFor(() => expect(again).toHaveValue("600.00"));
+    expect(createAssignments).toHaveBeenCalledTimes(1);
+  });
+
+  it("while the previous month loads, a row's detail waits for its numbers and never writes the shown month's amount to it (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(budgetMonth({ categories: [category({ categoryId: "c1", name: "Groceries", assigned: 100_000 })] }), [HOME]);
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+    const previousMonth = shiftMonth(currentMonth, -1);
+    let resolvePrevious: (value: BudgetMonthResponse) => void = () => {};
+    getBudgetMonth.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePrevious = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth));
+
+    // The current month's rows are still on screen: clicking one opens nothing yet.
+    fireEvent.click(screen.getByRole("button", { name: /^Groceries/ }));
+    expect(screen.queryByLabelText("Assigned this month")).not.toBeInTheDocument();
+    const anyInput = document.activeElement ?? document.body;
+    fireEvent.keyDown(anyInput, { key: "Enter" });
+    expect(createAssignments).not.toHaveBeenCalled();
+
+    resolvePrevious(budgetMonth({ month: previousMonth, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 50_000 })] }));
+    const input = await screen.findByLabelText("Assigned this month");
+    expect(input).toHaveValue("500.00");
+    input.focus();
+    fireEvent.change(input, { target: { value: "250" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(createAssignments).toHaveBeenCalledTimes(1));
+    expect(createAssignments.mock.calls[0]?.[2]).toEqual([
+      { month: previousMonth, sourceCategoryId: "c1", destinationCategoryId: null, amountCents: 25_000 },
+    ]);
+  });
+
+  it("while the previous month loads, 'Assign' is not available, and opens on that month's own numbers once they arrive (#698)", async () => {
+    const createAssignments = vi.spyOn(budgetApi, "createAssignments").mockResolvedValue(undefined);
+    const { getBudgetMonth } = renderScreen(
+      budgetMonth({ unassigned: 80_000, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 0, available: 0 })] }),
+      [HOME],
+    );
+    await screen.findByText("Groceries");
+    const currentMonth = getBudgetMonth.mock.calls[0]?.[2] as string;
+    const previousMonth = shiftMonth(currentMonth, -1);
+    let resolvePrevious: (value: BudgetMonthResponse) => void = () => {};
+    getBudgetMonth.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePrevious = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", previousMonth));
+
+    const band = within(document.querySelector(".rta")!);
+    const assign = band.getByRole("button", { name: "Assign" });
+    expect(assign).toBeDisabled();
+    fireEvent.click(assign);
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+
+    resolvePrevious(
+      budgetMonth({ month: previousMonth, unassigned: 30_000, categories: [category({ categoryId: "c1", name: "Groceries", assigned: 0, available: 0 })] }),
+    );
+    await waitFor(() => expect(band.getByRole("button", { name: "Assign" })).toBeEnabled());
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+    expect(screen.getByLabelText("From")).toHaveTextContent("Unassigned (€300.00)");
+    expect(createAssignments).not.toHaveBeenCalled();
+  });
+
+  it("changing month closes an open Move money form (#698)", async () => {
+    renderScreen(budgetMonth({ unassigned: 5_000, categories: [category({})] }), [HOME]);
+    await screen.findByText("Groceries");
+
+    const band = within(document.querySelector(".rta")!);
+    fireEvent.click(band.getByRole("button", { name: "Assign" }));
+    expect(await screen.findByRole("heading", { name: "Assign" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+    // Still closed once that month has loaded: nothing reopens it.
+    await waitFor(() => expect(band.getByRole("button", { name: "Assign" })).toBeEnabled());
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
+  });
+
   it("opens a card's own payment category row into its own detail, fully covered (#329)", async () => {
     renderScreen(
       budgetMonth({ categories: [], paymentCategories: [category({ categoryId: "pc1", name: "Visa payment", available: 50_000, uncovered: 0, owed: 50_000 })] }),

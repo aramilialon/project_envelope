@@ -205,7 +205,9 @@ money goes; the off-budget leg never has a category.
   "Unassigned", is refused (`uncategorized_transaction`), and so is an edit that takes the category
   away (#378, #552).
 - **In from an off-budget account into a cash account:** by default it is **income to assign**
-  ("Unassigned"), in the month of its date, like a salary. A real category can be chosen instead,
+  ("Unassigned"), in the month of its date, like a salary; like any income, it counts only from its
+  date on, so the form says on which day money dated after today comes into "Unassigned" rather
+  than adding it now (#700). A real category can be chosen instead,
   for example to refill the envelope that funded the investment: it then goes into that category's
   available, the same way a refund does (#598).
 - **In from an off-budget account into an on-budget credit card:** it needs a real category, and is
@@ -259,6 +261,8 @@ until exchange rates exist (#86, #652):
   currencies is refused (`currency_mismatch`). Such a move is entered as an outflow from one account
   and an inflow into the other, each in its own currency.
 - **Every balance is shown in its account's own currency.**
+- **The net worth adds up today's balances** (see "Balances as of today" below): a transaction
+  dated after today is in no account's balance yet, so it is not in the net worth either.
 - **The net worth adds up base-currency accounts only.** What accounts in other currencies hold is
   listed beside it, each in its own currency ("Not included: $3,000.00 (no exchange rates yet)").
   Balances in one currency are netted: a −$100 card and a $3,000 broker show as $2,900, and a
@@ -279,6 +283,31 @@ household's choice), and the broker an inflow of $1,080. Checking now holds €4
 $4,080, so the net worth drops to 4,000 − 500 + 2,000 = **€5,500**, and the note becomes "Not
 included: $4,080.00 (no exchange rates yet)". The euros reappear in the net worth, as dollars
 converted at a rate, only once exchange rates exist (#86).
+
+### Balances as of today
+
+Every balance is as of today in the workspace's time zone (#702), the same definition in the
+account register, on the Accounts screen, in the accounts panel, for a brokerage account's cash and
+in the net worth:
+
+- the **balance** counts the transactions dated on or before today; **cleared** (reconciled
+  included) and **pending** split those same transactions, so they always add up to it;
+- the **projected balance at the end of the month** adds to it the transactions dated after today
+  up to the last day of the month, and this month's scheduled transactions not recorded yet,
+  overdue ones of this month included. One recorded with "Record" is no longer scheduled, so it
+  counts once, as its transaction;
+- a transaction dated after the end of the month is in no balance yet. The register lists it, with
+  the ones later this month, in a "Later" section at the top, each showing the balance it leads to.
+
+**Example.** Today is 21 November 2026. Checking holds +€2,000.00 on 10 November (cleared),
+−€87.40 on 20 November (pending), −€40.00 on 25 November and +€300.00 on 5 December. Two scheduled
+transactions are not recorded yet: −€45.00 due on 15 November (overdue) and +€2,450.00 due on
+27 November.
+
+- Balance: 2,000.00 − 87.40 = **€1,912.60**, of which cleared €2,000.00 and pending −€87.40.
+- Projected at the end of the month: 1,912.60 − 40.00 − 45.00 + 2,450.00 = **€4,277.60**.
+- The 5 December transaction is in neither. It sits under "Later" with the running balance
+  1,912.60 − 40.00 + 300.00 = €2,172.60, the balance it leads to once both later rows have happened.
 
 ### Days of buffer
 
@@ -316,6 +345,11 @@ unassigned money + every category's available + reserved + assigned to future mo
 
 that is, income received by the earlier of the end of the month and today, plus the activity up to
 the end of the month. It holds in every month, not only the current one.
+
+So the money in the budget differs from today's on-budget balances ("Balances as of today") only by
+the transactions dated after today up to the end of the month: outflows and categorized inflows
+count in the budget straight away, while income (an inflow with no category, which becomes
+unassigned money) counts only once its date has come.
 
 Every code path that moves money — assigning, spending, a transfer, a scheduled transaction firing,
 a card payment — has to keep this equation true, or the budget and the real accounts have quietly

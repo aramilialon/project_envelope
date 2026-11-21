@@ -526,6 +526,15 @@ function computeMonth(
 }
 
 /**
+ * Whether income dated `date` has been received by `today`, both days in the workspace's time zone
+ * (rule 1): income counts from its own date on, never before. The one rule the budget month and
+ * every preview of incoming money share (#650, #700).
+ */
+export function incomeReceived(date: LocalDate, today: LocalDate): boolean {
+  return date <= today;
+}
+
+/**
  * Computes the state of the budget in the given month.
  *
  * @throws ValidationError if the data contains invalid months, amounts or categories.
@@ -613,11 +622,9 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   // latest one with data, where cum(N) = income received by the end of N (and by today) −
   // everything assigned up to N − cash overspending of the months before the requested one. A
   // later month's own unresolved overspending stays a separate concern (#489).
-  const today = input.today;
-  const received = (item: Income): boolean => (item.date ?? `${item.month}-01`) <= today;
   const receivedBy = new Map<Month, Cents>();
   for (const item of input.income) {
-    if (received(item)) addTo(receivedBy, item.month, item.amount);
+    if (incomeReceived(item.date ?? `${item.month}-01`, input.today)) addTo(receivedBy, item.month, item.amount);
   }
   const assignedByMonth = new Map<Month, Cents>();
   for (const a of input.assignments) addTo(assignedByMonth, a.month, a.amount);

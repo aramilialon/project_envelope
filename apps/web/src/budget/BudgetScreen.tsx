@@ -172,6 +172,15 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
+  /**
+   * Changing month closes a category's detail and the Move money form (#698): their amounts, and
+   * the month they write to, were the old month's.
+   */
+  function goToMonth(step: number) {
+    setMonth((m) => shiftMonth(m, step));
+    setOpenCategoryId(null);
+    setMoveMoney(null);
+  }
   const [nameEditing, setNameEditing] = useState<NameEditing>(null);
   // A group just added from here (#397) has no category yet, and the budget month only lists
   // groups that do: kept on screen, with its first category's field open, until it has one.
@@ -259,7 +268,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               type="button"
               className="arrow"
               aria-label={intl.formatMessage({ id: "budget.month.previous", defaultMessage: "Previous month" })}
-              onClick={() => setMonth((m) => shiftMonth(m, -1))}
+              onClick={() => goToMonth(-1)}
             >
               ←
             </button>
@@ -268,7 +277,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               type="button"
               className="arrow"
               aria-label={intl.formatMessage({ id: "budget.month.next", defaultMessage: "Next month" })}
-              onClick={() => setMonth((m) => shiftMonth(m, 1))}
+              onClick={() => goToMonth(1)}
             >
               →
             </button>
@@ -284,6 +293,9 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
             <button
               type="button"
               className="btn primary"
+              // Not while another month loads: the form would show this month's numbers and
+              // write to that one (#698).
+              disabled={state.month !== month}
               onClick={() => setMoveMoney((current) => (current?.kind === "assign" ? null : { kind: "assign" }))}
             >
               {intl.formatMessage({ id: "budget.actions.assign", defaultMessage: "Assign" })}
@@ -363,6 +375,11 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
   const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
+  // While a newly chosen month loads, the previous month's rows stay on screen: a category's
+  // detail and the Move money form wait for the new month's own numbers before opening, so
+  // neither measures an entry against one month and writes it to another (#698).
+  const shownMonth = state.month;
+  const detailReady = shownMonth === month;
 
   /** Same content either way (design.md, "Budget month on the phone") — `fullScreen` only swaps the chrome around it (`DetailFrame.tsx`). */
   // Adding and renaming categories and groups from here (#397, `budget-categories.html`); reordering
@@ -440,8 +457,10 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
       />
     ) : (
       <RowDetail
+        // One detail per month and category (#698): nothing typed for one carries over to another.
+        key={`${shownMonth}:${category.categoryId}`}
         workspaceId={workspaceId}
-        month={month}
+        month={shownMonth}
         categoryId={category.categoryId}
         categoryName={category.name}
         onRename={(name) => renameOneCategory(category.categoryId, name)}
@@ -473,7 +492,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     setOpenCategoryId(item.categoryId);
   }
 
-  const phoneOpenCategory = isPhone && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
+  const phoneOpenCategory = isPhone && detailReady && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
 
   return (
     <div className="budget-screen">
@@ -637,7 +656,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                       group.categories.map((category) => {
                         const bar = barFor(category);
                         const status = statusOf(category, bar);
-                        const isOpen = !isPhone && openCategoryId === category.categoryId;
+                        const isOpen = !isPhone && detailReady && openCategoryId === category.categoryId;
                         const rowContent = (
                           <>
                             <span className="cn">
@@ -805,7 +824,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
           onChanged={() => refetchAndCheckProblems()}
         />
       )}
-      {moveMoney && (
+      {moveMoney && detailReady && (
         <MoveMoneyForm
           workspaceId={workspaceId}
           month={month}

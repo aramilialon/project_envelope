@@ -1,8 +1,9 @@
-import { parseAmount } from "@envelope/core";
-import { useRef, useState } from "react";
+import { parseAssignedEntry } from "@envelope/core";
+import { useEffect, useRef, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import CategoryNameField from "../categories/CategoryNameField.tsx";
 import { plainAmount } from "../format.ts";
 import { createAssignments } from "./api.ts";
@@ -43,32 +44,67 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
   const intl = useIntl();
   const auth = useAuth();
   const [renaming, setRenaming] = useState(false);
+  // The assigned amount the field is measured against: the budget month's own, or the result of
+  // this field's last commit until the refetch it triggers brings the same one back (#698), so
+  // that a second Enter right after a commit never applies a relative entry twice.
+  const [current, setCurrent] = useState(assigned);
   const [value, setValue] = useState(() => plainAmount(assigned, intl.locale, currency));
+  const [error, setError] = useState<string | null>(null);
   const cancelingRef = useRef(false);
   const committingRef = useRef(false);
+  const enterRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // The text the field last showed as an amount (not typed by the user), and what it shows now:
+  // read by the effect below without making every keystroke one of its dependencies.
+  const shownRef = useRef(value);
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
-  function revert() {
-    setValue(plainAmount(assigned, intl.locale, currency));
+  function show(amount: number) {
+    const text = plainAmount(amount, intl.locale, currency);
+    shownRef.current = text;
+    setValue(text);
   }
 
-  async function commit(raw: string) {
-    const text = raw.trim();
-    if (!text) {
+  // A new assigned amount from the budget month (a refetch, someone else's change) replaces what
+  // the field shows: it never keeps a value that no longer matches (#698). Except while the user
+  // is typing their next entry: that text is theirs, and is measured against the new amount once
+  // they press Enter.
+  useEffect(() => {
+    setCurrent(assigned);
+    const typing = document.activeElement === inputRef.current && valueRef.current !== shownRef.current;
+    if (typing) {
+      return;
+    }
+    show(assigned);
+    setError(null);
+    // `show` only reads the locale and currency listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assigned, intl.locale, currency]);
+
+  function revert() {
+    show(current);
+  }
+
+  function capError() {
+    setError(amountTooLargeMessage(intl, currency));
+  }
+
+  async function commit(raw: string, viaEnter: boolean) {
+    if (!raw.trim()) {
       revert();
       return;
     }
-    const relative = text.startsWith("+") || text.startsWith("-");
-    let magnitude: number;
-    try {
-      magnitude = parseAmount(relative ? text.slice(1) : text, { locale: intl.locale, currency });
-    } catch {
-      // Not a parseable amount: left as the user typed it, rather than silently discarding what
-      // they are still in the middle of correcting.
+    const entry = parseAssignedEntry(raw, current, { locale: intl.locale, currency });
+    if (!entry.ok) {
+      if (entry.code === "amount_too_large") {
+        capError();
+      }
+      // Otherwise not a parseable amount: left as the user typed it, rather than silently
+      // discarding what they are still in the middle of correcting.
       return;
     }
-    const goal = relative ? assigned + (text.startsWith("+") ? magnitude : -magnitude) : magnitude;
-    const diff = goal - assigned;
-    if (diff === 0) {
+    if (entry.delta === 0) {
       revert();
       return;
     }
@@ -79,11 +115,28 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
     committingRef.current = true;
     try {
       await createAssignments(accessToken, workspaceId, [
-        diff > 0
-          ? { month, sourceCategoryId: null, destinationCategoryId: categoryId, amountCents: diff }
-          : { month, sourceCategoryId: categoryId, destinationCategoryId: null, amountCents: -diff },
+        entry.delta > 0
+          ? { month, sourceCategoryId: null, destinationCategoryId: categoryId, amountCents: entry.delta }
+          : { month, sourceCategoryId: categoryId, destinationCategoryId: null, amountCents: -entry.delta },
       ]);
+      // The new assigned amount, never the text typed: "-15" left in the field would take another
+      // 15 on the next Enter. Unless the user has typed their next entry while this one was being
+      // saved: that text is theirs, measured against the new amount when they press Enter.
+      setCurrent(entry.newAssigned);
+      if (valueRef.current === raw) {
+        show(entry.newAssigned);
+      }
       onChanged();
+    } catch (caught) {
+      if (isAmountTooLarge(caught)) {
+        capError();
+        // Back to the field the refused Enter came from, unless the user has since moved on.
+        if (viaEnter && (document.activeElement === null || document.activeElement === document.body)) {
+          inputRef.current?.focus();
+        }
+        return;
+      }
+      throw caught;
     } finally {
       committingRef.current = false;
     }
@@ -122,16 +175,28 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
           <label htmlFor={`asg-${categoryId}`}>{intl.formatMessage({ id: "budget.row.assigned", defaultMessage: "Assigned this month" })}</label>
           <span className="dots" />
           <input
+            ref={inputRef}
             id={`asg-${categoryId}`}
             type="text"
             inputMode="decimal"
             className="asg-in n"
             value={value}
             readOnly={readOnly}
-            aria-describedby={`asg-h-${categoryId}`}
-            onChange={(event) => setValue(event.target.value)}
+            aria-describedby={error ? `asg-h-${categoryId} asg-e-${categoryId}` : `asg-h-${categoryId}`}
+            aria-invalid={error !== null}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setError(null);
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
+                // An amount above the cap is refused here, keeping the focus in the field to correct it.
+                const entry = parseAssignedEntry(event.currentTarget.value, current, { locale: intl.locale, currency });
+                if (!entry.ok && entry.code === "amount_too_large") {
+                  capError();
+                  return;
+                }
+                enterRef.current = true;
                 event.currentTarget.blur();
               } else if (event.key === "Escape") {
                 cancelingRef.current = true;
@@ -141,16 +206,24 @@ export default function RowDetail({ workspaceId, month, categoryId, categoryName
             onBlur={(event) => {
               if (cancelingRef.current) {
                 cancelingRef.current = false;
+                setError(null);
                 revert();
                 return;
               }
-              void commit(event.target.value);
+              const viaEnter = enterRef.current;
+              enterRef.current = false;
+              void commit(event.target.value, viaEnter);
             }}
           />
         </div>
         <small className="asg-h" id={`asg-h-${categoryId}`}>
           {intl.formatMessage({ id: "budget.row.assignedHint", defaultMessage: "Type an amount, or +20 / -15, then Enter." })}
         </small>
+        {error && (
+          <p className="hint bad" role="alert" id={`asg-e-${categoryId}`}>
+            {error}
+          </p>
+        )}
         {!readOnly && (
           <button type="button" className="plain" onClick={onMoveMoney}>
             {intl.formatMessage({ id: "budget.row.moveMoney", defaultMessage: "Move money" })}

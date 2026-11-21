@@ -21,7 +21,8 @@ import "./AccountsScreen.css";
  * account's own name opens its register (`#54`); reopening a closed one has no endpoint yet, so
  * closed accounts are listed read-only. Each row's own balance (`#333`) is not part of the
  * `Account` shape the API returns — there is no bulk endpoint for it yet — so it is fetched
- * separately, the same sum the register itself computes, and rendered once it resolves.
+ * separately, the same balance as of today the register itself computes (#702), and rendered
+ * once it resolves.
  */
 export default function AccountsScreen() {
   const intl = useIntl();
@@ -31,7 +32,9 @@ export default function AccountsScreen() {
   const workspaces = useWorkspaces();
   const state = useAccounts(workspaceId!);
   const isPhone = usePhoneWidth();
-  const balances = useAccountBalances(workspaceId!, auth.user?.access_token, state.status === "ok" ? state.accounts : []);
+  const timeZone = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId)?.timeZone : undefined;
+  // Today's balance in the workspace's time zone (#702): rows dated later count in none.
+  const balances = useAccountBalances(workspaceId!, auth.user?.access_token, state.status === "ok" ? state.accounts : [], timeZone);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
 
