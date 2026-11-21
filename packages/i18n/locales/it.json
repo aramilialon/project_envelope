@@ -43,7 +43,7 @@
   "accountsPanel.empty": "Ancora nessun conto.",
   "accountsPanel.label": "Conti",
   "accountsPanel.netWorth": "Patrimonio netto",
-  "accountsPanel.netWorth.noSecurities": "Non include i titoli (mancano ancora i prezzi)",
+  "accountsPanel.netWorth.noSecurities": "Il patrimonio netto non include i titoli (mancano ancora i prezzi)",
   "accountsPanel.netWorth.otherCurrencies": "Fuori dal totale: {amounts} (mancano ancora i tassi di cambio)",
   "accountsPanel.offBudget": "Fuori budget",
   "accountsPanel.offBudgetTag": "fuori budget",
