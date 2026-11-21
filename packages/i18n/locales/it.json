@@ -95,6 +95,7 @@
   "budget.payment.cardBalance": "Saldo della carta",
   "budget.payment.covered": "Il debito della carta è interamente coperto da soldi messi da parte. Quando paghi la carta dal conto corrente, il pagamento viene scalato da qui.",
   "budget.payment.moveMoneyHere": "Sposta soldi qui",
+  "budget.payment.paidBeyondSetAside": "Pagato oltre i soldi messi da parte",
   "budget.payment.setAside": "Messi da parte per la carta",
   "budget.payment.setAsideLine": "Messi da parte",
   "budget.payment.toCover": "Da coprire",
