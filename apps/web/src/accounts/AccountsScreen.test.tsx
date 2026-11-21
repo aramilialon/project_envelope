@@ -178,6 +178,34 @@ describe("AccountsScreen (#51, #323)", () => {
     expect(await screen.findByText("€1,460.00")).toBeInTheDocument();
   });
 
+  it("shows each balance in its account's own currency, not the workspace's (#652)", async () => {
+    const US_BROKER: Account = { ...CHECKING, id: "a2", name: "US broker", type: "brokerage", currency: "USD", onBudget: false };
+    renderScreen([CHECKING, US_BROKER]);
+    vi.spyOn(transactionsApi, "listTransactionsForAccount").mockImplementation((_token, _workspaceId, accountId) =>
+      Promise.resolve([
+        {
+          id: `t-${accountId}`,
+          workspaceId: "ws-1",
+          accountId,
+          occurredAt: "2026-09-01T00:00:00.000Z",
+          budgetDate: "2026-09-01",
+          payee: null,
+          memo: null,
+          status: "cleared",
+          transferId: null,
+          transferAccountId: null,
+          externalId: null,
+          createdAt: "2026-09-01T00:00:00.000Z",
+          splits: [{ id: `s-${accountId}`, categoryId: null, amountCents: accountId === "a2" ? 300_000 : 150_000, memo: null }],
+        },
+      ]),
+    );
+
+    expect(await screen.findByText("$3,000.00")).toBeInTheDocument();
+    expect(screen.getByText("€1,500.00")).toBeInTheDocument();
+    expect(screen.queryByText("€3,000.00")).not.toBeInTheDocument();
+  });
+
   it("shows a one-column phone layout below 600px, with each account's own balance", async () => {
     setWidth(390);
     renderScreen([{ ...CHECKING, name: "Everyday" }, { ...CHECKING, id: "a2", name: "Old account", closedAt: "2026-02-01" }]);

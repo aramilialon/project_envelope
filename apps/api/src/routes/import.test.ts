@@ -361,6 +361,33 @@ describe("import routes", () => {
     assert.deepEqual(confirmed.json().outcomes[0], { stagedTransactionId: stagedId, outcome: "rejected", code: "uncategorized_transaction" });
   });
 
+  it("rejects a transfer confirmation to an account in another currency, leaving the row staged (#652)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const dollars = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'US broker', 'brokerage', 'USD', false) RETURNING id",
+      [workspaceId],
+    );
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-09-23,To the US broker,-1000.00\n" },
+    });
+    const stagedId = imported.json().staged[0].id;
+
+    const confirmed = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+      headers: auth,
+      payload: { decisions: [{ stagedTransactionId: stagedId, kind: "transfer", otherAccountId: dollars.rows[0]!.id, categoryId }] },
+    });
+    assert.equal(confirmed.statusCode, 200);
+    assert.deepEqual(confirmed.json().outcomes[0], { stagedTransactionId: stagedId, outcome: "rejected", code: "currency_mismatch" });
+    const staged = await superuserPool.query("SELECT 1 FROM staged_transactions WHERE id = $1", [stagedId]);
+    assert.equal(staged.rowCount, 1);
+  });
+
   it("rejects a transfer confirmation naming an unknown category", async () => {
     const auth = { authorization: `Bearer ${token}` };
 

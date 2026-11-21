@@ -1,6 +1,6 @@
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import it_ from "@envelope/i18n/locales/it.json";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { describe, expect, it, vi } from "vitest";
 
@@ -163,6 +163,16 @@ describe("TransactionForm (#54)", () => {
         status: "pending",
       }),
     );
+  });
+
+  it("offers only accounts in the same currency for a transfer (#652)", () => {
+    const usBroker: Account = { ...BROKERAGE, id: "acc-us-broker", name: "US broker", currency: "USD" };
+    renderForm({ accounts: [CHECKING, SAVINGS, usBroker] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    const options = within(screen.getByLabelText("To account")).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toContain("Savings");
+    expect(options).not.toContain("US broker");
   });
 
   it("requires a destination account for a transfer", async () => {
@@ -435,6 +445,90 @@ describe("TransactionForm (#54)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not delete this transaction.");
     expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+describe("TransactionForm: each account in its own currency (#652)", () => {
+  function editedIn(accountId: string, splits: Transaction["splits"]): Transaction {
+    return {
+      id: "t-fx",
+      workspaceId: "ws-1",
+      accountId,
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: "Shop",
+      memo: null,
+      status: "cleared",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits,
+    };
+  }
+
+  const YEN: Account = { ...BROKERAGE, id: "acc-yen", name: "Yen account", type: "savings", currency: "JPY" };
+  const DINAR: Account = { ...BROKERAGE, id: "acc-dinar", name: "Dinar account", type: "savings", currency: "KWD" };
+
+  it("pre-fills a yen amount with no decimals, and saves it unchanged or changed", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    const transaction = editedIn("acc-yen", [{ id: "s1", categoryId: "cat-groceries", amountCents: -5000, memo: null }]);
+    const first = renderForm({ accountId: "acc-yen", accounts: [YEN], currency: "JPY", transaction });
+
+    expect(screen.getByLabelText("Amount")).toHaveValue("5,000");
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Bookshop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(first.onSaved).toHaveBeenCalled());
+    expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-yen", "t-fx", { payee: "Bookshop" });
+    first.unmount();
+
+    const second = renderForm({ accountId: "acc-yen", accounts: [YEN], currency: "JPY", transaction });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "6,000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(second.onSaved).toHaveBeenCalled());
+    expect(updateTransaction).toHaveBeenLastCalledWith("t", "ws-1", "acc-yen", "t-fx", {
+      splits: [{ categoryId: "cat-groceries", amountCents: -6000 }],
+      amountCents: -6000,
+    });
+  });
+
+  it("pre-fills a three-decimal amount and its split lines with three decimals", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    const transaction = editedIn("acc-dinar", [
+      { id: "s1", categoryId: "cat-groceries", amountCents: -1234, memo: null },
+      { id: "s2", categoryId: "cat-restaurants", amountCents: -500, memo: null },
+    ]);
+    const { onSaved } = renderForm({ accountId: "acc-dinar", accounts: [DINAR], currency: "KWD", transaction });
+
+    expect(screen.getByLabelText("Amount")).toHaveValue("1.734");
+    expect(screen.getAllByDisplayValue("1.234")).toHaveLength(1);
+    expect(screen.getAllByDisplayValue("0.500")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(updateTransaction).not.toHaveBeenCalled();
+  });
+
+  it("still shows and keeps the other account of a transfer leg written across currencies before #652", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    // Both on budget, so the leg has no category to ask for: only the currency differs.
+    const usBroker: Account = { ...SAVINGS, id: "acc-us-broker", name: "US broker", currency: "USD" };
+    const transaction: Transaction = {
+      ...editedIn("acc-checking", [{ id: "s1", categoryId: null, amountCents: -5000, memo: null }]),
+      payee: null,
+      status: "pending",
+      transferId: "t-fx-other",
+      transferAccountId: "acc-us-broker",
+    };
+    renderForm({ accounts: [CHECKING, SAVINGS, usBroker], categories: [GROCERIES], transaction });
+
+    const select = screen.getByLabelText("To account");
+    expect(select).toHaveValue("acc-us-broker");
+    expect(within(select).getAllByRole("option").some((option) => option.textContent?.startsWith("US broker"))).toBe(true);
+    fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Old move" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "t-fx", { memo: "Old move" }));
   });
 });
 
