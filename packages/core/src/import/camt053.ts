@@ -14,30 +14,25 @@
  *
  * Pure, no XML library (packages/core has no dependencies): a minimal,
  * scoped tag extractor, not a general XML parser — safe here because none
- * of the tags read ever nest inside themselves.
+ * of the tags read ever nest inside themselves. The extractor scans in
+ * linear time, whatever the file holds (`tag-blocks.ts`, #675).
  */
 
 import { ValidationError } from "../errors.ts";
 import { assertCents, type Cents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
 import type { ImportRow } from "./row.ts";
+import { findTagBlocks } from "./tag-blocks.ts";
 
 /** The ISO 20022 convention for "no value" on an otherwise-mandatory reference field. */
 const NOT_PROVIDED = "NOTPROVIDED";
 
 function extractBlock(content: string, tag: string): string | undefined {
-  const match = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "i").exec(content);
-  return match?.[1];
+  return findTagBlocks(content, tag, { attributes: true, limit: 1 })[0];
 }
 
 function extractAllBlocks(content: string, tag: string): string[] {
-  const regex = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, "gi");
-  const blocks: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(content)) !== null) {
-    blocks.push(match[1] ?? "");
-  }
-  return blocks;
+  return findTagBlocks(content, tag, { attributes: true });
 }
 
 function extractText(content: string, tag: string): string | undefined {
