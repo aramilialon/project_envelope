@@ -82,8 +82,8 @@ export function reservationShortfall(category: CategoryMonth): Cents {
  *
  * A card paid beyond what its payment category set aside is cash overspending on that category,
  * and its debt stays uncovered on top of it: covering both takes `cardDebt`'s `toCover`,
- * `max(0, owed - available)` (#699). `uncovered` is always 0 on an ordinary category, so adding it
- * to the overspend changes nothing there.
+ * cash overspending + uncovered = `max(0, max(0, owed) - available)` (#699). `uncovered` is
+ * always 0 on an ordinary category, so adding it to the overspend changes nothing there.
  */
 export function amountNeededToCover(category: CategoryMonth): Cents {
   if (category.cashOverspending > 0 || category.creditOverspending > 0) {

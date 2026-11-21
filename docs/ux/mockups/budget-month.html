@@ -206,6 +206,11 @@ button{cursor:pointer}
 .sch > small{color:var(--muted);font-size:12px}
 .sch span small{display:block;color:var(--muted);font-size:12px}
 .sch .goal{margin-top:2px;white-space:normal}
+/* A payment category's status line can be long (#699): it wraps, beside the meter where the column
+   leaves room for it, under the meter where it does not. */
+.goal.pay{flex-wrap:wrap;row-gap:4px;white-space:normal}
+.goal.pay .meter{flex-shrink:0}
+.goal.pay .gt{flex:1 1 150px;min-width:0}
 .sch-b{grid-column:2 / -1;display:flex;gap:16px}
 .sch.late > small{color:var(--ink);font-weight:700}
 .hist-r{display:flex;align-items:baseline;gap:10px}
@@ -575,7 +580,8 @@ button{cursor:pointer}
       // #699's worked example: a card paid beyond what was set aside. Added on 1 September owing
       // 500,00 €, 45,67 € spent on it and covered by "Farmacia e salute", 300,00 € paid from the
       // checking account with nothing assigned here: the card owes 245,67 €, available is
-      // -254,33 € (cash overspending) and "to cover" is 500,00 €, max(0, debt - available).
+      // -254,33 € (cash overspending) and "to cover" is 500,00 €: cash overspending + uncovered,
+      // max(0, max(0, owed) - available).
       { id: 'tv', name: 'Carta viaggi', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
         start: { date: '1 set', amount: -50000 },
         txs: [['20 set', 'Pagamento della carta', 'Conto corrente', -30000], ['1 set', 'Saldo iniziale', 'Carta viaggi', -50000, 'start']] }
@@ -879,8 +885,9 @@ button{cursor:pointer}
     if (!t) return '';
     return '<span class="goal' + (t.need > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + t.pct + '%"></i></span>' + esc(t.text) + '</span>';
   }
-  // "Da coprire" is always the whole amount to cover, max(0, debt - available): the uncovered
-  // debt plus what was paid beyond what was set aside (#699). The line shows whenever there is
+  // "Da coprire" is always the whole amount to cover: cash overspending + uncovered,
+  // max(0, max(0, owed) - available), the uncovered debt plus what was paid beyond what was set
+  // aside (#699). The line shows whenever there is
   // any, also with no debt left at all.
   function debtLine(x) {
     if (!x.c.payment) return '';
@@ -891,7 +898,7 @@ button{cursor:pointer}
       ? (x.debt > 0 ? 'da coprire ' + f(toCover) + ': ' + f(x.debt) + ' di debito e ' + f(x.cash) + ' pagati oltre i soldi messi da parte'
         : 'da coprire ' + f(toCover) + ': pagati oltre i soldi messi da parte')
       : x.uncovered > 0 ? 'da coprire ' + f(x.uncovered) + ' di ' + f(x.debt) + ' di debito' : 'debito di ' + f(x.debt) + ' coperto';
-    return '<span class="goal' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span>' + text + '</span>';
+    return '<span class="goal pay' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span><span class="gt">' + text + '</span></span>';
   }
   function resLine(x) {
     var list = schedThisMonth(x.c.id);
