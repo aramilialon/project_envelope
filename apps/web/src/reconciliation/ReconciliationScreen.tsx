@@ -45,6 +45,8 @@ export default function ReconciliationScreen() {
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
   const timeZone = currentWorkspace?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // A short date shows its year when it is not the workspace's current one (#702).
+  const currentYear = Number(todayIsoIn(timeZone).slice(0, 4));
 
   const [date, setDate] = useState(() => todayIsoIn(timeZone));
   const [statementStr, setStatementStr] = useState("");
@@ -218,7 +220,7 @@ export default function ReconciliationScreen() {
                 id: "reconcile.done.body",
                 defaultMessage: "{count, plural, one {# transaction} other {# transactions}} locked. The reconciled balance on {date} is {amount}.",
               },
-              { count: locked.count, date: shortDate(locked.reconciliation.reconciledAt, intl.locale), amount: money(locked.reconciliation.statementBalanceCents) },
+              { count: locked.count, date: shortDate(locked.reconciliation.reconciledAt, intl.locale, currentYear), amount: money(locked.reconciliation.statementBalanceCents) },
             )}
           </p>
           <div className="row-btns">
@@ -260,7 +262,7 @@ export default function ReconciliationScreen() {
               return (
                 <label key={t.id} className={`rl${off ? " off" : ""}${highlighted ? " hl" : ""}`}>
                   <input type="checkbox" checked={!off} onChange={() => toggleOff(t.id)} />
-                  <span className="n">{shortDate(t.occurredAt, intl.locale)}</span>
+                  <span className="n">{shortDate(t.occurredAt, intl.locale, currentYear)}</span>
                   <span>{t.payee ?? ""}</span>
                   <span className="n r">{money(t.amountCents)}</span>
                 </label>
@@ -279,7 +281,7 @@ export default function ReconciliationScreen() {
                 return (
                   <label key={t.id} className={`rl off${highlighted ? " hl" : ""}`}>
                     <input type="checkbox" checked={false} disabled={markingId === t.id} onChange={() => void handleTogglePending(t)} />
-                    <span className="n">{shortDate(t.occurredAt, intl.locale)}</span>
+                    <span className="n">{shortDate(t.occurredAt, intl.locale, currentYear)}</span>
                     <span>{t.payee ?? ""}</span>
                     <span className="n r">{money(t.amountCents)}</span>
                   </label>
@@ -346,12 +348,12 @@ export default function ReconciliationScreen() {
                   suggestion.kind === "pending" ? (
                     intl.formatMessage(
                       { id: "reconcile.clue.pending", defaultMessage: "The difference equals {payee} from {date} ({amount}), still pending: maybe the bank already recorded it." },
-                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale), amount: money(suggestion.transaction.amountCents) },
+                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear), amount: money(suggestion.transaction.amountCents) },
                     )
                   ) : (
                     intl.formatMessage(
                       { id: "reconcile.clue.unticked", defaultMessage: "The difference equals {payee} from {date}, which you removed from the tally." },
-                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale) },
+                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear) },
                     )
                   )
                 ) : (
