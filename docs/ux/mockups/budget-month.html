@@ -515,7 +515,7 @@ button{cursor:pointer}
 
   // Cents. The example respects the budget invariant:
   // unassigned + available + reserved + assigned to future months + credit overspending
-  // = cash in the on-budget cash accounts (11.497,98 €; card balances are debt, not cash).
+  // = cash in the on-budget cash accounts (11.197,98 €; card balances are debt, not cash).
   var GROUPS = [
     { id: 'home', name: 'Casa e bollette', cats: [
       { id: 'mutuo', name: 'Rata del mutuo', carried: 0, assigned: 85000, activity: -85000, lastAssigned: 85000, lastSpent: 85000,
@@ -536,8 +536,8 @@ button{cursor:pointer}
         txs: [['12 set', 'Distributore', 'Visa', -8830]] },
       { id: 'rist', name: 'Ristoranti', carried: 0, assigned: 12000, activity: -16850, cardOut: 16850, lastAssigned: 12000, lastSpent: 10400,
         txs: [['21 set', 'Trattoria', 'Visa', -6400], ['14 set', 'Pizzeria', 'Visa', -4250], ['6 set', 'Osteria', 'Visa', -6200]] },
-      { id: 'farm', name: 'Farmacia e salute', carried: 6000, assigned: 4000, activity: -1890, cardOut: 1890, lastAssigned: 4000, lastSpent: 2500,
-        txs: [['3 set', 'Farmacia', 'Visa', -1890]] }
+      { id: 'farm', name: 'Farmacia e salute', carried: 6000, assigned: 4000, activity: -6457, cardOut: 1890, cardOutTv: 4567, lastAssigned: 4000, lastSpent: 2500,
+        txs: [['20 set', 'Farmacia', 'Carta viaggi', -4567], ['3 set', 'Farmacia', 'Visa', -1890]] }
     ] },
     { id: 'true', name: 'Spese prevedibili', cats: [
       { id: 'ass', name: 'Assicurazione auto', carried: 30000, assigned: 5000, activity: 0, lastAssigned: 5000, lastSpent: 0,
@@ -571,14 +571,22 @@ button{cursor:pointer}
         txs: [['15 set', 'Pagamento della carta', 'Conto corrente', -45000]] },
       { id: 'mc', name: 'Mastercard', payment: true, card: 'mc', carried: 0, assigned: 0, paid: 0, cardBase: -120000, lastAssigned: 0, lastSpent: 0,
         start: { date: '25 set', amount: -120000 },
-        txs: [['25 set', 'Saldo iniziale', 'Mastercard', -120000, 'start']] }
+        txs: [['25 set', 'Saldo iniziale', 'Mastercard', -120000, 'start']] },
+      // #699's worked example: a card paid beyond what was set aside. Added on 1 September owing
+      // 500,00 €, 45,67 € spent on it and covered by "Farmacia e salute", 300,00 € paid from the
+      // checking account with nothing assigned here: the card owes 245,67 €, available is
+      // -254,33 € (cash overspending) and "to cover" is 500,00 €, max(0, debt - available).
+      { id: 'tv', name: 'Carta viaggi', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
+        start: { date: '1 set', amount: -50000 },
+        txs: [['20 set', 'Pagamento della carta', 'Conto corrente', -30000], ['1 set', 'Saldo iniziale', 'Carta viaggi', -50000, 'start']] }
     ] }
   ];
   var CAT = {};
   GROUPS.forEach(function (g) { g.cats.forEach(function (c) { CAT[c.id] = { c: c, g: g }; }); });
   var ACCTS = [
-    { id: 'cc', name: 'Conto corrente', bal: 341258 }, { id: 'risp', name: 'Conto risparmio', bal: 800000 }, { id: 'cont', name: 'Contanti', bal: 8540 },
-    { id: 'visa', name: 'Visa', card: true }, { id: 'mc', name: 'Mastercard', card: true }
+    { id: 'cc', name: 'Conto corrente', bal: 311258 }, { id: 'risp', name: 'Conto risparmio', bal: 800000 }, { id: 'cont', name: 'Contanti', bal: 8540 },
+    { id: 'visa', name: 'Visa', card: true }, { id: 'mc', name: 'Mastercard', card: true },
+    { id: 'tv', name: 'Carta viaggi', card: true }
   ];
   function acct(id) { return ACCTS.filter(function (a) { return a.id === id; })[0]; }
   var RTA0 = 31200, FUTURE0 = 20000;
@@ -698,17 +706,19 @@ button{cursor:pointer}
         var rec = state.rec[c.id] || [];
         var assigned = c.assigned + delta(c.id, CUR);
         var activity = c.activity - sum(rec, function (r) { return r.amount; });
-        var outBy = { visa: (c.cardOut || 0) + sum(rec, function (r) { return r.card === 'visa' ? r.amount : 0; }), mc: sum(rec, function (r) { return r.card === 'mc' ? r.amount : 0; }) };
+        var outBy = { visa: (c.cardOut || 0) + sum(rec, function (r) { return r.card === 'visa' ? r.amount : 0; }), mc: sum(rec, function (r) { return r.card === 'mc' ? r.amount : 0; }),
+          tv: (c.cardOutTv || 0) + sum(rec, function (r) { return r.card === 'tv' ? r.amount : 0; }) };
         var real = c.carried + assigned + activity;
         var over = Math.max(0, -real);
-        var credit = Math.min(over, outBy.visa + outBy.mc);
-        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard.
-        var cv = Math.min(credit, outBy.visa), cm = credit - cv;
+        var credit = Math.min(over, outBy.visa + outBy.mc + outBy.tv);
+        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard, then the Carta viaggi.
+        var cv = Math.min(credit, outBy.visa), cm = Math.min(credit - cv, outBy.mc), ct = credit - cv - cm;
         covered.visa = (covered.visa || 0) + outBy.visa - cv;
         covered.mc = (covered.mc || 0) + outBy.mc - cm;
+        covered.tv = (covered.tv || 0) + outBy.tv - ct;
         var reserved = reservedOf(c.id);
         var short = Math.max(0, Math.min(reserved, reserved - Math.max(0, real)));
-        byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, real: real, avail: real - reserved, credit: credit, creditBy: { visa: cv, mc: cm }, cash: over - credit, reserved: reserved, short: short };
+        byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, real: real, avail: real - reserved, credit: credit, creditBy: { visa: cv, mc: cm, tv: ct }, cash: over - credit, reserved: reserved, short: short };
       });
     });
     GROUPS.forEach(function (g) {
@@ -869,11 +879,19 @@ button{cursor:pointer}
     if (!t) return '';
     return '<span class="goal' + (t.need > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + t.pct + '%"></i></span>' + esc(t.text) + '</span>';
   }
+  // "Da coprire" is always the whole amount to cover, max(0, debt - available): the uncovered
+  // debt plus what was paid beyond what was set aside (#699). The line shows whenever there is
+  // any, also with no debt left at all.
   function debtLine(x) {
-    if (!x.c.payment || x.debt <= 0) return '';
-    var pct = Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100)));
-    return '<span class="goal' + (x.uncovered > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span>' +
-      (x.uncovered > 0 ? 'da coprire ' + f(x.uncovered) + ' di ' + f(x.debt) + ' di debito' : 'debito di ' + f(x.debt) + ' coperto') + '</span>';
+    if (!x.c.payment) return '';
+    var toCover = x.cash + x.uncovered;
+    if (x.debt <= 0 && toCover <= 0) return '';
+    var pct = x.debt > 0 ? Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100))) : 0;
+    var text = x.cash > 0
+      ? (x.debt > 0 ? 'da coprire ' + f(toCover) + ': ' + f(x.debt) + ' di debito e ' + f(x.cash) + ' pagati oltre i soldi messi da parte'
+        : 'da coprire ' + f(toCover) + ': pagati oltre i soldi messi da parte')
+      : x.uncovered > 0 ? 'da coprire ' + f(x.uncovered) + ' di ' + f(x.debt) + ' di debito' : 'debito di ' + f(x.debt) + ' coperto';
+    return '<span class="goal' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span>' + text + '</span>';
   }
   function resLine(x) {
     var list = schedThisMonth(x.c.id);
@@ -986,21 +1004,29 @@ button{cursor:pointer}
   function payDetail(byId, x, p) {
     var c = x.c, card = c.name;
     var fromCats = Object.keys(byId).filter(function (k) { return byId[k].creditBy && byId[k].creditBy[c.card] > 0; });
+    // #699: what was paid beyond what was set aside comes first, then where the uncovered debt
+    // comes from; after it, the starting-balance sentence drops "takes nothing from unassigned
+    // money", which the first sentence would seem to contradict.
+    var beyond = x.cash > 0 ? 'La ' + card + ' è stata pagata ' + f(x.cash) + ' in più dei soldi messi da parte per lei. Coprili qui questo mese, altrimenti vengono tolti da «da assegnare» di ottobre.' : '';
     var explain;
-    if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
+    if (c.start && x.uncovered > 0 && beyond) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
+    else if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
     else if (x.uncovered > 0 && fromCats.length) explain = 'Il debito non coperto viene da spese con la carta oltre il disponibile: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. Se copri quelle categorie entro fine mese, i soldi arrivano qui; altrimenti a ottobre ripartono da zero e il debito resta da coprire in questa riga.';
     else if (x.uncovered > 0) explain = 'Una parte del debito della carta non ha ancora soldi messi da parte: assegnali a questa categoria.';
+    else if (beyond) explain = '';
     else explain = 'Il debito della carta è tutto coperto da soldi messi da parte. Quando paghi la carta dal conto corrente, il pagamento scala da qui.';
     // What it takes to cover the whole debt again: what was paid beyond what was set aside (cash
     // overspending) plus the debt still uncovered, max(0, debt - avail) (#699).
     var toCover = x.cash + x.uncovered;
+    // "Assegna" offers that whole amount, the same as the card's one "Da sistemare" item; this
+    // mockup caps it at what is still unassigned, as every other assign button here does.
     var can = Math.min(toCover, Math.max(0, rta()));
     var txs = (c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · è debito, non conta nei movimenti' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
     return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">Messi da parte per pagare la carta</span>' +
-      '<span class="big n ' + (x.avail > 0 ? 'pos' : 'zero') + '">' + f(Math.max(0, x.avail)) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
+      '<span class="big n ' + (x.avail > 0 ? 'pos' : 'zero') + '">' + f(Math.max(0, x.avail)) + '</span>' + (beyond ? '<p class="explain">' + esc(beyond) + '</p>' : '') + (explain ? '<p class="explain">' + esc(explain) + '</p>' : '') + '</div>' +
       '<div class="sec"><h5><span>Debito della carta</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Sposta denaro qui</button></h5>' + line('Saldo della carta', f(-x.debt)) + line('Messi da parte', f(Math.max(0, x.avail))) +
       (x.cash > 0 ? line('Pagato oltre i soldi messi da parte', f(x.cash)) : '') +
       line('Da coprire', f(toCover), toCover > 0 ? 'warnl' : '') +
@@ -1159,7 +1185,7 @@ button{cursor:pointer}
       if (scope !== 'all' && scope !== g.id) return;
       g.cats.forEach(function (c) {
         var x = byId[c.id], t = target(x), n = 0;
-        if (c.payment) { if (kind === 'debt') n = x.uncovered; }
+        if (c.payment) { if (kind === 'debt') n = x.cash + x.uncovered; }
         else if (kind === 'targets') n = t ? t.need : 0;
         else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
         else if (kind === 'over') n = x.credit + x.cash;

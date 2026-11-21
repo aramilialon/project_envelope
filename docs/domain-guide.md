@@ -116,8 +116,12 @@ is owed on it (`owed`), never `available + uncovered`. What it takes to bring th
 back to covering the whole debt is
 
 ```
-to cover = max(0, owed − available)   (the cash overspending plus the uncovered debt)
+to cover = cash overspending + uncovered = max(0, max(0, owed) − available)
 ```
+
+A card in credit (negative `owed`) counts as owing nothing in it. The row's status line, the
+detail's "To cover", the card's "To do" item, its "Assign" button and quick assign's "Cover card
+debt" all use this one figure.
 
 **Example.** A card is added owing €500 (its starting balance). €45.67 of groceries go on the card,
 covered by the Groceries category's own money, so €45.67 moves into the payment category. €300 is
@@ -127,12 +131,24 @@ then paid to the card from checking, with nothing assigned to the payment catego
 - The debt shown is €245.67; "Set aside" is €0.00, never negative; a neutral line says "Paid beyond
   what was set aside: €254.33".
 - Uncovered = max(0, 245.67 − max(0, −254.33)) = €245.67.
-- To cover = max(0, 245.67 − (−254.33)) = **€500.00**: the €254.33 of cash overspending plus the
-  €245.67 still uncovered. The month's one "To do" item for the card and its "Assign" button both
-  ask for €500.00.
+- To cover = max(0, max(0, 245.67) − (−254.33)) = **€500.00**: the €254.33 of cash overspending
+  plus the €245.67 still uncovered. The row reads "€500.00 to cover: €245.67 of debt and €254.33
+  paid beyond what was set aside"; the month's one "To do" item for the card, its "Assign" button
+  and quick assign's "Cover the cards' debt" all ask for €500.00, and assigning it brings both the cash
+  overspending and the uncovered debt to zero.
 
 Reading the debt as `available + uncovered` would give −€8.66 here, which is why the budget returns
 `owed` itself.
+
+**Two edge cases.**
+
+- *A card in credit.* The card owes −€10 (it was paid €10 more than its whole balance) and its
+  payment category's available is −€50. The debt counts as 0, so uncovered = 0, the cash
+  overspending is €50, and to cover = max(0, max(0, −10) − (−50)) = **€50**.
+- *A card paid exactly its debt from cash.* A card is added owing €300 and €300 is paid to it from
+  checking, with nothing assigned. Debt = owed = **€0**, paid beyond what was set aside = **€300**
+  (available is −€300), uncovered = 0, and to cover = max(0, 0 − (−300)) = **€300**: the row reads
+  "€300.00 to cover: paid beyond what was set aside".
 
 **A card's starting balance.** Adding a card that already carries debt creates one transaction,
 categorized straight to the card's own payment category — not to an ordinary spending category, and
