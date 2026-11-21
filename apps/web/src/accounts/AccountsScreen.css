@@ -167,6 +167,16 @@
   padding: 0;
 }
 
+/* Its reasons (#729), one per line under the message. */
+.accounts-screen .close-refusal p,
+.accounts-screen .close-refusal ul {
+  margin: 0;
+}
+
+.accounts-screen .close-refusal ul {
+  padding-left: 18px;
+}
+
 .accounts-screen .plain.danger {
   color: var(--red);
 }

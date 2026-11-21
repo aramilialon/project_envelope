@@ -190,6 +190,16 @@ describe("TransactionForm (#54)", () => {
     expect(options).not.toContain("US broker");
   });
 
+  it("leaves closed accounts out of a transfer's accounts (#729)", () => {
+    const oldSavings: Account = { ...SAVINGS, id: "acc-old-savings", name: "Old savings", closedAt: "2026-10-01T00:00:00.000Z" };
+    renderForm({ accounts: [CHECKING, SAVINGS, oldSavings] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    const options = within(screen.getByLabelText("To account")).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toContain("Savings");
+    expect(options).not.toContain("Old savings");
+  });
+
   it("requires a destination account for a transfer", async () => {
     renderForm();
     fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));

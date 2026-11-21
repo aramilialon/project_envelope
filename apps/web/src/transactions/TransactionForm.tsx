@@ -123,11 +123,13 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   // "From another account" leaves credit cards out: money coming from a card (a cash advance) is
   // not covered yet (design.md, "Account register"). An edited leg keeps its own account listed.
-  // Only accounts in this account's own currency: a transfer never crosses currencies (#652).
+  // Only accounts in this account's own currency: a transfer never crosses currencies (#652). A
+  // closed account takes no transfer (#729).
   const ownCurrency = accounts.find((a) => a.id === accountId)?.currency;
   const otherAccounts = accounts.filter(
     (a) =>
       a.id !== accountId &&
+      (a.closedAt === null || a.id === transaction?.transferAccountId) &&
       (ownCurrency === undefined || a.currency === ownCurrency || a.id === transaction?.transferAccountId) &&
       (direction === "out" || a.type !== "credit_card" || a.id === transaction?.transferAccountId),
   );

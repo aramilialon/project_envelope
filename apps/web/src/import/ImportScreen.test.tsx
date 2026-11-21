@@ -305,6 +305,26 @@ describe("ImportScreen (#59)", () => {
     expect(options).not.toContain("Transfer to US broker");
   });
 
+  it("offers no transfer with a closed account (#729)", async () => {
+    const oldSavings: Account = { ...SAVINGS, id: "acc-old-savings", name: "Old savings", closedAt: "2026-10-01T00:00:00.000Z" };
+    renderScreen([CHECKING, SAVINGS, oldSavings]);
+    await screen.findByText(/Checking/);
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [
+        { id: "out-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "To savings", memo: null, amountCents: -5_000, externalId: null, duplicateOf: null, createdAt: "2026-09-01" },
+      ],
+      duplicateCount: 0,
+    });
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+    await screen.findByText("To savings");
+
+    const options = [...screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }).querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toContain("Transfer to Savings");
+    expect(options).not.toContain("Transfer to Old savings");
+  });
+
   describe("a transfer from an off-budget account (#599)", () => {
     const VISA: Account = { ...CHECKING, id: "acc-visa", name: "Visa", type: "credit_card", paymentCategoryId: "cat-visa-payment" };
 

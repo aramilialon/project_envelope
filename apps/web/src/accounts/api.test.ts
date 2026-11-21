@@ -12,12 +12,32 @@ function respond(status: number, body: unknown) {
 }
 
 describe("closeAccount (#703)", () => {
-  it("turns a 409 account_not_empty into an AccountNotEmptyError with the balance and the securities flag", async () => {
-    respond(409, { error: "account_not_empty", details: { balanceCents: -2_500, holdsPositions: true } });
+  it("turns a 409 account_not_empty into an AccountNotEmptyError with every reason in its details (#729)", async () => {
+    respond(409, {
+      error: "account_not_empty",
+      details: { balanceCents: -2_500, laterRows: { count: 2, firstDate: "2027-03-01" }, holdsPositions: true, scheduled: { count: 1 } },
+    });
 
     const caught = await closeAccount("t", "ws-1", "a1").catch((e: unknown) => e);
     expect(caught).toBeInstanceOf(AccountNotEmptyError);
-    expect(caught).toMatchObject({ balanceCents: -2_500, holdsPositions: true });
+    expect((caught as AccountNotEmptyError).details).toEqual({
+      balanceCents: -2_500,
+      laterRows: { count: 2, firstDate: "2027-03-01" },
+      holdsPositions: true,
+      scheduled: { count: 1 },
+    });
+  });
+
+  it("reads details the API left out as an empty account's", async () => {
+    respond(409, { error: "account_not_empty", details: { balanceCents: 100 } });
+
+    const caught = await closeAccount("t", "ws-1", "a1").catch((e: unknown) => e);
+    expect((caught as AccountNotEmptyError).details).toEqual({
+      balanceCents: 100,
+      laterRows: { count: 0, firstDate: null },
+      holdsPositions: false,
+      scheduled: { count: 0 },
+    });
   });
 
   it("leaves any other failure as the ApiError apiFetch throws", async () => {

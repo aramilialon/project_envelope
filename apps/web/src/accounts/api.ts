@@ -90,21 +90,42 @@ export async function createAccount(
   return (await response.json()) as Account;
 }
 
+/** Why the API refused to close an account (#703, #729): each figure one the user can see on screen. */
+export interface AccountNotEmptyDetails {
+  /** The balance as of today in the workspace's time zone, in the account's own currency. */
+  readonly balanceCents: number;
+  /** The rows dated after today, and the earliest one's date ("YYYY-MM-DD", null when there are none). */
+  readonly laterRows: { readonly count: number; readonly firstDate: string | null };
+  /** Whether it holds any security today. */
+  readonly holdsPositions: boolean;
+  /** The scheduled transactions that use it. */
+  readonly scheduled: { readonly count: number };
+}
+
 /**
- * The API's refusal to close an account that still holds money or securities (#703, 409
- * `account_not_empty`): its balance over all dates, in the account's own currency, and whether it
- * still holds any security.
+ * The API's refusal to close an account that is not empty today and later (#703, #729; 409
+ * `account_not_empty`): today's balance, the rows dated after today, whether it holds securities
+ * today and the scheduled transactions on it. A field left out is the empty account's.
  */
 export class AccountNotEmptyError extends Error {
-  readonly balanceCents: number;
-  readonly holdsPositions: boolean;
+  readonly details: AccountNotEmptyDetails;
 
-  constructor(balanceCents: number, holdsPositions: boolean) {
+  constructor(details: Partial<AccountNotEmptyDetails>) {
     super("account not empty");
     this.name = "AccountNotEmptyError";
-    this.balanceCents = balanceCents;
-    this.holdsPositions = holdsPositions;
+    this.details = {
+      balanceCents: details.balanceCents ?? 0,
+      laterRows: details.laterRows ?? { count: 0, firstDate: null },
+      holdsPositions: details.holdsPositions ?? false,
+      scheduled: details.scheduled ?? { count: 0 },
+    };
   }
+}
+
+/** A count from the API's details, or zero when it sent none or something else. */
+function countOf(value: unknown): number {
+  const count = Number((value as { count?: unknown } | undefined)?.count ?? 0);
+  return Number.isInteger(count) && count > 0 ? count : 0;
 }
 
 /** Closes an account; a 409 `account_not_empty` becomes an `AccountNotEmptyError`, any other failure `apiFetch`'s `ApiError`. */
@@ -115,7 +136,13 @@ export async function closeAccount(accessToken: string, workspaceId: string, acc
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 409 && caught.code === "account_not_empty") {
       const details = caught.details as Readonly<Record<string, unknown>>;
-      throw new AccountNotEmptyError(Number(details.balanceCents ?? 0), details.holdsPositions === true);
+      const firstDate = (details.laterRows as { firstDate?: unknown } | undefined)?.firstDate;
+      throw new AccountNotEmptyError({
+        balanceCents: Number(details.balanceCents ?? 0),
+        laterRows: { count: countOf(details.laterRows), firstDate: typeof firstDate === "string" ? firstDate : null },
+        holdsPositions: details.holdsPositions === true,
+        scheduled: { count: countOf(details.scheduled) },
+      });
     }
     throw caught;
   }
