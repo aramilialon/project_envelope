@@ -33,14 +33,13 @@ describe("Todo (#326)", () => {
     expect(document.querySelector(".dot.r")).not.toBeNull();
   });
 
-  it("gives card overspending, a reservation shortfall and uncovered card debt an amber dot", () => {
+  it("gives a reservation shortfall and uncovered card debt an amber dot", () => {
     const items: TodoItem[] = [
-      { kind: "cardOverspending", categoryId: "groceries", amountCents: 500 },
       { kind: "reservationShortfall", categoryId: "groceries", amountCents: 500 },
       { kind: "cardDebtUncovered", categoryId: "groceries", amountCents: 500 },
     ];
     renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
-    expect(document.querySelectorAll(".dot.w")).toHaveLength(3);
+    expect(document.querySelectorAll(".dot.w")).toHaveLength(2);
   });
 
   it("composes a sentence for an overdue scheduled transaction, with its own payee and date", () => {
@@ -85,7 +84,7 @@ describe("Todo (#326)", () => {
   it("caps the list to 'limit' items, with a '+N more' line for the rest (#331)", () => {
     const items: TodoItem[] = [
       { kind: "cashOverspending", categoryId: "groceries", amountCents: 1_000 },
-      { kind: "cardOverspending", categoryId: "groceries", amountCents: 500 },
+      { kind: "scheduledOverdue", scheduledTransactionId: "s1", categoryId: "groceries", payee: "Vet clinic", date: "2026-09-22", amountCents: 500 },
       { kind: "reservationShortfall", categoryId: "groceries", amountCents: 500 },
       { kind: "cardDebtUncovered", categoryId: "groceries", amountCents: 500 },
     ];

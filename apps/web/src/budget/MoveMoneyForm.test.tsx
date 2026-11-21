@@ -152,6 +152,19 @@ describe("MoveMoneyForm (#328)", () => {
     expect(screen.getByLabelText("Amount")).toHaveValue("20.00"); // restaurants is €20.00 cash-overspent
   });
 
+  it("'Move money' on a category overspent in cash and with a card preselects only the cash part: the card asks for the rest (#728)", () => {
+    const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -35_000, cashOverspending: 5_000, creditOverspending: 30_000 });
+    renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("50.00");
+    expect(screen.getByText("The part spent from an account is covered.")).toBeInTheDocument();
+  });
+
+  it("'Move money' on a category overspent only with a card preselects no amount (#728)", () => {
+    const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -9_134, creditOverspending: 9_134 });
+    renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("");
+  });
+
   it("'Assign from unassigned money' on a payment category row (#329) always keeps unassigned as the source, even when it cannot cover the gap", () => {
     renderForm({ kind: "assignTo", categoryId: "visa" }); // needs €70.00, only €10.00 unassigned by default
     expect(screen.getByLabelText("From")).toHaveValue("unassigned");

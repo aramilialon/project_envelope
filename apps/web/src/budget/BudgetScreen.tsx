@@ -39,7 +39,7 @@ import GroupMenu from "./GroupMenu.tsx";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import { daysInMonth, monthAbbrev, monthLabel, shiftMonth, todayOf, toTimelineEvents } from "./monthEvents.ts";
 import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
-import RowDetail from "./RowDetail.tsx";
+import RowDetail, { type CardPart } from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
 import Timeline from "./Timeline.tsx";
 import { timelineValueLabelWidth } from "./textWidth.ts";
@@ -471,8 +471,34 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         onClose={() => setOpenCategoryId(null)}
         onChanged={() => refetchAndCheckProblems()}
         onMoveMoney={() => setMoveMoney({ kind: "moveTo", categoryId: category.categoryId })}
+        cardParts={cardPartsOf(category.categoryId)}
+        onOpenPaymentCategory={openCategory}
       />
     );
+  }
+
+  /** A category's credit overspending per card (#728), read from each card's own `overspendingBy`. */
+  function cardPartsOf(categoryId: string): CardPart[] {
+    return groups
+      .flatMap((g) => g.categories)
+      .filter((c) => c.isPaymentCategory)
+      .flatMap((card) =>
+        (card.overspendingBy ?? [])
+          .filter((o) => o.categoryId === categoryId && o.amount > 0)
+          .map((o) => ({ paymentCategoryId: card.categoryId, cardName: card.name, amount: o.amount })),
+      );
+  }
+
+  /**
+   * Opens a category's detail in its row. On the desktop, a collapsed group never renders its own
+   * categories at all (`#411`): its group is expanded first, or nothing visible would change.
+   */
+  function openCategory(categoryId: string) {
+    const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === categoryId));
+    if (ownGroup) {
+      setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
+    }
+    setOpenCategoryId(categoryId);
   }
 
   function handleTodoItemClick(item: TodoItem) {
@@ -483,13 +509,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     if (item.kind === "overassigned") {
       return;
     }
-    // On the desktop, a collapsed group never renders its own categories at all (`#411`): opening
-    // one from the "To do" list needs its group expanded first, or nothing visible would change.
-    const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === item.categoryId));
-    if (ownGroup) {
-      setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
-    }
-    setOpenCategoryId(item.categoryId);
+    openCategory(item.categoryId);
   }
 
   const phoneOpenCategory = isPhone && detailReady && openCategoryId !== null ? categoryById.get(openCategoryId) : undefined;
@@ -891,6 +911,18 @@ function StatusLine({ category, money, intl }: StatusLineProps) {
   const spent = Math.max(0, -category.activity);
 
   if (spent > 0) {
+    // #728: overspent both ways, the cash part and the card part are named apart — the card part
+    // is the card's debt, asked on its payment category, the cash part asked here.
+    if (category.cashOverspending > 0 && category.creditOverspending > 0) {
+      return (
+        <small className="spent n">
+          {intl.formatMessage(
+            { id: "budget.bar.overspentCashAndCard", defaultMessage: "{cash} overspent in cash, {card} with a card" },
+            { cash: money(category.cashOverspending), card: money(category.creditOverspending) },
+          )}
+        </small>
+      );
+    }
     if (category.creditOverspending > 0) {
       return (
         <small className="spent n">

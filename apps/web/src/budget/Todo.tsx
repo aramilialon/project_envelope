@@ -23,10 +23,10 @@ interface Props {
   readonly onItemClick?: (item: TodoItem) => void;
 }
 
-/** A dot's own colour: red for cash (needs new money now), amber for a card, a reservation shortfall or uncovered debt; none for the rest. */
+/** A dot's own colour: red for cash (needs new money now), amber for a reservation shortfall or uncovered card debt; none for the rest. */
 function dotClass(kind: TodoItem["kind"]): string {
   if (kind === "overassigned" || kind === "cashOverspending") return "dot r";
-  if (kind === "cardOverspending" || kind === "reservationShortfall" || kind === "cardDebtUncovered") return "dot w";
+  if (kind === "reservationShortfall" || kind === "cardDebtUncovered") return "dot w";
   return "dot";
 }
 
@@ -48,11 +48,6 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
       return {
         title: intl.formatMessage({ id: "budget.todo.cover.title", defaultMessage: "Cover {category}" }, { category: categoryName(item.categoryId) }),
         sub: intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash: cover it before the month ends" }),
-      };
-    case "cardOverspending":
-      return {
-        title: intl.formatMessage({ id: "budget.todo.cover.title", defaultMessage: "Cover {category}" }, { category: categoryName(item.categoryId) }),
-        sub: intl.formatMessage({ id: "budget.todo.cardOverspending.sub", defaultMessage: "overspent with a card: otherwise it stays as card debt" }),
       };
     case "scheduledOverdue":
       return {
