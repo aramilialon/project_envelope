@@ -528,6 +528,7 @@ export default function AccountRegisterScreen() {
             {visible.map(({ transaction, balance }) => {
               const amount = totalOf(transaction);
               const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
+              const categoryCell = rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel);
               return (
                 <tr key={transaction.id}>
                   <td>
@@ -553,9 +554,12 @@ export default function AccountRegisterScreen() {
                     </button>
                   </td>
                   <td>
-                    <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel)}
-                    </button>
+                    {/* An off-budget account's own rows have no category: an empty cell, never an unnamed button (#652). */}
+                    {categoryCell !== "" && (
+                      <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
+                        {categoryCell}
+                      </button>
+                    )}
                   </td>
                   <td className="n">{amount < 0 ? plain(-amount) : ""}</td>
                   <td className="n">{amount > 0 ? plain(amount) : ""}</td>

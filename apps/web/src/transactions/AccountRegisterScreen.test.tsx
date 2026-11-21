@@ -230,9 +230,31 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       const deposit = (await screen.findByText("Deposit")).closest("tr")!;
       const buy = screen.getByText("Buy ETF").closest("tr")!;
       for (const row of [deposit, buy]) {
-        expect(row.querySelectorAll("td")[3]).toHaveTextContent(/^$/);
+        const cell = row.querySelectorAll("td")[3]!;
+        expect(cell).toHaveTextContent(/^$/);
+        // No unnamed button left as an empty tab stop.
+        expect(within(cell).queryByRole("button")).not.toBeInTheDocument();
       }
       expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+    });
+
+    it("shows a zero-decimal currency's amounts and balances with no decimals", async () => {
+      const yen: Account = { ...EU_BROKER, name: "Yen account", currency: "JPY" };
+      renderScreen(
+        [
+          cashLeg({ id: "t1", payee: "Deposit", splits: [{ id: "s1", categoryId: null, amountCents: 50_000, memo: null }] }),
+          cashLeg({ id: "t2", payee: "Bookshop", occurredAt: "2026-09-16T00:00:00.000Z", budgetDate: "2026-09-16", splits: [{ id: "s2", categoryId: null, amountCents: -5_000, memo: null }] }),
+        ],
+        [],
+        [yen],
+      );
+
+      const row = (await screen.findByText("Bookshop")).closest("tr")!;
+      const cells = row.querySelectorAll("td");
+      expect(cells[4]).toHaveTextContent(/^5,000$/);
+      expect(cells[6]).toHaveTextContent(/^45,000$/);
+      expect(document.querySelector(".acc-bal .big")).toHaveTextContent("¥45,000");
+      expect(document.querySelector(".acc-bal .big")!.textContent).not.toContain(".");
     });
 
     it("keeps naming a transfer in an off-budget register", async () => {
