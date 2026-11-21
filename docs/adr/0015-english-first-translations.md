@@ -41,9 +41,32 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 
 - Rules about currencies (minor-unit exponents, rounding) stay in `packages/core` (ADR 0002). Locale formatting of numbers, amounts and dates goes through `Intl` only and is tested there, for every shipped locale.
 
+### Shipped locales and negotiation
+
+- The shipped locales are a data file in `packages/i18n`, `locales/index.json`, read by the apps, the API and the identity-provider bootstrap alike.
+- Language negotiation is a pure function there, `resolveLanguage`, shared by the web and the mobile app (#633). One `en.json` is extracted from every app.
+
+### Interface language and formatting locale
+
+- The interface language and the formatting locale are resolved separately. The default for both is **Automatic** (a null stored value): the language comes from the device, the formatting locale from the device's full regional tag (for example `de-CH`). The user can choose either explicitly.
+- Choices are stored on the account; Automatic is resolved per device.
+- Plural rules follow the interface language, never the formatting locale.
+- How languages are labelled in the selectors is decided with the preferences mockup (#627).
+
+### User preferences
+
+- User preferences (language, format, personal time zone, theme) are user-level data, read and written through `/me/preferences` (#628), cached on each device, and kept outside the workspace sync protocol.
+- A change made offline applies locally at once and is sent when the device is back online; the server keeps the latest change by its client timestamp.
+
+### Sign-in and the identity provider
+
+- The sign-in screen has a language selector (#627, #630); that choice belongs to the device. After sign-in, an explicit account language wins; otherwise the device choice counts as the device language.
+- The interface language reaches the identity provider through the standard OpenID Connect `ui_locales` parameter, and the identity provider's own translations are used (#631). A custom theme's message bundles, if one is ever added, fall under the translator like the app's catalogs.
+- From milestone 0.7.0 the app also writes the identity provider user's `locale` attribute, and the identity provider's emails are translated (#632).
+
 ### Push notifications
 
-- The budget alert's text is composed server-side from a small English/Italian lookup in `apps/api` (design document, "Notifications"). For German, Spanish and French it falls back to English until there is a per-user language setting that the server can rely on.
+- Push notifications are composed per device (#629): in the account's explicit language, else in the device's language, else in English. A language the server has no translation for falls back to English.
 
 ## Consequences
 
@@ -51,4 +74,5 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 - Every pull request that changes interface text gets one more agent step. The developer's green checks no longer include catalog completeness; the translator's do.
 - The reference screenshots taken from the mockups become English, like the ones taken from the app.
 - Translations in languages the maintainer cannot read may contain errors that only users will notice; the documentation invites corrections.
+- Until milestone 0.7.0 (#632), the identity provider's own language choice, and its emails once SMTP is configured, are not kept in step with the app's language.
 - Branches started before this ADR, whose developer was told to write Italian, keep doing so; the translator then only adds the other languages and re-checks the Italian against the glossary.
