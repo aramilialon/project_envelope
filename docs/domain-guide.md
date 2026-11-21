@@ -108,6 +108,32 @@ Assigning €300 more to the payment category brings `uncovered` straight to zer
 recomputed or stored, because `uncovered` is not a number the budget keeps, it is a number the
 budget works out fresh every time.
 
+**Paying the card beyond what was set aside.** Paying the card more than its payment category
+holds takes the difference from cash that had no job: the payment category's available goes
+negative, and that negative part is cash overspending, taken from next month's unassigned money like
+any other. It covers none of the debt, so `uncovered` ignores it, and the card's real debt is what
+is owed on it (`owed`), never `available + uncovered`. What it takes to bring the payment category
+back to covering the whole debt is
+
+```
+to cover = max(0, owed − available)   (the cash overspending plus the uncovered debt)
+```
+
+**Example.** A card is added owing €500 (its starting balance). €45.67 of groceries go on the card,
+covered by the Groceries category's own money, so €45.67 moves into the payment category. €300 is
+then paid to the card from checking, with nothing assigned to the payment category.
+
+- owed = 500 + 45.67 − 300 = **€245.67**; available = 45.67 − 300 = **−€254.33**.
+- The debt shown is €245.67; "Set aside" is €0.00, never negative; a neutral line says "Paid beyond
+  what was set aside: €254.33".
+- Uncovered = max(0, 245.67 − max(0, −254.33)) = €245.67.
+- To cover = max(0, 245.67 − (−254.33)) = **€500.00**: the €254.33 of cash overspending plus the
+  €245.67 still uncovered. The month's one "To do" item for the card and its "Assign" button both
+  ask for €500.00.
+
+Reading the debt as `available + uncovered` would give −€8.66 here, which is why the budget returns
+`owed` itself.
+
 **A card's starting balance.** Adding a card that already carries debt creates one transaction,
 categorized straight to the card's own payment category — not to an ordinary spending category, and
 not counted as this month's activity. Treating it as ordinary spending would break two things at
