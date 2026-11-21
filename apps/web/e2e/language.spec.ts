@@ -54,9 +54,9 @@ test.describe("the interface language (#620)", () => {
     });
   });
 
-  test.describe("with a German browser", () => {
-    // German is not shipped yet; once it is, this needs a language that still is not.
-    test.use({ locale: "de-DE" });
+  test.describe("with a browser in a language that is not shipped", () => {
+    // Japanese is not planned, so this stays a language the app does not offer.
+    test.use({ locale: "ja-JP" });
 
     test("shows the sign-in screen in English", async ({ page }) => {
       await page.goto("/");
