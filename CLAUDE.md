@@ -26,7 +26,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, both always bound to 127.0.0.1 |
 | `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
-| `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`) |
+| `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`), the agent team's memory (`docs/team/`) |
 | `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, Git hooks, a demo data seed, and disposable environments for exploratory and e2e runs (`scripts/explore-env/`); see `scripts/README.md` |
 
 ## Commands
@@ -58,7 +58,9 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 
 ## Agent team
 
-The main session coordinates a team of role agents defined in `.claude/agents/` (developer, translator, architect, domain expert, UX reviewer, QA, security reviewer, integrator, explorer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). The agents recommend; decisions stay with the maintainer.
+The main session coordinates a team of role agents defined in `.claude/agents/` (developer, translator, architect, domain expert, UX reviewer, QA, security reviewer, integrator, scribe, explorer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). Decisions are taken on the recommendation of the role that owns each question and logged for the maintainer's review at the phase deadlines; a few still go to the maintainer first (that guide, "Coordinator's working rules").
+
+Team memory: [docs/team/](docs/team/) holds the decisions awaiting the maintainer's review and the team's lessons; read both before coordinating.
 
 ## Git and GitHub workflow
 
@@ -70,7 +72,7 @@ Every change reaches `main` through a pull request that the maintainer reviews a
 - The pull request title follows the same format: with "Squash and merge" it becomes the commit message on `main`, and CI checks it.
 - When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`). Once the GitHub Actions CI run on that pull request has completed successfully, merge it (squash) and report the link; do not merge before CI finishes.
 - Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
-- Releases (tags, GitHub releases): the coordinator tags and publishes a release on its own once every step of "Releasing a milestone" has passed (exploratory run, security alerts, changelog); a release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`) waits for the maintainer's own test first.
+- Releases (tags, GitHub releases): the coordinator decides, on its own, that a release goes out once every step of "Releasing a milestone" has passed (exploratory run, security alerts); the `integrator` then executes it (changelog pull request, tag, GitHub release, closing the milestone). A release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`) waits for the maintainer's own test first.
 
 ## Current focus: backend MVP
 

@@ -107,8 +107,8 @@ The `commit-msg` hook in `scripts/git-hooks` rejects other formats, and the "PR 
 
 When every issue of a milestone is closed:
 
-1. Hold the exploratory run ([Work with the agent team](work-with-the-agent-team.md#exploratory-runs-before-a-release)): the three explorers use the app on a disposable environment, `qa` reproduces their findings, and every reproduced bug is fixed through an issue and a pull request, or moved to a later milestone with the maintainer's agreement. This run takes the place of the maintainer's own testing before a release.
-2. Only for a release that closes a roadmap phase (the milestones named "… MVP", such as `0.2.7 Portfolio MVP` and `0.3.2 Mobile MVP`, and `1.0.0`): the maintainer tries the app before the tag, on a disposable environment the coordinator brings up, with a short list of what the phase changed. What the maintainer finds goes through the same issues and pull requests. Every other release is tagged without the maintainer's testing.
+1. Hold the exploratory run ([Work with the agent team](work-with-the-agent-team.md#exploratory-runs-before-a-release)): all three explorers use the app on a disposable environment, each on its own charter plus what the release changed; the coordinator merges duplicate findings, `qa` reproduces them, the `scribe` files the reproduced ones as issues, and every reproduced bug is fixed through an issue and a pull request, or moved to a later milestone on the recommendation of the role that owns it (logged in [`docs/team/decisions.md`](../team/decisions.md)), with the maintainer's agreement when no role recommended it. This run takes the place of the maintainer's own testing before a release.
+2. Only for a release that closes a roadmap phase (the milestones named "… MVP", such as `0.2.7 Portfolio MVP` and `0.3.2 Mobile MVP`, and `1.0.0`): the maintainer tries the app before the tag, on a disposable environment the coordinator brings up, with a short list of what the phase changed. The maintainer also reviews the section of [`docs/team/decisions.md`](../team/decisions.md) that waits for this deadline, and the coordinator then empties it through a pull request whose description gives each entry's outcome (confirmed; confirmed and moved into an ADR or the design text, named; or reversed, with the new issue that reverses it). What the maintainer finds goes through the same issues and pull requests. Every other release is tagged without the maintainer's testing.
 3. Check the repository's open security alerts and deal with every one before going on:
    ```bash
    gh api "repos/:owner/:repo/dependabot/alerts?state=open" -q 'length'
@@ -116,8 +116,11 @@ When every issue of a milestone is closed:
    gh api "repos/:owner/:repo/secret-scanning/alerts?state=open" -q 'length'
    ```
    Each alert is either fixed through an issue and a pull request like any other bug, or, when it is a false positive or does not apply to how the app is deployed, dismissed on GitHub with that reason written in the dismissal comment. A secret-scanning alert also means rotating the secret, not only removing it from the code. The release waits until all three lists are empty.
-4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
-5. After merging it, the coordinator tags `main` and publishes the release on its own, without asking first (the maintainer's decision; for a phase release, only after step 2):
+
+Once steps 1 to 3 have passed, the coordinator gives the `integrator` the go, with the team-memory notes still staged, without asking the maintainer first (the maintainer's decision; for a phase release, only after step 2), and the integrator runs steps 4 to 6.
+
+4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request. The same pull request flushes those staged team-memory notes into [`docs/team/`](../team/), and prunes the lessons nobody hit in the last two milestones ([Work with the agent team](work-with-the-agent-team.md#team-memory)).
+5. After merging it, the integrator tags `main` and publishes the release:
    ```bash
    git switch main && git pull
    git tag -a v0.1.0 -m "v0.1.0 API skeleton"
