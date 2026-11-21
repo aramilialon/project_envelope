@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { isValidationError } from "../errors.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
+import { shiftMonth } from "../month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 
 /** Finds a category in the result, failing the test if it is missing. */
@@ -148,19 +149,24 @@ describe("computeBudgetMonth", () => {
     assert.equal(september.assignedInFuture, 90000);
   });
 
-  it("unassigned reflects income that has arrived by the latest month with any data, not just by the month being viewed (#488)", () => {
+  it("a month's unassigned money never includes income dated after it (#650)", () => {
+    // Nothing in August; a €3,000 salary in September.
     const input: BudgetInput = {
       ...EMPTY,
-      income: [
-        { month: "2026-09", amount: 100000 },
-        { month: "2026-10", amount: 200000 },
-      ],
+      income: [{ month: "2026-09", date: "2026-09-25", amount: 300000 }],
+      today: "2026-11-21",
     };
-
-    // September is not a frozen snapshot of itself: October's income has genuinely already
-    // arrived by the time anyone looks, whichever month's screen happens to be open.
+    assert.equal(computeBudgetMonth(input, "2026-08").unassigned, 0);
     assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 300000);
-    assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 300000);
+
+    // October's own income leaves August and September as they were.
+    const withOctober: BudgetInput = {
+      ...input,
+      income: [...input.income, { month: "2026-10", date: "2026-10-25", amount: 300000 }],
+    };
+    assert.equal(computeBudgetMonth(withOctober, "2026-08").unassigned, 0);
+    assert.equal(computeBudgetMonth(withOctober, "2026-09").unassigned, 300000);
+    assert.equal(computeBudgetMonth(withOctober, "2026-10").unassigned, 600000);
   });
 
   it("income dated later than any real data cannot be assigned yet", () => {
@@ -177,16 +183,77 @@ describe("computeBudgetMonth", () => {
     const input: BudgetInput = {
       categoryIds: ["mortgage"],
       income: [
-        { month: "2026-09", amount: 10000 }, // a small September income, unrelated
-        { month: "2026-10", amount: 1680200 }, // October's own loan disbursement
+        { month: "2026-09", date: "2026-09-10", amount: 10000 }, // a small September income, unrelated
+        { month: "2026-10", date: "2026-10-05", amount: 1680200 }, // October's own loan disbursement
       ],
       assignments: [{ categoryId: "mortgage", month: "2026-10", amount: 1680200 }],
       activity: [],
+      today: "2026-11-21",
     };
 
     // Browsing back to September must not be blamed for an assignment only October's own,
     // later-arriving income actually funded.
-    assert.equal(computeBudgetMonth(input, "2026-09").unassigned, 10000);
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(september.unassigned, 10000);
+    assert.equal(september.assignedInFuture, 0, "none of September's money went to October");
+    assert.equal(computeBudgetMonth(input, "2026-10").unassigned, 10000);
+  });
+
+  it("assigning ahead takes the money from the month it comes from", () => {
+    // €1,000 received in September, €900 of it assigned to October.
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [{ month: "2026-09", date: "2026-09-25", amount: 100000 }],
+      assignments: [{ categoryId: "rent", month: "2026-10", amount: 90000 }],
+      activity: [],
+      today: "2026-11-21",
+    };
+
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(september.unassigned, 10000);
+    assert.equal(september.assignedInFuture, 90000);
+    const october = computeBudgetMonth(input, "2026-10");
+    assert.equal(october.unassigned, 10000);
+    assert.equal(october.assignedInFuture, 0);
+  });
+
+  it("over-assigning ahead shows in the month the money would come from", () => {
+    // €1,000 received in September, €1,100 assigned to October, no October income.
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [{ month: "2026-09", date: "2026-09-25", amount: 100000 }],
+      assignments: [{ categoryId: "rent", month: "2026-10", amount: 110000 }],
+      activity: [],
+      today: "2026-11-21",
+    };
+
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(september.unassigned, -10000);
+    assert.equal(september.assignedInFuture, 110000);
+    assert.equal(computeBudgetMonth(input, "2026-10").unassigned, -10000);
+  });
+
+  it("income dated after today counts nowhere until its date", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      income: [
+        { month: "2026-11", date: "2026-11-10", amount: 200000 },
+        { month: "2026-11", date: "2026-11-27", amount: 50000 }, // expected, not received yet
+        { month: "2026-12", date: "2026-12-10", amount: 200000 },
+      ],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 30000 }],
+      // Spending dated after today (say the 25th) still counts against its category.
+      activity: [{ categoryId: "groceries", month: "2026-11", amount: -5000 }],
+      today: "2026-11-21",
+    };
+
+    const november = computeBudgetMonth(input, "2026-11");
+    assert.equal(november.unassigned, 170000); // 2000 − 300, without the €500 due on the 27th
+    assert.equal(category(november.categories, "groceries").available, 25000);
+    assert.equal(computeBudgetMonth(input, "2026-12").unassigned, 170000, "nor in a later month");
+
+    // On the 27th it has arrived.
+    assert.equal(computeBudgetMonth({ ...input, today: "2026-11-27" }, "2026-11").unassigned, 220000);
   });
 
   it("assigning more than is available takes unassigned money below zero", () => {
@@ -283,53 +350,133 @@ describe("computeBudgetMonth", () => {
         ),
       (error) => isValidationError(error, "invalid_amount"),
     );
+    assert.throws(
+      () => computeBudgetMonth({ ...EMPTY, income: [{ month: "2026-09", date: "2026-10-01", amount: 100 }] }, "2026-09"),
+      (error) => isValidationError(error, "invalid_date"),
+    );
+    assert.throws(
+      () => computeBudgetMonth({ ...EMPTY, today: "2026-02-30" }, "2026-09"),
+      (error) => isValidationError(error, "invalid_date"),
+    );
   });
 });
+
+/**
+ * A random budget over six months, with income on random days and a random today: inside the
+ * months most of the time, so that some income is not received yet.
+ */
+function randomBudget(random: () => number): { input: BudgetInput; month: string; today: string } {
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
+  const months = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
+  const categoryIds = ["groceries", "rent", "fun", "car"];
+  const amount = () => Math.floor(random() * 200000) - 50000; // from −€500 to +€1,500
+  const day = () => String(Math.floor(random() * 28) + 1).padStart(2, "0");
+  const today = random() < 0.25 ? "2026-12-31" : `${pick(months)}-${day()}`;
+  const input: BudgetInput = {
+    categoryIds,
+    income: Array.from({ length: 5 }, () => {
+      const month = pick(months);
+      return { month, date: `${month}-${day()}`, amount: Math.abs(amount()) };
+    }),
+    assignments: Array.from({ length: 15 }, () => ({ categoryId: pick(categoryIds), month: pick(months), amount: amount() })),
+    activity: Array.from({ length: 20 }, () => ({ categoryId: pick(categoryIds), month: pick(months), amount: -Math.abs(amount()) })),
+    today,
+  };
+  return { input, month: pick(months), today };
+}
+
+/** Income received by the end of `month` and by today: what the books hold at the end of `month`. */
+function receivedBy(input: BudgetInput, month: string, today: string): number {
+  return input.income.filter((i) => i.month <= month && (i.date ?? `${i.month}-01`) <= today).reduce((sum, i) => sum + i.amount, 0);
+}
 
 describe("budget invariant", () => {
   // Whatever happens, the books must balance:
   //   unassigned money + available of the month + assigned in future
-  //   = income so far (as of the latest month with any data, #488) + activity so far (the
-  //   requested month's own, that is, the account balance up to it)
+  //   = income received by the end of the month (and by today) + activity up to the end of the
+  //     month (that is, the money in the accounts at the end of the month, less the income not
+  //     received yet)
   it("balances on 500 random budgets", () => {
     const random = mulberry32(42);
-    const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
-    const months = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
-    const categoryIds = ["groceries", "rent", "fun", "car"];
-    const amount = () => Math.floor(random() * 200000) - 50000; // from −€500 to +€1,500
-
     for (let run = 0; run < 500; run++) {
-      const input: BudgetInput = {
-        categoryIds,
-        income: Array.from({ length: 5 }, () => ({ month: pick(months), amount: Math.abs(amount()) })),
-        assignments: Array.from({ length: 15 }, () => ({
-          categoryId: pick(categoryIds),
-          month: pick(months),
-          amount: amount(),
-        })),
-        activity: Array.from({ length: 20 }, () => ({
-          categoryId: pick(categoryIds),
-          month: pick(months),
-          amount: -Math.abs(amount()),
-        })),
-      };
-      const month = pick(months);
+      const { input, month, today } = randomBudget(random);
 
       const result = computeBudgetMonth(input, month);
 
       const availableTotal = result.categories.reduce((sum, c) => sum + c.available, 0);
-      const asOf = [month, ...input.income.map((i) => i.month), ...input.assignments.map((a) => a.month), ...input.activity.map((a) => a.month)].reduce(
-        (latest, m) => (m > latest ? m : latest),
-        month,
-      );
-      const incomeSoFar = input.income.filter((i) => i.month <= asOf).reduce((sum, i) => sum + i.amount, 0);
       const activitySoFar = input.activity.filter((a) => a.month <= month).reduce((sum, a) => sum + a.amount, 0);
 
       assert.equal(
         result.unassigned + availableTotal + result.assignedInFuture,
-        incomeSoFar + activitySoFar,
+        receivedBy(input, month, today) + activitySoFar,
         `invariant violated on run ${run}, month ${month}`,
       );
+    }
+  });
+});
+
+describe("unassigned money properties (#650)", () => {
+  /** cum(N) of rule 1, for every month N from `month` to the last one of the data. */
+  function cumulative(input: BudgetInput, month: string, today: string, overspentBefore: number): number[] {
+    const last = [month, ...input.income.map((i) => i.month), ...input.assignments.map((a) => a.month), ...input.activity.map((a) => a.month)].reduce(
+      (latest, m) => (m > latest ? m : latest),
+    );
+    const values: number[] = [];
+    for (let m = month; m <= last; m = shiftMonth(m, 1)) {
+      const assigned = input.assignments.filter((a) => a.month <= m).reduce((sum, a) => sum + a.amount, 0);
+      values.push(receivedBy(input, m, today) - assigned - overspentBefore);
+    }
+    return values;
+  }
+
+  /** Cash overspending of the months before `month`, as the function itself closed them. */
+  function overspentBefore(input: BudgetInput, month: string): number {
+    let total = 0;
+    for (const m of ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"].filter((m) => m < month)) {
+      total += computeBudgetMonth(input, shiftMonth(m, 1)).overspentLastMonth;
+    }
+    return total;
+  }
+
+  it("unassigned money is the smallest cum(N) from the month on, and assigned in future what the month itself pays", () => {
+    const random = mulberry32(650);
+    for (let run = 0; run < 300; run++) {
+      const { input, month, today } = randomBudget(random);
+      const result = computeBudgetMonth(input, month);
+      const values = cumulative(input, month, today, overspentBefore(input, month));
+
+      assert.equal(result.unassigned, Math.min(...values), `run ${run}, month ${month}`);
+      assert.equal(result.assignedInFuture, (values[0] as number) - result.unassigned, `run ${run}, month ${month}`);
+      assert.ok(result.assignedInFuture >= 0, `run ${run}, month ${month}`);
+    }
+  });
+
+  it("income dated after a month never shows in it, and changes it only when a later month is over-assigned", () => {
+    const random = mulberry32(6500);
+    for (let run = 0; run < 300; run++) {
+      const { input, month, today } = randomBudget(random);
+      const result = computeBudgetMonth(input, month);
+      // More income, dated after the month and already received.
+      const later = shiftMonth(month, 1 + Math.floor(random() * 3));
+      const more: BudgetInput = {
+        ...input,
+        income: [...input.income, { month: later, date: `${later}-01`, amount: Math.floor(random() * 500000) + 1 }],
+        today: "2026-12-31",
+      };
+      const before = computeBudgetMonth({ ...input, today: "2026-12-31" }, month);
+      const after = computeBudgetMonth(more, month);
+
+      // Every available is the same whatever income there is.
+      assert.deepEqual(after.categories, result.categories, `run ${run}, month ${month}`);
+      // Never more than the month itself has received (cum(M) holds no income after M).
+      const values = cumulative(more, month, "2026-12-31", overspentBefore(input, month));
+      assert.ok(after.unassigned <= (values[0] as number), `run ${run}, month ${month}`);
+      assert.ok(after.unassigned >= before.unassigned, `run ${run}, month ${month}`);
+      // No later month over-assigned: cum(N) never drops below cum(M), so the month shows cum(M).
+      const beforeValues = cumulative(input, month, "2026-12-31", overspentBefore(input, month));
+      if (beforeValues.every((v) => v >= (beforeValues[0] as number))) {
+        assert.equal(after.unassigned, before.unassigned, `run ${run}, month ${month}`);
+      }
     }
   });
 });

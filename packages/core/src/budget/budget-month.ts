@@ -9,17 +9,24 @@
  *   aside to pay the card.
  *
  * Rules:
- * 1. Only money that has already come in can be assigned: income dated in
- *    future months does not count. "Future" means later than the latest month
- *    with any real data at all (income, assignment, activity, card payment or
- *    transfer) — not later than whichever month is being requested. Browsing
- *    back to an earlier month must not pretend income that has already
- *    genuinely arrived (in a later month, by the data itself) has not: that
- *    would blame the earlier month for an assignment that later month's own
- *    income, not the earlier month's, actually funded (#488).
+ * 1. Only money that has already been received can be assigned, and a month's
+ *    unassigned money never includes income dated after it. For the requested
+ *    month M and every month N from M on, let
+ *      cum(N) = income dated up to the earlier of (the end of N, today)
+ *               − everything assigned to months up to N
+ *               − cash overspending of the months before M.
+ *    Unassigned money in M is the smallest cum(N), N from M to the latest
+ *    month with any data: M's money already assigned ahead to a later month
+ *    is gone from M (rule 3), but a later month's assignment paid for by that
+ *    later month's own income is not blamed on M (#488). Income dated after
+ *    today counts nowhere until its date: it is expected income, not money
+ *    received. Spending dated after today does count, against its category,
+ *    from its own month on (the cautious side). `today` is an input
+ *    (`BudgetInput.today`), so the function stays pure.
  * 2. A category's positive available balance rolls over to the next month.
  * 3. Money assigned to future months is already assigned: it reduces
- *    unassigned money immediately.
+ *    unassigned money immediately, as far as the later months' own income
+ *    does not pay for it (`assignedInFuture` is the part that M's money pays).
  * 4. Spending on a credit card, as far as the category covers it, moves the
  *    same amount from the category to the card's payment category: the money
  *    is set aside to pay the card. A refund on the card moves it back.
@@ -61,12 +68,18 @@
 import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
 import { assertCents } from "../money.ts";
-import type { Month } from "../month.ts";
-import { assertMonth, compareMonths, monthRange } from "../month.ts";
+import type { LocalDate, Month } from "../month.ts";
+import { assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth } from "../month.ts";
 
 /** Money that came into unassigned money in a month (salary, starting balance…). */
 export interface Income {
   readonly month: Month;
+  /**
+   * The day it came in, in the workspace's time zone, inside `month`. Compared with
+   * `BudgetInput.today` (rule 1); without it, the income counts as received on the first day of
+   * its month.
+   */
+  readonly date?: LocalDate;
   readonly amount: Cents;
 }
 
@@ -154,6 +167,12 @@ export interface BudgetInput {
   readonly scheduledItems?: readonly ScheduledItem[];
   /** Transfers between two cards' payment categories. */
   readonly cardTransfers?: readonly CardTransfer[];
+  /**
+   * Today, in the workspace's time zone (rule 1): income dated after it has not been received
+   * yet and counts nowhere. Without it, every income counts from its own month on, as if today
+   * were after all the data.
+   */
+  readonly today?: LocalDate;
 }
 
 export interface CategoryMonth {
@@ -206,7 +225,10 @@ export interface CategoryMonth {
 export interface BudgetMonth {
   readonly month: Month;
   readonly unassigned: Cents;
-  /** Money already assigned to months after this one. */
+  /**
+   * This month's money already assigned to months after this one: the part of those later
+   * assignments that the later months' own income does not pay for (rule 1). Never negative.
+   */
   readonly assignedInFuture: Cents;
   /** Cash overspending of the previous month, taken from unassigned money in this month. */
   readonly overspentLastMonth: Cents;
@@ -246,9 +268,15 @@ function validate(input: BudgetInput, month: Month): void {
   const unknown = (id: string): never => {
     throw new ValidationError("unknown_category", `unknown category: "${id}"`, { categoryId: id });
   };
+  if (input.today !== undefined) assertDate(input.today);
   for (const item of input.income) {
     assertMonth(item.month);
     assertCents(item.amount, "income");
+    if (item.date !== undefined && monthOf(item.date) !== item.month) {
+      throw new ValidationError("invalid_date", `income dated "${item.date}" is not in its month "${item.month}"`, {
+        value: item.date,
+      });
+    }
   }
   for (const item of input.assignments) {
     assertMonth(item.month);
@@ -527,9 +555,9 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   };
 
   // 2. Find the first month with data (the computation starts there) and the latest one (rule 1:
-  // "has already come in" means by then, not merely by the requested month).
+  // unassigned money is the smallest cumulative figure from the requested month up to it).
   let firstMonth = month;
-  let asOf = month;
+  let lastMonth = month;
   for (const item of [
     ...input.income,
     ...input.assignments,
@@ -538,7 +566,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     ...(input.cardTransfers ?? []),
   ]) {
     if (compareMonths(item.month, firstMonth) < 0) firstMonth = item.month;
-    if (compareMonths(item.month, asOf) > 0) asOf = item.month;
+    if (compareMonths(item.month, lastMonth) > 0) lastMonth = item.month;
   }
 
   // 3. Walk the months before the requested one, closing each of them.
@@ -561,24 +589,30 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   // earlier months just closed above.
   const current = computeMonth(input, month, carried, { ...data, reservedBy });
 
-  // 5. Unassigned = income so far − everything assigned (future too) − past cash overspending.
-  // "So far" means through `asOf` (rule 1), not merely through the requested month: otherwise
-  // browsing back to an earlier month would ignore income that, by the data itself, has already
-  // genuinely arrived later, and wrongly blame that earlier month for an assignment it never had
-  // any claim to (#488). `cashOverspentTotal` deliberately stays scoped to the requested month
-  // alone — a later month's own unresolved overspending is a separate concern.
-  let incomeSoFar = 0;
+  // 5. Unassigned money (rule 1): the smallest cum(N) for N from the requested month to the
+  // latest one with data, where cum(N) = income received by the end of N (and by today) −
+  // everything assigned up to N − cash overspending of the months before the requested one. A
+  // later month's own unresolved overspending stays a separate concern (#489).
+  const today = input.today;
+  const received = (item: Income): boolean => today === undefined || (item.date ?? `${item.month}-01`) <= today;
+  const receivedBy = new Map<Month, Cents>();
   for (const item of input.income) {
-    if (compareMonths(item.month, asOf) <= 0) incomeSoFar += item.amount;
+    if (received(item)) addTo(receivedBy, item.month, item.amount);
   }
-  let assignedTotal = 0;
-  let assignedInFuture = 0;
-  for (const a of input.assignments) {
-    assignedTotal += a.amount;
-    if (compareMonths(a.month, month) > 0) assignedInFuture += a.amount;
-  }
+  const assignedByMonth = new Map<Month, Cents>();
+  for (const a of input.assignments) addTo(assignedByMonth, a.month, a.amount);
 
-  const unassigned = incomeSoFar - assignedTotal - cashOverspentTotal;
+  let cumulative = 0 - cashOverspentTotal; // not `-cashOverspentTotal`, which is -0 when there is none
+  for (const [m, amount] of receivedBy) if (compareMonths(m, month) <= 0) cumulative += amount;
+  for (const [m, amount] of assignedByMonth) if (compareMonths(m, month) <= 0) cumulative -= amount;
+  const cumulativeInMonth = cumulative;
+  let unassigned = cumulative;
+  for (let m = shiftMonth(month, 1); compareMonths(m, lastMonth) <= 0; m = shiftMonth(m, 1)) {
+    cumulative += (receivedBy.get(m) ?? 0) - (assignedByMonth.get(m) ?? 0);
+    if (cumulative < unassigned) unassigned = cumulative;
+  }
+  const assignedInFuture = cumulativeInMonth - unassigned;
+
   assertCents(unassigned, "unassigned");
 
   return {
