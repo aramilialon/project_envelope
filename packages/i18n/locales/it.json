@@ -160,6 +160,7 @@
   "common.action.close": "× Chiudi",
   "common.action.save": "Salva",
   "common.action.signOut": "Esci",
+  "common.error.amountTooLarge": "Un importo è troppo alto: un singolo importo può arrivare fino a {max}.",
   "import.back": "Indietro",
   "import.check.already": "Già nel registro",
   "import.check.alreadyRegistered": "Già nel registro",
