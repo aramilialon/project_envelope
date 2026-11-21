@@ -1,4 +1,4 @@
-import { availableAfterInflow, currencyDecimals, formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
+import { availableAfterInflow, currencyDecimals, incomeReceived, formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -171,7 +171,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   /** "The money comes into the budget: … goes from X to Y." (or, into "Unassigned" with a date after today, the day it comes in) — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
   function inflowHint(): string | null {
-    if (!moneyEntersBudget || !budgetMonth || (isEditing && categoryId === originalCategoryId)) {
+    if (!moneyEntersBudget || (isEditing && categoryId === originalCategoryId)) {
       return null;
     }
     let amount: number;
@@ -187,20 +187,28 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       if (transferRule !== "optional") {
         return null;
       }
-      // Income counts from its own date on (#650): money dated after today leaves "Unassigned" as it is until then (#700).
-      const change = availableAfterInflow(budgetMonth.unassigned, amount, { date, today });
-      if (!change.received) {
+      // Income counts from its own date on (#650): money dated after today leaves "Unassigned" as it
+      // is until then (#700). Saying so needs no amounts, so it shows before the budget month loads,
+      // and even if that fails.
+      if (ISO_DATE.test(date) && !incomeReceived(date, today)) {
         return intl.formatMessage(
           { id: "transactions.form.inflowHint.unassignedLater", defaultMessage: "The money comes into “Unassigned” on {date}." },
-          { date: shortDate(change.date, intl.locale) },
+          { date: shortDate(date, intl.locale) },
         );
+      }
+      if (!budgetMonth) {
+        return null;
+      }
+      const change = availableAfterInflow(budgetMonth.unassigned, amount, { date, today });
+      if (!change.received) {
+        return null;
       }
       return intl.formatMessage(
         { id: "transactions.form.inflowHint.unassigned", defaultMessage: "The money comes into the budget: “Unassigned” goes from {from} to {to}." },
         { from: money(change.fromCents), to: money(change.toCents) },
       );
     }
-    const category = budgetMonth.categories.find((c) => c.categoryId === categoryId);
+    const category = budgetMonth?.categories.find((c) => c.categoryId === categoryId);
     if (!category) {
       return null;
     }

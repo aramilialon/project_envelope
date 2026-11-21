@@ -699,6 +699,23 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     expect(await screen.findByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.")).toBeInTheDocument();
   });
 
+  it("says the day money dated after today comes in at once, while the budget month loads and if it fails", async () => {
+    const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
+    renderForm({ accounts: [CHECKING, BROKER] });
+    chooseIncomingFromBroker();
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-15" } });
+    expect(screen.getByText("The money comes into “Unassigned” on Sep 15.")).toBeInTheDocument();
+
+    getBudgetMonth.mockRejectedValue(new Error("unavailable"));
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-10-02" } });
+    await waitFor(() => expect(getBudgetMonth).toHaveBeenCalledWith("t", "ws-1", "2026-10"));
+    expect(await screen.findByText("The money comes into “Unassigned” on Oct 2.")).toBeInTheDocument();
+
+    // Today's date needs the amounts: no hint without them.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-01" } });
+    await waitFor(() => expect(screen.queryByText(/The money comes into/)).not.toBeInTheDocument());
+  });
+
   it("says the same for money sent from the off-budget account's own register with a later date", async () => {
     mockBudgetMonth();
     renderForm({ accountId: "acc-broker", accounts: [CHECKING, BROKER] });

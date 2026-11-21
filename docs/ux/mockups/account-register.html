@@ -623,6 +623,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 
   // ---- Scheduled transactions of this account (the same ones the budget month shows), timeline and to-do list
   var TODAY = 25;
+  var TODAY_ISO = '2026-09-25';
   var SCHED = [
     { id: 's-vet', payee: 'Clinica veterinaria', memo: 'richiamo del vaccino', cat: 'vet', amount: -4500, d: 22 },
     { id: 's-stip', payee: 'Stipendio di Anna', amount: 245000, d: 27, income: true },
@@ -840,6 +841,9 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         if (acc.onBudget) return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
         var into = CAT[d.cat];
         if (!into) return '';
+        // Income counts only from its own date (#650, #700): into «Da assegnare» with a date after
+        // today, the hint says on which day the money comes in instead of the from and to.
+        if (d.cat === RTA_ID && d.date > TODAY_ISO) return '<span class="hint">I soldi entrano in «Da assegnare» il ' + dLabel(d.date) + '.</span>';
         return '<span class="hint">I soldi entrano nel budget: ' + (d.cat === RTA_ID ? '«Da assegnare»' : esc(into.name)) + ' passa da ' + f(into.avail) + ' a ' + f(into.avail + a) + '.</span>';
       }
       if (acc.type === 'credit') return '<span class="hint">Paga la carta: scala dalla categoria di pagamento Visa, non tocca le altre categorie.</span>';
