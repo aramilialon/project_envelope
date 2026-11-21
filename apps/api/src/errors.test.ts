@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import { ValidationError } from "@envelope/core";
 import Fastify from "fastify";
 
-import { LOG_REDACT_PATHS, registerErrorHandler, toErrorReply, TooManyRequestsError } from "./errors.ts";
+import { AccountClosedError, LOG_REDACT_PATHS, registerErrorHandler, toErrorReply, TooManyRequestsError } from "./errors.ts";
 import { ID_PARAM_NAMES, isUuid } from "./ids.ts";
 
 describe("registerErrorHandler's logging (#512)", () => {
@@ -117,6 +117,13 @@ describe("toErrorReply (#512)", () => {
     // Any other check violation is still a generic 500: only the closed-account trigger is a 409.
     const other = Object.assign(databaseError("23514", "new row violates check constraint"), { constraint: "trades_buy_check" });
     assert.deepEqual(toErrorReply(other), { statusCode: 500, body: { error: "internal_error" } });
+  });
+
+  it("maps a repository's own closed-account refusal like the trigger's (#741)", () => {
+    assert.deepEqual(toErrorReply(new AccountClosedError("5f0c8a1e-0000-4000-8000-000000000001")), {
+      statusCode: 409,
+      body: { error: "account_closed" },
+    });
   });
 
   it("maps any other database error to a generic 500", () => {

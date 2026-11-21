@@ -316,11 +316,84 @@ describe("writes to a closed account (#729)", () => {
       await assertRefused(() => inject("POST", "/trades", { type: "split", instrumentId, tradeDate: "2026-03-03", splitFrom: 1, splitTo: 2 }));
     });
 
-    it("refuses editing a split that has a row on the closed account, from an open account's row", async () => {
-      // An edit of a split edits every row it stands for, the closed account's included. (Deleting
-      // this one is refused earlier: the closed account sold the units the split gave it.)
+    it("refuses editing or deleting a split that has a row on the closed account, from an open account's row", async () => {
+      // An edit of a split edits every row it stands for, the closed account's included. Deleting
+      // it would also fail the replay (the closed account sold the units the split gave it): the
+      // closed account is answered first (#741).
       await assertRefused(() => inject("PATCH", `/trades/${openSplitRowId}`, { memo: "Ratio confirmed" }));
       await assertRefused(() => inject("PATCH", `/trades/${openSplitRowId}`, { splitTo: 3 }));
+      await assertRefused(() => inject("DELETE", `/trades/${openSplitRowId}`));
+    });
+
+    // #741: each of these would also fail the position replay; the closed account is answered
+    // first, never "insufficient_quantity" or "split_missing_for_portfolio".
+    it("refuses a write the replay would refuse too as account_closed: a sell's quantity or date, a buy's delete, a new sell (#741)", async () => {
+      await assertRefused(() => inject("PATCH", `/trades/${sellId}`, { quantityE8: units(3) }));
+      await assertRefused(() => inject("PATCH", `/trades/${sellId}`, { tradeDate: "2026-03-01" }));
+      await assertRefused(() => inject("DELETE", `/trades/${buyId}`));
+      await assertRefused(() =>
+        inject("POST", "/trades", {
+          type: "sell",
+          accountId: closedId,
+          portfolioId,
+          instrumentId,
+          tradeDate: "2026-09-01",
+          quantityE8: units(1),
+          priceE6: price(50),
+        }),
+      );
+      await assertRefused(() =>
+        inject("POST", "/trades", {
+          type: "transfer",
+          instrumentId,
+          tradeDate: "2026-09-01",
+          quantityE8: units(1),
+          from: { accountId: closedId, portfolioId },
+          to: { accountId: openId, portfolioId },
+        }),
+      );
+    });
+
+    it("still answers a sell beyond the holdings on an open account with insufficient_quantity (#741)", async () => {
+      const before = await snapshot();
+      const response = await inject("POST", "/trades", {
+        type: "sell",
+        accountId: openId,
+        portfolioId,
+        instrumentId,
+        tradeDate: "2026-09-01",
+        quantityE8: units(50),
+        priceE6: price(50),
+      });
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(response.json().error, "insufficient_quantity");
+      assert.deepEqual(await snapshot(), before);
+    });
+
+    it("answers the same write insufficient_quantity while the account is open, and account_closed once it is closed (#741)", async () => {
+      const accountId = await account("brokerage");
+      const common = { accountId, portfolioId, instrumentId, priceE6: price(50) };
+      const buy = await inject("POST", "/trades", { ...common, type: "buy", tradeDate: "2026-06-01", quantityE8: units(1) });
+      assert.equal(buy.statusCode, 201, buy.body);
+      const sell = await inject("POST", "/trades", { ...common, type: "sell", tradeDate: "2026-06-02", quantityE8: units(1) });
+      assert.equal(sell.statusCode, 201, sell.body);
+      const tradeId = sell.json().trades[0].id as string;
+
+      const writes = [
+        () => inject("PATCH", `/trades/${tradeId}`, { quantityE8: units(2) }),
+        () => inject("DELETE", `/trades/${buy.json().trades[0].id as string}`),
+        () => inject("POST", "/trades", { ...common, type: "sell", tradeDate: "2026-06-03", quantityE8: units(1) }),
+      ];
+      for (const write of writes) {
+        const open = await write();
+        assert.equal(open.statusCode, 400, open.body);
+        assert.equal(open.json().error, "insufficient_quantity");
+      }
+
+      await close(accountId);
+      for (const write of writes) {
+        await assertRefused(write);
+      }
     });
   });
 

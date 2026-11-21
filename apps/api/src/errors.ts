@@ -71,6 +71,21 @@ export class TooManyRequestsError extends Error {
   }
 }
 
+/**
+ * A write a repository refuses because an account it touches is closed (#741), checked before any
+ * replay or other check that could fail for another reason. The global handler answers it as it
+ * answers migration 0033's trigger: 409 `account_closed`.
+ */
+export class AccountClosedError extends Error {
+  readonly accountId: string;
+
+  constructor(accountId: string) {
+    super("the account is closed");
+    this.name = "AccountClosedError";
+    this.accountId = accountId;
+  }
+}
+
 const FOREIGN_KEY_VIOLATION = "23503";
 const INVALID_TEXT_REPRESENTATION = "22P02";
 const INSUFFICIENT_PRIVILEGE = "42501";
@@ -138,6 +153,10 @@ function isRowLevelSecurityViolation(error: unknown): boolean {
 export function toErrorReply(error: unknown): ErrorReply {
   if (isValidationError(error)) {
     return { statusCode: validationErrorStatus(error), body: { error: error.code, details: error.details } };
+  }
+
+  if (error instanceof AccountClosedError) {
+    return { statusCode: 409, body: { error: "account_closed" } };
   }
 
   const sqlState = sqlStateOf(error);

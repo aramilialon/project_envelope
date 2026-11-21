@@ -3,6 +3,8 @@
  * delete.
  *
  * Every write follows the same steps, all in the caller's database transaction:
+ * 0. check that every account the request touches is open (#741): a closed account answers 409
+ *    `account_closed`, never a replay's code;
  * 1. build the rows the request stands for (one trade, the two legs of a transfer, or one split row
  *    per portfolio holding the instrument);
  * 2. check their references (brokerage account, portfolio, instrument in the account's currency)
@@ -49,6 +51,7 @@ import {
 import { listTaxRegimes } from "../accounts/tax-regimes.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { AccountClosedError } from "../errors.ts";
 import { createTradeCashLeg, rewriteTradeCashLeg } from "../transactions/repository.ts";
 
 export type { TaxKind, TradeType };
@@ -541,6 +544,32 @@ async function loadInstrument(db: DbClient, instrumentId: string): Promise<Instr
 }
 
 /**
+ * Refuses the write when any of `accountIds` is a closed account of the workspace (#741), before
+ * anything else is checked: a trade on a closed account answers `account_closed`, never
+ * "insufficient_quantity" or another code of the replay. The accounts are read `FOR KEY SHARE`, the
+ * lock migration 0033's trigger takes, which conflicts with the `FOR UPDATE` of `closeAccount`: an
+ * account found open here stays open until the transaction ends. An id that names no account of
+ * the workspace is left to `checkReferences` ("unknown_account").
+ *
+ * @throws AccountClosedError naming the first closed account found.
+ */
+async function checkAccountsOpen(db: DbClient, workspaceId: string, accountIds: Iterable<string | undefined>): Promise<void> {
+  const ids = [...new Set([...accountIds].filter((id): id is string => id !== undefined))].sort();
+  if (ids.length === 0) {
+    return;
+  }
+  const { rows } = await db.query<{ id: string; closed: boolean }>(
+    `SELECT id, closed_at IS NOT NULL AS closed FROM accounts
+     WHERE workspace_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR KEY SHARE`,
+    [workspaceId, ids],
+  );
+  const closed = rows.find((row) => row.closed);
+  if (closed) {
+    throw new AccountClosedError(closed.id);
+  }
+}
+
+/**
  * Serializes every write to one instrument's history in a workspace until the end of the
  * transaction, so the replay below always sees every committed row.
  */
@@ -984,10 +1013,18 @@ export async function createTrades(
   }
 
   await lockInstrumentHistory(db, workspaceId, instrumentId);
+  // The accounts the request names, before anything can fail for another reason (#741).
+  await checkAccountsOpen(
+    db,
+    workspaceId,
+    input.kind === "single" ? [input.accountId] : input.kind === "transfer" ? [input.from?.accountId, input.to?.accountId] : [],
+  );
   const history = instrumentId === null ? [] : await loadInstrumentHistory(db, workspaceId, instrumentId);
 
   const rows =
     input.kind === "single" ? [singleRow(input, instrument)] : input.kind === "transfer" ? transferRows(input) : splitRows(input, history);
+  // A split's accounts come from the history: every account holding the instrument.
+  await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
   await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
   const accounts = await checkRows(db, workspaceId, rows, instrument, "create");
 
@@ -1398,6 +1435,14 @@ export async function updateTrade(
   if (!group) {
     return "not_found";
   }
+  // The accounts the group is on and those the edit moves it to, before anything can fail for
+  // another reason (#741).
+  await checkAccountsOpen(db, workspaceId, [
+    ...group.map((record) => record.accountId),
+    patch.accountId,
+    patch.from?.accountId,
+    patch.to?.accountId,
+  ]);
   const first = group[0]!;
   if (await anyCashLegReconciled(db, workspaceId, group.map((record) => record.id))) {
     return "reconciled";
@@ -1432,6 +1477,8 @@ export async function updateTrade(
       : kind === "transfer"
         ? editedTransferRows(group, patch)
         : editedSplitRows(group, patch, histories.get(instrumentId)!.filter((trade) => !oldIds.has(trade.id)));
+  // A split moved to another date may cover an account it did not before.
+  await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
   const accounts = await checkRows(db, workspaceId, rows, instrument, "edit", group);
 
   // Each instrument's history as it would be after the edit: a row that stays on its instrument
@@ -1508,6 +1555,8 @@ export async function deleteTrade(
   if (!group) {
     return "not_found";
   }
+  // Before the replay, which could refuse the delete for another reason (#741).
+  await checkAccountsOpen(db, workspaceId, group.map((record) => record.accountId));
   const ids = group.map((record) => record.id);
   if (await anyCashLegReconciled(db, workspaceId, ids)) {
     return "reconciled";
