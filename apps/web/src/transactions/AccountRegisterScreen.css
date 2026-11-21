@@ -241,7 +241,8 @@
   color: var(--pen);
 }
 
-.register-screen .status:disabled {
+.register-screen .status:disabled,
+.register-screen .status[aria-disabled="true"] {
   cursor: default;
 }
 
@@ -332,7 +333,8 @@
   color: var(--pen);
 }
 
-.register-screen .ph-tx .st:disabled {
+.register-screen .ph-tx .st:disabled,
+.register-screen .ph-tx .st[aria-disabled="true"] {
   cursor: default;
 }
 

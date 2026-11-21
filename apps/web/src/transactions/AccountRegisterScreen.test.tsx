@@ -782,3 +782,90 @@ describe("AccountRegisterScreen: a one-click action the API refuses (#741)", () 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not unlock this transaction."));
   });
 });
+
+describe("AccountRegisterScreen: focus and messages around a refused action (#741)", () => {
+  const CLOSED: Account = { ...CHECKING, closedAt: "2026-09-20T00:00:00.000Z" };
+  const closedRefusal = () => new ApiError("PATCH failed: 409", 409, "account_closed", {});
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-25T10:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the status button focusable while its request runs, ignores a second press, and leaves focus on it after a refusal", async () => {
+    let reject: (reason: unknown) => void = () => undefined;
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockReturnValue(
+      new Promise((_resolve, rejectWith) => {
+        reject = rejectWith;
+      }),
+    );
+    renderScreen([transaction({ id: "t1", status: "pending" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+    const status = screen.getByRole("button", { name: "Pending: change status" });
+    status.focus();
+
+    fireEvent.click(status);
+    await waitFor(() => expect(status).toHaveAttribute("aria-disabled", "true"));
+    expect(status).toBeEnabled();
+    fireEvent.click(status);
+    expect(updateTransaction).toHaveBeenCalledTimes(1);
+
+    reject(closedRefusal());
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so its transactions can't be changed.");
+    expect(status).toHaveAttribute("aria-disabled", "false");
+    expect(document.activeElement).toBe(status);
+  });
+
+  it("leaves focus on 'Unlock' after a refusal", async () => {
+    vi.spyOn(reconciliationApi, "unlockReconciliation").mockRejectedValue(closedRefusal());
+    renderScreen([transaction({ id: "t1", status: "reconciled" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByText("Supermarket"));
+    const unlock = await screen.findByRole("button", { name: "Unlock" });
+    unlock.focus();
+    fireEvent.click(unlock);
+
+    await screen.findByRole("alert");
+    expect(unlock).toHaveAttribute("aria-disabled", "false");
+    expect(document.activeElement).toBe(unlock);
+  });
+
+  it("clears the line under the balance when a sheet opens, so a refusal never shows twice", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(closedRefusal());
+    vi.spyOn(reconciliationApi, "unlockReconciliation").mockRejectedValue(closedRefusal());
+    renderScreen([transaction({ id: "t1", status: "pending", payee: "Supermarket" }), transaction({ id: "t2", status: "reconciled", payee: "Bakery" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pending: change status" }));
+    await screen.findByRole("alert");
+
+    fireEvent.click(screen.getByText("Bakery"));
+    await screen.findByRole("button", { name: "Unlock" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
+    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
+  });
+
+  it("forgets the 'Unlock' refusal when its sheet closes", async () => {
+    vi.spyOn(reconciliationApi, "unlockReconciliation").mockRejectedValue(closedRefusal());
+    renderScreen([transaction({ id: "t1", status: "reconciled" })], [], [CLOSED]);
+    await screen.findByText("Supermarket");
+
+    fireEvent.click(screen.getByText("Supermarket"));
+    fireEvent.click(await screen.findByRole("button", { name: "Unlock" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "× Close" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Unlock" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Supermarket"));
+    await screen.findByRole("button", { name: "Unlock" });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
