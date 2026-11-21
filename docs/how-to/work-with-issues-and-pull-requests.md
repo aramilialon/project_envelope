@@ -107,15 +107,22 @@ The `commit-msg` hook in `scripts/git-hooks` rejects other formats, and the "PR 
 
 When every issue of a milestone is closed:
 
-1. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
-2. After merging it, tag `main` and publish the release:
+1. Check the repository's open security alerts and deal with every one before going on:
+   ```bash
+   gh api "repos/:owner/:repo/dependabot/alerts?state=open" -q 'length'
+   gh api "repos/:owner/:repo/code-scanning/alerts?state=open" -q '.[] | "\(.number) \(.rule.id) \(.most_recent_instance.location.path)"'
+   gh api "repos/:owner/:repo/secret-scanning/alerts?state=open" -q 'length'
+   ```
+   Each alert is either fixed through an issue and a pull request like any other bug, or, when it is a false positive or does not apply to how the app is deployed, dismissed on GitHub with that reason written in the dismissal comment. A secret-scanning alert also means rotating the secret, not only removing it from the code. The release waits until all three lists are empty.
+2. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
+3. After merging it, tag `main` and publish the release:
    ```bash
    git switch main && git pull
    git tag -a v0.1.0 -m "v0.1.0 API skeleton"
    git push origin v0.1.0
    gh release create v0.1.0 --title "v0.1.0 API skeleton" --generate-notes
    ```
-3. Close the milestone on GitHub.
+4. Close the milestone on GitHub.
 
 ## Safeguards against direct pushes
 
