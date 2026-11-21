@@ -6,6 +6,7 @@ import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
+import { IMPORT_BODY_LIMIT_BYTES } from "./import.ts";
 
 const MAPPING = {
   hasHeaderRow: true,
@@ -144,6 +145,33 @@ describe("import routes", () => {
     const result = imported.json();
     assert.equal(result.staged.length, 1);
     assert.equal(result.staged[0].externalId, "OFX-ROUTE-1");
+  });
+
+  it("answers an OFX file of opening tags that never close at once, staging nothing (#675)", async () => {
+    // ~990 KB, under the body limit: the lazy regular expression this replaced took close to a minute on it.
+    const content = "<STMTTRN>".repeat(110_000);
+    const started = performance.now();
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content, format: "ofx" },
+    });
+    assert.equal(imported.statusCode, 201);
+    assert.equal(imported.json().staged.length, 0);
+    // Generous on purpose (a slow CI runner): the quadratic scan took tens of seconds.
+    assert.ok(performance.now() - started < 5_000);
+  });
+
+  it("refuses an import body over the import size limit with 413, before parsing it (#675)", async () => {
+    const content = "x".repeat(IMPORT_BODY_LIMIT_BYTES);
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { content, format: "ofx" },
+    });
+    assert.equal(imported.statusCode, 413);
   });
 
   it("imports a QIF file, inferring its date format and decimal separator with no mapping at all", async () => {
