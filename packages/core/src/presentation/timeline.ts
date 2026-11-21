@@ -85,6 +85,13 @@ export interface TimelineLayout {
   readonly dayTicks: readonly TimelineDayTick[];
   /** A handful of round money amounts spanning the month's own range, each at its own height — the chart's own vertical scale, there was previously no reference at all for what a given height on the line actually means in money (`#405`). Full (non-compact) mode only, the same restraint `monthAbbrev` already follows. */
   readonly valueTicks: readonly TimelineValueTick[];
+  /**
+   * Where the `valueTicks` labels end (they are right-aligned to it): inside a gutter reserved
+   * on the left of the plot, so the running total, the gridlines and the "future" ground never
+   * run over them (`#591`). Always left of `axisX0`. Full mode only, like `valueTicks`; in compact
+   * mode, which has no labels and no gutter, it is `axisX0` itself.
+   */
+  readonly valueLabelX: number;
   readonly segments: readonly TimelineSegment[];
   /** Present only when `today` is given. */
   readonly current: TimelineCurrent | undefined;
@@ -109,18 +116,40 @@ export interface TimelineInput {
   readonly events: readonly TimelineEvent[];
   /** The account register's own, smaller rendering (`#337`) — default `false`, the budget month's own. */
   readonly compact?: boolean;
+  /**
+   * How wide the label of a `valueTicks` amount will be, in the canvas's own units (`#591`): the
+   * caller formats and measures it, since only it knows the locale, the currency and the font.
+   * The gutter left of the plot is sized from the widest one, so a long or negative amount is never
+   * cut off at the canvas's own edge. Full mode only; without it, the gutter is `DEFAULT_LABEL_WIDTH`.
+   */
+  readonly valueLabelWidth?: (amountCents: Cents) => number;
 }
 
 interface Size {
   readonly width: number;
   readonly height: number;
   readonly inset: number;
+  /** Full mode only: whether a gutter for the `valueTicks` labels is reserved left of the plot (`#591`). */
+  readonly labels: boolean;
   readonly padTop: number;
   readonly padBottom: number;
 }
 
-const FULL: Size = { width: 660, height: 200, inset: 20, padTop: 10, padBottom: 20 };
-const COMPACT: Size = { width: 330, height: 120, inset: 12, padTop: 8, padBottom: 16 };
+const FULL: Size = { width: 660, height: 200, inset: 20, labels: true, padTop: 10, padBottom: 20 };
+const COMPACT: Size = { width: 330, height: 120, inset: 12, labels: false, padTop: 8, padBottom: 16 };
+
+/** The gap between a value label's right edge and the plot. */
+const LABEL_GAP = 6;
+/** Room left of the widest value label, so it never touches the canvas's own edge. */
+const LABEL_MARGIN = 2;
+/** The assumed label width when the caller does not measure its labels (`valueLabelWidth`). */
+const DEFAULT_LABEL_WIDTH = 68;
+/** A measured label width, or the default when the caller measures nothing usable (none, `NaN`, infinite or negative). */
+function labelWidth(measured: number | undefined): number {
+  return measured !== undefined && Number.isFinite(measured) && measured >= 0 ? measured : DEFAULT_LABEL_WIDTH;
+}
+/** The widest a gutter may get, so an absurdly long label cannot squeeze the plot away. */
+const MAX_GUTTER_SHARE = 0.4;
 
 /** Weekly-ish ticks (1, 8, 15, 22...), always ending on the month's own last day. */
 function dayTicks(daysInMonth: number, compact: boolean): readonly number[] {
@@ -148,11 +177,6 @@ function stepDirection(before: number, after: number): TimelineStepDirection {
  */
 export function computeTimeline(input: TimelineInput): TimelineLayout {
   const size = input.compact ? COMPACT : FULL;
-  const x0 = size.inset;
-  const x1 = size.width - size.inset;
-  const span = Math.max(1, input.daysInMonth - 1);
-  const x = (day: number): number => x0 + ((day - 1) * (x1 - x0)) / span;
-  const todayX = input.today === undefined ? undefined : x(input.today);
 
   const recordedNet = new Map<number, number>();
   const scheduledNet = new Map<number, number>();
@@ -202,6 +226,19 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     return ticks;
   })();
 
+  // The plot starts right of a gutter as wide as the widest value label (`#591`); the ticks only
+  // depend on the value range, so they are known before the horizontal scale.
+  const widestLabel = size.labels
+    ? Math.max(0, ...valueTicks.map((tick) => labelWidth(input.valueLabelWidth?.(tick.amountCents))))
+    : 0;
+  const x0 = size.labels
+    ? Math.min(size.width * MAX_GUTTER_SHARE, Math.max(size.inset, LABEL_MARGIN + widestLabel + LABEL_GAP))
+    : size.inset;
+  const x1 = size.width - size.inset;
+  const span = Math.max(1, input.daysInMonth - 1);
+  const x = (day: number): number => x0 + ((day - 1) * (x1 - x0)) / span;
+  const todayX = input.today === undefined ? undefined : x(input.today);
+
   const segments: TimelineSegment[] = [];
   for (let d = 2; d <= lastActualDay; d++) {
     segments.push({
@@ -249,6 +286,7 @@ export function computeTimeline(input: TimelineInput): TimelineLayout {
     todayX,
     dayTicks: dayTicks(input.daysInMonth, input.compact ?? false).map((day) => ({ day, x: x(day) })),
     valueTicks,
+    valueLabelX: size.labels ? x0 - LABEL_GAP : x0,
     segments,
     current,
   };

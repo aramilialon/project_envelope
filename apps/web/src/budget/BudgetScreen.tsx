@@ -38,6 +38,7 @@ import PaymentCategoryDetail from "./PaymentCategoryDetail.tsx";
 import RowDetail from "./RowDetail.tsx";
 import ScheduledPanel from "./ScheduledPanel.tsx";
 import Timeline from "./Timeline.tsx";
+import { timelineValueLabelWidth } from "./textWidth.ts";
 import Todo from "./Todo.tsx";
 import { useBudgetMonth, type BudgetGroup, type BudgetGroupCategory } from "./useBudgetMonth.ts";
 import { useBudgetMonthEvents } from "./useBudgetMonthEvents.ts";
@@ -496,6 +497,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                   daysInMonth: daysInMonth(month),
                   today: today?.day,
                   events: eventsState.status === "ok" ? toTimelineEvents(eventsState.events, today) : [],
+                  valueLabelWidth: timelineValueLabelWidth(money),
                 })}
                 monthLabel={monthLabel(month, intl.locale)}
                 monthAbbrev={monthAbbrev(month, intl.locale)}

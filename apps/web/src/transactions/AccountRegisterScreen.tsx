@@ -8,6 +8,7 @@ import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
 import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
 import Timeline from "../budget/Timeline.tsx";
+import { timelineValueLabelWidth } from "../budget/textWidth.ts";
 import type { Category } from "../categories/api.ts";
 import { plainAmount, shortDate } from "../format.ts";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
@@ -309,6 +310,7 @@ export default function AccountRegisterScreen() {
     daysInMonth: daysInMonth(month),
     today: todayInfo?.day,
     events: toTimelineEvents(events, todayInfo),
+    valueLabelWidth: timelineValueLabelWidth(money),
   });
   const scheduledThisMonth = events.filter((e) => e.kind === "scheduled");
   const projectedBalance = computeProjectedBalance(total, scheduledThisMonth.map((e) => e.amountCents));
