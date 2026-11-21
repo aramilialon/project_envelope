@@ -30,7 +30,8 @@ const FOCUSABLE =
  * (docs/design.md: "narrows the bars while it is open") — that needs the hosting screen's own
  * layout to reserve a column for it, which no screen does yet. This version is a correct,
  * accessible overlay (fixed position) instead; the narrowing behaviour is each consuming
- * screen's own job once it has real content to narrow.
+ * screen's own job once it has real content to narrow. On the phone it covers the whole screen,
+ * above the tab bar (SideSheet.css), the full-screen form design.md describes (#599).
  */
 export default function SideSheet({ title, onClose, children }: Props) {
   const intl = useIntl();

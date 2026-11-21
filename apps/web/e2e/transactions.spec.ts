@@ -297,10 +297,11 @@ test.describe("account register (#54)", () => {
       await expect(sheet).not.toBeVisible();
       await expect(page.getByRole("button", { name: "Transfer · From Broker · Unassigned" })).toBeVisible();
 
-      // The money is there to assign in the budget month.
+      // The money is there to assign in the budget month: the band's own "Unassigned" figure, not
+      // just any €5,000.00 on the page (the timeline's labels show it too).
       await page.getByRole("link", { name: "Budget" }).click();
       await page.waitForURL(`/${workspace.id}`);
-      await expect(page.getByText("€5,000.00").first()).toBeVisible();
+      await expect(page.locator(".rta .amt")).toHaveText("€5,000.00");
 
       // Edited afterwards, the same money goes into Groceries instead.
       await page.getByRole("link", { name: "Accounts" }).click();
@@ -322,6 +323,22 @@ test.describe("account register (#54)", () => {
       await expect(sheet.getByLabel("Category").locator("option").first()).toHaveText("Choose a category");
       await sheet.getByRole("button", { name: "Add", exact: true }).click();
       await expect(sheet.getByRole("alert")).toHaveText("Choose a category.");
+      await sheet.getByRole("button", { name: "Cancel" }).click();
+      await expect(sheet).not.toBeVisible();
+
+      // On a phone the form is full screen, above the tab bar: its buttons are never underneath it.
+      // Playwright's click refuses an element another one covers, so the click itself proves it.
+      await page.setViewportSize({ width: 360, height: 780 });
+      await page.reload();
+      await expect(page.getByRole("navigation", { name: "Main, phone" })).toBeVisible();
+      await page.getByRole("button", { name: "New transaction" }).click();
+      await sheet.getByText("Transfer", { exact: true }).click();
+      await sheet.getByText("From another account", { exact: true }).click();
+      await sheet.getByLabel("Amount").fill("20.00");
+      await sheet.getByLabel("From account").selectOption({ label: "Broker (off budget)" });
+      await sheet.getByRole("button", { name: "Add", exact: true }).click({ timeout: 5_000 });
+      await expect(sheet).not.toBeVisible();
+      await page.setViewportSize({ width: 1280, height: 720 });
     } finally {
       await workspace?.teardown();
       await user.teardown();
