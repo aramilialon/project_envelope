@@ -52,6 +52,12 @@ export async function apiFetch(accessToken: string, method: string, path: string
   });
   if (!response.ok) {
     const { code, details } = await errorBody(response);
+    // A 429's wait is in the body (#566); `Retry-After` is the fallback when a body lacks it
+    // (the header is only readable when the response is same-origin or CORS exposes it).
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    if (response.status === 429 && details.retryAfterSeconds === undefined && Number.isInteger(retryAfter) && retryAfter > 0) {
+      details.retryAfterSeconds = retryAfter;
+    }
     throw new ApiError(`${method} ${path} failed: ${response.status}`, response.status, code, details);
   }
   return response;
