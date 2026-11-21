@@ -5,7 +5,7 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
-import { deleteGoal, getGoalProgress, upsertGoal, type GoalInput, type GoalKind, type RepeatInterval } from "../goals/repository.ts";
+import { deleteGoal, getGoalProgress, listGoalProgress, upsertGoal, type GoalInput, type GoalKind, type RepeatInterval } from "../goals/repository.ts";
 
 const KINDS: readonly GoalKind[] = ["monthly", "by_date", "repeating", "balance"];
 const INTERVALS: readonly RepeatInterval[] = [2, 3, 4, 6, 12, 24];
@@ -91,6 +91,26 @@ export function registerGoalsRoutes(app: FastifyInstance, pool: DbPool): void {
         return;
       }
       return progress;
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
+  });
+
+  // Every goal of the workspace with its progress for one month (#682): the budget screen's own
+  // single request, instead of one `GET .../categories/:categoryId/goal` per category.
+  app.get("/workspaces/:workspaceId/goals", { preHandler }, async (request, reply) => {
+    const { month } = request.query as { month?: string };
+    if (typeof month !== "string") {
+      await reply.code(400).send({ error: "a month query parameter (YYYY-MM) is required" });
+      return;
+    }
+
+    try {
+      assertMonth(month);
+      return { goals: await listGoalProgress(request.db!, request.workspace!.id, month) };
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;

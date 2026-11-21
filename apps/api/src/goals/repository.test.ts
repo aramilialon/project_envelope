@@ -5,7 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { createAssignmentBatch } from "../assignments/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
-import { deleteGoal, getGoal, getGoalProgress, upsertGoal } from "./repository.ts";
+import { deleteGoal, getGoal, getGoalProgress, listGoalProgress, upsertGoal } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -112,5 +112,49 @@ describe("goals repository", () => {
     await deleteGoal(pool, workspaceId, categoryId);
     const progress = await getGoalProgress(pool, workspaceId, categoryId, "2026-09");
     assert.equal(progress, undefined);
+  });
+
+  it("lists every goal's progress for a month, each the same as the per-category progress", async () => {
+    const group = await pool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Listing', 2) RETURNING id",
+      [workspaceId],
+    );
+    const insertCategory = async (name: string, archived = false) =>
+      (
+        await pool.query<{ id: string }>(
+          "INSERT INTO categories (workspace_id, group_id, name, sort_order, archived) VALUES ($1, $2, $3, 1, $4) RETURNING id",
+          [workspaceId, group.rows[0]!.id, name, archived],
+        )
+      ).rows[0]!.id;
+    const monthly = await insertCategory("Groceries");
+    const repeating = await insertCategory("Insurance");
+    const balance = await insertCategory("Buffer");
+    const archived = await insertCategory("Old", true);
+    const withoutGoal = await insertCategory("Nothing");
+    await upsertGoal(pool, workspaceId, categoryId, { kind: "by_date", amountCents: 360_000, dueMonth: "2027-06" });
+    await upsertGoal(pool, workspaceId, monthly, { kind: "monthly", amountCents: 40_000 });
+    await upsertGoal(pool, workspaceId, repeating, { kind: "repeating", amountCents: 60_000, dueMonth: "2026-12", every: 6 });
+    await upsertGoal(pool, workspaceId, balance, { kind: "balance", amountCents: 50_000 });
+    await upsertGoal(pool, workspaceId, archived, { kind: "monthly", amountCents: 1_000 });
+
+    const listed = await listGoalProgress(pool, workspaceId, "2026-09");
+    const byCategory = new Map(listed.map((p) => [p.goal.categoryId, p]));
+    assert.equal(listed.length, 5);
+    assert.equal(byCategory.has(withoutGoal), false);
+    for (const id of [categoryId, monthly, repeating, balance, archived]) {
+      assert.deepEqual(byCategory.get(id), await getGoalProgress(pool, workspaceId, id, "2026-09"));
+    }
+  });
+
+  it("lists nothing for a workspace without goals", async () => {
+    const otherWorkspace = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Empty', 'EUR', 'UTC')", [
+      otherWorkspace,
+    ]);
+    try {
+      assert.deepEqual(await listGoalProgress(pool, otherWorkspace, "2026-09"), []);
+    } finally {
+      await pool.query("DELETE FROM workspaces WHERE id = $1", [otherWorkspace]);
+    }
   });
 });
