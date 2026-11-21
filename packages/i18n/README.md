@@ -11,6 +11,7 @@ The interface's translation catalogs and the list of languages the app ships (AD
 | `locales/<language>.json` | One catalog per other language, translated by hand from `en.json`: the same keys and the same ICU arguments |
 | `src/index.ts` | `SOURCE_LOCALE`, `SHIPPED_LOCALES`, `REVIEW_STATUS` (read from `locales/index.json`) and `resolveLanguage` |
 | `src/resolveLanguage.ts` | `resolveLanguage({ stored, deviceTags, shipped })`: the interface `language` (a stored choice if shipped, else the device's first shipped language, else English) and the `formattingLocale` for amounts and dates (a stored one, else the device's first preference when it carries a language and a region, such as `de-CH` but not `und-CH`, else the language). Device tags may use `_` for `-` (`it_IT`). Pure and platform-neutral: each app passes its own device languages (`navigator.languages` on the web) |
+| `glossary.md` | Interface terms, form of address and tone per language; binding for the translator, checked by the ux-reviewer (ADR 0015) |
 | `src/checkComplete.ts`, `src/check.ts` | The completeness check, `pnpm --filter @envelope/i18n check` |
 | `extract-format.mjs` | The `@formatjs/cli extract` formatter that flattens its output into the plain `{ id: message }` shape of `en.json` |
 
