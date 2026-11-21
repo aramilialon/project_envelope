@@ -155,6 +155,55 @@ describe("ScheduledPanel (#330)", () => {
     expect(listGoalProgress).toHaveBeenLastCalledWith("t", "ws-1", "2026-10");
   });
 
+  it("'Record' says so under the item when its account is closed, and leaves the item in place (#741)", async () => {
+    vi.spyOn(budgetApi, "recordScheduledTransaction").mockRejectedValue(new ApiError("POST failed: 409", 409, "account_closed", {}));
+    const { onChanged } = renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    await screen.findByText("Landlord");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]!);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This account is closed, so the transaction can't be added.");
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(screen.getByText("Landlord")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Record" })[0]).toBeEnabled();
+  });
+
+  it("'Record' says plainly that it failed for any other reason (#741)", async () => {
+    vi.spyOn(budgetApi, "recordScheduledTransaction").mockRejectedValue(new ApiError("POST failed: 500", 500, "internal_error", {}));
+    renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    await screen.findByText("Landlord");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]!);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not record this scheduled transaction.");
+  });
+
+  it("'Record' and 'Skip' say how long to wait when rate-limited (#741)", async () => {
+    vi.spyOn(budgetApi, "skipScheduledTransaction").mockRejectedValue(new ApiError("POST failed: 429", 429, "too_many_requests", { retryAfterSeconds: 30 }));
+    renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    await screen.findByText("Landlord");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Skip" })[0]!);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Too many requests in a short time. Try again in 30 seconds.");
+  });
+
+  it("'Skip' says plainly that it failed, then clears the message once Record succeeds (#741)", async () => {
+    vi.spyOn(budgetApi, "skipScheduledTransaction").mockRejectedValue(new ApiError("POST failed: 409", 409, "account_closed", {}));
+    vi.spyOn(budgetApi, "recordScheduledTransaction").mockResolvedValue({
+      transaction: { id: "tx-1" },
+      scheduledTransaction: scheduledTransaction({ nextDueDate: "2026-10-05" }),
+    });
+    renderPanel([scheduledTransaction({ id: "sched-1", nextDueDate: "2026-09-05" })]);
+    await screen.findByText("Landlord");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Skip" })[0]!);
+    expect(await screen.findByRole("alert")).toHaveTextContent("We could not skip this scheduled transaction.");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Record" })[0]!);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
   it("next month's preview shows 'within the target' when the target already asks enough", async () => {
     renderPanel(
       [scheduledTransaction({ nextDueDate: "2026-10-05", splits: [{ categoryId: "rent", amountCents: 90_000, memo: null }] })],
