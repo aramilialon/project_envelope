@@ -162,6 +162,45 @@ describe("accounts routes", () => {
     }
   });
 
+  it("refuses a currency that is not a known upper-case ISO 4217 code, storing nothing (#652)", async () => {
+    for (const [currency, onBudget] of [
+      ["EURO", false],
+      ["eur", false],
+      ["XYZ", false],
+      ["E1R", false],
+      ["eur", true],
+    ] as const) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name: `Bad currency ${currency}`, type: "savings", currency, onBudget },
+      });
+      assert.equal(response.statusCode, 400, currency);
+      assert.deepEqual(response.json(), { error: "invalid_currency", details: { currency } });
+    }
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name.startsWith("Bad currency")));
+  });
+
+  it("creates an off-budget account in a zero- or three-decimal currency (#652)", async () => {
+    for (const currency of ["JPY", "KWD"]) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name: `Off ${currency}`, type: "savings", currency, onBudget: false },
+      });
+      assert.equal(response.statusCode, 201, currency);
+      assert.equal(response.json().currency, currency);
+    }
+  });
+
   it("rejects an onBudget that is not a real boolean, storing nothing", async () => {
     for (const onBudget of ["false", 0, null]) {
       const name = `Not boolean ${String(onBudget)}`;
