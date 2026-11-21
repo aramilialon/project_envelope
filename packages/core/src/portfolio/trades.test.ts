@@ -5,7 +5,8 @@ import { isValidationError } from "../errors.ts";
 import type { PositionTrade } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
 import { amountOf, PRICE_FACTOR_HUNDREDTH } from "./quantity.ts";
-import { checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
+import { checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
+import type { RegimeCheckedTrade } from "./trades.ts";
 
 type Amounts = Pick<
   PositionTrade,
@@ -295,5 +296,97 @@ describe("checkTradeRegime (#508)", () => {
     for (const regime of ["administered", "self_declared", "managed"] as const) {
       checkTradeRegime(amounts({ type: "buy", grossCents: 1_000 }), context(regime, null, "stock"));
     }
+  });
+});
+
+describe("checkRegimeChange (#653)", () => {
+  type Regime = "self_declared" | "administered" | "managed";
+  const since = (regime: Regime, validFrom = "2020-01-01") => [{ validFrom, regime }];
+  const trade = (
+    id: string,
+    date: string,
+    fields: Partial<Amounts> & Pick<Amounts, "type">,
+    instrumentType: RegimeCheckedTrade["instrumentType"] = null,
+  ): RegimeCheckedTrade => ({ ...amounts(fields), id, date, instrumentType });
+  const conflict = (tradeId: string, tradeDate: string, code: string) => (error: unknown) =>
+    isValidationError(error, "tax_regime_conflicts_with_trade") &&
+    error.details.tradeId === tradeId &&
+    error.details.tradeDate === tradeDate &&
+    error.details.code === code;
+
+  const managedTax = trade("t-managed", "2026-03-01", { type: "tax", taxKind: "managed_result_tax", grossCents: 500 });
+  const stockSale = trade("t-stock", "2026-03-01", { type: "sell", grossCents: 10_000, gainTaxCents: 260 }, "stock");
+  const fundSale = trade("t-fund", "2026-03-01", { type: "sell", grossCents: 10_000, gainTaxCents: 260 }, "fund");
+
+  it("refuses a change that a managed result tax no longer fits", () => {
+    assert.throws(
+      () => checkRegimeChange([managedTax], { before: since("managed"), after: since("self_declared"), domesticWithholdingAgent: true }),
+      conflict("t-managed", "2026-03-01", "tax_kind_not_allowed_in_regime"),
+    );
+  });
+
+  it("refuses self_declared under an administered sale of a stock with gain tax, not of a fund at a withholding agent", () => {
+    assert.throws(
+      () => checkRegimeChange([stockSale], { before: since("administered"), after: since("self_declared"), domesticWithholdingAgent: true }),
+      conflict("t-stock", "2026-03-01", "tax_kind_not_allowed_in_regime"),
+    );
+    checkRegimeChange([fundSale], { before: since("administered"), after: since("self_declared"), domesticWithholdingAgent: true });
+  });
+
+  it("judges only the trades in the periods the change covers", () => {
+    // Self-declared from 2027: the 2026 sale stays under administered.
+    checkRegimeChange([stockSale], {
+      before: since("administered"),
+      after: [...since("administered"), { validFrom: "2027-01-01", regime: "self_declared" }],
+      domesticWithholdingAgent: true,
+    });
+    // A trade already at odds with a period the change leaves alone is not judged again.
+    checkRegimeChange([stockSale], {
+      before: since("self_declared"),
+      after: [...since("self_declared"), { validFrom: "2027-01-01", regime: "administered" }],
+      domesticWithholdingAgent: true,
+    });
+  });
+
+  it("judges every trade when the account had no regime yet", () => {
+    assert.throws(
+      () => checkRegimeChange([stockSale], { before: [], after: since("self_declared"), domesticWithholdingAgent: false }),
+      conflict("t-stock", "2026-03-01", "tax_kind_not_allowed_in_regime"),
+    );
+    checkRegimeChange([stockSale], { before: [], after: since("administered"), domesticWithholdingAgent: true });
+  });
+
+  it("names the earliest trade that breaks", () => {
+    const later = trade("a-later", "2026-05-01", { type: "tax", taxKind: "managed_result_tax", grossCents: 1 });
+    assert.throws(
+      () => checkRegimeChange([later, managedTax], { before: since("managed"), after: since("administered"), domesticWithholdingAgent: true }),
+      conflict("t-managed", "2026-03-01", "tax_kind_not_allowed_in_regime"),
+    );
+  });
+
+  it("judges a gain tax adjustment when the regimes up to its date change", () => {
+    const refund = trade("t-refund", "2026-02-10", { type: "tax", taxKind: "gain_tax_adjustment", grossCents: 100 });
+    const administeredThenSelf = [...since("administered", "2025-01-01"), { validFrom: "2026-01-01", regime: "self_declared" as const }];
+    // Its own period is still self_declared, but the administered one before it is gone.
+    assert.throws(
+      () =>
+        checkRegimeChange([refund], {
+          before: administeredThenSelf,
+          after: [...since("managed", "2025-01-01"), { validFrom: "2026-01-01", regime: "self_declared" as const }],
+          domesticWithholdingAgent: true,
+        }),
+      conflict("t-refund", "2026-02-10", "tax_kind_not_allowed_in_regime"),
+    );
+    checkRegimeChange([refund], { before: since("administered"), after: administeredThenSelf, domesticWithholdingAgent: true });
+  });
+
+  it("leaves the domestic-withholding rule alone: it depends on the broker, not on the regime", () => {
+    const bondBuy = trade(
+      "t-bond",
+      "2026-03-01",
+      { type: "buy", grossCents: 10_000, accruedInterestCents: 100, withholdingDomesticCents: 12 },
+      "bond",
+    );
+    checkRegimeChange([bondBuy], { before: [], after: since("self_declared"), domesticWithholdingAgent: false });
   });
 });
