@@ -54,14 +54,23 @@ const OLD = account("old", "Old account", { closedAt: "2026-02-01" });
 const BALANCES: Record<string, number> = { checking: 341_258, savings: 800_000, broker: 2_150_000, visa: -64_230, old: 0 };
 
 function renderPanel(
-  options: { accounts?: Account[]; currentAccountId?: string; onClose?: () => void; balances?: Record<string, number> } = {},
+  options: {
+    accounts?: Account[];
+    currentAccountId?: string;
+    onClose?: () => void;
+    balances?: Record<string, number>;
+    /** Accounts whose transactions never arrive, so their balance stays unknown. */
+    pending?: string[];
+  } = {},
 ) {
   const balances = options.balances ?? BALANCES;
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(options.accounts ?? [CHECKING, SAVINGS, BROKER, VISA, OLD]);
   const listTransactions = vi
     .spyOn(transactionsApi, "listTransactionsForAccount")
-    .mockImplementation((_token, _workspaceId, accountId) => Promise.resolve([transactionOf(balances[accountId] ?? 0)]));
+    .mockImplementation((_token, _workspaceId, accountId) =>
+      options.pending?.includes(accountId) ? new Promise(() => {}) : Promise.resolve([transactionOf(balances[accountId] ?? 0)]),
+    );
   const onClose = options.onClose ?? vi.fn();
   const rendered = renderWithIntl(
     <MemoryRouter initialEntries={["/ws-1"]}>
@@ -180,7 +189,7 @@ describe("AccountsPanel: currencies and securities (#652)", () => {
     expect(within(screen.getByRole("button", { name: /^Checking/ })).getByText("€1,000.00")).toBeInTheDocument();
     // The net worth is the checking account alone, never 1,000 + 3,000 + 500.
     expect(screen.getAllByText("€1,000.00")).toHaveLength(2);
-    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Net worth does not include securities (no prices yet)")).not.toBeInTheDocument();
   });
 
   it("has no note when every account is in the base currency", async () => {
@@ -195,9 +204,22 @@ describe("AccountsPanel: currencies and securities (#652)", () => {
     const holds = vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(true);
     renderPanel({ accounts: [CHECKING, EU_BROKER], balances: { checking: 100_000, "eu-broker": 20_000 } });
 
-    expect(await screen.findByText("Does not include securities (no prices yet)")).toBeInTheDocument();
+    expect(await screen.findByText("Net worth does not include securities (no prices yet)")).toBeInTheDocument();
     expect(holds).toHaveBeenCalledWith("t", "ws-1", "eu-broker");
     expect(holds).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing about securities until the net worth itself is shown", async () => {
+    const EU_BROKER = account("eu-broker", "Broker", { type: "brokerage", onBudget: false });
+    const holds = vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(true);
+    renderPanel({ accounts: [CHECKING, EU_BROKER], pending: ["checking"] });
+
+    // The account list is in, but the checking account's balance never arrives.
+    expect(await screen.findByRole("button", { name: /^Broker/ })).toBeInTheDocument();
+    await vi.waitFor(() => expect(holds).toHaveBeenCalled());
+    await holds.mock.results[0]!.value;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Net worth does not include securities (no prices yet)")).not.toBeInTheDocument();
   });
 
   it("says nothing about securities when no brokerage account holds any", async () => {
@@ -207,7 +229,7 @@ describe("AccountsPanel: currencies and securities (#652)", () => {
 
     expect(await screen.findByText("€1,200.00")).toBeInTheDocument();
     expect(holds).toHaveBeenCalled();
-    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Net worth does not include securities (no prices yet)")).not.toBeInTheDocument();
   });
 
   it("asks about securities only for brokerage accounts", async () => {
@@ -216,7 +238,7 @@ describe("AccountsPanel: currencies and securities (#652)", () => {
 
     expect(await screen.findByText("€32,270.28")).toBeInTheDocument();
     expect(holds).not.toHaveBeenCalled();
-    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Net worth does not include securities (no prices yet)")).not.toBeInTheDocument();
   });
 });
 

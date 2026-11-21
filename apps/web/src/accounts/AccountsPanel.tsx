@@ -34,7 +34,8 @@ export interface AccountsPanelProps {
  * "Close" button both dismiss it. Each balance is shown in its account's own currency, and the net
  * worth adds up the base-currency ones only (#652): a note under it lists what other currencies
  * hold, each in its own, and another says securities are not included whenever a brokerage
- * account holds some, until exchange rates (#86) and prices (#125) exist.
+ * account holds some; both notes show only once the net worth itself does, until exchange rates
+ * (#86) and prices (#125) exist.
  */
 export default function AccountsPanel({ workspaceId, currency, currentAccountId, refreshKey, onClose }: AccountsPanelProps) {
   const intl = useIntl();
@@ -118,9 +119,9 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
             )}
           </p>
         )}
-        {holdsSecurities && (
+        {netWorthKnown && holdsSecurities && (
           <p className="nw-note">
-            {intl.formatMessage({ id: "accountsPanel.netWorth.noSecurities", defaultMessage: "Does not include securities (no prices yet)" })}
+            {intl.formatMessage({ id: "accountsPanel.netWorth.noSecurities", defaultMessage: "Net worth does not include securities (no prices yet)" })}
           </p>
         )}
       </div>
