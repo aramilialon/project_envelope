@@ -150,6 +150,35 @@ Reading the debt as `available + uncovered` would give −€8.66 here, which is
   (available is −€300), uncovered = 0, and to cover = max(0, 0 − (−300)) = **€300**: the row reads
   "€300.00 to cover: paid beyond what was set aside".
 
+**Card debt is asked once, on the card.** Card spending beyond what a category had is credit
+overspending on that category *and* part of the card's uncovered debt, since the card owes it and
+no money moved into the payment category for it. It is the same money, so the budget asks for it
+once, on the payment category: a category's "To do" item, "Move money" and quick assign's "Cover
+overspending" ask only for its cash overspending, and the category's detail just says that its card
+part is now part of the card's debt, with a link to the card. Assigning to the category is still
+fine — it moves the money into the card, and the card's "to cover" goes down by the same amount.
+
+**Example (two cards).** Groceries has nothing assigned. A Mastercard is added owing €500, €45.67
+of groceries go on it, and €300 is paid to it from checking. A Visa gets €45.67 of groceries too,
+and is paid exactly €45.67.
+
+- Groceries: credit overspending €91.34, cash overspending €0 — no "To do" item of its own.
+- Mastercard: owed = 500 + 45.67 − 300 = €245.67, available = −€300, to cover = 245.67 + 300 =
+  **€545.67**.
+- Visa: owed = €0, available = −€45.67, to cover = **€45.67**.
+- The list asks €545.67 + €45.67 = **€591.34** in all. Assigning both leaves the Mastercard's
+  payment category holding €245.67, exactly what it owes, and the Visa's €0.
+- The other order gives the same total: assigning €91.34 to Groceries first moves €45.67 into each
+  card; the Mastercard then asks €500.00 and the Visa nothing, €91.34 + €500.00 = €591.34.
+
+Asking for the €91.34 on Groceries as well would have asked €682.68 and left the cards holding
+€91.34 more than they owe.
+
+**Example (cash and card together).** Groceries has nothing assigned; €50 is spent from checking and
+€300 on the Visa. Credit overspending = min(350, 300) = €300, cash overspending = €50. The row reads
+"€50.00 overspent in cash, €300.00 with a card"; the list asks "Cover Groceries" €50.00 and "Debt to
+cover: Visa" €300.00, €350.00 in all.
+
 **A card's starting balance.** Adding a card that already carries debt creates one transaction,
 categorized straight to the card's own payment category — not to an ordinary spending category, and
 not counted as this month's activity. Treating it as ordinary spending would break two things at
