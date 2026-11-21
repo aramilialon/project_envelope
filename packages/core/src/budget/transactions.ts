@@ -172,7 +172,7 @@ export function aggregateTransactions(
           );
         }
         if (t.amount > 0) {
-          income.push({ month, amount: t.amount });
+          income.push({ month, date: t.date, amount: t.amount });
           continue;
         }
         throw new ValidationError(
@@ -227,7 +227,7 @@ export function aggregateTransactions(
           { transactionId: t.id },
         );
       }
-      income.push({ month, amount: t.amount });
+      income.push({ month, date: t.date, amount: t.amount });
       continue;
     }
 

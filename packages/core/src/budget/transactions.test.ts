@@ -30,7 +30,7 @@ describe("aggregateTransactions", () => {
       tx({ accountId: "checking", date: "2026-09-03", amount: -4550, categoryId: "groceries" }),
     ]);
 
-    assert.deepEqual(result.income, [{ month: "2026-09", amount: 200000 }]);
+    assert.deepEqual(result.income, [{ month: "2026-09", date: "2026-09-01", amount: 200000 }]);
     assert.deepEqual(result.activity, [{ categoryId: "groceries", month: "2026-09", amount: -4550 }]);
     assert.deepEqual(result.cardPayments, []);
   });
@@ -150,7 +150,7 @@ describe("money coming back from an off-budget account (#598)", () => {
   const budget = (transactions: readonly BudgetTransaction[], month: string, extra: BudgetInput["assignments"] = []) => {
     const aggregated = aggregateTransactions(ACCOUNTS, transactions);
     return computeBudgetMonth(
-      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregated, assignments: [...assignments, ...extra] },
+      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregated, assignments: [...assignments, ...extra], today: "2026-12-31" },
       month,
     );
   };
@@ -172,8 +172,8 @@ describe("money coming back from an off-budget account (#598)", () => {
     ];
     const aggregated = aggregateTransactions(ACCOUNTS, transactions);
     assert.deepEqual(aggregated.income, [
-      { month: "2026-09", amount: 300000 },
-      { month: "2026-09", amount: 500000 },
+      { month: "2026-09", date: "2026-09-01", amount: 300000 },
+      { month: "2026-09", date: "2026-09-15", amount: 500000 },
     ]);
     assert.deepEqual(aggregated.activity, []);
 
@@ -258,7 +258,8 @@ describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
   //   unassigned money + available of every category and payment category
   //   + assigned in future + this month's credit overspending + this month's reserved
-  //   = balance of the on-budget cash accounts
+  //   = balance of the on-budget cash accounts at the end of the month, less the income dated
+  //     after today (not received yet, so it counts nowhere: rule 1)
   // Credit overspending is added back because it is spending that no cash covers yet: card
   // debt. Reserved is added back for the same reason: a scheduled item not yet recorded has
   // not moved any real cash either, only reduced a category's own reported available.
@@ -277,8 +278,8 @@ describe("budget invariant with accounts and credit cards", () => {
       { id: "broker", type: "cash", onBudget: false },
     ];
     const paymentCategoryIds = ["visa-payment", "amex-payment"];
-    // Income counts through `asOf` (see below): money in UNASSIGNED, and an uncategorized leg
-    // coming in from the off-budget broker (#598).
+    // Income: money in UNASSIGNED, and an uncategorized leg coming in from the off-budget
+    // broker (#598). Income dated after today is left out of the balance below.
     const isIncome = (t: BudgetTransaction) =>
       t.categoryId === UNASSIGNED || (t.transferAccountId === "broker" && t.categoryId === undefined && t.amount > 0);
 
@@ -366,6 +367,8 @@ describe("budget invariant with accounts and credit cards", () => {
       // A starting balance (or any card debt tracked outside the budget) is external to
       // the invariant: it must never move money between the budget and the cash accounts.
       const cardBalances = paymentCategoryIds.map((id) => ({ paymentCategoryId: id, owed: amount(300000) }));
+      // Today falls inside the history most of the time, so some income is not received yet.
+      const today = random() < 0.25 ? "2026-12-31" : date();
       const input: BudgetInput = {
         categoryIds,
         paymentCategoryIds,
@@ -379,6 +382,7 @@ describe("budget invariant with accounts and credit cards", () => {
         // Not yet recorded, so no real cash moved for these — reserved is added back below,
         // the same way creditOverspending already is.
         scheduledItems: Array.from({ length: 5 }, () => ({ categoryId: pick(categoryIds), amount: amount(50000) })),
+        today,
       };
       const month = pick(months);
 
@@ -390,21 +394,9 @@ describe("budget invariant with accounts and credit cards", () => {
         result.assignedInFuture +
         result.creditOverspending +
         result.reserved;
-      // `unassigned` counts income through the latest month with any real data ("asOf", #488),
-      // not merely through the requested month — everything else above stays scoped to `month`
-      // exactly as before, so only the income side of the real cash balance needs the same
-      // wider horizon; ordinary activity still only counts through `month` itself.
-      const asOf = [
-        month,
-        ...aggregated.income.map((i) => i.month),
-        ...input.assignments.map((a) => a.month),
-        ...aggregated.activity.map((a) => a.month),
-        ...aggregated.cardPayments.map((p) => p.month),
-        ...aggregated.cardTransfers.map((t) => t.month),
-      ].reduce((latest, m) => (m > latest ? m : latest), month);
       const cashBalance = transactions
         .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
-        .filter((t) => t.date.slice(0, 7) <= (isIncome(t) ? asOf : month))
+        .filter((t) => t.date.slice(0, 7) <= month && !(isIncome(t) && t.date > today))
         .reduce((sum, t) => sum + t.amount, 0);
 
       assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);

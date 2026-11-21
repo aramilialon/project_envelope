@@ -351,6 +351,8 @@ class Walk {
     if (touched.budget && model.persona !== "investor") {
       // The touched accounts' balances as the API just listed them; the others' as the model has
       // them, already checked against the API when they were last touched (and at every full check).
+      // Every date of the walk falls on or before the end of LAST_MONTH, so these are the balances
+      // at its end; the full check reads every month against the balances at its own end.
       const balances = new Map<string, number>();
       for (const account of model.budgetCashAccounts()) {
         const list = lists.get(account.id);

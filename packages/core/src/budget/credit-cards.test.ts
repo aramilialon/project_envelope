@@ -22,6 +22,8 @@ function budget(overrides: Partial<BudgetInput>): BudgetInput {
     assignments: [],
     activity: [],
     cardPayments: [],
+    // A fixed today after all the data in these examples.
+    today: "2026-12-31",
     ...overrides,
   };
 }

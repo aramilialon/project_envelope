@@ -18,6 +18,7 @@ import { listAssignmentTotals } from "../assignments/repository.ts";
 import { listAccounts, type AccountRecord, type AccountType } from "../accounts/repository.ts";
 import { listCategories, listCategoryGroups, type CategoryGroupRecord, type CategoryRecord } from "../categories/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { getCurrentDate } from "../days-of-buffer/repository.ts";
 import { listReservationsForMonth } from "../scheduled-transactions/repository.ts";
 import { isStartingBalanceSplit, listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
 
@@ -190,7 +191,9 @@ function joinCategory(
  * `computeBudgetMonth` recomputes every month since the workspace's first data to get
  * rollover right, so this loads every transaction and assignment unconditionally, not just
  * `month`'s own — accepted for now (no pagination or date-bounding), worth revisiting if it
- * becomes a real cost.
+ * becomes a real cost. Income dated after today, in the workspace's time zone, is not received
+ * yet and counts nowhere (#650): every caller (budget screen, problems, quick-assign, targets,
+ * the notifications job) gets the same today from here.
  */
 export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string, month: string): Promise<BudgetMonthResponse> {
   // Sequential, not Promise.all: `db` is often a single request-scoped `PoolClient`
@@ -229,6 +232,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
     amount: t.amountCents,
   }));
   const scheduledItems = await listReservationsForMonth(db, workspaceId, month);
+  const today = await getCurrentDate(db, workspaceId);
 
   const budgetMonth = computeBudgetMonth(
     {
@@ -241,6 +245,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
       cardTransfers: aggregated.cardTransfers,
       cardBalances,
       scheduledItems,
+      today,
     },
     month,
   );

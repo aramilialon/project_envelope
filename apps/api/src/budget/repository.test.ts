@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 
 import { isValidationError } from "@envelope/core";
 
@@ -9,6 +9,7 @@ import { createTransaction, createTransfer } from "../transactions/repository.ts
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { createScheduledTransaction } from "../scheduled-transactions/repository.ts";
+import { getCurrentDate } from "../days-of-buffer/repository.ts";
 import { getBudgetMonth, listBudgetProblems } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -342,5 +343,74 @@ describe("budget month repository", () => {
     const investments = october.categories.find((c) => c.categoryId === investmentsCategoryId);
     assert.equal(investments?.activity, -12_000);
     assert.equal(investments?.available, 8_000);
+  });
+});
+
+describe("budget month repository: unassigned money counts only money already received (#650)", () => {
+  let pool: DbPool;
+  let workspaceId: string;
+  let checkingAccountId: string;
+
+  /** `date` moved by `days` days, "YYYY-MM-DD". */
+  const addDays = (date: string, days: number): string => {
+    const shifted = new Date(`${date}T00:00:00Z`);
+    shifted.setUTCDate(shifted.getUTCDate() + days);
+    return shifted.toISOString().slice(0, 10);
+  };
+
+  const income = (occurredAt: string, amountCents: number) =>
+    createTransaction(pool, { workspaceId, accountId: checkingAccountId, occurredAt, splits: [{ categoryId: null, amountCents }] });
+
+  before(async () => {
+    pool = createPool(databaseUrl);
+    await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+  });
+
+  // Each test gets its own workspace, so none depends on another's data.
+  beforeEach(async () => {
+    workspaceId = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Test', 'EUR', 'Europe/Rome')", [workspaceId]);
+    const account = await pool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Checking', 'checking', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    checkingAccountId = account.rows[0]!.id;
+  });
+
+  afterEach(async () => {
+    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+  });
+
+  after(async () => {
+    await pool.end();
+  });
+
+  it("a month never shows income dated after it", async () => {
+    await income("2025-09-25", 300_000);
+    assert.equal((await getBudgetMonth(pool, workspaceId, "2025-08")).unassigned, 0);
+    assert.equal((await getBudgetMonth(pool, workspaceId, "2025-09")).unassigned, 300_000);
+
+    await income("2025-10-25", 300_000);
+    assert.equal((await getBudgetMonth(pool, workspaceId, "2025-08")).unassigned, 0);
+    assert.equal((await getBudgetMonth(pool, workspaceId, "2025-09")).unassigned, 300_000);
+    assert.equal((await getBudgetMonth(pool, workspaceId, "2025-10")).unassigned, 600_000);
+  });
+
+  it("income dated after the workspace's today counts nowhere until its date", async () => {
+    const today = await getCurrentDate(pool, workspaceId);
+    const later = addDays(today, 3);
+    const thisMonth = today.slice(0, 7);
+    const laterMonth = later.slice(0, 7);
+    await income(today, 100_000);
+    const previous = {
+      thisMonth: (await getBudgetMonth(pool, workspaceId, thisMonth)).unassigned,
+      laterMonth: (await getBudgetMonth(pool, workspaceId, laterMonth)).unassigned,
+    };
+    assert.equal(previous.thisMonth, 100_000, "income dated today counts");
+
+    await income(later, 50_000);
+
+    assert.equal((await getBudgetMonth(pool, workspaceId, thisMonth)).unassigned, previous.thisMonth);
+    assert.equal((await getBudgetMonth(pool, workspaceId, laterMonth)).unassigned, previous.laterMonth);
   });
 });
