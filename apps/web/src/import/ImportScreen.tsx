@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
+import { formatMoney, parseBalance, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -148,12 +148,9 @@ export default function ImportScreen() {
       return undefined;
     }
     try {
-      return parseAmount(closingBalanceStr, { locale: intl.locale, currency });
-    } catch (caught) {
-      // Above the cap (#651): said, rather than silently left out like an unreadable balance.
-      if (isAmountTooLarge(caught)) {
-        throw caught;
-      }
+      // A balance, not an amount being written: not held to the cap on a single amount (#651).
+      return parseBalance(closingBalanceStr, { locale: intl.locale, currency });
+    } catch {
       return undefined;
     }
   }

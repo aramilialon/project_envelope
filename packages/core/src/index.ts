@@ -2,7 +2,17 @@
 export type { ValidationErrorCode } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
-export { assertAmount, assertCents, assertTotal, currencyDecimals, formatMoney, MAX_AMOUNT_CENTS, parseAmount, sumCents } from "./money.ts";
+export {
+  assertAmount,
+  assertCents,
+  assertTotal,
+  currencyDecimals,
+  formatMoney,
+  MAX_AMOUNT_CENTS,
+  parseAmount,
+  parseBalance,
+  sumCents,
+} from "./money.ts";
 export type { Price, PriceFactor, Quantity } from "./portfolio/quantity.ts";
 export {
   amountOf,

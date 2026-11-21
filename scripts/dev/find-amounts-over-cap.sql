@@ -5,7 +5,8 @@
 -- every budget-month read of that workspace then fails with 422 `amount_total_overflow`.
 --
 -- A transaction is listed when one of its splits, or its own amount (the sum of its splits), is
--- above the cap; a trade when any of its figures is.
+-- above the cap; a trade when any of its figures is. A reconciliation's statement balance is a
+-- balance, not an amount being written, and is not capped: it is not listed.
 --
 -- Read-only. Run it as the table owner (the `envelope` role, DATABASE_URL), which Row-Level
 -- Security does not restrict, so it sees every workspace:
@@ -37,10 +38,6 @@ UNION ALL
 SELECT 'goal', workspace_id, id, NULL, amount_cents::numeric, NULL
 FROM goals
 WHERE abs(amount_cents) > (SELECT max FROM cap)
-UNION ALL
-SELECT 'reconciliation', workspace_id, id, account_id, statement_balance_cents::numeric, NULL
-FROM reconciliations
-WHERE abs(statement_balance_cents) > (SELECT max FROM cap)
 UNION ALL
 SELECT 'staged transaction', workspace_id, id, account_id, amount_cents::numeric, NULL
 FROM staged_transactions

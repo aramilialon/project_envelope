@@ -6,6 +6,7 @@
 
 import {
   assertAmount,
+  assertCents,
   detectDuplicates,
   isValidationError,
   parseCamt053,
@@ -123,9 +124,10 @@ async function stageParsedRows(
   parsedRows: readonly ImportRow[],
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
-  // The parsers already cap every amount they read (#651); a statement's closing balance is typed.
+  // The parsers already cap every amount they read (#651). The closing balance is only compared, never
+  // written or added up, so it is not capped: a balance may lawfully be above any single amount.
   for (const row of parsedRows) assertAmount(row.amountCents);
-  if (closingBalanceCents !== undefined) assertAmount(closingBalanceCents, "closingBalance");
+  if (closingBalanceCents !== undefined) assertCents(closingBalanceCents, "closingBalance");
   const existingTransactions = await listTransactionsForAccount(db, workspaceId, accountId);
   const existing: ExistingTransaction[] = existingTransactions.map((t) => ({
     id: t.id,

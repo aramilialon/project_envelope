@@ -176,6 +176,29 @@ describe("ImportScreen (#59)", () => {
     expect(screen.getByRole("button", { name: "Import another file" })).not.toHaveClass("primary");
   });
 
+  it("sends a closing balance above the cap on a single amount: a balance is not capped (#651)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+
+    fireEvent.change(screen.getByLabelText(/Closing balance/), { target: { value: "1,200,000,000.00" } });
+    const stage = vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [{ id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Supermarket", memo: null, amountCents: -4_250, externalId: null, duplicateOf: null, createdAt: "2026-09-01" }],
+      duplicateCount: 0,
+      closingBalance: { statementCents: 120_000_000_000, projectedCents: 120_000_000_000, differenceCents: 0 },
+    });
+    const file = new File(["<OFX></OFX>"], "statement.ofx");
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+    await screen.findByText("Supermarket");
+
+    expect(stage).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ closingBalanceCents: 120_000_000_000 }),
+    );
+  });
+
   it("leaves 'Import another file' as the primary action once the statement's closing balance already matches", async () => {
     renderScreen();
     await screen.findByText(/Checking/);

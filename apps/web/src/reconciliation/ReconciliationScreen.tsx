@@ -1,4 +1,4 @@
-import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, parseBalance } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -78,13 +78,13 @@ export default function ReconciliationScreen() {
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const openCategories = categories.filter((c) => !c.archived);
 
+  // A balance, not an amount being written: not held to the cap on a single amount (#651);
+  // only an adjustment, a transaction of its own, is.
   let statementCents: number | null = null;
-  let statementTooLarge = false;
   try {
-    statementCents = statementStr.trim() ? parseAmount(statementStr, { locale: intl.locale, currency }) : null;
-  } catch (caught) {
+    statementCents = statementStr.trim() ? parseBalance(statementStr, { locale: intl.locale, currency }) : null;
+  } catch {
     statementCents = null;
-    statementTooLarge = isAmountTooLarge(caught);
   }
   const invalidStatement = statementStr.trim() !== "" && statementCents === null;
 
@@ -153,12 +153,8 @@ export default function ReconciliationScreen() {
         setError(intl.formatMessage({ id: "reconcile.outOfDate", defaultMessage: "Something changed in this account; refresh and try again." }));
         state.refetch();
       }
-    } catch (caught) {
-      setError(
-        isAmountTooLarge(caught)
-          ? amountTooLargeMessage(intl, currency)
-          : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }),
-      );
+    } catch {
+      setError(intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." }));
     } finally {
       setSubmitting(false);
     }
@@ -329,9 +325,7 @@ export default function ReconciliationScreen() {
             </b>
           </div>
 
-          {statementTooLarge ? (
-            <span className="hint bad">{amountTooLargeMessage(intl, currency)}</span>
-          ) : invalidStatement ? (
+          {invalidStatement ? (
             <span className="hint bad">{intl.formatMessage({ id: "reconcile.invalidAmount", defaultMessage: "Enter the amount as shown on your statement, for example 1,234.56." })}</span>
           ) : statementCents === null ? (
             <span className="hint">{intl.formatMessage({ id: "reconcile.enterStatement", defaultMessage: "Enter the statement balance to see the difference." })}</span>

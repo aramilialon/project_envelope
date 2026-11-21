@@ -183,28 +183,49 @@ describe("the cap on a single amount (#651)", () => {
     await accepted("POST", path, { format: "csv", mapping, content: "2026-09-03,Sale,1000000000.00\n" });
     await tooLarge("POST", path, { format: "csv", mapping, content: "2026-09-03,Sale,1000000000.01\n" });
     const content = "2026-09-03,Coffee,-3.00\n";
-    await accepted("POST", path, { format: "csv", mapping, content, closingBalanceCents: CAP });
-    assert.equal((await tooLarge("POST", path, { format: "csv", mapping, content, closingBalanceCents: CAP + 1 })).label, "closingBalance");
+    // The closing balance is only compared with the account's, never written: it is not capped.
+    const staged = await accepted<{ closingBalance: { statementCents: number } }>("POST", path, {
+      format: "csv",
+      mapping,
+      content,
+      closingBalanceCents: 120_000_000_000,
+    });
+    assert.equal(staged.closingBalance.statementCents, 120_000_000_000);
   });
 
-  it("reconciliation: the statement balance and the adjustment", async () => {
-    const savingsId = await insertAccount("Savings", "savings", true);
-    const path = `/accounts/${savingsId}/reconciliations`;
-    const spent = await accepted<{ id: string }>("POST", `/accounts/${savingsId}/transactions`, {
-      occurredAt: "2026-09-04",
-      status: "cleared",
-      splits: [{ categoryId: groceriesId, amountCents: -1 }],
-    });
+  it("reconciliation: the statement balance is not capped, the adjustment is", async () => {
     const reconcile = (statementBalanceCents: number, tickedTransactionIds: string[]) => ({
       date: "2026-09-30",
       statementBalanceCents,
       tickedTransactionIds,
       adjustment: { categoryId: null },
     });
-    assert.equal((await tooLarge("POST", path, reconcile(CAP + 1, []))).label, "statementBalance");
-    // €1,000,000,000.00 on the statement, −€0.01 ticked: the adjustment would be one cent over the cap.
-    assert.equal((await tooLarge("POST", path, reconcile(CAP, [spent.id]))).label, "adjustment");
-    await accepted("POST", path, reconcile(CAP - 1, [spent.id]));
+    const cleared = async (accountId: string, amountCents: number) =>
+      (
+        await accepted<{ id: string }>("POST", `/accounts/${accountId}/transactions`, {
+          occurredAt: "2026-09-04",
+          status: "cleared",
+          splits: [{ categoryId: amountCents > 0 ? null : groceriesId, amountCents }],
+        })
+      ).id;
+
+    // Cleared €1,200,000,000.00 (two deposits at €600,000,000.00), and the same on the statement: no adjustment.
+    const richId = await insertAccount("Treasury", "savings", true);
+    const deposits = [await cleared(richId, 60_000_000_000), await cleared(richId, 60_000_000_000)];
+    const matched = await accepted<{ outcome: string; reconciliation: { statementBalanceCents: number } }>(
+      "POST",
+      `/accounts/${richId}/reconciliations`,
+      reconcile(120_000_000_000, deposits),
+    );
+    assert.equal(matched.outcome, "reconciled");
+    assert.equal(matched.reconciliation.statementBalanceCents, 120_000_000_000);
+    const listed = await request<{ transactions: unknown[] }>("GET", `/accounts/${richId}/transactions`);
+    assert.equal(listed.body.transactions.length, 2, "no adjustment transaction");
+
+    // €900,000,000.00 on the statement, −€200,000,000.00 cleared: the adjustment of €1,100,000,000.00 is refused.
+    const owedId = await insertAccount("Savings", "savings", true);
+    const spent = await cleared(owedId, -20_000_000_000);
+    assert.equal((await tooLarge("POST", `/accounts/${owedId}/reconciliations`, reconcile(90_000_000_000, [spent]))).label, "adjustment");
   });
 
   it("trades: gross, fees and taxes", async () => {
@@ -218,6 +239,24 @@ describe("the cap on a single amount (#651)", () => {
     assert.equal((await tooLarge("POST", "/trades", { ...buy, grossCents: CAP + 1 })).label, "grossCents");
     // Each figure at the cap, but the cash leg one cent over it.
     assert.equal((await tooLarge("POST", "/trades", { ...buy, grossCents: CAP, feesCents: 1 })).label, "cash");
+  });
+
+  it("trades stored before the cap: a position cost beyond the safe range answers 422 naming the trade", async () => {
+    const oldBrokerageId = await insertAccount("Old brokerage", "brokerage", false);
+    const ids: string[] = [];
+    for (const day of ["2026-09-06", "2026-09-07"]) {
+      const { rows } = await superuserPool.query<{ id: string }>(
+        `INSERT INTO trades (workspace_id, account_id, portfolio_id, instrument_id, type, trade_date, quantity_e8, price_e6, gross_cents)
+         VALUES ($1, $2, $3, $4, 'buy', $5, 100000000, 1000000, $6) RETURNING id`,
+        [workspaceId, oldBrokerageId, portfolioId, instrumentId, day, 2 ** 52],
+      );
+      ids.push(rows[0]!.id);
+    }
+    const positions = await request<ErrorBody>("GET", `/accounts/${oldBrokerageId}/positions`);
+    assert.equal(positions.status, 422, JSON.stringify(positions.body));
+    assert.equal(positions.body.error, "amount_total_overflow");
+    assert.equal(positions.body.details.tradeId, ids[1]);
+    await superuserPool.query("DELETE FROM trades WHERE id = ANY($1)", [ids]);
   });
 
   it("two transfers in at the cap still give a readable budget month", async () => {

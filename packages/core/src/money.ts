@@ -165,6 +165,27 @@ function groupPattern(group: string): string {
  *   (details: label, max, value) beyond `MAX_AMOUNT_CENTS`.
  */
 export function parseAmount(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
+  const result = parseMinorUnits(text, options);
+  // Too many digits to be exact is too large too: the cap is far inside the safe range.
+  if (!Number.isSafeInteger(result) || Math.abs(result) > MAX_AMOUNT_CENTS) throw amountTooLarge(result, "amount");
+  return result;
+}
+
+/**
+ * Parses a balance typed by the user, such as a statement's closing balance,
+ * like `parseAmount` but without the cap on a single amount: a balance is only
+ * compared with the account's, never written or added up (ADR 0002, #651).
+ *
+ * @throws ValidationError with code "invalid_amount_format", or "invalid_amount"
+ *   (details: label, value) beyond the safe range of minor units.
+ */
+export function parseBalance(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
+  const result = parseMinorUnits(text, options);
+  assertCents(result, "amount");
+  return result;
+}
+
+function parseMinorUnits(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
   const decimals = currencyDecimals(options.currency);
   const parts = matchLocaleDecimal(text, options.locale, decimals);
   if (parts === null) {
@@ -176,11 +197,7 @@ export function parseAmount(text: string, options: { locale: Locale; currency: C
   const whole = Number(parts.integerDigits);
   const minor = decimals > 0 ? Number(parts.fractionDigits.padEnd(decimals, "0")) : 0;
   const result = whole * 10 ** decimals + minor;
-  // Too many digits to be exact is too large too: the cap is far inside the safe range.
-  if (!Number.isSafeInteger(result) || result > MAX_AMOUNT_CENTS) {
-    throw amountTooLarge(parts.negative ? -result : result, "amount");
-  }
-  // "-0" would become -0: normalize it to 0.
+  // "-0" would become -0: normalize it to 0. The callers check the range.
   return !parts.negative || result === 0 ? result : -result;
 }
 

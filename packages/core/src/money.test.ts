@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertAmount, assertCents, assertTotal, currencyDecimals, formatMoney, MAX_AMOUNT_CENTS, parseAmount, sumCents } from "./money.ts";
+import { assertAmount, assertCents, assertTotal, currencyDecimals, formatMoney, MAX_AMOUNT_CENTS, parseAmount, parseBalance, sumCents } from "./money.ts";
 
 const IT_EUR = { locale: "it-IT", currency: "EUR" };
 const US_USD = { locale: "en-US", currency: "USD" };
@@ -151,6 +151,14 @@ describe("the cap on a single amount (#651, ADR 0002)", () => {
 
   it("parseAmount answers amount_too_large, not invalid_amount, for more digits than can be exact", () => {
     assert.throws(() => parseAmount("90071992547409930", US_USD), tooLarge(MAX_AMOUNT_CENTS));
+  });
+
+  it("parseBalance reads a balance above the cap, and refuses only what cannot be exact", () => {
+    assert.equal(parseBalance("1.200.000.000,00", IT_EUR), 120_000_000_000);
+    assert.equal(parseBalance("-1,200,000,000.00", US_USD), -120_000_000_000);
+    assert.equal(parseBalance("-0,00", IT_EUR), 0);
+    assert.throws(() => parseBalance("90071992547409930", US_USD), (error) => isValidationError(error, "invalid_amount"));
+    assert.throws(() => parseBalance("12.345", US_USD), (error) => isValidationError(error, "invalid_amount_format"));
   });
 
   it("counts minor units whatever the currency: 100,000,000,000 yen, 100,000,000.000 dinars", () => {
