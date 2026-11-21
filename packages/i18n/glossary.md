@@ -3,7 +3,8 @@
 The words the interface uses for the app's own concepts, in every language it is translated into, with the form of address and the tone of each language ([ADR 0015](../../docs/adr/0015-english-first-translations.md)). It is binding: the `translator` agent uses these terms in every catalog in `locales/`, and the `ux-reviewer` checks the screens against them.
 
 - **What a term means** is defined once, in the domain glossary, [`docs/glossary.md`](../../docs/glossary.md), with the names the code uses. This file only says how each term is written in the interface, and is the one source for that in every language, Italian included.
-- **Italian** is the approved copy: taken from `locales/it.json` and from the Italian mockups in `docs/ux/mockups/` (Italian up to and including commit `ac69f82`; the commit that turns them English is #622, and `docs/ux/README.md` records the last Italian one). The maintainer reviews this column.
+- **Italian** is the approved copy: taken from `locales/it.json` and from the Italian mockups in `docs/ux/mockups/` (Italian until #622, which records the last Italian commit in `docs/ux/README.md`). The maintainer reviews this column.
+- **The glossary wins over the archived mockup Italian.** Where the Italian of the mockups (at that last Italian commit) and this file disagree, this file is right, and so is `it.json` once it follows it. Superseded mockup wording: *Dividi su più categorie* and *Divisa su più categorie* (now *Suddividi su più categorie* and *Suddivisione su più categorie*), *Annulla divisione* (now *Annulla la suddivisione*), *Il portafoglio* or *Il tuo portafoglio* as the cash account's hint (now *I contanti che hai con te*), and *Frazionamento* for a transaction split (now only the stock split).
 - **German, Spanish and French** were chosen by an agent and are reviewed only by agents; corrections are welcome.
 - **Changing a term** changes every catalog string that uses it, in the same pull request. A new term with a domain meaning gets a row here, every column filled, in the same commit as the strings that use it.
 - **Inflection:** each row gives the base form; inflect it as the sentence needs (German case, gender and number agreement in Italian, Spanish and French). The words in parentheses give the gender where it matters for agreement.
@@ -18,7 +19,7 @@ The words the interface uses for the app's own concepts, in every language it is
 | Spanish | *tú* (informal), never *usted*; *tu*, *tus* | Has asignado más de lo que tienes |
 | French | *tu* (informal), never *vous*; *ton*, *ta*, *tes* | Tu as attribué plus que tu n’as |
 
-The app speaks as *we* when it reports its own failure (`*.error`): "We could not load your budget." stays first person plural in every language: *Non siamo riusciti a…*, *Wir konnten … nicht …*, *No hemos podido…*, *Nous n'avons pas pu…*.
+The app speaks as *we* when it reports its own failure (`*.error`): "We could not load your budget." stays first person plural in every language: *Non siamo riusciti a…*, *Wir konnten … nicht …*, *No hemos podido…*, *Nous n’avons pas pu…*.
 
 ## Tone
 
@@ -31,9 +32,9 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 
 | Language | Notes |
 | --- | --- |
-| Italian | Short, plain, conversational: *Scrivi un importo* (not *Inserire un importo*); infinitive or impersonal forms only where the approved copy uses them. Field instructions use the imperative with *tu*: *Scegli*, *Scrivi*. Loading states: *Caricamento…*. |
+| Italian | Short, plain, conversational: *Scrivi un importo* (not *Inserire un importo*); infinitive or impersonal forms only where the approved copy uses them. Field instructions use the imperative with *tu*: *Scegli*, *Scrivi*. Buttons use the imperative too (*Salva*, *Aggiungi*, *Annulla*), never the infinitive. Loading states: *Caricamento…*. |
 | German | Imperative with *du* for instructions: *Gib einen Betrag ein*, *Wähle eine Kategorie*. Prefer the shorter of two wordings (screens are checked at 360 px); avoid long compounds when a short phrase is clearer. No *Sie*, and no impersonal infinitive instructions (*Betrag eingeben*) except on buttons, where the infinitive is the normal German form (*Speichern*, *Abbrechen*). Loading states: *Wird geladen…* or *… werden geladen…*. |
-| Spanish | Imperative with *tú* for instructions: *Escribe un importe*, *Elige una categoría*. Peninsular vocabulary where it differs (*importe*, *coste*), since the app's formats default to the device's region anyway. Loading states: *Cargando…*. |
+| Spanish | Imperative with *tú* for instructions: *Escribe un importe*, *Elige una categoría*. Buttons use the infinitive (*Guardar*, *Añadir*, *Cancelar*), the normal Spanish form; a button with an object keeps it (*Añadir cuenta*). Peninsular vocabulary where it differs (*importe*, *coste*), since the app's formats default to the device's region anyway. Loading states: *Cargando…*. |
 | French | Imperative with *tu* for instructions: *Saisis un montant*, *Choisis une catégorie*. Buttons use the infinitive (*Enregistrer*, *Annuler*), the normal French form. Loading states: *Chargement…*. |
 
 ## Typography
@@ -46,6 +47,20 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 | French | « » with a no-break space inside (U+00A0 or U+202F) | ’ | A no-break space before `:` (U+00A0) and a narrow no-break space (U+202F) before `;`, `!`, `?`, never an ordinary space: *Dette à couvrir : {category}*. |
 
 The app's name, *envelope*, is never translated or capitalized.
+
+### Amounts and dates
+
+No catalog writes a currency symbol, a decimal or grouping separator, a minus sign or a date itself: amounts go through `formatMoney` (`packages/core/src/money.ts`) and dates through the helpers in `apps/web/src/format.ts`, both `Intl`, and reach the message as an argument (`{amount}`, `{date}`). Only an example of how to type an amount (*20,00*, *1.234,56*) is written by hand, in the locale's own separators. What `Intl` produces for −1,234.56 EUR, −5.00 EUR and 5 September 2026 (`shortDate`), so a screen can be checked against it:
+
+| Locale | −1,234.56 EUR | −5.00 EUR | `shortDate` | Notes |
+| --- | --- | --- | --- | --- |
+| `en-US` | -€1,234.56 | -€5.00 | Sep 5 | |
+| `it-IT` | -1234,56 € | -5,00 € | 5 set | No grouping below 10,000; a no-break space (U+00A0) before € |
+| `de-DE` | -1.234,56 € | -5,00 € | 5. Sept. | U+00A0 before € |
+| `es-ES` | -1234,56 € | -5,00 € | 5 sept | No grouping below 10,000; U+00A0 before € |
+| `fr-FR` | -1 234,56 € | -5,00 € | 5 sept. | A narrow no-break space (U+202F) groups thousands; U+00A0 before € |
+
+The minus is the ASCII hyphen-minus in every locale. A message never adds its own space between an amount and a word that `Intl` already spaces.
 
 ### Plurals
 
@@ -74,7 +89,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Group (of categories) | Gruppo | Gruppe | Grupo | Groupe | |
 | Assign (money to a category) | Assegnare | Zuweisen | Asignar | Attribuer | Verb for budgeting only; not for the portfolio's target allocation |
 | Assigned | Assegnato | Zugewiesen | Asignado | Attribué | "Assigned this month" |
-| Unassigned (money not assigned yet) | Da assegnare | Nicht zugewiesen | Por asignar | À attribuer | As a name in running text, quoted and capitalized: *«Da assegnare»*, never *quelli non assegnati* |
+| Unassigned (money not assigned yet) | Da assegnare | Nicht zugewiesen | Por asignar | À attribuer | As the name of the balance in running text, quoted and capitalized: *«Da assegnare»*, never *quelli non assegnati*. As a plain adjective it stays lowercase and unquoted: *{amount} sono arrivati e sono ancora da assegnare* (`budget.toast.unassigned`) |
 | Available | Disponibile | Verfügbar | Disponible | Disponible | Also as a noun: *il disponibile*, *das Verfügbare*, *lo disponible*, *le disponible* |
 | Activity | Movimenti (m. pl.) | Umsätze (pl.) | Movimientos | Mouvements | "No activity": *Nessun movimento*, *Keine Umsätze*, *Sin movimientos*, *Aucun mouvement* |
 | Carried over | Riportato | Übertragen | Remanente | Reporté | *Riportato da agosto*, *Übertragen aus August*, *Remanente de agosto*, *Reporté d'août* |
@@ -130,7 +145,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | English | Italian | German | Spanish | French | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Transaction | Transazione | Buchung | Transacción | Transaction | |
-| Payee | Beneficiario | Empfänger | Beneficiario | Bénéficiaire | Also the payer of an inflow |
+| Payee | Beneficiario | Empfänger | Beneficiario | Bénéficiaire | Also the payer of an inflow. Where a field's label depends on the direction, the mockups label an inflow's payee *Da chi* and a scheduled outflow's *A chi*: *Von wem* / *An wen*, *De quién* / *A quién*, *De qui* / *À qui*. No English key has that distinction yet; until one does, the label is *Beneficiario* |
 | Memo | Nota | Notiz | Nota | Note | Never *Memo* in Italian |
 | Inflow | Entrata | Eingang | Entrada | Entrée | Column and kind of transaction |
 | Outflow | Uscita | Ausgang | Salida | Sortie | German *Ausgang*, so that *Ausgabe* stays Expense |
@@ -171,7 +186,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Fee | Commissione | Gebühr | Comisión | Frais (m. pl.) | |
 | Stock split | Frazionamento | Aktiensplit | Split de acciones | Division d'actions | Not the split of a transaction across categories (*Suddivisione*) (maintainer decision, 2026-11-21) |
 | Transfer of securities | Trasferimento titoli | Depotübertrag | Traspaso de valores | Transfert de titres | |
-| Quantity | Quantità | Stückzahl | Cantidad | Quantité | The portfolio mockup's column says *Quote* |
+| Quantity (units held or traded) | Quote (f. pl.) | Stück | Participaciones | Parts | The interface term for the number of units: column headers, the trade form, positions (*Quote*, as in the portfolio mockup). *Quantità* stays the domain word in `docs/glossary.md` and is not used in the interface. For a bond quoted in percent the quantity is its nominal: label it *Valore nominale* (see Nominal) |
 | Price | Prezzo | Kurs | Precio | Cours | |
 | Price factor | Fattore di prezzo | Kursfaktor | Factor de precio | Facteur de prix | |
 | Nominal | Valore nominale | Nennwert | Valor nominal | Valeur nominale | |
