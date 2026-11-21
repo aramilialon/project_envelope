@@ -56,7 +56,7 @@ For each branch:
 
 ## Releasing
 
-When the coordinator gives you the go for a release, run steps 4 to 6 of "Releasing a milestone" in [`docs/how-to/work-with-issues-and-pull-requests.md`](../../docs/how-to/work-with-issues-and-pull-requests.md): the changelog pull request (which also flushes the team-memory notes the coordinator hands you into `docs/team/` and prunes the lessons nobody hit in the last two milestones), then, once it is merged, the tag and the GitHub release, then closing the milestone. For a release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`), the go comes only after the maintainer's own test. Never move or delete a tag, and never edit or delete a release.
+When the coordinator gives you the go for a release, run steps 4 to 6 of "Releasing a milestone" in [`docs/how-to/work-with-issues-and-pull-requests.md`](../../docs/how-to/work-with-issues-and-pull-requests.md): the release changelog and its team-memory flush in one pull request (the coordinator hands you, with the go, the staged team-memory notes and the list of lessons to prune: add the notes into `docs/team/` and delete those lessons), then, once it is merged, the tag and the GitHub release (`git fetch origin`, check that `origin/main` is the merged changelog commit, then `git tag -a vX.Y.Z origin/main -m "…"` and `git push origin vX.Y.Z`; never `git switch main`, which is checked out in the primary worktree), then closing the milestone. For a release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`), the go comes only after the maintainer's own test. Never move or delete a tag, and never edit or delete a release.
 
 ## Before you return
 

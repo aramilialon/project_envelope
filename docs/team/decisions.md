@@ -12,7 +12,7 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 ### 0.2.0
 
 - **#701** (2026-11-21, coordinator alone, review it): a goal amount above the cap is refused with `amount_too_large`, like every other amount (ADR 0002, #651).
-- **#698** (2026-11-21, developer): an assigned amount already above the cap can still be brought down from the Assigned field.
+- **#698** (2026-11-21, coordinator alone, review it): an assigned amount already above the cap can still be brought down from the Assigned field (proposed by the developer).
 - **#702** (2026-11-21, coordinator alone, review it): every row dated after today goes under "Later", the current month included.
 - **#702** (2026-11-21, domain-expert): positions as of today are a follow-up of their own, #719.
 - **#702** (2026-11-21, domain-expert): repeating scheduled occurrences are a follow-up of their own, #720.

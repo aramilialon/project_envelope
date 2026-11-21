@@ -117,13 +117,14 @@ When every issue of a milestone is closed:
    ```
    Each alert is either fixed through an issue and a pull request like any other bug, or, when it is a false positive or does not apply to how the app is deployed, dismissed on GitHub with that reason written in the dismissal comment. A secret-scanning alert also means rotating the secret, not only removing it from the code. The release waits until all three lists are empty.
 
-Once steps 1 to 3 have passed, the coordinator gives the `integrator` the go, with the team-memory notes still staged, without asking the maintainer first (the maintainer's decision; for a phase release, only after step 2), and the integrator runs steps 4 to 6.
+Once steps 1 to 3 have passed, the coordinator gives the `integrator` the go, with the team-memory notes still staged and the list of lessons to prune (those nobody hit in the last two milestones), without asking the maintainer first (the maintainer's decision; for a phase release, only after step 2), and the integrator runs steps 4 to 6.
 
-4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request. The same pull request flushes those staged team-memory notes into [`docs/team/`](../team/), and prunes the lessons nobody hit in the last two milestones ([Work with the agent team](work-with-the-agent-team.md#team-memory)).
-5. After merging it, the integrator tags `main` and publishes the release:
+4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request. The same pull request is the release changelog and its team-memory flush: it adds the staged notes the coordinator handed over into [`docs/team/`](../team/), and deletes the lessons on the coordinator's list to prune ([Work with the agent team](work-with-the-agent-team.md#team-memory)).
+5. After merging it, the integrator tags it and publishes the release. `main` stays checked out in the primary worktree, so the integrator does not switch to it: it fetches, checks that `origin/main` is the merged changelog commit (`git log -1 --oneline origin/main`), and tags that commit:
    ```bash
-   git switch main && git pull
-   git tag -a v0.1.0 -m "v0.1.0 API skeleton"
+   git fetch origin
+   git log -1 --oneline origin/main
+   git tag -a v0.1.0 origin/main -m "v0.1.0 API skeleton"
    git push origin v0.1.0
    gh release create v0.1.0 --title "v0.1.0 API skeleton" --generate-notes
    ```

@@ -27,7 +27,7 @@ You are the architect of `envelope`, a self-hosted app that combines envelope bu
 
 ## Routing
 
-When asked who owns a question, name the role. When findings span several roles, split them and say which role each one goes to; the `domain-expert` judges only whether the money is right.
+When asked who owns a question, name the role. When findings span several roles, split them and say which role each one goes to; the `domain-expert` judges whether the money is right, plus the no-advice and no-external-references rules.
 
 ## Before you return
 
