@@ -42,14 +42,41 @@
  * ("card_income_not_supported", #548) so a stored row cannot break the month. A
  * card's starting balance is not an Activity at all — see `CardBalance` in
  * budget-month.ts.
+ *
+ * Every amount written is capped at `MAX_AMOUNT_CENTS` (ADR 0002), so the
+ * sizes of a workspace's on-budget transactions add up to a safe integer in
+ * practice. If they do not (amounts stored before the cap), the aggregation
+ * stops with "amount_total_overflow" naming the transactions to look at,
+ * rather than letting a budget figure lose precision.
  */
 
 import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
-import { assertCents } from "../money.ts";
+import { assertCents, MAX_AMOUNT_CENTS } from "../money.ts";
 import type { LocalDate } from "../month.ts";
 import { monthOf } from "../month.ts";
 import type { Activity, CardPayment, CardTransfer, Income } from "./budget-month.ts";
+
+/** How many transactions an "amount_total_overflow" names at most. */
+const MAX_NAMED_TRANSACTIONS = 20;
+
+/**
+ * The error for on-budget transactions whose sizes add up beyond the safe range: it names, in
+ * `details.transactionIds` (comma-separated), the ones above the cap, or the largest ones if none
+ * is, and how many it names in `details.count`.
+ */
+function totalOverflow(transactions: readonly BudgetTransaction[], byId: ReadonlyMap<string, BudgetAccount>): ValidationError {
+  const onBudget = transactions.filter((t) => byId.get(t.accountId)?.onBudget === true);
+  const overCap = onBudget.filter((t) => Math.abs(t.amount) > MAX_AMOUNT_CENTS);
+  const named = (overCap.length > 0 ? overCap : [...onBudget].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)))
+    .slice(0, MAX_NAMED_TRANSACTIONS)
+    .map((t) => t.id);
+  return new ValidationError("amount_total_overflow", "the on-budget transactions add up beyond the safe range of minor units", {
+    label: "transactions",
+    transactionIds: named.join(","),
+    count: named.length,
+  });
+}
 
 /** Category id that marks income: money that stays unassigned until the user assigns it. */
 export const UNASSIGNED = "unassigned";
@@ -129,11 +156,14 @@ export function aggregateTransactions(
   const cardPayments: CardPayment[] = [];
   const cardTransfers: CardTransfer[] = [];
 
+  let magnitude = 0;
   for (const t of transactions) {
     const account = findAccount(byId, t.accountId);
     const month = monthOf(t.date);
-    assertCents(t.amount);
+    if (!Number.isInteger(t.amount)) assertCents(t.amount);
     if (!account.onBudget) continue;
+    magnitude += Math.abs(t.amount);
+    if (!Number.isSafeInteger(magnitude)) throw totalOverflow(transactions, byId);
 
     if (t.transferAccountId !== undefined) {
       const other = findAccount(byId, t.transferAccountId);

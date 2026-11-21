@@ -491,3 +491,42 @@ describe("unassigned money properties (#650)", () => {
     }
   });
 });
+
+describe("totals beyond the safe range (#651)", () => {
+  it("answers amount_total_overflow naming the input that tipped it, not invalid_amount on unassigned", () => {
+    assert.throws(
+      () =>
+        computeBudgetMonth(
+          {
+            ...EMPTY,
+            categoryIds: ["rent"],
+            income: [{ month: "2026-09", amount: Number.MAX_SAFE_INTEGER }],
+            assignments: [{ categoryId: "rent", month: "2026-10", amount: -Number.MAX_SAFE_INTEGER }],
+          },
+          "2026-09",
+        ),
+      (error) =>
+        isValidationError(error, "amount_total_overflow") &&
+        error.details.label === "assignment" &&
+        error.details.categoryId === "rent" &&
+        error.details.month === "2026-10",
+    );
+  });
+
+  it("still computes a month whose figures go above the per-amount cap", () => {
+    const cap = 100_000_000_000;
+    const result = computeBudgetMonth(
+      {
+        ...EMPTY,
+        categoryIds: ["rent"],
+        income: [
+          { month: "2026-09", amount: cap },
+          { month: "2026-09", amount: cap },
+        ],
+        assignments: [{ categoryId: "rent", month: "2026-09", amount: cap / 2 }],
+      },
+      "2026-09",
+    );
+    assert.equal(result.unassigned, 2 * cap - cap / 2);
+  });
+});

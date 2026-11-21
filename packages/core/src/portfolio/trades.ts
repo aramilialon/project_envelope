@@ -14,7 +14,7 @@
 
 import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
-import { assertCents } from "../money.ts";
+import { assertAmount, assertCents } from "../money.ts";
 import type { InstrumentType } from "./instrument.ts";
 import type { PositionTrade } from "./positions.ts";
 import type { LocalDate } from "../month.ts";
@@ -117,19 +117,22 @@ export function tradeCashCents(trade: TradeAmounts): Cents {
  *     withholdings of a dividend exceed its gross, or the domestic
  *     withholding of a bond buy or sale exceeds its accrued interest;
  *   - "invalid_trade" (details: field) for a fee of 0, a tax of 0 or less, or
- *     a gain tax adjustment of 0: a trade that moves nothing is not recorded.
+ *     a gain tax adjustment of 0: a trade that moves nothing is not recorded;
+ *   - "amount_too_large" (details: label — the field, or "cash" for the cash
+ *     the trade moves —, max, value) for an amount, a cost or a cash leg
+ *     beyond `MAX_AMOUNT_CENTS` (ADR 0002).
  */
 export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentType | null): void {
   for (const field of AMOUNT_FIELDS) {
     const value = trade[field];
-    assertCents(value, field);
+    assertAmount(value, field);
     const signed = field === "grossCents" && trade.type === "tax" && trade.taxKind === "gain_tax_adjustment";
     if (value < 0 && !signed) {
       throw new ValidationError("negative_amount_not_allowed", `${field} cannot be negative`, { field });
     }
   }
   if (trade.costBasisCents !== null) {
-    assertCents(trade.costBasisCents, "costBasisCents");
+    assertAmount(trade.costBasisCents, "costBasisCents");
     if (trade.costBasisCents < 0) {
       throw new ValidationError("negative_amount_not_allowed", "costBasisCents cannot be negative", { field: "costBasisCents" });
     }
@@ -171,6 +174,9 @@ export function checkTradeEntry(trade: TradeAmounts, instrumentType: InstrumentT
       gross: trade.accruedInterestCents,
     });
   }
+
+  // The cash leg is a transaction of its own (ADR 0012): capped like any other amount written.
+  assertAmount(tradeCashCents(trade), "cash");
 }
 
 /** What the regime check needs to know about the account and the instrument of a trade. */

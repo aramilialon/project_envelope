@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
+import { assertAmount, assertCents, assertTotal, currencyDecimals, formatMoney, MAX_AMOUNT_CENTS, parseAmount, sumCents } from "./money.ts";
 
 const IT_EUR = { locale: "it-IT", currency: "EUR" };
 const US_USD = { locale: "en-US", currency: "USD" };
@@ -121,5 +121,59 @@ describe("assertCents and sumCents", () => {
     // €0.10 + €0.20 = €0.30 exactly: with decimals it would be 0.30000000000000004
     assert.equal(sumCents([10, 20]), 30);
     assert.equal(sumCents([]), 0);
+  });
+});
+
+describe("the cap on a single amount (#651, ADR 0002)", () => {
+  const tooLarge = (max: number) => (error: unknown) =>
+    isValidationError(error, "amount_too_large") && error.details.max === max && error.details.label === "amount";
+
+  it("is 10^11 minor units: €1,000,000,000.00", () => {
+    assert.equal(MAX_AMOUNT_CENTS, 100_000_000_000);
+    assert.equal(formatMoney(MAX_AMOUNT_CENTS, US_USD), "$1,000,000,000.00");
+  });
+
+  it("assertAmount accepts the cap either way and refuses one minor unit more, naming the cap", () => {
+    assert.doesNotThrow(() => assertAmount(MAX_AMOUNT_CENTS));
+    assert.doesNotThrow(() => assertAmount(-MAX_AMOUNT_CENTS));
+    assert.throws(() => assertAmount(MAX_AMOUNT_CENTS + 1), tooLarge(MAX_AMOUNT_CENTS));
+    assert.throws(() => assertAmount(-MAX_AMOUNT_CENTS - 1), tooLarge(MAX_AMOUNT_CENTS));
+    assert.throws(() => assertAmount(Number.MAX_SAFE_INTEGER + 1), tooLarge(MAX_AMOUNT_CENTS));
+    assert.throws(() => assertAmount(1.5), (error) => isValidationError(error, "invalid_amount"));
+  });
+
+  it("parseAmount accepts the cap and refuses one cent more, in either sign", () => {
+    assert.equal(parseAmount("1.000.000.000,00", IT_EUR), MAX_AMOUNT_CENTS);
+    assert.equal(parseAmount("-1,000,000,000.00", US_USD), -MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount("1.000.000.000,01", IT_EUR), tooLarge(MAX_AMOUNT_CENTS));
+    assert.throws(() => parseAmount("-1000000000.01", US_USD), tooLarge(MAX_AMOUNT_CENTS));
+  });
+
+  it("parseAmount answers amount_too_large, not invalid_amount, for more digits than can be exact", () => {
+    assert.throws(() => parseAmount("90071992547409930", US_USD), tooLarge(MAX_AMOUNT_CENTS));
+  });
+
+  it("counts minor units whatever the currency: 100,000,000,000 yen, 100,000,000.000 dinars", () => {
+    const JPY = { locale: "en-US", currency: "JPY" };
+    const KWD = { locale: "en-US", currency: "KWD" };
+    assert.equal(parseAmount("100,000,000,000", JPY), MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount("100,000,000,001", JPY), tooLarge(MAX_AMOUNT_CENTS));
+    assert.equal(parseAmount("100,000,000.000", KWD), MAX_AMOUNT_CENTS);
+    assert.throws(() => parseAmount("100,000,000.001", KWD), tooLarge(MAX_AMOUNT_CENTS));
+  });
+
+  it("leaves sums alone: a total above the cap is still a valid total", () => {
+    assert.equal(sumCents([MAX_AMOUNT_CENTS, MAX_AMOUNT_CENTS]), 2 * MAX_AMOUNT_CENTS);
+  });
+
+  it("a total beyond the safe range is amount_total_overflow, with the caller's details", () => {
+    assert.throws(
+      () => sumCents([Number.MAX_SAFE_INTEGER, 1]),
+      (error) => isValidationError(error, "amount_total_overflow") && error.details.label === "total",
+    );
+    assert.throws(
+      () => assertTotal(Number.MAX_SAFE_INTEGER + 1, "income", { month: "2026-11" }),
+      (error) => isValidationError(error, "amount_total_overflow") && error.details.month === "2026-11" && error.details.label === "income",
+    );
   });
 });

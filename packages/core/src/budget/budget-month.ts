@@ -67,7 +67,7 @@
 
 import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
-import { assertCents } from "../money.ts";
+import { assertCents, assertTotal } from "../money.ts";
 import type { LocalDate, Month } from "../month.ts";
 import { assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth } from "../month.ts";
 
@@ -268,9 +268,20 @@ function validate(input: BudgetInput, month: Month): void {
     throw new ValidationError("unknown_category", `unknown category: "${id}"`, { categoryId: id });
   };
   assertDate(input.today);
+  // Every figure of a budget month is a sum of some of these amounts, so while the sum of their
+  // sizes is a safe integer none of them can lose precision. Past that, the inputs themselves are
+  // named as the cause ("amount_total_overflow"), never the figure that happened to overflow.
+  let magnitude = 0;
+  const count = (amount: Cents, label: string, details: Record<string, string | number>): void => {
+    if (!Number.isInteger(amount)) {
+      assertCents(amount, label);
+    }
+    magnitude += Math.abs(amount);
+    assertTotal(magnitude, label, details);
+  };
   for (const item of input.income) {
     assertMonth(item.month);
-    assertCents(item.amount, "income");
+    count(item.amount, "income", { month: item.month });
     if (item.date !== undefined && monthOf(item.date) !== item.month) {
       throw new ValidationError("invalid_date", `income dated "${item.date}" is not in its month "${item.month}"`, {
         value: item.date,
@@ -279,23 +290,23 @@ function validate(input: BudgetInput, month: Month): void {
   }
   for (const item of input.assignments) {
     assertMonth(item.month);
-    assertCents(item.amount);
+    count(item.amount, "assignment", { month: item.month, categoryId: item.categoryId });
     if (!regular.has(item.categoryId) && !payment.has(item.categoryId)) unknown(item.categoryId);
   }
   for (const item of input.activity) {
     assertMonth(item.month);
-    assertCents(item.amount);
+    count(item.amount, "activity", { month: item.month, categoryId: item.categoryId });
     if (!regular.has(item.categoryId)) unknown(item.categoryId);
     if (item.paymentCategoryId !== undefined && !payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
   }
   for (const item of input.cardPayments ?? []) {
     assertMonth(item.month);
-    assertCents(item.amount, "card payment");
+    count(item.amount, "card payment", { month: item.month, categoryId: item.paymentCategoryId });
     if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
   }
   const seenBalances = new Set<string>();
   for (const item of input.cardBalances ?? []) {
-    assertCents(item.owed, "card balance");
+    count(item.owed, "card balance", { categoryId: item.paymentCategoryId });
     if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
     if (seenBalances.has(item.paymentCategoryId)) {
       throw new ValidationError(
@@ -307,7 +318,7 @@ function validate(input: BudgetInput, month: Month): void {
     seenBalances.add(item.paymentCategoryId);
   }
   for (const item of input.scheduledItems ?? []) {
-    assertCents(item.amount, "scheduled item");
+    count(item.amount, "scheduled item", { categoryId: item.categoryId });
     if (item.amount <= 0) {
       throw new ValidationError("invalid_amount", "a scheduled item's amount must be positive", {
         label: "scheduled item",
@@ -318,7 +329,7 @@ function validate(input: BudgetInput, month: Month): void {
   }
   for (const item of input.cardTransfers ?? []) {
     assertMonth(item.month);
-    assertCents(item.amount, "card transfer");
+    count(item.amount, "card transfer", { month: item.month, categoryId: item.sourcePaymentCategoryId });
     if (item.amount <= 0) {
       throw new ValidationError("invalid_amount", "a card transfer's amount must be positive", {
         label: "card transfer",
@@ -612,7 +623,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   }
   const assignedInFuture = cumulativeInMonth - unassigned;
 
-  assertCents(unassigned, "unassigned");
+  assertTotal(unassigned, "unassigned", { month });
 
   return {
     month,
