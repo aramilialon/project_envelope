@@ -768,6 +768,12 @@ function checkOccurredOnTradeDate(row: NewTradeRow, timeZone: string): void {
  * workspace's tax country became `IT`, or before its regime history changed, keeps taking those
  * edits.
  *
+ * While an account has no regime history, an edit of its trades is not checked at all (#653): a
+ * trade entered before its workspace's tax country became `IT` stays editable, a split's or a
+ * transfer's rows included (their ids are new on every edit, so they cannot be matched to the stored
+ * ones). The account's first regime checks every trade (`checkRegimeChange`). A new trade there is
+ * still refused with `tax_regime_required`.
+ *
  * Each account checked is read `FOR SHARE`, the lock a regime history change takes `FOR NO KEY
  * UPDATE` (accounts/tax-regimes.ts): a trade written here and a history change to its account
  * wait for each other, so neither is checked against what the other is about to change.
@@ -780,6 +786,7 @@ async function checkRegimes(
   accounts: ReadonlyMap<string, AccountRef>,
   instrument: InstrumentRef | undefined,
   previous: readonly TradeRecord[],
+  request: "create" | "edit",
 ): Promise<void> {
   if (taxCountry !== TAX_REGIME_COUNTRY) {
     return;
@@ -795,6 +802,7 @@ async function checkRegimes(
   for (const accountId of accountIds) {
     const history = (await listTaxRegimes(db, workspaceId, accountId)) ?? [];
     if (history.length === 0) {
+      if (request === "edit") continue;
       throw new ValidationError("tax_regime_required", "a brokerage account in this workspace needs a tax regime before its trades", {
         accountId,
       });
@@ -881,6 +889,7 @@ async function checkRows(
   workspaceId: string,
   rows: readonly NewTradeRow[],
   instrument: InstrumentRef | undefined,
+  request: "create" | "edit",
   previous: readonly TradeRecord[] = [],
 ): Promise<Map<string, AccountRef>> {
   const stored: StoredPortfolios = new Map(previous.map((record) => [record.id, record.portfolioId]));
@@ -896,7 +905,7 @@ async function checkRows(
   for (const row of rows) {
     checkOccurredOnTradeDate(row, workspace.time_zone);
   }
-  await checkRegimes(db, workspaceId, workspace.tax_country, rows, accounts, instrument, previous);
+  await checkRegimes(db, workspaceId, workspace.tax_country, rows, accounts, instrument, previous, request);
   return accounts;
 }
 
@@ -980,7 +989,7 @@ export async function createTrades(
   const rows =
     input.kind === "single" ? [singleRow(input, instrument)] : input.kind === "transfer" ? transferRows(input) : splitRows(input, history);
   await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
-  const accounts = await checkRows(db, workspaceId, rows, instrument);
+  const accounts = await checkRows(db, workspaceId, rows, instrument, "create");
 
   // The rows as the replay sees them once written: created now (the transaction's timestamp, the
   // same `now()` the created_at column defaults to), in the account's currency.
@@ -1423,7 +1432,7 @@ export async function updateTrade(
       : kind === "transfer"
         ? editedTransferRows(group, patch)
         : editedSplitRows(group, patch, histories.get(instrumentId)!.filter((trade) => !oldIds.has(trade.id)));
-  const accounts = await checkRows(db, workspaceId, rows, instrument, group);
+  const accounts = await checkRows(db, workspaceId, rows, instrument, "edit", group);
 
   // Each instrument's history as it would be after the edit: a row that stays on its instrument
   // is an update (keeping its creation time, so its place in the replay order), a row that leaves

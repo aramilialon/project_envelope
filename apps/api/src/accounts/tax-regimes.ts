@@ -7,6 +7,7 @@
  * against the account's trades it covers (`checkRegimeChange`, #653), under the same lock.
  */
 import {
+  checkAccountTradesAgainstRegime,
   checkRegimeChange,
   validateTaxRegimeChange,
   validateWithholdingAgentChange,
@@ -111,9 +112,13 @@ export async function replaceTaxRegimes(
 /**
  * Sets a brokerage account's withholding-agent flag once, while it has none (#508: an account
  * created before its workspace's tax country became `IT`). Returns false if the account is not in
- * this workspace.
+ * this workspace. When the account already has a regime history, its trades are checked against
+ * the new flag (`checkAccountTradesAgainstRegime`, #653): a bond trade with domestic withholding
+ * entered while the flag was unset refuses `false`. Without a history, the account's first regime
+ * checks them (`checkRegimeChange`).
  *
- * @throws ValidationError from `@envelope/core`'s `validateWithholdingAgentChange`.
+ * @throws ValidationError from `@envelope/core`'s `validateWithholdingAgentChange`;
+ *   "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code). Nothing is written then.
  */
 export async function setWithholdingAgent(
   db: DbPool | DbClient,
@@ -130,6 +135,10 @@ export async function setWithholdingAgent(
     taxCountry: account.tax_country,
     current: account.domestic_withholding_agent,
   });
+  const history = await loadHistory(db, workspaceId, accountId);
+  if (history.length > 0) {
+    checkAccountTradesAgainstRegime(await loadTrades(db, workspaceId, accountId), { history, domesticWithholdingAgent });
+  }
   await db.query("UPDATE accounts SET domestic_withholding_agent = $3 WHERE id = $1 AND workspace_id = $2", [
     accountId,
     workspaceId,
