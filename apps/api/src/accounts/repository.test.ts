@@ -171,6 +171,49 @@ describe("accounts repository", () => {
     assert.equal(rows[0]?.closed_at, null);
   });
 
+  it("waits for a transaction being added to the account, then refuses with its amount (#703)", async () => {
+    const account = await createAccount(pool, { workspaceId, name: "Racing", type: "checking", currency: "EUR", onBudget: true });
+    const writer = await pool.connect();
+    const closer = await pool.connect();
+    try {
+      // The writer adds a transaction and holds it uncommitted: its foreign key holds a key-share lock on the account row.
+      await writer.query("BEGIN");
+      const { rows } = await writer.query<{ id: string }>(
+        "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, now(), 'pending') RETURNING id",
+        [workspaceId, account.id],
+      );
+      await writer.query("INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents) VALUES ($1, $2, NULL, 4200)", [
+        workspaceId,
+        rows[0]!.id,
+      ]);
+
+      const { rows: pidRows } = await closer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      const closerPid = pidRows[0]!.pid;
+      await closer.query("BEGIN");
+      const closing = closeAccount(closer, workspaceId, account.id);
+
+      // The closer must be waiting on a lock (its FOR UPDATE), not have read the account as empty.
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const { rows: waiting } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'", [closerPid]);
+        if (waiting.length > 0) break;
+        assert.ok(Date.now() < deadline, "closeAccount never waited for the uncommitted transaction's lock");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      await writer.query("COMMIT");
+      assert.deepEqual(await closing, { status: "not_empty", balanceCents: 4200, holdsPositions: false });
+      await closer.query("COMMIT");
+    } finally {
+      await writer.query("ROLLBACK").catch(() => {});
+      await closer.query("ROLLBACK").catch(() => {});
+      writer.release();
+      closer.release();
+    }
+    const { rows } = await pool.query<{ closed_at: Date | null }>("SELECT closed_at FROM accounts WHERE id = $1", [account.id]);
+    assert.equal(rows[0]?.closed_at, null);
+  });
+
   describe("brokerage accounts (#74)", () => {
     it("creates an off-budget brokerage account with no payment category", async () => {
       const account = await createAccount(pool, { workspaceId, name: "Broker", type: "brokerage", currency: "EUR", onBudget: false });

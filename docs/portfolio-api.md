@@ -307,6 +307,7 @@ out does not count). Otherwise nothing is closed (#703):
 | Error | Details | When |
 | --- | --- | --- |
 | 409 `account_not_empty` | `{ "balanceCents": 0, "holdsPositions": true }` (the balance in the account's currency) | the balance is not zero, or a security is still held |
+| 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
 | 404 | | the account is not found, or is already closed |
 
 ## Instruments

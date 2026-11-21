@@ -241,7 +241,7 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
     [workspaceId, accountId],
   );
   const balanceCents = Number(balanceRows[0]?.balance_cents ?? "0");
-  assertTotal(balanceCents, "account balance", { accountId });
+  assertTotal(balanceCents, "balanceCents", { accountId });
 
   // Only a brokerage account has trades: for any other account the replay finds none.
   const { accounts: positions } = computePositions(await loadPositionTrades(db, workspaceId, { accountId }));

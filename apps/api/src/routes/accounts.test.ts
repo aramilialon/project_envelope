@@ -787,6 +787,15 @@ describe("accounts routes", () => {
       await trade({ ...common, type: "buy", tradeDate: "2026-03-02" });
       await trade({ ...common, type: "sell", tradeDate: "2026-03-03" });
 
+      // The position sold out is still listed, with quantity zero: it does not hold the account open.
+      const positions = await inject("GET", `/accounts/${accountId}/positions`);
+      assert.equal(positions.statusCode, 200, positions.body);
+      const listed = (positions.json() as { positions: { instrument: { id: string }; quantityE8: number }[] }).positions;
+      assert.deepEqual(
+        listed.map((position) => ({ instrumentId: position.instrument.id, quantityE8: position.quantityE8 })),
+        [{ instrumentId, quantityE8: 0 }],
+      );
+
       const response = await close(accountId);
       assert.equal(response.statusCode, 200, response.body);
       assert.ok(response.json().closedAt);
