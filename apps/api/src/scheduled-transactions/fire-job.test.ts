@@ -37,6 +37,9 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
   let accountB: string;
   let scheduledA: string;
   let scheduledB: string;
+  let workspaceC: string;
+  let accountC: string;
+  let scheduledC: string;
 
   before(async () => {
     database = await createIsolatedDatabase(databaseUrl);
@@ -91,6 +94,14 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
     workspaceB = b.workspaceId;
     accountB = b.accountId;
     scheduledB = b.scheduledId;
+    // A third workspace whose schedule is on a closed account (#729): closed directly, as data from
+    // before closing refused an account with a schedule may be. Recording it would be refused by
+    // the database; it must not stop the other workspaces' schedules.
+    const c = await makeWorkspace("Fire C", "2026-09-01");
+    workspaceC = c.workspaceId;
+    accountC = c.accountId;
+    scheduledC = c.scheduledId;
+    await superuserPool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [accountC]);
   });
 
   after(async () => {
@@ -122,5 +133,13 @@ describe("createScheduledTransactionsFireHandler (#38)", () => {
     assert.notEqual(recordedB.find((t) => t.id === scheduledB)?.nextDueDate, "2026-09-01");
     assert.ok(transactionsA.some((t) => t.payee === "Rent Fire A" && t.budgetDate === "2026-09-01"));
     assert.ok(transactionsB.some((t) => t.payee === "Rent Fire B" && t.budgetDate === "2026-09-01"));
+
+    // The closed account's schedule stays due and unrecorded (#729).
+    const [recordedC, transactionsC] = await Promise.all([
+      listScheduledTransactions(superuserPool, workspaceC),
+      listTransactionsForAccount(superuserPool, workspaceC, accountC),
+    ]);
+    assert.equal(recordedC.find((t) => t.id === scheduledC)?.nextDueDate, "2026-09-01");
+    assert.equal(transactionsC.length, 0);
   });
 });

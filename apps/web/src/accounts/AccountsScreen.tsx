@@ -5,6 +5,8 @@ import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { shortDate } from "../format.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
@@ -14,6 +16,13 @@ import { useAccountBalances } from "./useAccountBalances.ts";
 import { useAccounts } from "./useAccounts.ts";
 import "./AccountsScreen.css";
 
+/** Why an account could not be closed: a message, and under it, for an account not empty, each reason. */
+interface CloseRefusal {
+  readonly accountId: string;
+  readonly message: string;
+  readonly reasons: readonly string[];
+}
+
 /**
  * The "Accounts" screen (#51): list, create, close an account. Fetches its own data (`#323`
  * removed the band's old account ledger and its shared fetch along with it — nothing else
@@ -22,8 +31,8 @@ import "./AccountsScreen.css";
  * closed accounts are listed read-only. Each row's own balance (`#333`) is not part of the
  * `Account` shape the API returns — there is no bulk endpoint for it yet — so it is fetched
  * separately, the same balance as of today the register itself computes (#702), and rendered
- * once it resolves. When the API refuses to close an account that still holds money or
- * securities (`#703`), the reason is shown under that account's row, where its "Close" button is.
+ * once it resolves. When the API refuses to close an account that is not empty today and later
+ * (`#703`, `#729`), the reasons are shown under that account's row, where its "Close" button is.
  */
 export default function AccountsScreen() {
   const intl = useIntl();
@@ -37,7 +46,7 @@ export default function AccountsScreen() {
   // Today's balance in the workspace's time zone (#702): rows dated later count in none.
   const balances = useAccountBalances(workspaceId!, auth.user?.access_token, state.status === "ok" ? state.accounts : [], timeZone);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [closeRefusal, setCloseRefusal] = useState<{ readonly accountId: string; readonly message: string } | null>(null);
+  const [closeRefusal, setCloseRefusal] = useState<CloseRefusal | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
 
   if (state.status === "loading") {
@@ -73,52 +82,101 @@ export default function AccountsScreen() {
       await closeAccount(accessToken, workspaceId!, account.id);
       state.refetch();
     } catch (caught) {
-      setCloseRefusal({ accountId: account.id, message: closeRefusalMessage(caught, account.currency) });
+      setCloseRefusal(closeRefusalOf(caught, account));
     } finally {
       setClosingId(null);
     }
   }
 
-  /** Why closing failed, in plain words: the balance and the securities still in it (#703), or a generic failure. */
-  function closeRefusalMessage(caught: unknown, currency: string): string {
-    if (caught instanceof AccountNotEmptyError) {
-      const balance = money(caught.balanceCents, currency);
-      if (caught.holdsPositions && caught.balanceCents !== 0) {
-        return intl.formatMessage(
-          {
-            id: "accounts.closeRefused.balanceAndSecurities",
-            defaultMessage:
-              "This account still has a balance of {balance} and holds securities. An account can be closed once its balance is zero and it holds no securities.",
-          },
-          { balance },
-        );
-      }
-      if (caught.holdsPositions) {
-        return intl.formatMessage({
-          id: "accounts.closeRefused.securities",
-          defaultMessage: "This account still holds securities. An account can be closed once it holds none.",
-        });
-      }
-      return intl.formatMessage(
-        {
-          id: "accounts.closeRefused.balance",
-          defaultMessage: "This account still has a balance of {balance}. An account can be closed once its balance is zero.",
-        },
-        { balance },
+  /**
+   * Why closing failed, in plain words (#703, #729): what keeps the account from being empty today
+   * and later, each reason a sentence of its own with the figures the screen shows, or a generic
+   * failure with no reasons.
+   */
+  function closeRefusalOf(caught: unknown, account: Account): CloseRefusal {
+    const failed: CloseRefusal = {
+      accountId: account.id,
+      message:
+        tooManyRequestsMessage(intl, caught) ??
+        intl.formatMessage({ id: "accounts.closeError", defaultMessage: "We could not close this account." }),
+      reasons: [],
+    };
+    if (!(caught instanceof AccountNotEmptyError)) {
+      return failed;
+    }
+    const { balanceCents, laterRows, holdsPositions, scheduled } = caught.details;
+    // A date in the workspace's own year shows no year (#702).
+    const currentYear = timeZone === undefined ? undefined : Number(todayIsoIn(timeZone).slice(0, 4));
+    const reasons: string[] = [];
+    if (balanceCents !== 0) {
+      reasons.push(
+        intl.formatMessage(
+          { id: "accounts.closeRefused.balanceToday", defaultMessage: "Its balance today is {balance}." },
+          { balance: money(balanceCents, account.currency) },
+        ),
       );
     }
-    return (
-      tooManyRequestsMessage(intl, caught) ??
-      intl.formatMessage({ id: "accounts.closeError", defaultMessage: "We could not close this account." })
-    );
+    if (laterRows.count > 0 && laterRows.firstDate !== null) {
+      const values = { count: laterRows.count, firstDate: shortDate(laterRows.firstDate, intl.locale, currentYear) };
+      // Only a brokerage account has trades of its own that move no cash.
+      reasons.push(
+        account.type === "brokerage"
+          ? intl.formatMessage(
+              {
+                id: "accounts.closeRefused.laterRowsWithTrades",
+                defaultMessage:
+                  "{count, plural, one {A transaction or trade is dated after today, on {firstDate}.} other {# transactions or trades are dated after today, the first on {firstDate}.}}",
+              },
+              values,
+            )
+          : intl.formatMessage(
+              {
+                id: "accounts.closeRefused.laterRows",
+                defaultMessage:
+                  "{count, plural, one {A transaction is dated after today, on {firstDate}.} other {# transactions are dated after today, the first on {firstDate}.}}",
+              },
+              values,
+            ),
+      );
+    }
+    if (holdsPositions) {
+      reasons.push(intl.formatMessage({ id: "accounts.closeRefused.holdsSecurities", defaultMessage: "It holds securities today." }));
+    }
+    if (scheduled.count > 0) {
+      reasons.push(
+        intl.formatMessage(
+          {
+            id: "accounts.closeRefused.scheduled",
+            defaultMessage: "{count, plural, one {A scheduled transaction uses it.} other {# scheduled transactions use it.}}",
+          },
+          { count: scheduled.count },
+        ),
+      );
+    }
+    if (reasons.length === 0) {
+      // A refusal that names no reason the screen knows of: say only that the close failed.
+      return failed;
+    }
+    return {
+      accountId: account.id,
+      message: intl.formatMessage({ id: "accounts.closeRefused.intro", defaultMessage: "This account can't be closed yet. Right now:" }),
+      reasons,
+    };
   }
 
   /** The refusal under an account's row, where its Close button is. */
   function refusalFor(account: Account) {
     return closeRefusal?.accountId === account.id ? (
-      <p className="hint bad close-refusal" role="alert">
-        {closeRefusal.message}
-      </p>
+      <div className="hint bad close-refusal" role="alert">
+        <p>{closeRefusal.message}</p>
+        {closeRefusal.reasons.length > 0 ? (
+          <ul>
+            {closeRefusal.reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     ) : null;
   }
 

@@ -86,12 +86,10 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
       return;
     }
     if (result.status === "not_empty") {
-      // #703: an account with money or securities in it is not closed. `error` is the stable code,
-      // as for a `ValidationError`, so the web's `ApiError` reads it with its details.
-      await reply.code(409).send({
-        error: "account_not_empty",
-        details: { balanceCents: result.balanceCents, holdsPositions: result.holdsPositions },
-      });
+      // #703, #729: an account that is not empty today and later is not closed. `error` is the
+      // stable code, as for a `ValidationError`, so the web's `ApiError` reads it with its details.
+      const { balanceCents, laterRows, holdsPositions, scheduled } = result;
+      await reply.code(409).send({ error: "account_not_empty", details: { balanceCents, laterRows, holdsPositions, scheduled } });
       return;
     }
     return result.account;

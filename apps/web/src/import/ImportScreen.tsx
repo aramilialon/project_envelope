@@ -15,7 +15,7 @@ import {
   type StagedTransactionDecision,
   type StageImportResult,
 } from "./api.ts";
-import { tooManyRequestsMessage } from "../apiErrors.ts";
+import { isAccountClosed, tooManyRequestsMessage } from "../apiErrors.ts";
 import { detectImportFormat } from "./detectFormat.ts";
 import {
   buildCsvMapping,
@@ -121,8 +121,9 @@ export default function ImportScreen() {
   const { account, accounts, categories, savedMapping } = setup;
   const currency = account.currency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
-  // A transfer moves money between two accounts in the same currency only (#652).
-  const otherAccounts = accounts.filter((a) => a.id !== accountId && a.currency === currency);
+  // A transfer moves money between two accounts in the same currency only (#652), and never to or
+  // from a closed account (#729).
+  const otherAccounts = accounts.filter((a) => a.id !== accountId && a.closedAt === null && a.currency === currency);
   const openCategories = categories.filter((c) => !c.archived);
 
   // A transfer with an off-budget account moves money into or out of the budget, so its on-budget
@@ -149,6 +150,11 @@ export default function ImportScreen() {
       return false;
     }
     return transferRuleOf(selection, amountCents) !== "required" || !!transferCategoryId;
+  }
+
+  /** Staging refused because this account is closed (#729): closed after this screen opened. */
+  function accountClosedOnStageMessage(): string {
+    return intl.formatMessage({ id: "import.error.accountClosed", defaultMessage: "This account is closed, so nothing can be imported into it." });
   }
 
   function closingBalanceCents(): number | undefined {
@@ -202,6 +208,8 @@ export default function ImportScreen() {
           tooManyRequestsMessage(intl, caught) ??
             (isAmountTooLarge(caught)
               ? amountTooLargeMessage(intl, currency)
+              : isAccountClosed(caught)
+              ? accountClosedOnStageMessage()
               : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
         );
       } finally {
@@ -265,7 +273,9 @@ export default function ImportScreen() {
         tooManyRequestsMessage(intl, caught) ??
           (isAmountTooLarge(caught)
             ? amountTooLargeMessage(intl, currency)
-            : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
+            : isAccountClosed(caught)
+              ? accountClosedOnStageMessage()
+              : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
       );
     } finally {
       setSubmitting(false);
@@ -308,7 +318,13 @@ export default function ImportScreen() {
     } catch (caught) {
       setError(
         tooManyRequestsMessage(intl, caught) ??
-          intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." }),
+          (isAccountClosed(caught)
+            ? // #729: this account, or the other account of a transfer, was closed after the rows were staged.
+              intl.formatMessage({
+                id: "import.error.accountClosedConfirm",
+                defaultMessage: "This account, or the other account of one of these transfers, is closed, so these transactions can't be imported.",
+              })
+            : intl.formatMessage({ id: "import.error.confirm", defaultMessage: "We could not confirm these transactions." })),
       );
     } finally {
       setSubmitting(false);

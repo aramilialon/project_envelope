@@ -74,6 +74,23 @@ export class TooManyRequestsError extends Error {
 const FOREIGN_KEY_VIOLATION = "23503";
 const INVALID_TEXT_REPRESENTATION = "22P02";
 const INSUFFICIENT_PRIVILEGE = "42501";
+const CHECK_VIOLATION = "23514";
+
+/**
+ * The constraint migration 0033's trigger names when it refuses a write to a closed account (#729,
+ * ADR 0018): a transaction, split, trade, scheduled transaction or reconciliation of an account
+ * whose `closed_at` is set.
+ */
+export const ACCOUNT_CLOSED_CONSTRAINT = "account_closed";
+
+/** Whether `error` is PostgreSQL refusing a write to a closed account through migration 0033's trigger. */
+export function isAccountClosedViolation(error: unknown): boolean {
+  if (sqlStateOf(error) !== CHECK_VIOLATION) {
+    return false;
+  }
+  const { constraint } = error as { constraint?: unknown };
+  return constraint === ACCOUNT_CLOSED_CONSTRAINT;
+}
 
 /** Fastify's own client errors keep their status; their body names the status, not Fastify's message. */
 const CLIENT_ERROR_NAMES: Readonly<Record<number, string>> = {
@@ -125,6 +142,11 @@ export function toErrorReply(error: unknown): ErrorReply {
 
   const sqlState = sqlStateOf(error);
   if (sqlState !== undefined) {
+    // A write to a closed account (#729, ADR 0018): refused by the database for every write path,
+    // and answered as a conflict with the account's state, which the client can explain.
+    if (isAccountClosedViolation(error)) {
+      return { statusCode: 409, body: { error: "account_closed" } };
+    }
     if (sqlState === FOREIGN_KEY_VIOLATION) {
       return { statusCode: 400, body: { error: "invalid_reference" } };
     }

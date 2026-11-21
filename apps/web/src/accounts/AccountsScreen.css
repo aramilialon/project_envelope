@@ -22,7 +22,7 @@
   flex-direction: column;
 }
 
-.accounts-screen .account-list li {
+.accounts-screen .account-list > li {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -31,7 +31,7 @@
   border-bottom: 1px solid var(--rule);
 }
 
-.accounts-screen .account-list.closed li {
+.accounts-screen .account-list.closed > li {
   color: var(--muted);
 }
 
@@ -165,6 +165,18 @@
 .accounts-screen .account-list .close-refusal,
 .accounts-screen .ph-acc .close-refusal {
   padding: 0;
+}
+
+/* Its reasons (#729), one per line under the message. The rows above use child selectors
+   (`.account-list > li`), so these items do not take a row's layout and divider. */
+.accounts-screen .close-refusal p,
+.accounts-screen .close-refusal ul {
+  margin: 0;
+}
+
+.accounts-screen .close-refusal ul {
+  padding-left: 18px;
+  list-style: disc;
 }
 
 .accounts-screen .plain.danger {

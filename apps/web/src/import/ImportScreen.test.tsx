@@ -6,6 +6,7 @@ import type { Account } from "../accounts/api.ts";
 import * as accountsApi from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
+import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as importApi from "./api.ts";
@@ -180,6 +181,30 @@ describe("ImportScreen (#59)", () => {
     expect(screen.getByRole("button", { name: "Import another file" })).not.toHaveClass("primary");
   });
 
+  it("says the account is closed when the API refuses staging or confirming into it (#729)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(new ApiError("409", 409, "account_closed", {}));
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+    expect(await screen.findByText("This account is closed, so nothing can be imported into it.")).toBeInTheDocument();
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [{ id: "new-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "Supermarket", memo: null, amountCents: -4_250, externalId: null, duplicateOf: null, createdAt: "2026-09-01" }],
+      duplicateCount: 0,
+    });
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement2.ofx")] } });
+    await screen.findByText("Supermarket");
+    fireEvent.change(screen.getByLabelText("Category", { selector: "select" }), { target: { value: "cat-groceries" } });
+    vi.spyOn(importApi, "confirmStagedTransactions").mockRejectedValue(new ApiError("409", 409, "account_closed", {}));
+    fireEvent.click(screen.getByRole("button", { name: /Import 1 transaction/ }));
+
+    expect(
+      await screen.findByText("This account, or the other account of one of these transfers, is closed, so these transactions can't be imported."),
+    ).toBeInTheDocument();
+  });
+
   it("sends a closing balance above the cap on a single amount: a balance is not capped (#651)", async () => {
     renderScreen();
     await screen.findByText(/Checking/);
@@ -303,6 +328,26 @@ describe("ImportScreen (#59)", () => {
     const options = [...screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }).querySelectorAll("option")].map((o) => o.textContent);
     expect(options).toContain("Transfer to Savings");
     expect(options).not.toContain("Transfer to US broker");
+  });
+
+  it("offers no transfer with a closed account (#729)", async () => {
+    const oldSavings: Account = { ...SAVINGS, id: "acc-old-savings", name: "Old savings", closedAt: "2026-10-01T00:00:00.000Z" };
+    renderScreen([CHECKING, SAVINGS, oldSavings]);
+    await screen.findByText(/Checking/);
+
+    vi.spyOn(importApi, "stageImport").mockResolvedValue({
+      staged: [
+        { id: "out-1", workspaceId: "ws-1", accountId: "acc-checking", occurredAt: "2026-09-01", payee: "To savings", memo: null, amountCents: -5_000, externalId: null, duplicateOf: null, createdAt: "2026-09-01" },
+      ],
+      duplicateCount: 0,
+    });
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+    await screen.findByText("To savings");
+
+    const options = [...screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }).querySelectorAll("option")].map((o) => o.textContent);
+    expect(options).toContain("Transfer to Savings");
+    expect(options).not.toContain("Transfer to Old savings");
   });
 
   describe("a transfer from an off-budget account (#599)", () => {

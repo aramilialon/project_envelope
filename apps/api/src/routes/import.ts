@@ -1,6 +1,7 @@
 import type { CsvDateFormat, CsvMapping, DecimalSeparator, QifDateFormat, QifHints } from "@envelope/core";
 import type { FastifyInstance } from "fastify";
 
+import { isAccountClosed } from "../accounts/repository.ts";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
@@ -138,6 +139,12 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
     const content = typeof body.content === "string" ? body.content : "";
     if (!content) {
       await reply.code(400).send({ error: "invalid import: content is required" });
+      return;
+    }
+    // A closed account takes no transactions (#729): staging rows it could never confirm is
+    // refused up front, the same answer the database gives a confirmation into it.
+    if (await isAccountClosed(request.db!, request.workspace!.id, accountId)) {
+      await reply.code(409).send({ error: "account_closed" });
       return;
     }
     const format: ImportFormat =

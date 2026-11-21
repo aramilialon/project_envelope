@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -6,6 +6,7 @@ import { ApiError } from "../apiFetch.ts";
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
 import type { Transaction } from "../transactions/api.ts";
+import { todayIsoIn } from "../workspaceDate.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as accountsApi from "./api.ts";
 import type { Account } from "./api.ts";
@@ -287,50 +288,95 @@ describe("AccountsScreen (#51, #323)", () => {
     await waitFor(() => expect(closeAccount).toHaveBeenCalledWith("t", "ws-1", "a1"));
   });
 
-  describe("an account the API refuses to close because it is not empty (#703)", () => {
-    it("names the balance, in the account's own currency, under the account's row", async () => {
-      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(-12_345, false));
+  describe("an account the API refuses to close because it is not empty (#703, #729)", () => {
+    const intro = "This account can't be closed yet. Right now:";
+
+    it("names today's balance, in the account's own currency, under the account's row", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError({ balanceCents: -12_345 }));
       renderScreen([{ ...CHECKING, currency: "USD", onBudget: false }]);
       await screen.findByRole("button", { name: "Checking" });
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
       const alert = await screen.findByRole("alert");
-      expect(alert).toHaveTextContent(
-        "This account still has a balance of -$123.45. An account can be closed once its balance is zero.",
-      );
-      expect(alert.closest("li")).toHaveTextContent("Checking");
+      expect(alert).toHaveTextContent(intro);
+      expect(within(alert).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Its balance today is -$123.45."]);
+      expect(alert.parentElement?.closest("li")).toHaveTextContent("Checking");
       expect(screen.queryByText("Closed")).not.toBeInTheDocument();
     });
 
-    it("says the account holds securities when that is the reason", async () => {
-      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(0, true));
+    it("names the rows dated after today, with how many and the first one's date, even when today's balance is zero", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ laterRows: { count: 2, firstDate: "2030-03-01" } }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem");
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveTextContent(/^2 transactions are dated after today, the first on .*2030\.$/);
+    });
+
+    it("leaves out the year of a later row dated in the workspace's own year", async () => {
+      const thisYear = todayIsoIn("Europe/Rome").slice(0, 4);
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ laterRows: { count: 1, firstDate: `${thisYear}-12-31` } }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem");
+      expect(items.map((item) => item.textContent)).toEqual(["A transaction is dated after today, on Dec 31."]);
+    });
+
+    it("says only that the close failed when the refusal names no reason the screen knows of", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError({}));
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("We could not close this account.");
+      expect(alert).not.toHaveTextContent(intro);
+      expect(within(alert).queryAllByRole("listitem")).toHaveLength(0);
+    });
+
+    it("says the account holds securities, and counts a brokerage account's later trades with its transactions", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ holdsPositions: true, laterRows: { count: 1, firstDate: "2030-04-01" } }),
+      );
       renderScreen([{ ...CHECKING, type: "brokerage", onBudget: false }]);
       await screen.findByRole("button", { name: "Checking" });
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        "This account still holds securities. An account can be closed once it holds none.",
-      );
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem");
+      expect(items[0]).toHaveTextContent(/^A transaction or trade is dated after today, on .*2030\.$/);
+      expect(items[1]).toHaveTextContent("It holds securities today.");
     });
 
-    it("names both the balance and the securities on the phone layout", async () => {
+    it("names every reason at once on the phone layout, the scheduled transactions included", async () => {
       setWidth(390);
-      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(50_000, true));
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(
+        new accountsApi.AccountNotEmptyError({ balanceCents: 50_000, holdsPositions: true, scheduled: { count: 3 } }),
+      );
       renderScreen([{ ...CHECKING, type: "brokerage", onBudget: false }]);
       await screen.findByRole("button", { name: /Checking/ });
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
-      expect(await screen.findByRole("alert")).toHaveTextContent(
-        "This account still has a balance of €500.00 and holds securities. An account can be closed once its balance is zero and it holds no securities.",
-      );
+      const items = within(await screen.findByRole("alert")).getAllByRole("listitem").map((item) => item.textContent);
+      expect(items).toEqual(["Its balance today is €500.00.", "It holds securities today.", "3 scheduled transactions use it."]);
     });
 
     it("keeps the message on the phone inside the account's own row, above its divider", async () => {
       setWidth(390);
-      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(100, false));
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError({ balanceCents: 100 }));
       renderScreen([{ ...CHECKING, name: "Everyday" }, { ...CHECKING, id: "a2", name: "Holidays" }]);
       await screen.findByRole("button", { name: /Everyday/ });
 
@@ -343,7 +389,7 @@ describe("AccountsScreen (#51, #323)", () => {
 
     it("clears the message on the next attempt, and says so plainly when closing fails for another reason", async () => {
       vi.spyOn(accountsApi, "closeAccount")
-        .mockRejectedValueOnce(new accountsApi.AccountNotEmptyError(100, false))
+        .mockRejectedValueOnce(new accountsApi.AccountNotEmptyError({ balanceCents: 100 }))
         .mockRejectedValueOnce(new ApiError("PATCH failed: 500", 500, "internal_error", {}));
       renderScreen([CHECKING]);
       await screen.findByRole("button", { name: "Checking" });
@@ -374,7 +420,7 @@ describe("AccountsScreen (#51, #323)", () => {
       fireEvent.click(button);
       expect(closeAccount).toHaveBeenCalledTimes(1);
 
-      await act(async () => refuse(new accountsApi.AccountNotEmptyError(100, false)));
+      await act(async () => refuse(new accountsApi.AccountNotEmptyError({ balanceCents: 100 })));
       await screen.findByRole("alert");
       expect(button).toHaveAttribute("aria-disabled", "false");
       expect(button).toHaveFocus();

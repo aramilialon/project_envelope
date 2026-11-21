@@ -200,36 +200,69 @@ export async function accountExists(db: DbPool | DbClient, workspaceId: string, 
   return rows.length > 0;
 }
 
-/** What `closeAccount` did: closed it, found no open account by that id, or refused it as not empty (#703). */
+/** Why `closeAccount` refused an account (#703, #729): every figure is one the user can see on screen. */
+export interface AccountNotEmptyDetails {
+  /** The account's balance as of today in the workspace's time zone, in its own currency: the register's head figure (#702). */
+  readonly balanceCents: number;
+  /**
+   * The rows dated after today: its transactions, and its trades that move no cash (a transfer of
+   * securities, a split), with the earliest one's date ("YYYY-MM-DD", null when there are none).
+   */
+  readonly laterRows: { readonly count: number; readonly firstDate: LocalDate | null };
+  /** Whether it holds any security today (a position with a quantity other than zero). */
+  readonly holdsPositions: boolean;
+  /** The scheduled transactions on it, which would keep writing to it. */
+  readonly scheduled: { readonly count: number };
+}
+
+/**
+ * Whether `accountId` names a closed account of this workspace (#729). For a refusal a route gives
+ * before any write, such as staging an import into it; the writes themselves are refused by the
+ * database (migration 0033, ADR 0018) whatever a route checks.
+ */
+export async function isAccountClosed(db: DbPool | DbClient, workspaceId: string, accountId: string): Promise<boolean> {
+  const { rows } = await db.query("SELECT 1 FROM accounts WHERE id = $1 AND workspace_id = $2 AND closed_at IS NOT NULL", [
+    accountId,
+    workspaceId,
+  ]);
+  return rows.length > 0;
+}
+
+/** What `closeAccount` did: closed it, found no open account by that id, or refused it as not empty (#703, #729). */
 export type CloseAccountResult =
   | { readonly status: "closed"; readonly account: AccountRecord }
   | { readonly status: "not_found" }
-  | {
-      readonly status: "not_empty";
-      /** The account's balance over all dates, future-dated rows included, in its own currency. */
-      readonly balanceCents: number;
-      /** Whether it still holds any security (a position with a quantity other than zero). */
-      readonly holdsPositions: boolean;
-    };
+  | ({ readonly status: "not_empty" } & AccountNotEmptyDetails);
 
 /**
  * Closes an account, never deleting it. A closed account still counts in the budget: its
  * transactions stay in every month they fall in. Returns `not_found` if it is not found or is
  * already closed.
  *
- * Refuses (#703) an account whose balance over all dates is not zero, or that still holds any
- * security; the route answers 409 `account_not_empty`. The account row is locked first
- * (`FOR UPDATE`, which conflicts with the key-share lock a new transaction or trade on the account
- * takes through its foreign key), so nothing can be added to it between the check and the close.
+ * Closes it only when it is empty today and later (#729), "today" in the workspace's time zone:
+ * its balance today is zero and no transaction is dated after today; it holds no security today and
+ * no trade is dated after today; and no scheduled transaction uses it. Anything else is refused,
+ * and the route answers 409 `account_not_empty` with the details. Checked as of today, as every
+ * screen shows the account (#702), rather than over all dates: a row dated later would otherwise
+ * leave the account with money on a later day, or cancel today's balance on screen.
+ *
+ * The account row is locked first (`FOR UPDATE`, which conflicts with the `FOR KEY SHARE` lock
+ * migration 0033's trigger takes for every write to the account, and the key-share lock of its
+ * foreign keys), so nothing can be written to it between the check and the close, and once closed
+ * nothing can be written to it at all (ADR 0018).
  *
  * @throws ValidationError "amount_total_overflow" when the balance is beyond the safe range.
  */
 export async function closeAccount(db: DbClient, workspaceId: string, accountId: string): Promise<CloseAccountResult> {
-  const locked = await db.query("SELECT 1 FROM accounts WHERE id = $1 AND workspace_id = $2 AND closed_at IS NULL FOR UPDATE", [
-    accountId,
-    workspaceId,
-  ]);
-  if (locked.rows.length === 0) {
+  const { rows: lockedRows } = await db.query<{ today: string }>(
+    `SELECT to_char(now() AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS today
+     FROM accounts a JOIN workspaces w ON w.id = a.workspace_id
+     WHERE a.id = $1 AND a.workspace_id = $2 AND a.closed_at IS NULL
+     FOR UPDATE OF a`,
+    [accountId, workspaceId],
+  );
+  const today = lockedRows[0]?.today;
+  if (today === undefined) {
     return { status: "not_found" };
   }
 
@@ -237,18 +270,45 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
     `SELECT COALESCE(SUM(s.amount_cents), 0)::text AS balance_cents
      FROM splits s
      JOIN transactions t ON t.workspace_id = s.workspace_id AND t.id = s.transaction_id
-     WHERE t.workspace_id = $1 AND t.account_id = $2`,
-    [workspaceId, accountId],
+     JOIN workspaces w ON w.id = t.workspace_id
+     WHERE t.workspace_id = $1 AND t.account_id = $2
+       AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') <= $3`,
+    [workspaceId, accountId, today],
   );
   const balanceCents = Number(balanceRows[0]?.balance_cents ?? "0");
   assertTotal(balanceCents, "balanceCents", { accountId });
 
-  // Only a brokerage account has trades: for any other account the replay finds none.
-  const { accounts: positions } = computePositions(await loadPositionTrades(db, workspaceId, { accountId }));
+  // A trade's cash leg is one of the transactions already counted, dated on the trade date; only a
+  // trade that moves no cash is a row of its own here.
+  const { rows: laterRows } = await db.query<{ count: number; first_date: string | null }>(
+    `SELECT count(*)::int AS count, min(date) AS first_date FROM (
+       SELECT to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS date
+       FROM transactions t JOIN workspaces w ON w.id = t.workspace_id
+       WHERE t.workspace_id = $1 AND t.account_id = $2
+       UNION ALL
+       SELECT to_char(tr.trade_date, 'YYYY-MM-DD') AS date
+       FROM trades tr
+       WHERE tr.workspace_id = $1 AND tr.account_id = $2
+         AND NOT EXISTS (SELECT 1 FROM transactions c WHERE c.workspace_id = tr.workspace_id AND c.trade_id = tr.id)
+     ) AS rows WHERE date > $3`,
+    [workspaceId, accountId, today],
+  );
+  const later = { count: laterRows[0]?.count ?? 0, firstDate: laterRows[0]?.first_date ?? null };
+
+  // Only a brokerage account has trades: for any other account the replay finds none. The replay
+  // stops at today, so a sale dated later does not empty a holding held today.
+  const trades = (await loadPositionTrades(db, workspaceId, { accountId })).filter((trade) => trade.date <= today);
+  const { accounts: positions } = computePositions(trades);
   const holdsPositions = positions.some((position) => position.accountId === accountId && position.quantity !== 0);
 
-  if (balanceCents !== 0 || holdsPositions) {
-    return { status: "not_empty", balanceCents, holdsPositions };
+  const { rows: scheduledRows } = await db.query<{ count: number }>(
+    "SELECT count(*)::int AS count FROM scheduled_transactions WHERE workspace_id = $1 AND account_id = $2",
+    [workspaceId, accountId],
+  );
+  const scheduled = { count: scheduledRows[0]?.count ?? 0 };
+
+  if (balanceCents !== 0 || later.count > 0 || holdsPositions || scheduled.count > 0) {
+    return { status: "not_empty", balanceCents, laterRows: later, holdsPositions, scheduled };
   }
 
   const { rows } = await db.query<AccountRow>(

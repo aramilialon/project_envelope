@@ -653,6 +653,13 @@ describe("accounts routes", () => {
     const units = (value: number): number => Math.round(value * 1e8);
     const price = (value: number): number => Math.round(value * 1e6);
     const auth = () => ({ authorization: `Bearer ${token}` });
+    /** A year that is always after today, wherever the workspace's time zone puts today. */
+    const nextYear = new Date().getUTCFullYear() + 1;
+
+    /** A refusal's details: an empty account's, with `changes` applied. */
+    function details(changes: Record<string, unknown>): Record<string, unknown> {
+      return { balanceCents: 0, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 }, ...changes };
+    }
 
     async function inject(method: "GET" | "POST" | "PATCH", path: string, payload?: Record<string, unknown>, headers = auth()) {
       return app.fastify.inject({
@@ -746,28 +753,66 @@ describe("accounts routes", () => {
 
       const response = await close(accountId);
       assert.equal(response.statusCode, 409);
-      assert.deepEqual(response.json(), { error: "account_not_empty", details: { balanceCents: 7_450, holdsPositions: false } });
+      assert.deepEqual(response.json(), { error: "account_not_empty", details: details({ balanceCents: 7_450 }) });
       assert.equal(await closedAt(accountId), null);
     });
 
-    it("counts future-dated rows: an account empty today but not over all dates is refused", async () => {
+    it("refuses an account with a balance today that a later row would cancel, naming the later rows (#729)", async () => {
       const accountId = await account("checking");
-      await transaction(accountId, `${new Date().getUTCFullYear() + 2}-01-15`, -2_500);
+      await transaction(accountId, "2026-09-01", 1_000);
+      await transaction(accountId, `${nextYear}-03-01`, -1_000);
+      await transaction(accountId, `${nextYear}-02-01`, 0);
 
       const response = await close(accountId);
       assert.equal(response.statusCode, 409);
-      assert.deepEqual(response.json().details, { balanceCents: -2_500, holdsPositions: false });
+      // Today's balance, the figure on screen, not the zero over all dates.
+      assert.deepEqual(response.json().details, details({ balanceCents: 1_000, laterRows: { count: 2, firstDate: `${nextYear}-02-01` } }));
       assert.equal(await closedAt(accountId), null);
     });
 
-    it("closes an account whose rows add up to zero", async () => {
+    it("refuses an account empty today with a row dated later, quoting a balance of zero (#729)", async () => {
+      const accountId = await account("checking");
+      await transaction(accountId, `${nextYear + 1}-01-15`, -2_500);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json().details, details({ laterRows: { count: 1, firstDate: `${nextYear + 1}-01-15` } }));
+      assert.equal(await closedAt(accountId), null);
+    });
+
+    it("closes an account whose rows up to today add up to zero and that has none later", async () => {
       const accountId = await account("checking");
       await transaction(accountId, "2026-09-01", 10_000);
-      await transaction(accountId, `${new Date().getUTCFullYear() + 1}-03-01`, -10_000);
+      await transaction(accountId, "2026-09-03", -10_000);
 
       const response = await close(accountId);
       assert.equal(response.statusCode, 200, response.body);
       assert.ok(response.json().closedAt);
+    });
+
+    it("closes an account with no rows at all", async () => {
+      const response = await close(await account("checking"));
+      assert.equal(response.statusCode, 200, response.body);
+      assert.ok(response.json().closedAt);
+    });
+
+    it("refuses an account a scheduled transaction uses, with how many (#729)", async () => {
+      const accountId = await account("checking");
+      for (const nextDueDate of [`${nextYear}-01-01`, `${nextYear}-06-01`]) {
+        const scheduled = await inject("POST", "/scheduled-transactions", {
+          accountId,
+          nextDueDate,
+          recurEvery: 1,
+          recurUnit: "month",
+          splits: [{ categoryId, amountCents: 100 }],
+        });
+        assert.equal(scheduled.statusCode, 201, scheduled.body);
+      }
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(response.json().details, details({ scheduled: { count: 2 } }));
+      assert.equal(await closedAt(accountId), null);
     });
 
     it("refuses a brokerage account that holds securities and no cash", async () => {
@@ -777,8 +822,42 @@ describe("accounts routes", () => {
 
       const response = await close(accountId);
       assert.equal(response.statusCode, 409);
-      assert.deepEqual(response.json(), { error: "account_not_empty", details: { balanceCents: 0, holdsPositions: true } });
+      assert.deepEqual(response.json(), { error: "account_not_empty", details: details({ holdsPositions: true }) });
       assert.equal(await closedAt(accountId), null);
+    });
+
+    it("refuses a brokerage account that holds a unit today and sells it at a later date (#729)", async () => {
+      const { accountId, portfolioId, instrumentId } = await brokerage();
+      await trade({ type: "transfer", instrumentId, tradeDate: "2026-02-10", quantityE8: units(1), to: { accountId, portfolioId, costBasisCents: 5_000 } });
+      // Sold later, its proceeds moved out the same day: over all dates the account ends empty.
+      const sale = { accountId, portfolioId, instrumentId, quantityE8: units(1), priceE6: price(50) };
+      await trade({ ...sale, type: "sell", tradeDate: `${nextYear}-04-01` });
+      const other = await account("checking");
+      const moved = await inject("POST", "/transfers", {
+        sourceAccountId: accountId,
+        destinationAccountId: other,
+        occurredAt: `${nextYear}-04-01`,
+        amountCents: 5_000,
+      });
+      assert.equal(moved.statusCode, 201, moved.body);
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      assert.deepEqual(
+        response.json().details,
+        details({ holdsPositions: true, laterRows: { count: 2, firstDate: `${nextYear}-04-01` } }),
+      );
+      assert.equal(await closedAt(accountId), null);
+    });
+
+    it("counts a later trade that moves no cash as a later row (#729)", async () => {
+      const { accountId, portfolioId, instrumentId } = await brokerage();
+      await trade({ type: "transfer", instrumentId, tradeDate: `${nextYear}-05-02`, quantityE8: units(1), to: { accountId, portfolioId, costBasisCents: 5_000 } });
+
+      const response = await close(accountId);
+      assert.equal(response.statusCode, 409);
+      // No unit is held today: the transfer in is dated later.
+      assert.deepEqual(response.json().details, details({ laterRows: { count: 1, firstDate: `${nextYear}-05-02` } }));
     });
 
     it("closes a brokerage account whose positions are sold out and whose cash adds up to zero", async () => {
@@ -809,7 +888,7 @@ describe("accounts routes", () => {
 
       const refused = await close(withMoney, headers);
       assert.equal(refused.statusCode, 409);
-      assert.deepEqual(refused.json().details, { balanceCents: 1, holdsPositions: false });
+      assert.deepEqual(refused.json().details, details({ balanceCents: 1 }));
 
       const closed = await close(empty, headers);
       assert.equal(closed.statusCode, 200, closed.body);
