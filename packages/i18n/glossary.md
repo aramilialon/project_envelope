@@ -168,6 +168,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Import | Importare | Importieren | Importar | Importer | |
 | Staged (an imported row waiting to be confirmed) | In sospeso | Zurückgestellt | En espera | En suspens | Not Pending, which is a bank status |
 | Projected (balance) | Previsto | Voraussichtlich | Previsto | Prévu | |
+| Later (transactions dated after today) | Più avanti | Später | Más adelante | Plus tard | The register's section of rows dated after today, which no balance counts yet. Not Scheduled, which is a scheduled transaction not recorded yet |
 
 ### Portfolio
 
