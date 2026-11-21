@@ -33,6 +33,7 @@ export type ValidationErrorCode =
   | "invalid_currency"
   | "invalid_time_zone"
   | "brokerage_on_budget"
+  | "account_currency_not_base"
   | "invalid_quantity"
   | "invalid_quantity_format"
   | "invalid_quantity_step"
@@ -74,6 +75,7 @@ export type ValidationErrorCode =
   | "tax_regime_change_not_year_start"
   | "tax_regime_duplicate_date"
   | "tax_regime_requires_withholding_agent"
+  | "tax_regime_conflicts_with_trade"
   | "withholding_agent_already_set";
 
 export class ValidationError extends Error {

@@ -25,6 +25,14 @@ const QIF_DATE_FORMATS: readonly QifDateFormat[] = ["DD/MM/YYYY", "MM/DD/YYYY"];
 const IMPORT_FORMATS = ["csv", "ofx", "qif", "camt053"] as const;
 type ImportFormat = (typeof IMPORT_FORMATS)[number];
 
+/**
+ * The largest import request body accepted, in bytes (#675): 1 MiB, the whole JSON body including
+ * the file's text. Stated on the route itself rather than left to Fastify's global default, so the
+ * limit on an uploaded statement stays where it is documented (apps/api README, "Import size limit")
+ * even if the server's default changes. A larger body answers 413 before anything is parsed.
+ */
+export const IMPORT_BODY_LIMIT_BYTES = 1024 * 1024;
+
 function parseQifHints(body: Record<string, unknown>): QifHints {
   const { dateFormat, decimalSeparator } = body;
   return {
@@ -124,7 +132,7 @@ export function registerImportRoutes(app: FastifyInstance, pool: DbPool): void {
     return mapping;
   });
 
-  app.post(`${base}/import`, { preHandler: writePreHandler }, async (request, reply) => {
+  app.post(`${base}/import`, { preHandler: writePreHandler, bodyLimit: IMPORT_BODY_LIMIT_BYTES }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const content = typeof body.content === "string" ? body.content : "";

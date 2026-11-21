@@ -214,6 +214,17 @@
     padding: 18px 16px 24px;
   }
 
+  /* Let the band's facts wrap between figures on a phone, so a long label never widens the
+     page; each figure itself stays on one line (#650). */
+  .app-layout .bm .facts {
+    white-space: normal;
+    gap: 6px 22px;
+  }
+
+  .app-layout .bm .facts b {
+    white-space: nowrap;
+  }
+
   /* The tab bar's own height plus the safe-area inset, so the last bit of scrollable content
      never sits underneath it (`#331`). */
   .app-layout:has(> .tabbar) .main {

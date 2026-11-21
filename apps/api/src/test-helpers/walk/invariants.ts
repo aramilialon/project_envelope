@@ -399,11 +399,16 @@ function byCategory(a: Record<string, unknown>, b: Record<string, unknown>): num
 }
 
 /**
- * The oracle for a budget month: `computeBudgetMonth` on the model's transactions, put together
- * the way the design document's accounting rules say (no assignments or scheduled transactions
- * in the walk yet, #533).
+ * The walk's today, in the workspace's time zone: the API reads its own from the database clock,
+ * the same instant to within the length of a request. The window is in the past, so every date
+ * of the walk is on or before it.
  */
-export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnType<typeof computeBudgetMonth> {
+export function walkToday(): string {
+  return localDateOf(new Date().toISOString());
+}
+
+/** The model's transactions aggregated the way the design document's accounting rules say. */
+function oracleAggregated(model: WorkspaceModel): ReturnType<typeof aggregateTransactions> {
   const accounts: BudgetAccount[] = [...model.accounts.values()].map((a) => ({
     id: a.id,
     type: a.type === "credit_card" ? "credit" : "cash",
@@ -424,7 +429,16 @@ export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnT
     }
     return { id: r.id, accountId: r.accountId, date: r.budgetDate, amount, splits: r.splits.map((s) => ({ categoryId: s.categoryId!, amount: s.amountCents })) };
   });
-  const aggregated = aggregateTransactions(accounts, transactions);
+  return aggregateTransactions(accounts, transactions);
+}
+
+/**
+ * The oracle for a budget month: `computeBudgetMonth` on the model's transactions (no
+ * assignments or scheduled transactions in the walk yet, #533), with the walk's today.
+ */
+export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnType<typeof computeBudgetMonth> {
+  const records = [...model.transactions.values()].map((e) => e.record);
+  const aggregated = oracleAggregated(model);
   const cards = model.cards().filter((card) => card.paymentCategory !== null);
   return computeBudgetMonth(
     {
@@ -441,28 +455,47 @@ export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnT
         hasStartingBalance: false,
       })),
       scheduledItems: [],
+      today: walkToday(),
     },
     month,
   );
 }
 
 /**
- * A budget month against the oracle. In the last month of the window, which every date of the
- * walk falls on or before, also the model-free budget invariant: unassigned + every category's
- * available + assigned in future + credit overspending + reserved = the balance of the on-budget
- * cash accounts (cards excluded), with balances read from the API (`balances`).
+ * Each on-budget cash account's balance at the end of `month`, from the transactions the API
+ * listed for it.
+ */
+export function balancesAtEndOf(model: WorkspaceModel, byAccount: ReadonlyMap<string, readonly TransactionJson[]>, month: string): Map<string, number> {
+  const balances = new Map<string, number>();
+  for (const account of model.budgetCashAccounts()) {
+    const transactions = byAccount.get(account.id) ?? fail(`no transactions read for ${account.handle}`);
+    balances.set(account.id, transactions.filter((t) => compareMonths(monthOf(t.budgetDate), month) <= 0).reduce((sum, t) => sum + amountOf(t), 0));
+  }
+  return balances;
+}
+
+/**
+ * A budget month against the oracle. Given the on-budget cash accounts' balances at the end of
+ * `month` (`balances`, read from the API), also the model-free budget invariant (#650):
+ * unassigned + every category's available + assigned in future + credit overspending + reserved
+ * = the balance of the on-budget cash accounts (cards excluded) at the end of the month, less the
+ * income dated in it or before but after today (not received yet, so it counts nowhere).
  */
 export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel, month: string, balances?: ReadonlyMap<string, number>): Promise<BudgetMonthResponse> {
   const actual = (await get(ctx, model, wsPath(model, `/budget-months/${month}`))) as BudgetMonthResponse;
-  if (month === LAST_MONTH && balances) {
+  if (balances) {
     const budgeted =
       actual.unassigned +
       [...actual.categories, ...actual.paymentCategories].reduce((sum, c) => sum + (c.available as number), 0) +
       actual.assignedInFuture +
       actual.creditOverspending +
       actual.reserved;
-    const cash = model.budgetCashAccounts().reduce((sum, account) => sum + (balances.get(account.id) ?? fail(`no balance read for ${account.handle}`)), 0);
-    if (budgeted !== cash) fail(`budget invariant of ${model.persona} in ${month}: the budget holds ${budgeted}, the on-budget accounts ${cash}`);
+    const today = walkToday();
+    const notReceived = oracleAggregated(model)
+      .income.filter((i) => compareMonths(i.month, month) <= 0 && i.date !== undefined && i.date > today)
+      .reduce((sum, i) => sum + i.amount, 0);
+    const cash = model.budgetCashAccounts().reduce((sum, account) => sum + (balances.get(account.id) ?? fail(`no balance read for ${account.handle}`)), 0) - notReceived;
+    if (budgeted !== cash) fail(`budget invariant of ${model.persona} in ${month}: the budget holds ${budgeted}, the on-budget accounts ${cash} at the end of the month`);
   }
   const expected = oracleBudgetMonth(model, month);
   expectEqual(
@@ -511,12 +544,10 @@ export function checkTransferPairs(transactions: readonly TransactionJson[], wha
 export async function fullCheck(ctx: CheckContext, model: WorkspaceModel): Promise<void> {
   const what = `full check of ${model.persona}`;
   const all: TransactionJson[] = [];
-  const balances = new Map<string, number>();
   const byAccount = new Map<string, TransactionJson[]>();
   for (const account of model.accounts.values()) {
     const transactions = await checkAccountTransactions(ctx, model, account);
     byAccount.set(account.id, transactions);
-    balances.set(account.id, transactions.reduce((sum, t) => sum + amountOf(t), 0));
     all.push(...transactions);
   }
   checkTransferPairs(all, what);
@@ -535,9 +566,10 @@ export async function fullCheck(ctx: CheckContext, model: WorkspaceModel): Promi
   }
   checkPortfoliosAddUp(accountRows, portfolioRows, what);
 
+  // Every month walked, each against the balances at its own end (#650).
   const months = model.persona === "investor" ? [LAST_MONTH] : WINDOW_MONTHS;
   for (const month of months) {
-    await checkBudgetMonth(ctx, model, month, balances);
+    await checkBudgetMonth(ctx, model, month, balancesAtEndOf(model, byAccount, month));
   }
 
   // No change was ever applied through sync in this walk: a pull lists nothing, and certainly

@@ -51,7 +51,8 @@ export default function AccountsScreen() {
   const open = state.accounts.filter((a) => a.closedAt === null);
   const closed = state.accounts.filter((a) => a.closedAt !== null);
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
-  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: currentWorkspace?.baseCurrency ?? "EUR" });
+  // Each balance in its account's own currency (#652): an off-budget account may be in another one than the workspace's.
+  const money = (cents: number, currency: string) => formatMoney(cents, { locale: intl.locale, currency });
 
   async function handleClose(account: Account) {
     const accessToken = auth.user?.access_token;
@@ -93,7 +94,7 @@ export default function AccountsScreen() {
                   </small>
                 </span>
                 <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                  {account.id in balances ? money(balances[account.id]!) : ""}
+                  {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
                 </span>
               </button>
               <button
@@ -121,7 +122,7 @@ export default function AccountsScreen() {
                   : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
               </span>
               <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                {account.id in balances ? money(balances[account.id]!) : ""}
+                {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
               </span>
               <button
                 type="button"
@@ -148,7 +149,7 @@ export default function AccountsScreen() {
                     <small>{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</small>
                   </span>
                   <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                    {account.id in balances ? money(balances[account.id]!) : ""}
+                    {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
                   </span>
                 </div>
               ))}
@@ -160,7 +161,7 @@ export default function AccountsScreen() {
                   <span className="name">{account.name}</span>
                   <span className="type">{intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}</span>
                   <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                    {account.id in balances ? money(balances[account.id]!) : ""}
+                    {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
                   </span>
                 </li>
               ))}
