@@ -14,13 +14,13 @@ import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 
 import { buildApp, type App } from "../../app.ts";
 import { loadConfig } from "../../config.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../../db/migrate.ts";
 import { createPool, type DbPool } from "../../db/pool.ts";
-import { startServer, type RunningServer } from "../../smoke/support.ts";
+import { printServerOutputOnFailure, startServer, type RunningServer } from "../../smoke/support.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../app-role.ts";
 import { requireIntegrationTestEnv } from "../integration-setup.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../keycloak.ts";
@@ -82,6 +82,8 @@ describe("random walk through the API (#80, ADR 0013)", () => {
   let realm: KeycloakTestRealm;
   let app: App;
   let server: RunningServer | undefined;
+  /** The real server a test started, kept after it stops so a failed test can print its output. */
+  let lastServer: RunningServer | undefined;
   let env: WalkEnvironment;
 
   const replay = process.env.WALK_REPLAY ? (JSON.parse(readFileSync(process.env.WALK_REPLAY, "utf8")) as WalkLog) : undefined;
@@ -112,6 +114,11 @@ describe("random walk through the API (#80, ADR 0013)", () => {
     env = await environment(injectDriver(app));
   });
 
+  afterEach((context) => {
+    printServerOutputOnFailure(() => [lastServer])(context);
+    lastServer = undefined;
+  });
+
   after(async () => {
     await stopRealServer();
     await app.close();
@@ -133,6 +140,7 @@ describe("random walk through the API (#80, ADR 0013)", () => {
       VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
       VAPID_SUBJECT: TEST_VAPID_SUBJECT,
     });
+    lastServer = server;
     return fetchDriver(server.baseUrl);
   }
 
