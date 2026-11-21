@@ -128,6 +128,8 @@ export type { AccountBalance, BalanceRow, NotYetRecordedAmount } from "./present
 export { computeAccountBalance, isAfterToday } from "./presentation/accountBalance.ts";
 export type { AvailableChange, InflowTiming, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";
 export { availableAfterInflow, transferCategoryRule } from "./presentation/transferCategory.ts";
+export type { AssignedEntry, AssignedEntryErrorCode } from "./presentation/assignedEntry.ts";
+export { parseAssignedEntry } from "./presentation/assignedEntry.ts";
 export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetProblemKind } from "./presentation/budgetProblems.ts";
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
 export type { AccountsPanelGroups, ExcludedAmount, PanelAccount } from "./presentation/accountsPanel.ts";
