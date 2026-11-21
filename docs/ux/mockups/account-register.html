@@ -885,10 +885,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         (LAST_CAT[d.payee] && isNew ? '<span class="hint">L’ultima volta: ' + esc(CAT[LAST_CAT[d.payee]].name) + '</span>' : '') + '</div>';
       if (!d.split) {
         h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.kind === 'in') + '</select></div>';
-        if (d.kind === 'out') h += '<button type="button" class="plain" style="align-self:flex-start" data-split="on">Dividi su più categorie</button>';
+        if (d.kind === 'out') h += '<button type="button" class="plain" style="align-self:flex-start" data-split="on">Suddividi su più categorie</button>';
       } else {
         var rem = splitRemaining();
-        h += '<div class="sec"><h5><span>Divisa su più categorie</span><button type="button" class="plain" data-split="off">Annulla divisione</button></h5><div class="splits">' +
+        h += '<div class="sec"><h5><span>Suddivisione su più categorie</span><button type="button" class="plain" data-split="off">Annulla la suddivisione</button></h5><div class="splits">' +
           d.lines.map(function (l, i) {
             return '<div class="sline"><label class="sr" for="sl-cat-' + i + '">Categoria riga ' + (i + 1) + '</label><select id="sl-cat-' + i + '" data-line="' + i + '" data-lf="cat">' + catOptions(l.cat, false) + '</select>' +
               '<span class="money-in"><label class="sr" for="sl-amt-' + i + '">Importo riga ' + (i + 1) + '</label><input type="text" inputmode="decimal" id="sl-amt-' + i + '" data-line="' + i + '" data-lf="amountStr" value="' + esc(l.amountStr) + '" placeholder="0,00"><span>€</span></span>' +
