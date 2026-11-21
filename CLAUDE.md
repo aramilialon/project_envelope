@@ -21,7 +21,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | Path | Contents |
 | --- | --- |
 | `packages/core` | Pure domain logic, no dependencies: money, months and dates, budget month, credit cards, transaction aggregation |
-| `packages/i18n` | Translation catalogs (ADR 0004, ADR 0009, ADR 0015): `locales/en.json` (generated from the web app's own `defaultMessage`s); Italian, German, Spanish and French catalogs written by the `translator` agent and, once shipped, CI-checked for completeness against it (`pnpm --filter @envelope/i18n check`); `glossary.md` for the terms and form of address in every language |
+| `packages/i18n` | Translation catalogs (ADR 0004, ADR 0009, ADR 0015): `locales/en.json` (generated from the web app's own `defaultMessage`s); Italian, German, Spanish and French catalogs written by the `translator` agent and, once shipped, CI-checked for completeness against it (`pnpm --filter @envelope/i18n check`); `glossary.md` (from #621) for the terms and form of address in every language |
 | `apps/` | `api`, `web` (Vite + React PWA shell so far), then `mobile` |
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, both always bound to 127.0.0.1 |
 | `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |

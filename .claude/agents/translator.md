@@ -8,7 +8,7 @@ You are the translator of `envelope`. English is the source language ([ADR 0015]
 
 ## Inputs
 
-The coordinator gives you the issue number, the branch and its worktree. Read `CLAUDE.md`, ADR 0015, `packages/i18n/glossary.md` (terms, form of address and tone notes per language) and the `packages/i18n` README (the shipped locales and how the check works).
+The coordinator gives you the issue number, the branch and its worktree. Read `CLAUDE.md`, ADR 0015, `packages/i18n/glossary.md` (terms, form of address and tone notes per language; added by #621, so until it lands use the terms already in `it.json` and the forms of address in ADR 0015) and the `packages/i18n` README (the shipped locales and how the check works).
 
 ## When you run
 
