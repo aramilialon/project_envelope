@@ -44,6 +44,7 @@ The `extract` script in `package.json` lists the source globs every message is c
 2. When it is complete, add the language to `shipped` and its review status to `review` in `locales/index.json`.
 3. Add its loader to `CATALOG_LOADERS` in `apps/web/src/i18n/catalogs.ts` (`catalogs.test.ts` fails until it is there).
 4. Run `pnpm --filter @envelope/i18n check` and `pnpm --filter @envelope/web test`.
+   Tests must not depend on the real shipped list: a test about which languages are offered passes its own explicit list (`resolveLanguage`'s `shipped`, `negotiateLocale`'s second argument), so shipping a language never turns an unrelated test red. Only tests that are about the real list itself (a loader and a complete catalog for every shipped language) read `SHIPPED_LOCALES`. The e2e spec `apps/web/e2e/language.spec.ts` uses German as its example of a language that is not shipped: shipping German means picking another one there.
 5. Push notifications (`apps/api/src/notifications/budget-alert-text.ts`) have their own wording in English and Italian only; other languages get English until notifications have a language setting.
 
 ## Review status
