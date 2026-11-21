@@ -17,6 +17,7 @@ import { ValidationError } from "../errors.ts";
 import { assertAmount, type Cents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
 import type { ImportRow } from "./row.ts";
+import { findTagBlocks } from "./tag-blocks.ts";
 
 function extractTag(block: string, tag: string): string | undefined {
   const match = new RegExp(`<${tag}>([^<\r\n]*)`, "i").exec(block);
@@ -47,10 +48,13 @@ function parseOfxAmount(text: string): Cents {
 }
 
 /**
+ * A `<STMTTRN>` with no closing tag after it ends the file: it and anything after it are ignored.
+ *
  * @throws ValidationError for a `<STMTTRN>` missing DTPOSTED or TRNAMT, or a malformed date or amount.
  */
 export function parseOfx(content: string): ImportRow[] {
-  const blocks = content.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi) ?? [];
+  // A linear scan, not a lazy regular expression: see tag-blocks.ts (#675).
+  const blocks = findTagBlocks(content, "STMTTRN");
 
   return blocks.map((block) => {
     const dtposted = extractTag(block, "DTPOSTED");
