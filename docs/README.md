@@ -39,6 +39,7 @@
 | [0014](adr/0014-assistant-access-through-mcp.md) | Assistant access through an MCP server that reaches data only through the API |
 | [0015](adr/0015-english-first-translations.md) | English mockups, four required translations, an agent translator |
 | [0017](adr/0017-api-rate-limiting.md) | API rate limits in process, per client address and per verified user |
+| [0018](adr/0018-closed-accounts-enforced-in-the-database.md) | A closed account takes no writes, enforced in the database |
 
 ## Rule
 
