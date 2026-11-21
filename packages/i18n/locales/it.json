@@ -47,6 +47,8 @@
   "accountsPanel.offBudgetTag": "fuori budget",
   "accountsPanel.onBudget": "In budget",
   "accountsPanel.toAccountsScreen": "Vai alla schermata Conti →",
+  "api.error.tooManyRequests": "Troppe richieste in poco tempo. Riprova tra {seconds, plural, one {# secondo} many {# di secondi} other {# secondi}}.",
+  "api.error.tooManyRequestsSoon": "Troppe richieste in poco tempo. Riprova tra un momento.",
   "budget.actions.assign": "Assegna",
   "budget.actions.quickAssign": "Assegnazione rapida",
   "budget.actions.scheduled": "Programmate",
