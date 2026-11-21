@@ -20,6 +20,15 @@ describe("loadConfig", () => {
     assert.equal(config.nodeEnv, "development");
     assert.equal(config.keycloakIssuer, BASE_ENV.KEYCLOAK_ISSUER);
     assert.equal(config.keycloakAudience, BASE_ENV.KEYCLOAK_AUDIENCE);
+    assert.deepEqual(config.trustProxy, []);
+    assert.deepEqual(config.rateLimit, {
+      addressMax: 300,
+      addressWindowMs: 60_000,
+      userMax: 600,
+      userWindowMs: 60_000,
+      userWriteMax: 120,
+      userImportMax: 10,
+    });
   });
 
   it("reads every variable when set", () => {
@@ -36,6 +45,41 @@ describe("loadConfig", () => {
     assert.equal(config.logLevel, "debug");
     assert.equal(config.logPretty, true);
     assert.equal(config.nodeEnv, "production");
+  });
+
+  it("reads the rate limits and the trusted proxies (#566)", () => {
+    const config = loadConfig({
+      ...BASE_ENV,
+      TRUST_PROXY: "127.0.0.1, 10.0.0.0/24,::1",
+      RATE_LIMIT_IP_MAX: "50",
+      RATE_LIMIT_IP_WINDOW_SECONDS: "10",
+      RATE_LIMIT_USER_MAX: "40",
+      RATE_LIMIT_USER_WINDOW_SECONDS: "30",
+      RATE_LIMIT_USER_WRITE_MAX: "20",
+      RATE_LIMIT_USER_IMPORT_MAX: "2",
+    });
+    assert.deepEqual(config.trustProxy, ["127.0.0.1", "10.0.0.0/24", "::1"]);
+    assert.deepEqual(config.rateLimit, {
+      addressMax: 50,
+      addressWindowMs: 10_000,
+      userMax: 40,
+      userWindowMs: 30_000,
+      userWriteMax: 20,
+      userImportMax: 2,
+    });
+  });
+
+  it("rejects a rate limit that is not a positive integer", () => {
+    for (const value of ["0", "-1", "1.5", "", "ten", "1e3"]) {
+      assert.throws(() => loadConfig({ ...BASE_ENV, RATE_LIMIT_IP_MAX: value }), /RATE_LIMIT_IP_MAX/, value);
+    }
+    assert.throws(() => loadConfig({ ...BASE_ENV, RATE_LIMIT_USER_WINDOW_SECONDS: "0" }), /RATE_LIMIT_USER_WINDOW_SECONDS/);
+  });
+
+  it("refuses a TRUST_PROXY that would trust every address or is not an address", () => {
+    for (const value of ["true", "*", "localhost", "127.0.0.1/33", "10.0.0.0/8/1", "127.0.0.1,"]) {
+      assert.throws(() => loadConfig({ ...BASE_ENV, TRUST_PROXY: value }), /TRUST_PROXY/, value);
+    }
   });
 
   it("rejects a missing APP_DATABASE_URL", () => {

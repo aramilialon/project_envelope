@@ -54,6 +54,7 @@ The portfolio endpoints (instruments, portfolios, trades, positions, brokerage a
 | `src/reconciliation/repository.ts` | Computes the cleared balance (the last non-broken reconciliation's own statement balance, plus the ticked cleared transactions) against the given statement balance; a zero difference reconciles them all in one row (`reconciliations`) and marks each transaction reconciled; a real difference either suggests a pending or unticked transaction whose amount matches exactly (closest date first), or, given an adjustment, creates one (`createTransaction`) and reconciles immediately; unlocking sets the transaction back to `cleared`, marks its reconciliation `broken_at`, and writes to the audit log (#216, #32) |
 | `src/audit-log/repository.ts` | `recordAuditLog`: the only place that writes to `audit_log` (ADR 0005, #216), so every caller gets the same columns |
 | `src/errors.ts` | `sendIfValidationError`: maps any `@envelope/core` `ValidationError`, thrown by the core itself or mirrored by a repository, to a 400 response with its stable `code` and `details`. `sendIfTextTooLong`: checks a request's names and free-text fields against their limits (see "Length limits on names and free text" below). `toErrorReply`/`registerErrorHandler`: the app's global error handler, which never sends an error's own message (see "Error replies" below, #512) |
+| `src/rate-limit.ts` | The request limits (#566, [ADR 0017](../../docs/adr/0017-api-rate-limiting.md)): `registerAddressRateLimit` registers `@fastify/rate-limit` and a per-address limit on `onRequest`, before authentication; `createUserRateLimitPreHandler` adds the per-user limits (all requests, writes, file imports) after the user mapper (see "Rate limits" below) |
 | `src/ids.ts` | `isUuid`: whether an id from a request can name a row at all; `rejectMalformedIdParams`, a global preHandler answering 404 for any malformed `…Id` path parameter other than `workspaceId` before a route takes a connection (#512) |
 | `src/routes/account-ownership.ts` | `sendIfAccountNotFound` (an account id from a path or a body) and the route preHandler `requireAccountOfWorkspace` (the path's `:accountId`): answer 404 unless the account belongs to the request's workspace, before anything is written (#512) |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
@@ -120,6 +121,11 @@ Copy `.env.example` to `.env` and adjust it; `.env` is read automatically by `de
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug` or `trace` |
 | `LOG_PRETTY` | `false` | Human-readable logs instead of JSON; only for a terminal, never in production |
 | `NODE_ENV` | `development` | |
+| `TRUST_PROXY` | empty | Comma-separated addresses or CIDR ranges of the reverse proxies whose `X-Forwarded-For` the API believes (#566). Empty: the connection's own address is the client's. Behind Caddy on the same machine (`infra/Caddyfile`), `127.0.0.1`. `true` and `*` are refused |
+| `RATE_LIMIT_IP_MAX` / `RATE_LIMIT_IP_WINDOW_SECONDS` | `300` / `60` | Requests per client address per window, every route counted, the health check included (see "Rate limits" below) |
+| `RATE_LIMIT_USER_MAX` / `RATE_LIMIT_USER_WINDOW_SECONDS` | `600` / `60` | Requests per signed-in user per window, whatever the address |
+| `RATE_LIMIT_USER_WRITE_MAX` | `120` | Writes (`POST`, `PUT`, `PATCH`, `DELETE`) per user per window |
+| `RATE_LIMIT_USER_IMPORT_MAX` | `10` | File imports (`POST …/accounts/:accountId/import`) per user per window |
 
 A missing or invalid variable makes the process exit immediately with a clear error, instead of failing later somewhere unrelated. `DATABASE_URL` and `APP_DATABASE_URL` are two different connections on purpose (ADR 0006): the first can create tables, the second cannot even see another workspace's rows. `QUEUE_DRIVER`/`QUEUE_DATABASE_URL` are validated by their own loader, `loadQueueConfig` (`src/config.ts`), kept separate from `Config`/`loadConfig` so the many existing tests that build an app without a queue stay untouched (#34).
 
@@ -275,7 +281,17 @@ Anything a route does not answer itself goes through one global error handler (`
 | PostgreSQL invalid input syntax (22P02) | 400 | `{ "error": "invalid_input" }` |
 | PostgreSQL insufficient privilege (42501), a Row-Level Security refusal included | 403 | `{ "error": "forbidden" }` |
 | A client error Fastify raises itself (a malformed JSON body, an unsupported content type, a body too large) | Its own 4xx | `{ "error": "bad_request" }`, `"unsupported_media_type"`, `"payload_too_large"` and so on, with Fastify's own `code` (`FST_…`) when it has one |
+| A request over a rate limit (see "Rate limits" below) | 429 | `{ "error": "too_many_requests", "details": { "retryAfterSeconds": <n> } }`, with `Retry-After` |
 | Anything else | 500 | `{ "error": "internal_error" }` |
+
+### Rate limits
+
+The API limits requests in process, with `@fastify/rate-limit` and its in-memory store (#566, [ADR 0017](../../docs/adr/0017-api-rate-limiting.md)), in two layers:
+
+- **Per client address**, on `onRequest`, before anything else: every route counts, the health check and requests with a bad or missing token included, so neither can load the database or the token verifier without limit. The address is the connection's own, unless the connection comes from a proxy listed in `TRUST_PROXY`, whose `X-Forwarded-For` is then believed; an IPv6 address counts by its /64.
+- **Per user**, right after the user mapper, keyed on the user the token verified, never on a claim of a token not yet verified: every request, then writes, then file imports, each against its own limit, so one member's requests never use up another's. A request without a valid token is answered 401 before it reaches this layer.
+
+A request over a limit is answered 429 `too_many_requests` with `Retry-After` (in seconds) and `details.retryAfterSeconds`; the web app shows the code's translation. The counters reset when the process restarts, and they are per process: running more than one API process would need a shared store. The limits are in "Configuration" above; the tests build apps with limits far above what they send (`src/test-helpers/rate-limits.ts`), except `src/rate-limit.test.ts`, which tests the limits themselves.
 
 ## Current limitations
 

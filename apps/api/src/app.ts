@@ -9,6 +9,7 @@ import { createPool, type DbPool } from "./db/pool.ts";
 import { LOG_REDACT_PATHS, registerErrorHandler } from "./errors.ts";
 import { rejectMalformedIdParams } from "./ids.ts";
 import type { QueueDriver } from "./queue/index.ts";
+import { createUserRateLimitPreHandler, registerAddressRateLimit } from "./rate-limit.ts";
 import { registerAccountsRoutes } from "./routes/accounts.ts";
 import { registerAssignmentsRoutes } from "./routes/assignments.ts";
 import { registerBudgetRoutes } from "./routes/budget.ts";
@@ -57,13 +58,18 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
     ? { level: config.logLevel, redact, transport: { target: "pino-pretty" } }
     : { level: config.logLevel, redact };
 
-  const fastify = Fastify({ logger: loggerOptions });
+  // Only the configured proxies' `X-Forwarded-For` is believed (#566): with none, `request.ip` is the
+  // connection's own address, so a client cannot pick the address its requests are counted under.
+  const fastify = Fastify({ logger: loggerOptions, trustProxy: config.trustProxy.length > 0 ? [...config.trustProxy] : false });
   const pool = createPool(config.databaseUrl);
 
   // The web app (#48) calls this API from its own origin; nothing else needs to.
   // `@fastify/cors`'s own default `methods` is "GET,HEAD,POST" (not every verb this API uses),
   // which silently blocked every PATCH/PUT/DELETE endpoint from a real browser until #315.
   void fastify.register(cors, { origin: config.webOrigin, methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"] });
+
+  // Before authentication: the health check and requests with a bad token count too (ADR 0017).
+  registerAddressRateLimit(fastify, config.rateLimit);
 
   const verifier = createTokenVerifier(config);
   const authPreHandler = createAuthPreHandler(verifier);
@@ -76,6 +82,8 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   // workspace.
   fastify.addHook("preHandler", skipPublicPaths(authPreHandler));
   fastify.addHook("preHandler", skipPublicPaths(userMapperPreHandler));
+  // Keyed on the user the token verified, so one member's requests never use up another's.
+  fastify.addHook("preHandler", skipPublicPaths(createUserRateLimitPreHandler(fastify, config.rateLimit)));
   // After authentication, so a caller without a token still gets 401, and before any route's own
   // preHandlers, so a malformed id never takes a database connection (#512).
   fastify.addHook("preHandler", rejectMalformedIdParams);
