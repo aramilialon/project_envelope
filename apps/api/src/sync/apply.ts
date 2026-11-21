@@ -192,7 +192,9 @@ const ENTITY_ACCOUNTS: Readonly<Record<string, string>> = {
  * check that account as well (see `FIELD_APPLIERS`).
  */
 export async function writesToClosedAccount(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
-  const query = ENTITY_ACCOUNTS[fieldName.split(".", 1)[0] ?? ""];
+  const table = fieldName.split(".", 1)[0] ?? "";
+  // Own keys only: a table name such as "constructor" must not find an inherited property.
+  const query = Object.hasOwn(ENTITY_ACCOUNTS, table) ? ENTITY_ACCOUNTS[table] : undefined;
   if (query === undefined || !isUuid(entityId)) {
     return false;
   }
