@@ -22,3 +22,4 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#729** (2026-11-21, architect): a sync change refused because its account is closed gets its own outcome, `account_closed`.
 - **#729** (2026-11-21, architect): an import confirmation that touches a closed account is refused as a whole.
 - **#728** (2026-11-21, translator): the Italian message for a card's spending against its budget (`budget.bar.spentWithCardOf`) puts its arguments in a different order from the English.
+- **#705** (2026-11-21, domain-expert): closing a credit card requires its payment category to be settled, whether it is above or below zero; a closed card's payment category takes no assignments and leaves the current and later months, and stays in past months so their figures do not change.

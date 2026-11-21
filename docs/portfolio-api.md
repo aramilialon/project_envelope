@@ -308,13 +308,16 @@ it. Otherwise nothing is closed (#703, #729):
 
 | Error | Details | When |
 | --- | --- | --- |
-| 409 `account_not_empty` | `{ "balanceCents": 0, "laterRows": { "count": 1, "firstDate": "2027-04-01" }, "holdsPositions": true, "scheduled": { "count": 0 } }`: the balance as of today, in the account's currency; the rows dated after today (transactions, and trades that move no cash), with the earliest one's date (`null` when none); whether a security is held today; the scheduled transactions on it | any of those is not empty |
+| 409 `account_not_empty` | `{ "balanceCents": 0, "laterRows": { "count": 1, "firstDate": "2027-04-01" }, "holdsPositions": true, "scheduled": { "count": 1, "scheduledTransactionId": "0b9e6c7a-3f1d-4e52-9a8b-6c2d1e4f7a90", "nextDueDate": "2027-02-15" } }`: the balance as of today, in the account's currency; the rows dated after today (transactions, and trades that move no cash), with the earliest one's date (`null` when none); whether a security is held today; the scheduled transactions on it, with the id and next due date of the one due first (earliest next due date, then lowest id; both `null` when `count` is 0, #741) | any of those is not empty |
 | 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
 | 404 | | the account is not found, or is already closed |
 
 A closed account takes no writes (#729, ADR 0018): a trade on it, a transfer of securities into or
 out of it, and an edit or a deletion of one of its trades, or of a trade's cash leg, are refused with
-409 `account_closed`, and nothing is written.
+409 `account_closed`, and nothing is written. The closed account is checked first, in the same
+transaction and before the position replay (#741): a sell beyond the holdings, a date that would
+leave a sale uncovered or the deletion of a buy a later sale needs answers `account_closed` on a
+closed account, and `insufficient_quantity` only on an open one.
 
 ## Instruments
 

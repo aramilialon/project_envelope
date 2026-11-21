@@ -644,6 +644,39 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
     assert.equal((await send(neighbour.token, "GET", `/workspaces/${workspaceId}/trades`)).status, 403);
     // And nothing they tried changed anything here.
     assert.deepEqual((await api<{ trades: Trade[] }>("GET", "/trades")).trades, locked);
+
+    // --- 5j. A closed account takes no writes (#729, #741). A second brokerage account buys 4 ETF
+    // at €100.00 and sells them at the same price: no cash left (−400.00 + 400.00) and no position.
+    // A schedule on it refuses the close and names itself; once it is gone the close goes through,
+    // and an edit of the sell is refused as account_closed, not as the replay's insufficient_quantity.
+    const spare = (await api<{ id: string }>("POST", "/accounts", { name: "Spare broker", type: "brokerage", currency: "EUR", taxRegime: "administered", taxRegimeValidFrom: "2026-01-01", domesticWithholdingAgent: true })).id;
+    const onSpare = { accountId: spare, portfolioId: growth, instrumentId: etf, quantityE8: units(4), priceE6: price(100) };
+    await postTrade({ ...onSpare, type: "buy", tradeDate: "2026-05-04" });
+    const [spareSell] = await postTrade({ ...onSpare, type: "sell", tradeDate: "2026-05-05" });
+    const nextYear = new Date().getUTCFullYear() + 1;
+    const schedule = await api<{ id: string }>("POST", "/scheduled-transactions", {
+      accountId: spare,
+      nextDueDate: `${nextYear}-01-15`,
+      recurEvery: 1,
+      recurUnit: "month",
+      splits: [{ categoryId: null, amountCents: 100 }],
+    });
+    const closeRefused = await send(ownerToken, "PATCH", `/workspaces/${workspaceId}/accounts/${spare}/close`);
+    assert.equal(closeRefused.status, 409, JSON.stringify(closeRefused.body));
+    assert.deepEqual(closeRefused.body, {
+      error: "account_not_empty",
+      details: {
+        balanceCents: 0,
+        laterRows: { count: 0, firstDate: null },
+        holdsPositions: false,
+        scheduled: { count: 1, scheduledTransactionId: schedule.id, nextDueDate: `${nextYear}-01-15` },
+      },
+    });
+    await api("DELETE", `/scheduled-transactions/${schedule.id}`);
+    await api("PATCH", `/accounts/${spare}/close`);
+    const closedEdit = await send(ownerToken, "PATCH", `/workspaces/${workspaceId}/trades/${spareSell!.id}`, { quantityE8: units(5) });
+    assert.equal(closedEdit.status, 409, JSON.stringify(closedEdit.body));
+    assert.deepEqual(closedEdit.body, { error: "account_closed" });
   });
 });
 

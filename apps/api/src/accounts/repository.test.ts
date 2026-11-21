@@ -163,7 +163,7 @@ describe("accounts repository", () => {
     const client = await pool.connect();
     try {
       const refused = await closeAccount(client, workspaceId, account.id);
-      assert.deepEqual(refused, { status: "not_empty", balanceCents: -12_345, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 } });
+      assert.deepEqual(refused, { status: "not_empty", balanceCents: -12_345, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null } });
     } finally {
       client.release();
     }
@@ -202,7 +202,7 @@ describe("accounts repository", () => {
       }
 
       await writer.query("COMMIT");
-      assert.deepEqual(await closing, { status: "not_empty", balanceCents: 4200, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 } });
+      assert.deepEqual(await closing, { status: "not_empty", balanceCents: 4200, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null } });
       await closer.query("COMMIT");
     } finally {
       await writer.query("ROLLBACK").catch(() => {});
@@ -308,7 +308,7 @@ describe("accounts repository", () => {
           balanceCents: 4200,
           laterRows: { count: 0, firstDate: null },
           holdsPositions: false,
-          scheduled: { count: 0 },
+          scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null },
         });
         await closer.query("COMMIT");
       } finally {
