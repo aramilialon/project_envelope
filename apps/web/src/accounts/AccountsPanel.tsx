@@ -15,6 +15,8 @@ export interface AccountsPanelProps {
   readonly workspaceId: string;
   /** The workspace's base currency, the net worth's own; each account's balance is in its own currency. */
   readonly currency: string;
+  /** The workspace's time zone, where "today" is drawn for every balance (#702); the browser's own until it loads. */
+  readonly timeZone: string | undefined;
   /** The account whose register the main content shows right now, marked current in the list. */
   readonly currentAccountId: string | undefined;
   /** Re-reads every balance when it changes: a different screen, or a transaction just recorded. */
@@ -33,18 +35,18 @@ export interface AccountsPanelProps {
  * the same as the Accounts screen's own list above its "Closed" section. Not a dialog: nothing
  * else on the page is blocked while it is open, so there is no focus trap — Escape and its own
  * "Close" button both dismiss it. Each balance is shown in its account's own currency, and the net
- * worth adds up the base-currency ones only (#652): a note under it lists what other currencies
+ * worth adds up the base-currency ones only (#652), each as of today (#702): a note under it lists what other currencies
  * hold, each in its own, and another says securities are not included whenever a brokerage
  * account holds some; both notes show only once the net worth itself does, until exchange rates
  * (#86) and prices (#125) exist.
  */
-export default function AccountsPanel({ workspaceId, currency, currentAccountId, refreshKey, onClose }: AccountsPanelProps) {
+export default function AccountsPanel({ workspaceId, currency, timeZone, currentAccountId, refreshKey, onClose }: AccountsPanelProps) {
   const intl = useIntl();
   const auth = useAuth();
   const navigate = useNavigate();
   const state = useAccounts(workspaceId);
   const open = state.status === "ok" ? state.accounts.filter((a) => a.closedAt === null) : [];
-  const balances = useAccountBalances(workspaceId, auth.user?.access_token, open, refreshKey);
+  const balances = useAccountBalances(workspaceId, auth.user?.access_token, open, timeZone, refreshKey);
   const holdsSecurities = useHoldsSecurities(workspaceId, auth.user?.access_token, open, refreshKey);
   const money = (cents: number, inCurrency: string) => formatMoney(cents, { locale: intl.locale, currency: inCurrency });
 

@@ -7,6 +7,7 @@ import * as accountsApi from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import { renderWithIntl } from "../test-utils.tsx";
+import * as workspacesApi from "../workspaces/api.ts";
 import * as importApi from "./api.ts";
 import type { StageImportResult } from "./api.ts";
 import ImportScreen from "./ImportScreen.tsx";
@@ -38,6 +39,9 @@ function renderScreen(accounts: Account[] = [CHECKING, SAVINGS], accountId = "ac
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
   vi.spyOn(importApi, "getImportMapping").mockResolvedValue(undefined);
+  vi.spyOn(workspacesApi, "listMyWorkspaces").mockResolvedValue([
+    { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null },
+  ]);
   return renderWithIntl(
     <MemoryRouter initialEntries={[`/ws-1/accounts/${accountId}/import`]}>
       <Routes>
