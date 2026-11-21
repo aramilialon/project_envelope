@@ -224,6 +224,36 @@ describe("transactions routes", () => {
     assert.equal(response.json().error, "duplicate_account");
   });
 
+  it("refuses a transfer between accounts in different currencies, storing nothing (#652)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const dollars = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'US broker', 'brokerage', 'USD', false) RETURNING id",
+      [workspaceId],
+    );
+    const dollarAccountId = dollars.rows[0]!.id;
+    const stored = await superuserPool.query("SELECT 1 FROM transactions WHERE workspace_id = $1", [workspaceId]);
+
+    for (const [sourceAccountId, destinationAccountId] of [
+      [accountId, dollarAccountId],
+      [dollarAccountId, accountId],
+      [offBudgetAccountId, dollarAccountId],
+    ]) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/transfers`,
+        headers: auth,
+        payload: { sourceAccountId, destinationAccountId, occurredAt: "2026-09-21", amountCents: 100_000, categoryId },
+      });
+      assert.equal(response.statusCode, 400);
+      const sourceCurrency = sourceAccountId === dollarAccountId ? "USD" : "EUR";
+      const destinationCurrency = destinationAccountId === dollarAccountId ? "USD" : "EUR";
+      assert.deepEqual(response.json(), { error: "currency_mismatch", details: { sourceCurrency, destinationCurrency } });
+    }
+
+    const storedAfter = await superuserPool.query("SELECT 1 FROM transactions WHERE workspace_id = $1", [workspaceId]);
+    assert.equal(storedAfter.rowCount, stored.rowCount);
+  });
+
   it("creates a transfer to an off-budget account with a category on the on-budget leg (#378)", async () => {
     const response = await app.fastify.inject({
       method: "POST",

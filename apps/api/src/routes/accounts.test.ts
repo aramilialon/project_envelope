@@ -118,6 +118,50 @@ describe("accounts routes", () => {
     assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name === "Broker on"));
   });
 
+  it("refuses an on-budget account or card outside the workspace's base currency, storing nothing (#652)", async () => {
+    for (const [name, type, onBudget] of [
+      ["Dollar checking", "checking", undefined],
+      ["Dollar savings", "savings", true],
+      ["Dollar card", "credit_card", undefined],
+    ] as const) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name, type, currency: "USD", ...(onBudget === undefined ? {} : { onBudget }) },
+      });
+      assert.equal(response.statusCode, 400, name);
+      assert.deepEqual(response.json(), { error: "account_currency_not_base", details: { currency: "USD", baseCurrency: "EUR" } });
+    }
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.ok(!listed.json().accounts.some((a: { name: string }) => a.name.startsWith("Dollar")));
+    const categories = await superuserPool.query("SELECT 1 FROM categories WHERE workspace_id = $1 AND name = 'Dollar card payment'", [workspaceId]);
+    assert.equal(categories.rowCount, 0);
+  });
+
+  it("creates an off-budget account, card included, in another currency (#652)", async () => {
+    for (const [name, type] of [
+      ["US broker", "brokerage"],
+      ["US savings", "savings"],
+      ["US card", "credit_card"],
+    ] as const) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name, type, currency: "USD", onBudget: false },
+      });
+      assert.equal(response.statusCode, 201, name);
+      assert.equal(response.json().currency, "USD");
+      assert.equal(response.json().onBudget, false);
+    }
+  });
+
   it("rejects an onBudget that is not a real boolean, storing nothing", async () => {
     for (const onBudget of ["false", 0, null]) {
       const name = `Not boolean ${String(onBudget)}`;

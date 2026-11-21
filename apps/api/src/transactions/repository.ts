@@ -385,7 +385,9 @@ export interface TransferRecord {
  * `packages/core` reads it so from the leg's sign and the other account. A transfer into an
  * on-budget card without a category is refused with `card_income_not_supported` and
  * `details.accountId`; one from an on-budget account to an off-budget one without a category with
- * `uncategorized_transaction`.
+ * `uncategorized_transaction`. A transfer between accounts in different currencies is refused with
+ * `currency_mismatch` (`details`: `sourceCurrency`, `destinationCurrency`; #652): there are no
+ * exchange rates, and one amount cannot mean the same money in two currencies.
  * Card-to-card is a card-to-card transfer (#260), moving money between the two cards' payment
  * categories once the budget month is computed, same as any other transfer here.
  */
@@ -405,8 +407,8 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
   if (malformed !== undefined) {
     throw new ValidationError("unknown_account", `unknown account: "${malformed}"`, { accountId: malformed });
   }
-  const { rows } = await db.query<{ id: string; on_budget: boolean; type: string }>(
-    "SELECT id, on_budget, type FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
+  const { rows } = await db.query<{ id: string; on_budget: boolean; type: string; currency: string }>(
+    "SELECT id, on_budget, type, currency FROM accounts WHERE workspace_id = $1 AND id = ANY($2)",
     [input.workspaceId, [input.sourceAccountId, input.destinationAccountId]],
   );
   const accountById = new Map(rows.map((row) => [row.id, row]));
@@ -415,6 +417,13 @@ export async function createTransfer(db: DbPool | DbClient, input: CreateTransfe
   if (source === undefined || destination === undefined) {
     const missing = source === undefined ? input.sourceAccountId : input.destinationAccountId;
     throw new ValidationError("unknown_account", `unknown account: "${missing}"`, { accountId: missing });
+  }
+  // One amount lands in both accounts: with no exchange rates, both must be in the same currency (#652).
+  if (source.currency !== destination.currency) {
+    throw new ValidationError("currency_mismatch", "a transfer moves money between two accounts in the same currency", {
+      sourceCurrency: source.currency,
+      destinationCurrency: destination.currency,
+    });
   }
 
   let sourceCategoryId: string | null = null;
