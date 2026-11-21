@@ -1,6 +1,6 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithIntl } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
@@ -158,5 +158,79 @@ describe("AccountsPanel (#412)", () => {
 
     expect(await screen.findByRole("button", { name: /^Checking/ })).toBeInTheDocument();
     expect(screen.queryByText(/€/)).not.toBeInTheDocument();
+  });
+});
+
+describe("AccountsPanel: currencies and securities (#652)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const US_BROKER = account("us-broker", "US broker", { type: "brokerage", onBudget: false, currency: "USD" });
+  const CHF_SAVINGS = account("chf", "Swiss savings", { type: "savings", onBudget: false, currency: "CHF" });
+
+  it("shows each balance in its account's own currency, and adds only the base currency's into the net worth", async () => {
+    vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(false);
+    renderPanel({ accounts: [CHECKING, US_BROKER, CHF_SAVINGS], balances: { checking: 100_000, "us-broker": 300_000, chf: 50_000 } });
+
+    // Shown once every balance is in, as the net worth itself is.
+    expect(await screen.findByText("Not included: CHF 500.00 and $3,000.00 (no exchange rates yet)")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /^US broker/ })).getByText("$3,000.00")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /^Swiss savings/ })).getByText("CHF 500.00")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /^Checking/ })).getByText("€1,000.00")).toBeInTheDocument();
+    // The net worth is the checking account alone, never 1,000 + 3,000 + 500.
+    expect(screen.getAllByText("€1,000.00")).toHaveLength(2);
+    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+  });
+
+  it("has no note when every account is in the base currency", async () => {
+    renderPanel();
+
+    expect(await screen.findByText("€32,270.28")).toBeInTheDocument();
+    expect(screen.queryByText(/^Not included/)).not.toBeInTheDocument();
+  });
+
+  it("says securities are not included whenever a brokerage account holds some", async () => {
+    const EU_BROKER = account("eu-broker", "Broker", { type: "brokerage", onBudget: false });
+    const holds = vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(true);
+    renderPanel({ accounts: [CHECKING, EU_BROKER], balances: { checking: 100_000, "eu-broker": 20_000 } });
+
+    expect(await screen.findByText("Does not include securities (no prices yet)")).toBeInTheDocument();
+    expect(holds).toHaveBeenCalledWith("t", "ws-1", "eu-broker");
+    expect(holds).toHaveBeenCalledTimes(1);
+  });
+
+  it("says nothing about securities when no brokerage account holds any", async () => {
+    const EU_BROKER = account("eu-broker", "Broker", { type: "brokerage", onBudget: false });
+    const holds = vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(false);
+    renderPanel({ accounts: [CHECKING, EU_BROKER], balances: { checking: 100_000, "eu-broker": 20_000 } });
+
+    expect(await screen.findByText("€1,200.00")).toBeInTheDocument();
+    expect(holds).toHaveBeenCalled();
+    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+  });
+
+  it("asks about securities only for brokerage accounts", async () => {
+    const holds = vi.spyOn(accountsApi, "holdsSecurities").mockResolvedValue(true);
+    renderPanel();
+
+    expect(await screen.findByText("€32,270.28")).toBeInTheDocument();
+    expect(holds).not.toHaveBeenCalled();
+    expect(screen.queryByText("Does not include securities (no prices yet)")).not.toBeInTheDocument();
+  });
+});
+
+describe("holdsSecurities (#652)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("is true only when a position has a quantity other than zero", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ positions: [{ quantityE8: 0 }], summaries: [] }), { status: 200 }));
+    expect(await accountsApi.holdsSecurities("t", "ws-1", "broker")).toBe(false);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ positions: [{ quantityE8: 0 }, { quantityE8: 150_000_000 }], summaries: [] }), { status: 200 }));
+    expect(await accountsApi.holdsSecurities("t", "ws-1", "broker")).toBe(true);
+    expect(String(fetchMock.mock.calls[0]![0])).toMatch(/\/workspaces\/ws-1\/accounts\/broker\/positions$/);
   });
 });

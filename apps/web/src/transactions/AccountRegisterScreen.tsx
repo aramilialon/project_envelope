@@ -79,8 +79,15 @@ function transferRowLabel(
   return [labels.transfer, where, categoryLabel(transaction.splits[0]!.categoryId, categoryNameById, unassignedLabel)].join(" · ");
 }
 
+/**
+ * A row's category cell. In an off-budget account's register it is empty for every row that is not
+ * a transfer, a brokerage account's trade cash legs included: money outside the budget has no
+ * category, so it is never "Unassigned" either (#652, the domain guide: "the off-budget leg never
+ * has a category").
+ */
 function rowLabel(
   transaction: Transaction,
+  onBudget: boolean,
   categoryNameById: Parameters<typeof categoryLabel>[1],
   unassignedLabel: string,
   splitLabel: string,
@@ -88,6 +95,9 @@ function rowLabel(
 ): string {
   if (transaction.transferId !== null) {
     return transferLabel(transaction);
+  }
+  if (!onBudget) {
+    return "";
   }
   if (transaction.splits.length > 1) {
     return splitLabel;
@@ -216,8 +226,9 @@ export default function AccountRegisterScreen() {
   }
 
   const { account, accounts, categories, transactions, events } = state;
-  const currency = currentWorkspace?.baseCurrency;
-  const resolvedCurrency = currency ?? "EUR";
+  // The account's own currency (#652), for every amount here, the timeline's axis included: an
+  // off-budget account may be in another one than the workspace's.
+  const resolvedCurrency = account.currency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: resolvedCurrency });
   const plain = (cents: number) => plainAmount(cents, intl.locale, resolvedCurrency);
   const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" });
@@ -248,8 +259,8 @@ export default function AccountRegisterScreen() {
     const haystack = [
       t.payee ?? "",
       t.memo ?? "",
-      rowLabel(t, categoryNameById, unassignedLabel, splitLabel, transferLabel),
-      ...t.splits.map((s) => categoryLabel(s.categoryId, categoryNameById, unassignedLabel)),
+      rowLabel(t, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel),
+      ...(account.onBudget ? t.splits.map((s) => categoryLabel(s.categoryId, categoryNameById, unassignedLabel)) : []),
     ]
       .join(" ")
       .toLowerCase();
@@ -473,7 +484,9 @@ export default function AccountRegisterScreen() {
               {rows.map(({ transaction }) => {
                 const amount = totalOf(transaction);
                 const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-                const subtitle = rowLabel(transaction, categoryNameById, unassignedLabel, splitLabel, transferLabel) + (transaction.memo ? ` · ${transaction.memo}` : "");
+                const subtitle = [rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel), transaction.memo ?? ""]
+                  .filter((part) => part !== "")
+                  .join(" · ");
                 return (
                   <div key={transaction.id} className="ph-tx">
                     <button type="button" className="open" onClick={() => setOpen({ transaction })}>
@@ -541,7 +554,7 @@ export default function AccountRegisterScreen() {
                   </td>
                   <td>
                     <button type="button" className="open-row" onClick={() => setOpen({ transaction })}>
-                      {rowLabel(transaction, categoryNameById, unassignedLabel, splitLabel, transferLabel)}
+                      {rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel)}
                     </button>
                   </td>
                   <td className="n">{amount < 0 ? plain(-amount) : ""}</td>

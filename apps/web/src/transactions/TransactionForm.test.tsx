@@ -1,6 +1,6 @@
 import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import it_ from "@envelope/i18n/locales/it.json";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { describe, expect, it, vi } from "vitest";
 
@@ -163,6 +163,16 @@ describe("TransactionForm (#54)", () => {
         status: "pending",
       }),
     );
+  });
+
+  it("offers only accounts in the same currency for a transfer (#652)", () => {
+    const usBroker: Account = { ...BROKERAGE, id: "acc-us-broker", name: "US broker", currency: "USD" };
+    renderForm({ accounts: [CHECKING, SAVINGS, usBroker] });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Transfer" }));
+    const options = within(screen.getByLabelText("To account")).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toContain("Savings");
+    expect(options).not.toContain("US broker");
   });
 
   it("requires a destination account for a transfer", async () => {

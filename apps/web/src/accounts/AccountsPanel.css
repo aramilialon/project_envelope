@@ -42,6 +42,13 @@
   line-height: 1;
 }
 
+/* What the net worth leaves out (#652): other currencies, securities. */
+.accl-head .nw-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .accl-close {
   position: absolute;
   top: 14px;
