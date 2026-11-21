@@ -1,5 +1,9 @@
 {
   "accounts.close": "Chiudi",
+  "accounts.closeError": "Non siamo riusciti a chiudere questo conto.",
+  "accounts.closeRefused.balance": "Questo conto ha ancora un saldo di {balance}. Un conto si può chiudere quando il suo saldo è zero.",
+  "accounts.closeRefused.balanceAndSecurities": "Questo conto ha ancora un saldo di {balance} e contiene titoli. Un conto si può chiudere quando il suo saldo è zero e non contiene titoli.",
+  "accounts.closeRefused.securities": "Questo conto contiene ancora titoli. Un conto si può chiudere quando non ne contiene più.",
   "accounts.closedTitle": "Chiusi",
   "accounts.empty": "Ancora nessun conto: aggiungine uno qui sotto.",
   "accounts.error": "Non siamo riusciti a caricare i tuoi conti.",
