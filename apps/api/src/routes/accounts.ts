@@ -80,12 +80,21 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
 
   app.patch("/workspaces/:workspaceId/accounts/:accountId/close", { preHandler: writePreHandler }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
-    const account = await closeAccount(request.db!, request.workspace!.id, accountId);
-    if (!account) {
+    const result = await closeAccount(request.db!, request.workspace!.id, accountId);
+    if (result.status === "not_found") {
       await reply.code(404).send({ error: "account not found, or already closed" });
       return;
     }
-    return account;
+    if (result.status === "not_empty") {
+      // #703: an account with money or securities in it is not closed. `error` is the stable code,
+      // as for a `ValidationError`, so the web's `ApiError` reads it with its details.
+      await reply.code(409).send({
+        error: "account_not_empty",
+        details: { balanceCents: result.balanceCents, holdsPositions: result.holdsPositions },
+      });
+      return;
+    }
+    return result.account;
   });
 
   // A brokerage account's withholding-agent flag (#508): set once, while it has none.

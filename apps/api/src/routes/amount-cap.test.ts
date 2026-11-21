@@ -336,4 +336,29 @@ describe("the cap on a single amount (#651)", () => {
     await superuserPool.query("DELETE FROM transactions WHERE id = ANY($1)", [legacy]);
     assert.equal((await request("GET", "/budget-months/2026-09")).status, 200);
   });
+
+  it("rows stored before the cap: closing an account whose balance they overflow answers 422 and closes nothing (#703)", async () => {
+    // Off budget, so that no budget month sees these rows.
+    const accountId = await insertAccount("Overflowing", "checking", false);
+    for (const amount of [Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER - 2]) {
+      const { rows } = await superuserPool.query<{ id: string }>(
+        "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, '2026-09-21', 'pending') RETURNING id",
+        [workspaceId, accountId],
+      );
+      await superuserPool.query("INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents) VALUES ($1, $2, NULL, $3)", [
+        workspaceId,
+        rows[0]!.id,
+        amount,
+      ]);
+    }
+
+    const response = await request<ErrorBody>("PATCH", `/accounts/${accountId}/close`);
+    assert.equal(response.status, 422, JSON.stringify(response.body));
+    assert.equal(response.body.error, "amount_total_overflow");
+    assert.deepEqual(response.body.details, { accountId, label: "balanceCents" });
+    const { rows } = await superuserPool.query<{ closed_at: Date | null }>("SELECT closed_at FROM accounts WHERE id = $1", [accountId]);
+    assert.equal(rows[0]!.closed_at, null);
+
+    await superuserPool.query("DELETE FROM transactions WHERE account_id = $1", [accountId]);
+  });
 });
