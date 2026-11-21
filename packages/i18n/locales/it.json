@@ -70,6 +70,7 @@
   "budget.daysOfBuffer": "Giorni di margine",
   "budget.empty": "Ancora nessuna categoria: aggiungine qualcuna dalle impostazioni del workspace.",
   "budget.error": "Non siamo riusciti a caricare il tuo budget.",
+  "budget.error.amountTotalOverflow": "Questo mese non può essere mostrato: alcuni importi salvati in precedenza danno un totale troppo alto per essere calcolato con esattezza. Modifica o elimina le transazioni superiori a {max} per vederlo di nuovo.",
   "budget.group.collapse": "Chiudi {name}",
   "budget.group.expand": "Apri {name}",
   "budget.groupMenu.addCategory": "Aggiungi una categoria",
