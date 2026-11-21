@@ -17,6 +17,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "./app-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "./keycloak.ts";
+import { HIGH_RATE_LIMITS_ENV } from "./rate-limits.ts";
 
 /**
  * @throws if `DATABASE_URL`/`KEYCLOAK_ADMIN_PASSWORD` are not set — call once at module scope
@@ -67,6 +68,7 @@ export async function setupIntegrationTest(options: SetupIntegrationTestOptions 
       APP_DATABASE_URL: appConnectionString(databaseUrl),
       KEYCLOAK_ISSUER: realm.issuer,
       KEYCLOAK_AUDIENCE: realm.audience,
+      ...HIGH_RATE_LIMITS_ENV,
       ...options.configOverrides,
     }),
   );

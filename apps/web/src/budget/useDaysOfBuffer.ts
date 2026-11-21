@@ -14,5 +14,8 @@ export function useDaysOfBuffer(workspaceId: string): DaysOfBufferState {
     [accessToken, workspaceId],
   );
   // No `refetch` here: nothing calls it, so the type stays exactly what it was before `useFetchState` existed.
-  return state.status === "ok" ? { status: "ok", daysOfBuffer: state.daysOfBuffer } : { status: state.status };
+  if (state.status === "ok") {
+    return { status: "ok", daysOfBuffer: state.daysOfBuffer };
+  }
+  return state.status === "error" ? { status: "error", error: state.error } : { status: "loading" };
 }

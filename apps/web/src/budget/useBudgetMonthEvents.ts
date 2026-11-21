@@ -21,5 +21,8 @@ export function useBudgetMonthEvents(workspaceId: string, month: string): Budget
   );
   // No `refetch` here, unlike most of this hook's siblings: nothing calls it (events follow the
   // month/workspace alone), so the type stays exactly what it was before `useFetchState` existed.
-  return state.status === "ok" ? { status: "ok", events: state.events } : { status: state.status };
+  if (state.status === "ok") {
+    return { status: "ok", events: state.events };
+  }
+  return state.status === "error" ? { status: "error", error: state.error } : { status: "loading" };
 }

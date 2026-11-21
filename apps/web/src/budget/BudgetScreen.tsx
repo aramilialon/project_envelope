@@ -17,6 +17,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { createCategory, createCategoryGroup, renameCategory, renameCategoryGroup } from "../categories/api.ts";
 import CategoryNameField from "../categories/CategoryNameField.tsx";
 import { BudgetDataVersionContext } from "../layout/budgetDataVersion.ts";
@@ -321,7 +322,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     return (
       <>
         {secondRow}
-        <p role="alert">{intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." })}</p>
+        <p role="alert">{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." })}</p>
       </>
     );
   }

@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import type { Account } from "../accounts/api.ts";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
@@ -222,7 +223,7 @@ export default function AccountRegisterScreen() {
   }
 
   if (state.status === "error") {
-    return <p role="alert">{intl.formatMessage({ id: "register.error", defaultMessage: "We could not load this account." })}</p>;
+    return <p role="alert">{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "register.error", defaultMessage: "We could not load this account." })}</p>;
   }
 
   const { account, accounts, categories, transactions, events } = state;

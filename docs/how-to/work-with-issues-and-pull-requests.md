@@ -107,22 +107,24 @@ The `commit-msg` hook in `scripts/git-hooks` rejects other formats, and the "PR 
 
 When every issue of a milestone is closed:
 
-1. Check the repository's open security alerts and deal with every one before going on:
+1. Hold the exploratory run ([Work with the agent team](work-with-the-agent-team.md#exploratory-runs-before-a-release)): the three explorers use the app on a disposable environment, `qa` reproduces their findings, and every reproduced bug is fixed through an issue and a pull request, or moved to a later milestone with the maintainer's agreement. This run takes the place of the maintainer's own testing before a release.
+2. Only for a release that closes a roadmap phase (the milestones named "… MVP", such as `0.2.7 Portfolio MVP` and `0.3.2 Mobile MVP`, and `1.0.0`): the maintainer tries the app before the tag, on a disposable environment the coordinator brings up, with a short list of what the phase changed. What the maintainer finds goes through the same issues and pull requests. Every other release is tagged without the maintainer's testing.
+3. Check the repository's open security alerts and deal with every one before going on:
    ```bash
    gh api "repos/:owner/:repo/dependabot/alerts?state=open" -q 'length'
    gh api "repos/:owner/:repo/code-scanning/alerts?state=open" -q '.[] | "\(.number) \(.rule.id) \(.most_recent_instance.location.path)"'
    gh api "repos/:owner/:repo/secret-scanning/alerts?state=open" -q 'length'
    ```
    Each alert is either fixed through an issue and a pull request like any other bug, or, when it is a false positive or does not apply to how the app is deployed, dismissed on GitHub with that reason written in the dismissal comment. A secret-scanning alert also means rotating the secret, not only removing it from the code. The release waits until all three lists are empty.
-2. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
-3. After merging it, tag `main` and publish the release:
+4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
+5. After merging it, the coordinator tags `main` and publishes the release on its own, without asking first (the maintainer's decision; for a phase release, only after step 2):
    ```bash
    git switch main && git pull
    git tag -a v0.1.0 -m "v0.1.0 API skeleton"
    git push origin v0.1.0
    gh release create v0.1.0 --title "v0.1.0 API skeleton" --generate-notes
    ```
-4. Close the milestone on GitHub.
+6. Close the milestone on GitHub.
 
 ## Safeguards against direct pushes
 
@@ -130,6 +132,6 @@ When every issue of a milestone is closed:
 | --- | --- | --- |
 | Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request, only "Squash and merge" allowed, requires the `test` and `conventional-title` checks | The repository is public, so this works on the free plan |
 | Git hooks (`scripts/git-hooks/`) | `pre-push` refuses `git push` to `main`; `commit-msg` checks the commit convention | Local: must be activated in each clone |
-| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, force pushes and skipping hooks; allow squash merges, pull request reviews and raw API calls (`gh api`); ask before tags and releases | Match the usual command forms, not every possible variant |
+| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, force pushes and skipping hooks; allow squash merges, pull request reviews, raw API calls (`gh api`) and reading releases (`gh release view`, `gh release list`); allow creating a `v*` tag, pushing it and creating its release; ask before deleting or moving a tag and before editing or deleting a release | Match the usual command forms, not every possible variant |
 
 Only the ruleset is a real boundary; the other two catch mistakes early.

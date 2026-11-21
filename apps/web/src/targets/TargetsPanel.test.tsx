@@ -80,7 +80,7 @@ describe("TargetsPanel (#55)", () => {
   });
 
   it("shows an error state", () => {
-    renderPanel([category({})], { status: "error", refetch: vi.fn() });
+    renderPanel([category({})], { status: "error", error: new Error("x"), refetch: vi.fn() });
     expect(screen.getByRole("alert")).toHaveTextContent("We could not load your targets.");
   });
 

@@ -14,6 +14,8 @@
  * comment, never copied from a previous run (ADR 0007): the numbers are numeric, but a scripted
  * scenario whose arithmetic can be followed line by line is what this milestone's surface needs
  * (the maintainer settled this on #503; a seeded random walk can come with #80's generator).
+ *
+ * The API's rate limits (#566), pulled into 0.2.0, are certified here too, on a server of their own.
  */
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -642,5 +644,71 @@ describe("smoke: 0.2.0 Portfolio schema & instruments, against the real process"
     assert.equal((await send(neighbour.token, "GET", `/workspaces/${workspaceId}/trades`)).status, 403);
     // And nothing they tried changed anything here.
     assert.deepEqual((await api<{ trades: Trade[] }>("GET", "/trades")).trades, locked);
+  });
+});
+
+/**
+ * The API's rate limits (#566, ADR 0017) over real HTTP connections: a server of its own with low
+ * limits, so the household above runs under limits high enough for a script, and this one proves
+ * both layers refuse what is over them, with 429 and `Retry-After`.
+ */
+describe("smoke: 0.2.0 rate limits, against the real process", () => {
+  let superuserPool: DbPool;
+  let realm: KeycloakTestRealm;
+  let server: RunningServer;
+
+  afterEach(printServerOutputOnFailure(() => [server]));
+
+  before(async () => {
+    superuserPool = createPool(databaseUrl);
+    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
+    await ensureAppRoleLogin(superuserPool);
+    await ensureQueueRoleLogin(superuserPool);
+    realm = await setUpKeycloakTestRealm();
+
+    server = await startServer({
+      HOST: "127.0.0.1",
+      APP_DATABASE_URL: appConnectionString(databaseUrl),
+      QUEUE_DATABASE_URL: queueConnectionString(databaseUrl),
+      VAPID_SUBJECT: TEST_VAPID_SUBJECT,
+      VAPID_PUBLIC_KEY: TEST_VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY: TEST_VAPID_PRIVATE_KEY,
+      KEYCLOAK_ISSUER: realm.issuer,
+      KEYCLOAK_AUDIENCE: realm.audience,
+      LOG_LEVEL: "warn",
+      RATE_LIMIT_IP_MAX: "3",
+      RATE_LIMIT_USER_MAX: "1",
+    });
+  });
+
+  after(async () => {
+    try {
+      await server?.stop();
+    } finally {
+      await realm?.teardown();
+      await superuserPool?.end();
+    }
+  });
+
+  async function assertTooManyRequests(response: Response): Promise<void> {
+    assert.equal(response.status, 429);
+    assert.equal(((await response.json()) as { error: string }).error, "too_many_requests");
+    const retryAfter = Number(response.headers.get("retry-after"));
+    assert.ok(Number.isInteger(retryAfter) && retryAfter > 0 && retryAfter <= 60, `Retry-After: ${response.headers.get("retry-after")}`);
+  }
+
+  it("answers a user's first request and refuses the next one over the per-user limit, then the address's over its own", async () => {
+    const headers = { authorization: `Bearer ${await realm.getUserToken()}` };
+
+    // Address: 1 of 3. User: 1 of 1.
+    const first = await fetch(`${server.baseUrl}/me/workspaces`, { headers });
+    assert.equal(first.status, 200, await first.clone().text());
+    // Address: 2 of 3. User: over.
+    await assertTooManyRequests(await fetch(`${server.baseUrl}/me/workspaces`, { headers }));
+
+    // Address: 3 of 3: the health check is counted, not exempt.
+    assert.equal((await fetch(`${server.baseUrl}/health`)).status, 200);
+    // Address: over.
+    await assertTooManyRequests(await fetch(`${server.baseUrl}/health`));
   });
 });
