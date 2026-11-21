@@ -54,9 +54,12 @@ interface FieldApplier {
  * answers `unsupported_field`. Wiring one up must keep a transfer's two legs cancelling out, as
  * `updateTransaction` does (#547): a bare UPDATE of one leg's split would break the budget
  * invariant. Nor is a split's category (`splits.category_id`): wiring it up must keep
- * `updateTransaction`'s category rule for transfer legs (#552), refusing to clear the category of
- * the on-budget leg of a transfer to or from an off-budget account, which would make every
- * budget-month read of the workspace fail.
+ * `updateTransaction`'s category rule for transfer legs (#552, #598), which would otherwise let a
+ * stored leg make every budget-month read of the workspace fail: clearing the category of the
+ * on-budget leg of a transfer to an off-budget account is refused (`uncategorized_transaction`),
+ * and so is clearing it on the on-budget credit card leg of a transfer from one
+ * (`card_income_not_supported`); clearing it on the on-budget cash leg of a transfer from an
+ * off-budget account is allowed, and leaves that money unassigned.
  */
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {

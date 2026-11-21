@@ -465,7 +465,7 @@ describe("transactions repository", () => {
     assert.deepEqual(destination, transfer.destination);
   });
 
-  it("refuses to clear the category of the on-budget leg of a transfer from an off-budget account (#552)", async () => {
+  it("lets the category of the on-budget cash leg of a transfer from an off-budget account be cleared, as income to assign (#598)", async () => {
     const transfer = await createTransfer(pool, {
       workspaceId,
       sourceAccountId: offBudgetAccountId,
@@ -473,12 +473,46 @@ describe("transactions repository", () => {
       occurredAt: "2026-09-10",
       amountCents: 900,
       categoryId,
+      status: "cleared",
     });
 
-    await assert.rejects(
-      () => updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 900 }] }),
-      (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+    const cleared = await updateTransaction(pool, workspaceId, transfer.destination.id, { splits: [{ categoryId: null, amountCents: 900 }] });
+    assert.ok(typeof cleared !== "string", `expected a record, got "${String(cleared)}"`);
+    assert.deepEqual(
+      cleared.splits.map((split) => [split.categoryId, split.amountCents]),
+      [[null, 900]],
     );
+    const recategorized = await updateTransaction(pool, workspaceId, transfer.destination.id, {
+      splits: [{ categoryId: otherCategoryId, amountCents: 900 }],
+    });
+    assert.ok(typeof recategorized !== "string", `expected a record, got "${String(recategorized)}"`);
+    assert.equal(recategorized.splits[0]?.categoryId, otherCategoryId);
+    // A category-only edit leaves the other leg alone, its status too.
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.source.id);
+    assert.deepEqual(source, transfer.source);
+  });
+
+  it("refuses to clear the category of the on-budget card leg of a transfer from an off-budget account, writing nothing (#598)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: creditCardAccountId,
+      occurredAt: "2026-09-10",
+      amountCents: 800,
+      categoryId,
+    });
+
+    for (const amountCents of [800, 1200]) {
+      await assert.rejects(
+        () => updateTransaction(pool, workspaceId, transfer.destination.id, { payee: "After", splits: [{ categoryId: null, amountCents }] }),
+        (error: unknown) =>
+          isValidationError(error, "card_income_not_supported") && error.details.accountId === creditCardAccountId,
+      );
+    }
+    const [destination] = (await listTransactionsForAccount(pool, workspaceId, creditCardAccountId)).filter((t) => t.id === transfer.destination.id);
+    const [source] = (await listTransactionsForAccount(pool, workspaceId, offBudgetAccountId)).filter((t) => t.id === transfer.source.id);
+    assert.deepEqual(destination, transfer.destination);
+    assert.deepEqual(source, transfer.source);
   });
 
   it("ignores a category given to a leg that carries none, as creating the transfer does (#552)", async () => {
@@ -552,18 +586,62 @@ describe("transactions repository", () => {
     assert.equal(transfer.destination.splits[0]?.amountCents, 1500);
   });
 
-  it("rejects a transfer between an on-budget and an off-budget account with no category (#378)", async () => {
+  it("rejects a transfer from an on-budget to an off-budget account with no category (#378)", async () => {
+    for (const sourceAccountId of [accountId, creditCardAccountId]) {
+      await assert.rejects(
+        () =>
+          createTransfer(pool, {
+            workspaceId,
+            sourceAccountId,
+            destinationAccountId: offBudgetAccountId,
+            occurredAt: "2026-09-11",
+            amountCents: 1000,
+          }),
+        (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+      );
+    }
+  });
+
+  it("stores no category on the incoming leg of a transfer from an off-budget account into a cash account: income to assign (#598)", async () => {
+    const transfer = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: accountId,
+      occurredAt: "2026-09-11",
+      amountCents: 500_000,
+    });
+    assert.equal(transfer.source.splits[0]?.categoryId, null);
+    assert.equal(transfer.source.splits[0]?.amountCents, -500_000);
+    assert.equal(transfer.destination.splits[0]?.categoryId, null);
+    assert.equal(transfer.destination.splits[0]?.amountCents, 500_000);
+  });
+
+  it("refuses a transfer from an off-budget account into an on-budget card with no category, writing nothing (#598)", async () => {
+    const before = await listTransactionsForAccount(pool, workspaceId, creditCardAccountId);
     await assert.rejects(
       () =>
         createTransfer(pool, {
           workspaceId,
-          sourceAccountId: accountId,
-          destinationAccountId: offBudgetAccountId,
+          sourceAccountId: offBudgetAccountId,
+          destinationAccountId: creditCardAccountId,
           occurredAt: "2026-09-11",
           amountCents: 1000,
         }),
-      (error: unknown) => isValidationError(error, "uncategorized_transaction"),
+      (error: unknown) =>
+        isValidationError(error, "card_income_not_supported") && error.details.accountId === creditCardAccountId,
     );
+    assert.deepEqual(await listTransactionsForAccount(pool, workspaceId, creditCardAccountId), before);
+
+    // With a real category it stays allowed: a refund on the card.
+    const refund = await createTransfer(pool, {
+      workspaceId,
+      sourceAccountId: offBudgetAccountId,
+      destinationAccountId: creditCardAccountId,
+      occurredAt: "2026-09-11",
+      amountCents: 1000,
+      categoryId,
+    });
+    assert.equal(refund.destination.splits[0]?.categoryId, categoryId);
   });
 
   it("ignores a given category when both accounts are on-budget (#378)", async () => {

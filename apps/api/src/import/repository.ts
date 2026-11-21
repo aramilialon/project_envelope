@@ -254,7 +254,12 @@ export type StagedTransactionDecision =
       readonly stagedTransactionId: string;
       readonly kind: "transfer";
       readonly otherAccountId: string;
-      /** Required, and applied to the on-budget leg, when `staged.accountId` and `otherAccountId` disagree on on-budget status (#378, #379). */
+      /**
+       * Applied to the on-budget leg when `staged.accountId` and `otherAccountId` disagree on
+       * on-budget status (#378, #379), following `createTransfer`: required when the money leaves
+       * the budget; optional when it comes in from the off-budget account, where none leaves it
+       * income to assign (#598), except into an on-budget card (`card_income_not_supported`).
+       */
       readonly categoryId?: string;
     }
   /** A row named in the confirmation with no category, transfer or income recognition — blocks only that row (design.md, #28's own acceptance criteria). */

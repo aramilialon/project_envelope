@@ -280,6 +280,59 @@ describe("import routes", () => {
     assert.equal(confirmed.json().outcomes[0].outcome, "confirmed");
   });
 
+  it("confirms an incoming row from an off-budget account with no category as income to assign (#598)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-09-20,From brokerage,5000.00\n" },
+    });
+    const stagedId = imported.json().staged[0].id;
+
+    const confirmed = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+      headers: auth,
+      payload: { decisions: [{ stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId }] },
+    });
+    assert.equal(confirmed.statusCode, 200);
+    const outcome = confirmed.json().outcomes[0];
+    assert.equal(outcome.outcome, "confirmed", JSON.stringify(outcome));
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+      headers: auth,
+    });
+    const leg = (listed.json().transactions as { id: string; splits: { categoryId: string | null; amountCents: number }[] }[]).find(
+      (t) => t.id === outcome.transactionId,
+    );
+    assert.deepEqual(leg?.splits.map((s) => [s.categoryId, s.amountCents]), [[null, 500_000]]);
+  });
+
+  it("still rejects an outgoing row to an off-budget account with no category, leaving it staged (#378, #598)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+
+    const imported = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-09-21,To brokerage once more,-70.00\n" },
+    });
+    const stagedId = imported.json().staged[0].id;
+
+    const confirmed = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/staged-transactions/confirm`,
+      headers: auth,
+      payload: { decisions: [{ stagedTransactionId: stagedId, kind: "transfer", otherAccountId: offBudgetAccountId }] },
+    });
+    assert.equal(confirmed.statusCode, 200);
+    assert.deepEqual(confirmed.json().outcomes[0], { stagedTransactionId: stagedId, outcome: "rejected", code: "uncategorized_transaction" });
+  });
+
   it("rejects a transfer confirmation naming an unknown category", async () => {
     const auth = { authorization: `Bearer ${token}` };
 
