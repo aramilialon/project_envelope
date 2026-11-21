@@ -1,4 +1,4 @@
-import { computeTarget, shiftMonth } from "@envelope/core";
+import { computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
 
 import { createAssignmentBatch, listAssignmentTotals, type AssignmentEntryRecord } from "../assignments/repository.ts";
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
@@ -85,6 +85,12 @@ function tableOrder(categories: readonly CategoryRecord[], groupSortOrder: Reado
  * every category the mode would otherwise fund, categories are funded in
  * table order until it runs out — never partially, in some other priority
  * order.
+ *
+ * A category's computed amount can be beyond the cap on a single amount
+ * (ADR 0002), for instance overspending made of several transactions that
+ * are each within it. That amount is split, not refused: the category gets
+ * several ledger entries of at most `MAX_AMOUNT_CENTS` each, in the same
+ * batch, so they still undo together.
  */
 export async function runQuickAssign(
   db: DbPool | DbClient,
@@ -113,7 +119,9 @@ export async function runQuickAssign(
   for (const d of desired) {
     if (remaining <= 0) break;
     const give = Math.min(d.amountCents, remaining);
-    entries.push({ month, sourceCategoryId: null, destinationCategoryId: d.categoryId, amountCents: give });
+    for (let left = give; left > 0; left -= MAX_AMOUNT_CENTS) {
+      entries.push({ month, sourceCategoryId: null, destinationCategoryId: d.categoryId, amountCents: Math.min(left, MAX_AMOUNT_CENTS) });
+    }
     remaining -= give;
   }
 
