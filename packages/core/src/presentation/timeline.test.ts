@@ -138,13 +138,32 @@ describe("computeTimeline", () => {
   it("reserves a gutter left of the plot for the value labels in full mode, none in compact mode (#591)", () => {
     const full = computeTimeline({ daysInMonth: 30, today: 12, events: [event({ day: 5 })] });
     assert.ok(full.valueLabelX < full.axisX0);
-    assert.ok(full.valueLabelX >= 70, "room for a label of about twelve characters at 10px");
+    assert.ok(full.valueLabelX >= 68, "without a measured width, room for the default label width");
     for (const segment of full.segments) assert.ok(segment.from.x >= full.axisX0);
     assert.ok(full.todayX! > full.valueLabelX);
 
     const compact = computeTimeline({ daysInMonth: 30, today: 12, events: [event({ day: 5 })], compact: true });
     assert.equal(compact.valueLabelX, compact.axisX0);
     assert.equal(compact.axisX0, 12);
+  });
+
+  it("sizes the gutter from the widest value label the caller measures, so a long negative amount is never cut off (#591)", () => {
+    const events = [event({ day: 3, direction: "out", amountCents: 200_000 }), event({ day: 9, direction: "in", amountCents: 300_000 })];
+    // "-120.000,00 USD" in Italian measures about 76 units at 10px; give every negative label that width.
+    const wide = computeTimeline({ daysInMonth: 30, today: undefined, events, valueLabelWidth: (c) => (c < 0 ? 76 : 40) });
+    assert.ok(wide.valueTicks.some((t) => t.amountCents < 0));
+    assert.ok(wide.valueLabelX - 76 >= 0, "the widest label starts inside the canvas");
+    assert.ok(wide.axisX0 - wide.valueLabelX > 0);
+
+    const narrow = computeTimeline({ daysInMonth: 30, today: undefined, events, valueLabelWidth: () => 30 });
+    assert.ok(narrow.axisX0 < wide.axisX0, "short labels leave the plot more room");
+    assert.ok(narrow.valueLabelX - 30 >= 0);
+
+    const absurd = computeTimeline({ daysInMonth: 30, today: undefined, events, valueLabelWidth: () => 1000 });
+    assert.ok(absurd.axisX0 <= absurd.width * 0.4, "the gutter never takes more than 40% of the canvas");
+
+    const compact = computeTimeline({ daysInMonth: 30, today: undefined, events, compact: true, valueLabelWidth: () => 76 });
+    assert.equal(compact.axisX0, 12, "compact mode has no labels, so no gutter");
   });
 
   it("zero sits wherever it falls in the month's own value range, not always the canvas's own center", () => {

@@ -1,9 +1,10 @@
-import { computeTimeline } from "@envelope/core";
+import { computeTimeline, formatMoney } from "@envelope/core";
 import { render, screen } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { describe, expect, it } from "vitest";
 
 import { renderWithIntl } from "../test-utils.tsx";
+import { estimateTextWidth, timelineValueLabelWidth } from "./textWidth.ts";
 import Timeline from "./Timeline.tsx";
 
 const money = (cents: number) => `€${(cents / 100).toFixed(2)}`;
@@ -146,6 +147,53 @@ describe("Timeline (#326, redesigned #390)", () => {
       expect(num(label, "x")).toBeLessThan(plotLeft);
       expect(num(label, "x")).toBeGreaterThanOrEqual(70);
     }
+  });
+
+  it.each([
+    ["CHF, en", (cents: number) => formatMoney(cents, { locale: "en", currency: "CHF" })],
+    ["USD, it", (cents: number) => formatMoney(cents, { locale: "it", currency: "USD" })],
+    ["EUR, it", (cents: number) => formatMoney(cents, { locale: "it", currency: "EUR" })],
+  ])("sizes the label gutter from the widest formatted label, long negatives included (%s, #591)", (_name, wideMoney) => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: undefined,
+      events: [
+        { day: 3, amountCents: 12_000_000, direction: "out", status: "recorded" },
+        { day: 9, amountCents: 5_000_000, direction: "in", status: "recorded" },
+      ],
+      valueLabelWidth: timelineValueLabelWidth(wideMoney),
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={wideMoney} />);
+
+    const labels = [...document.querySelectorAll(".t-grid-l")];
+    expect(labels.some((label) => label.textContent?.startsWith("-"))).toBe(true);
+    for (const label of labels) {
+      // Right-aligned at `x`, so the label starts at x - width: never left of the canvas's own edge.
+      expect(Number(label.getAttribute("x")) - estimateTextWidth(label.textContent ?? "", 10)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it.each([1, 2])("puts the 'today' label right of its line on day %i, clear of the value labels' gutter (#591)", (day) => {
+    const layout = computeTimeline({
+      daysInMonth: 30,
+      today: day,
+      events: [{ day: 1, amountCents: 400_000, direction: "in", status: "recorded" }],
+      valueLabelWidth: timelineValueLabelWidth(money),
+    });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
+
+    const label = screen.getByText("today");
+    expect(label.getAttribute("text-anchor")).toBe("start");
+    expect(Number(label.getAttribute("x"))).toBeGreaterThan(layout.axisX0);
+  });
+
+  it("keeps the 'today' label left of its line later in the month", () => {
+    const layout = computeTimeline({ daysInMonth: 30, today: 15, events: [], valueLabelWidth: timelineValueLabelWidth(money) });
+    renderWithIntl(<Timeline layout={layout} monthLabel="September 2026" money={money} />);
+
+    const label = screen.getByText("today");
+    expect(label.getAttribute("text-anchor")).toBe("end");
+    expect(Number(label.getAttribute("x")) - estimateTextWidth("today", 12)).toBeGreaterThanOrEqual(layout.axisX0);
   });
 
   it("drops the vertical scale's own reference lines in compact mode", () => {

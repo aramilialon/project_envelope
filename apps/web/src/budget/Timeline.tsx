@@ -1,5 +1,6 @@
 import type { TimelineLayout } from "@envelope/core";
 import { useIntl } from "react-intl";
+import { textWidth } from "./textWidth.ts";
 import "./Timeline.css";
 
 interface Props {
@@ -39,6 +40,11 @@ interface Props {
 export default function Timeline({ layout, monthLabel, monthAbbrev, money, compact }: Props) {
   const intl = useIntl();
   const current = layout.current;
+  const todayLabel = intl.formatMessage({ id: "budget.timeline.today", defaultMessage: "today" });
+  // Left of the "today" line by default; to its right when that would run it into the value labels'
+  // gutter or past the canvas's own left edge, early in the month (`#591`). 12px bold: `.t-today-l`.
+  const todayLabelRight =
+    layout.todayX !== undefined && layout.todayX - 6 - textWidth(todayLabel, 12, 700) < layout.axisX0;
 
   return (
     <div className={`time${compact ? " compact" : ""}`}>
@@ -79,8 +85,13 @@ export default function Timeline({ layout, monthLabel, monthAbbrev, money, compa
         {layout.todayX !== undefined && (
           <>
             <line x1={layout.todayX} y1={6} x2={layout.todayX} y2={layout.height - 14} className="t-today" />
-            <text x={layout.todayX - 6} y={16} textAnchor="end" className="t-today-l">
-              {intl.formatMessage({ id: "budget.timeline.today", defaultMessage: "today" })}
+            <text
+              x={todayLabelRight ? layout.todayX + 6 : layout.todayX - 6}
+              y={16}
+              textAnchor={todayLabelRight ? "start" : "end"}
+              className="t-today-l"
+            >
+              {todayLabel}
             </text>
           </>
         )}
