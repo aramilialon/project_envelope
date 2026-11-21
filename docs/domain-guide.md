@@ -28,9 +28,13 @@ from the months before M. M's unassigned money is the smallest of these figures.
 - but a later month's assignment paid for by that later month's own income is not blamed on M;
 - income dated after today counts nowhere until its date: it is expected income, not money
   received. Spending dated after today does count against its category straight away, which errs
-  on the safe side.
+  on the safe side. This holds for outflows only: money coming in with a category and dated after
+  today (a refund, a categorized transfer from the broker) counts in its category at once for now
+  (#668).
 
-"Assigned to future months" is the part of M's own money that later months use.
+"From this month's money, assigned to later months" is later months' assignments that their own
+income does not pay for, charged to M; when it exceeds what M has, M's unassigned money is negative
+(example 3: €1,100 while September received €1,000).
 
 **Examples.** Today is 21 November 2026.
 
@@ -38,9 +42,9 @@ from the months before M. M's unassigned money is the smallest of these figures.
    **€3,000**. A second €3,000 salary on 25 October leaves August and September as they were;
    October shows €6,000.
 2. €1,000 received in September, €900 of it assigned to October's rent: September shows **€100**
-   unassigned and €900 assigned to future months; October shows €100.
+   unassigned and €900 assigned to later months; October shows €100.
 3. The same, but €1,100 assigned to October and no October income: September shows **−€100** (a
-   warning: more assigned than received), with €1,100 assigned to future months.
+   warning: more assigned than received), with €1,100 assigned to later months.
 4. €100 received in September; a €16,802 loan paid out on 5 October and assigned in October to the
    loan's own category: September shows **€100**, not −€16,702, because October's own income pays
    for October's assignment.

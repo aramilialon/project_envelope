@@ -51,7 +51,7 @@
   "budget.actions.quickAssign": "Quick assign",
   "budget.actions.scheduled": "Scheduled",
   "budget.actions.targets": "Targets",
-  "budget.assignedInFuture": "Already assigned to future months",
+  "budget.assignedInFuture": "From this month's money, assigned to later months",
   "budget.bar.cardTag": "Card",
   "budget.bar.debtToCover": "{uncovered} to cover of {debt} of debt",
   "budget.bar.noActivity": "No activity",
