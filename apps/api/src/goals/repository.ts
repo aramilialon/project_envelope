@@ -1,4 +1,4 @@
-import { assertAmount, assertMonth, computeTarget, type Target } from "@envelope/core";
+import { assertMonth, computeTarget, MAX_AMOUNT_CENTS, ValidationError, type Target } from "@envelope/core";
 
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -70,11 +70,27 @@ function toGoalRecord(row: GoalRow): GoalRecord {
 }
 
 /**
+ * Checks a goal's amount (#701): a whole number of minor units, more than 0 and at most
+ * `MAX_AMOUNT_CENTS`. Anything else would otherwise fail the table's own
+ * `CHECK (amount_cents > 0)` and surface as a 500, so every case is refused with one stable code.
+ *
+ * @throws ValidationError "invalid_goal_amount" (details: `field: "amountCents"`).
+ */
+export function assertGoalAmount(value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_AMOUNT_CENTS) {
+    throw new ValidationError("invalid_goal_amount", `a goal amount must be an integer from 1 to ${MAX_AMOUNT_CENTS}: ${value}`, {
+      field: "amountCents",
+    });
+  }
+}
+
+/**
  * Creates or replaces the category's goal (a category has at most one at a
  * time: setting a new one replaces the old, it is not a history). Shape
  * validation (the right fields for `input.kind`) is the route's job, the
  * same split used for other request-shape checks in this codebase — the
- * migration's own CHECK constraint is the last line of defense.
+ * migration's own CHECK constraint is the last line of defense. The amount is
+ * checked here as well as in the route (`assertGoalAmount`).
  */
 export async function upsertGoal(
   db: DbPool | DbClient,
@@ -82,7 +98,7 @@ export async function upsertGoal(
   categoryId: string,
   input: GoalInput,
 ): Promise<GoalRecord> {
-  assertAmount(input.amountCents);
+  assertGoalAmount(input.amountCents);
   if (input.dueMonth !== undefined) {
     assertMonth(input.dueMonth);
   }

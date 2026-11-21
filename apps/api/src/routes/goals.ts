@@ -5,11 +5,16 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
-import { deleteGoal, getGoalProgress, listGoalProgress, upsertGoal, type GoalInput, type GoalKind, type RepeatInterval } from "../goals/repository.ts";
+import { assertGoalAmount, deleteGoal, getGoalProgress, listGoalProgress, upsertGoal, type GoalInput, type GoalKind, type RepeatInterval } from "../goals/repository.ts";
 
 const KINDS: readonly GoalKind[] = ["monthly", "by_date", "repeating", "balance"];
 const INTERVALS: readonly RepeatInterval[] = [2, 3, 4, 6, 12, 24];
 
+/**
+ * Reads a goal from the request body. Returns a string for a body of the wrong shape (a plain
+ * 400), and throws a `ValidationError` for an `amountCents` that is a number but not a valid goal
+ * amount: 0 or less, not a whole number, or above the cap (400 `invalid_goal_amount`, #701).
+ */
 function parseGoalInput(body: Record<string, unknown>): GoalInput | string {
   const rawKind = body.kind;
   if (typeof rawKind !== "string" || !KINDS.includes(rawKind as GoalKind)) {
@@ -20,6 +25,7 @@ function parseGoalInput(body: Record<string, unknown>): GoalInput | string {
   if (typeof amountCents !== "number") {
     return "amountCents is required";
   }
+  assertGoalAmount(amountCents);
   const dueMonth = typeof body.dueMonth === "string" ? body.dueMonth : undefined;
   const every = typeof body.every === "number" ? body.every : undefined;
 
@@ -52,7 +58,15 @@ export function registerGoalsRoutes(app: FastifyInstance, pool: DbPool): void {
 
   app.put(base, { preHandler: writePreHandler }, async (request, reply) => {
     const { categoryId } = request.params as { categoryId: string };
-    const parsed = parseGoalInput((request.body ?? {}) as Record<string, unknown>);
+    let parsed: GoalInput | string;
+    try {
+      parsed = parseGoalInput((request.body ?? {}) as Record<string, unknown>);
+    } catch (error) {
+      if (await sendIfValidationError(reply, error)) {
+        return;
+      }
+      throw error;
+    }
     if (typeof parsed === "string") {
       await reply.code(400).send({ error: `invalid goal: ${parsed}` });
       return;

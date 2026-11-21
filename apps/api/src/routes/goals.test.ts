@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { decodeJwt } from "jose";
 
 import { type App } from "../app.ts";
@@ -98,6 +99,58 @@ describe("goals routes", () => {
       payload: { kind: "monthly", amountCents: 60000, dueMonth: "2026-12" },
     });
     assert.equal(response.statusCode, 400);
+  });
+
+  describe("an amount that is not a valid goal amount (#701)", () => {
+    const cases: readonly [string, Record<string, unknown>][] = [
+      ["zero", { kind: "monthly", amountCents: 0 }],
+      ["a negative amount", { kind: "balance", amountCents: -100 }],
+      ["a negative amount on a dated goal", { kind: "by_date", amountCents: -1, dueMonth: "2026-12" }],
+      ["a fraction of a minor unit", { kind: "monthly", amountCents: 100.5 }],
+      ["an amount beyond the safe integer range", { kind: "monthly", amountCents: 1e300 }],
+      ["an amount above the cap", { kind: "repeating", amountCents: MAX_AMOUNT_CENTS + 1, dueMonth: "2026-12", every: 12 }],
+    ];
+
+    for (const [name, payload] of cases) {
+      it(`answers 400 invalid_goal_amount for ${name}, and stores nothing`, async () => {
+        const response = await app.fastify.inject({
+          method: "PUT",
+          url: `/workspaces/${workspaceId}/categories/${categoryId}/goal`,
+          headers: { authorization: `Bearer ${token}` },
+          payload,
+        });
+        assert.equal(response.statusCode, 400, response.body);
+        assert.deepEqual(response.json(), { error: "invalid_goal_amount", details: { field: "amountCents" } });
+
+        const stored = await superuserPool.query("SELECT 1 FROM goals WHERE category_id = $1", [categoryId]);
+        assert.equal(stored.rowCount, 0);
+      });
+    }
+
+    it("accepts 1 minor unit and the cap itself", async () => {
+      for (const amountCents of [1, MAX_AMOUNT_CENTS]) {
+        const response = await app.fastify.inject({
+          method: "PUT",
+          url: `/workspaces/${workspaceId}/categories/${categoryId}/goal`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { kind: "monthly", amountCents },
+        });
+        assert.equal(response.statusCode, 200, response.body);
+        assert.equal(response.json().amountCents, amountCents);
+      }
+      await superuserPool.query("DELETE FROM goals WHERE category_id = $1", [categoryId]);
+    });
+
+    it("still answers a plain 400 for a missing amount", async () => {
+      const response = await app.fastify.inject({
+        method: "PUT",
+        url: `/workspaces/${workspaceId}/categories/${categoryId}/goal`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: { kind: "monthly" },
+      });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().error, "invalid goal: amountCents is required");
+    });
   });
 
   it("rejects a goal for an unknown category", async () => {
