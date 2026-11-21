@@ -163,7 +163,9 @@ money goes; the off-budget leg never has a category.
   "Unassigned", is refused (`uncategorized_transaction`), and so is an edit that takes the category
   away (#378, #552).
 - **In from an off-budget account into a cash account:** by default it is **income to assign**
-  ("Unassigned"), in the month of its date, like a salary. A real category can be chosen instead,
+  ("Unassigned"), in the month of its date, like a salary; like any income, it counts only from its
+  date on, so the form says on which day money dated after today comes into "Unassigned" rather
+  than adding it now (#700). A real category can be chosen instead,
   for example to refill the envelope that funded the investment: it then goes into that category's
   available, the same way a refund does (#598).
 - **In from an off-budget account into an on-budget credit card:** it needs a real category, and is

@@ -1,4 +1,6 @@
+import { incomeReceived } from "../budget/budget-month.ts";
 import type { Cents } from "../money.ts";
+import type { LocalDate } from "../month.ts";
 
 /** One end of a transfer, as far as the category rule cares: whether it is in the budget, and whether it is a credit card. */
 export interface TransferEnd {
@@ -31,12 +33,29 @@ export function transferCategoryRule(source: TransferEnd, destination: TransferE
   return destination.creditCard ? "required" : "optional";
 }
 
-/** What money coming in does to the available amount it lands in ("Unassigned" or a category): from what it holds to that plus the amount. */
-export interface AvailableChange {
-  readonly fromCents: Cents;
-  readonly toCents: Cents;
+/**
+ * What money coming in does to the available amount it lands in ("Unassigned" or a category):
+ * - received: from what it holds to that plus the amount;
+ * - not received yet: income dated after today counts nowhere until its date (budget month, rule 1;
+ *   #650, #700), so the amount stays as it is until `date`.
+ */
+export type AvailableChange =
+  | { readonly received: true; readonly fromCents: Cents; readonly toCents: Cents }
+  | { readonly received: false; readonly date: LocalDate };
+
+/** The day the money comes in and "today", both in the workspace's time zone. */
+export interface InflowTiming {
+  readonly date: LocalDate;
+  readonly today: LocalDate;
 }
 
-export function availableAfterInflow(availableCents: Cents, inflowCents: Cents): AvailableChange {
-  return { fromCents: availableCents, toCents: availableCents + inflowCents };
+/**
+ * Without `timing`, the money counts at once: right for a category, whose money counts by month
+ * (#668). Into "Unassigned", pass the timing, so that money dated after today waits for its date.
+ */
+export function availableAfterInflow(availableCents: Cents, inflowCents: Cents, timing?: InflowTiming): AvailableChange {
+  if (timing !== undefined && !incomeReceived(timing.date, timing.today)) {
+    return { received: false, date: timing.date };
+  }
+  return { received: true, fromCents: availableCents, toCents: availableCents + inflowCents };
 }

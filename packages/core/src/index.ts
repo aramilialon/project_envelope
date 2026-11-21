@@ -79,7 +79,7 @@ export type {
   Income,
   ScheduledItem,
 } from "./budget/budget-month.ts";
-export { computeBudgetMonth } from "./budget/budget-month.ts";
+export { computeBudgetMonth, incomeReceived } from "./budget/budget-month.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";
 export { aggregateTransactions, UNASSIGNED } from "./budget/transactions.ts";
 export type {
@@ -126,7 +126,7 @@ export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } f
 export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";
 export type { AccountBalance, BalanceRow, NotYetRecordedAmount } from "./presentation/accountBalance.ts";
 export { computeAccountBalance, isAfterToday } from "./presentation/accountBalance.ts";
-export type { AvailableChange, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";
+export type { AvailableChange, InflowTiming, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";
 export { availableAfterInflow, transferCategoryRule } from "./presentation/transferCategory.ts";
 export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetProblemKind } from "./presentation/budgetProblems.ts";
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
