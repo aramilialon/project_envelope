@@ -254,6 +254,43 @@ describe("transactions routes", () => {
     assert.equal(storedAfter.rowCount, stored.rowCount);
   });
 
+  it("refuses a card payment from an off-budget account in another currency into an on-budget card (#652)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const card = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: "Euro card", type: "credit_card", currency: "EUR" },
+    });
+    assert.equal(card.statusCode, 201);
+    const dollars = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts`,
+      headers: auth,
+      payload: { name: "US checking", type: "checking", currency: "USD", onBudget: false },
+    });
+    assert.equal(dollars.statusCode, 201);
+    const stored = await superuserPool.query("SELECT 1 FROM transactions WHERE workspace_id = $1", [workspaceId]);
+
+    const response = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/transfers`,
+      headers: auth,
+      payload: {
+        sourceAccountId: dollars.json().id,
+        destinationAccountId: card.json().id,
+        occurredAt: "2026-09-21",
+        amountCents: 5_000,
+        categoryId,
+      },
+    });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), { error: "currency_mismatch", details: { sourceCurrency: "USD", destinationCurrency: "EUR" } });
+
+    const storedAfter = await superuserPool.query("SELECT 1 FROM transactions WHERE workspace_id = $1", [workspaceId]);
+    assert.equal(storedAfter.rowCount, stored.rowCount);
+  });
+
   it("creates a transfer to an off-budget account with a category on the on-budget leg (#378)", async () => {
     const response = await app.fastify.inject({
       method: "POST",
