@@ -19,9 +19,10 @@ export interface CardDebt {
   readonly uncovered: Cents;
   /**
    * What it takes to bring the payment category back to covering the whole debt:
-   * `max(0, owed - available)` — the cash overspending plus the uncovered debt. A card whose
+   * `cashOverspending + uncovered`, that is `max(0, max(0, owed) - available)`. A card whose
    * balance is in credit (negative `owed`) counts as owing nothing here, so the figure is never
-   * less than the cash overspending itself.
+   * less than the cash overspending itself. The status line, the detail's "To cover", the "To do"
+   * item, "Assign" and quick assign's "cover card debt" all use this one figure.
    */
   readonly toCover: Cents;
 }

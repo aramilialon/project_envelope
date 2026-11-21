@@ -124,7 +124,13 @@ describe("computePaymentCategoryBar", () => {
   it("a card paid beyond what was set aside draws its real debt, all of it uncovered (#699)", () => {
     // Opened owing 50 000, 4 567 spent on it and covered by its own category, 30 000 paid from
     // checking, nothing assigned: owed 24 567, available -25 433. The old `available + uncovered`
-    // reading made the debt -866 here.
+    // reading made the debt -866 here, yet it drew this same bar: no budget month can make the two
+    // readings draw different geometry. With available >= 0 and some debt uncovered,
+    // `uncovered = owed - available`, so `available + uncovered` is `owed` exactly; with
+    // available < 0 nothing is set aside, so the covered part is 0 against either denominator
+    // (`pct` gives 0 for one that is not positive) and the hatching fills the whole bar. The bar
+    // only reads `cardDebt` now so no figure is derived twice; what the fix changes is the debt
+    // figure itself, which `cardDebt.test.ts` covers.
     const bar = computePaymentCategoryBar(
       category({ activity: -25_433, available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567 }),
     );
