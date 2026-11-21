@@ -23,6 +23,8 @@ describe("writes to a closed account (#729)", () => {
   let token: string;
   let categoryId: string;
   const instrumentIds: string[] = [];
+  /** Workspaces the test user is not a member of, removed after the run. */
+  const foreignWorkspaceIds: string[] = [];
   const units = (value: number): number => Math.round(value * 1e8);
   const price = (value: number): number => Math.round(value * 1e6);
 
@@ -36,7 +38,7 @@ describe("writes to a closed account (#729)", () => {
   after(async () => {
     // Deleting the workspace removes its closed accounts' rows too (the trigger lets a cascade
     // through); only then can the instruments its trades referenced go.
-    await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+    await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceId, ...foreignWorkspaceIds]]);
     await superuserPool.query("DELETE FROM instruments WHERE id = ANY($1)", [instrumentIds]);
     await teardownIntegrationTest({ superuserPool, realm, app, workspaceId, token });
   });
@@ -393,6 +395,52 @@ describe("writes to a closed account (#729)", () => {
       await close(accountId);
       for (const write of writes) {
         await assertRefused(write);
+      }
+    });
+
+    it("answers a closed account of another workspace as unknown_account, never account_closed, so its state does not leak (#741)", async () => {
+      const foreignWorkspaceId = randomUUID();
+      foreignWorkspaceIds.push(foreignWorkspaceId);
+      await superuserPool.query(
+        "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Foreign', 'EUR', 'Europe/Rome')",
+        [foreignWorkspaceId],
+      );
+      const { rows } = await superuserPool.query<{ id: string }>(
+        `INSERT INTO accounts (workspace_id, name, type, currency, on_budget, closed_at)
+         VALUES ($1, 'Foreign brokerage', 'brokerage', 'EUR', false, now()) RETURNING id`,
+        [foreignWorkspaceId],
+      );
+      const foreignClosedId = rows[0]!.id;
+
+      const writes = [
+        () => inject("POST", "/trades", { type: "fee", accountId: foreignClosedId, portfolioId, tradeDate: "2026-09-01", feesCents: 100 }),
+        () =>
+          inject("POST", "/trades", {
+            type: "sell",
+            accountId: foreignClosedId,
+            portfolioId,
+            instrumentId,
+            tradeDate: "2026-09-01",
+            quantityE8: units(1),
+            priceE6: price(50),
+          }),
+        () =>
+          inject("POST", "/trades", {
+            type: "transfer",
+            instrumentId,
+            tradeDate: "2026-09-01",
+            quantityE8: units(1),
+            from: { accountId: openId, portfolioId },
+            to: { accountId: foreignClosedId, portfolioId },
+          }),
+        () => inject("PATCH", `/trades/${openFeeId}`, { accountId: foreignClosedId }),
+      ];
+      for (const write of writes) {
+        const before = await snapshot();
+        const response = await write();
+        assert.equal(response.statusCode, 400, response.body);
+        assert.equal(response.json().error, "unknown_account", response.body);
+        assert.deepEqual(await snapshot(), before);
       }
     });
   });
