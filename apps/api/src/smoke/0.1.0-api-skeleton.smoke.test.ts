@@ -6,14 +6,14 @@
  * buildApp()+inject() (ADR 0007).
  */
 import assert from "node:assert/strict";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it } from "node:test";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../test-helpers/vapid-keys.ts";
-import { startServer, type RunningServer } from "./support.ts";
+import { printServerOutputOnFailure, startServer, type RunningServer } from "./support.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -26,6 +26,8 @@ if (!databaseUrl) {
 describe("smoke: 0.1.0 API skeleton, against the real process", () => {
   let superuserPool: DbPool;
   let server: RunningServer;
+
+  afterEach(printServerOutputOnFailure(() => [server]));
 
   before(async () => {
     superuserPool = createPool(databaseUrl);
@@ -43,7 +45,7 @@ describe("smoke: 0.1.0 API skeleton, against the real process", () => {
       // /health does not touch Keycloak: any well-formed values satisfy loadConfig's validation.
       KEYCLOAK_ISSUER: "http://127.0.0.1:8080/realms/envelope",
       KEYCLOAK_AUDIENCE: "envelope-api",
-      LOG_LEVEL: "fatal",
+      LOG_LEVEL: "warn",
     });
   });
 
