@@ -11,6 +11,7 @@
 | [Glossary](glossary.md) | Financial and technical terms used in the code; interface wording in every language is in the [translation glossary](../packages/i18n/glossary.md) |
 | [Mockups](ux/mockups/) | Interactive mockups of the interface, open them in a browser; described in the design document's "User interface" section |
 | [UX and visual design](ux/README.md) | Screen inventory, navigation structure, reusable component catalog and accessibility baseline (#70) |
+| [Team memory](team/) | The agent team's [decisions awaiting the maintainer's review](team/decisions.md) and its [lessons](team/lessons.md) ([Work with the agent team](how-to/work-with-the-agent-team.md#team-memory)) |
 
 ## How-to guides
 
