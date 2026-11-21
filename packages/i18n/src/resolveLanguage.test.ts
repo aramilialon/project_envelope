@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { SHIPPED_LOCALES } from "./index.ts";
 import { resolveLanguage } from "./resolveLanguage.ts";
 
-const shipped = SHIPPED_LOCALES;
+// An explicit list, never the real `SHIPPED_LOCALES`: these tests must keep passing the day
+// another language ships.
+const shipped = ["en", "it"];
 
 function languageFor(deviceTags: readonly string[], list: readonly string[] = shipped): string {
   return resolveLanguage({ stored: null, deviceTags, shipped: list }).language;
@@ -31,6 +32,11 @@ describe("resolveLanguage: the interface language (#62, #620)", () => {
 
   it("ignores a tag that is not a valid language tag", () => {
     assert.equal(languageFor(["not a tag", "it"]), "it");
+  });
+
+  it("reads an underscore as a hyphen: 'it_IT' is Italian", () => {
+    assert.equal(languageFor(["it_IT"]), "it");
+    assert.equal(languageFor(["de_DE", "it_CH"]), "it");
   });
 
   it("gives English for German and French while they are not shipped", () => {
@@ -80,6 +86,26 @@ describe("resolveLanguage: the formatting locale (#620)", () => {
   it("is the stored choice when there is one, whatever the device says", () => {
     const resolved = resolveLanguage({ stored: { language: null, formattingLocale: "fr-CH" }, deviceTags: ["it-IT"], shipped });
     assert.deepEqual(resolved, { language: "it", formattingLocale: "fr-CH" });
+  });
+
+  it("reads an underscore as a hyphen: 'it_IT' formats as it-IT", () => {
+    assert.deepEqual(resolveLanguage({ stored: null, deviceTags: ["it_IT"], shipped }), {
+      language: "it",
+      formattingLocale: "it-IT",
+    });
+  });
+
+  it("is not built from an undetermined language: 'und-CH' falls back to the interface language", () => {
+    assert.deepEqual(resolveLanguage({ stored: null, deviceTags: ["und-CH", "it-IT"], shipped }), {
+      language: "it",
+      formattingLocale: "it",
+    });
+    assert.equal(resolveLanguage({ stored: null, deviceTags: ["und-CH"], shipped }).formattingLocale, "en");
+  });
+
+  it("ignores a stored formatting locale with an undetermined language", () => {
+    const resolved = resolveLanguage({ stored: { language: null, formattingLocale: "und-CH" }, deviceTags: ["en-GB"], shipped });
+    assert.equal(resolved.formattingLocale, "en-GB");
   });
 
   it("ignores a stored formatting locale that is not a valid tag", () => {

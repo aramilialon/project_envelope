@@ -29,13 +29,26 @@ export interface ResolvedLanguage {
   readonly formattingLocale: string;
 }
 
-/** The canonical form of a tag (`"DE-ch"` → `"de-CH"`), or null when it is not a valid one. */
+/**
+ * The canonical form of a tag (`"DE-ch"` → `"de-CH"`), or null when it is not a valid one. An
+ * underscore is read as a hyphen first: some platforms report POSIX-style tags (`"it_IT"`).
+ */
 function canonical(tag: string): string | null {
   try {
-    return Intl.getCanonicalLocales(tag.trim())[0] ?? null;
+    return Intl.getCanonicalLocales(tag.trim().replaceAll("_", "-"))[0] ?? null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether a (canonical) tag can format amounts and dates by itself: it names a real language.
+ * `und-CH` says where, not which language, so it is no formatting locale of its own.
+ */
+function namesLanguage(tag: string): boolean {
+  // `Intl.Locale` reports the `und` language as `undefined` in some engines and `"und"` in others.
+  const language = new Intl.Locale(tag).language as string | undefined;
+  return language !== undefined && language !== "und";
 }
 
 function primaryLanguage(tag: string): string {
@@ -46,9 +59,11 @@ function primaryLanguage(tag: string): string {
  * - `language`: the stored choice if it is shipped; else the first device language whose primary
  *   subtag is shipped, in the device's own order (`["fr", "it", "en"]` picks Italian while French
  *   is not shipped); else the source language, the first entry of `shipped` (English).
- * - `formattingLocale`: the stored choice if it is a valid tag; else the device's first
- *   preference when it is a full tag with a region (`de-CH`, `en-GB`); else the interface
- *   language itself.
+ * - `formattingLocale`: the stored choice if it is a valid tag naming a language; else the
+ *   device's first preference when it is a full tag with a language and a region (`de-CH`,
+ *   `en-GB`; not `und-CH`); else the interface language itself.
+ *
+ * Device tags may use `_` for `-` (`it_IT`).
  */
 export function resolveLanguage(input: {
   readonly stored: StoredLanguage | null;
@@ -66,9 +81,13 @@ export function resolveLanguage(input: {
     shipped[0] ??
     "en";
 
-  const storedFormatting = stored?.formattingLocale ? canonical(stored.formattingLocale) : null;
+  const storedCanonical = stored?.formattingLocale ? canonical(stored.formattingLocale) : null;
+  const storedFormatting = storedCanonical !== null && namesLanguage(storedCanonical) ? storedCanonical : null;
   const firstDevice = device[0];
-  const deviceFormatting = firstDevice !== undefined && new Intl.Locale(firstDevice).region !== undefined ? firstDevice : null;
+  const deviceFormatting =
+    firstDevice !== undefined && namesLanguage(firstDevice) && new Intl.Locale(firstDevice).region !== undefined
+      ? firstDevice
+      : null;
   const formattingLocale = storedFormatting ?? deviceFormatting ?? language;
 
   return { language, formattingLocale };
