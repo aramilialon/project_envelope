@@ -104,6 +104,9 @@ test.describe("card debt asked once (#728)", () => {
       await expect(page.getByText("€300.00 spent with a card beyond what was available is now part of the card's debt, in Visa payment.")).toBeVisible();
       await page.getByRole("button", { name: "Open Visa payment" }).click();
       await expect(page.getByRole("button", { name: "Assign €300.00 from unassigned money" })).toBeVisible();
+      // It opens elsewhere on the screen: in view, with focus on the card's name.
+      await expect(page.getByRole("heading", { name: "Visa payment" })).toBeFocused();
+      await expect(page.getByRole("heading", { name: "Visa payment" })).toBeInViewport();
     } finally {
       await workspace?.teardown();
       await user.teardown();
