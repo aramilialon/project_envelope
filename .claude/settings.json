@@ -18,10 +18,18 @@
       "Bash(git config --unset core.hooksPath)",
       "Bash(gh repo edit *)",
       "Bash(gh repo delete *)",
-      "mcp__playwright__browser_run_code_unsafe",
-      "mcp__playwright__browser_file_upload",
-      "mcp__playwright__browser_drop",
-      "mcp__playwright__browser_network_request"
+      "mcp__playwright-household__browser_run_code_unsafe",
+      "mcp__playwright-household__browser_file_upload",
+      "mcp__playwright-household__browser_drop",
+      "mcp__playwright-household__browser_network_request",
+      "mcp__playwright-investor__browser_run_code_unsafe",
+      "mcp__playwright-investor__browser_file_upload",
+      "mcp__playwright-investor__browser_drop",
+      "mcp__playwright-investor__browser_network_request",
+      "mcp__playwright-mixed__browser_run_code_unsafe",
+      "mcp__playwright-mixed__browser_file_upload",
+      "mcp__playwright-mixed__browser_drop",
+      "mcp__playwright-mixed__browser_network_request"
     ],
     "ask": [
       "Bash(git tag *)",

@@ -26,7 +26,7 @@ The coordinator gives you the issue number, the branch, and its acceptance crite
 
 ## Reproducing an explorer finding
 
-The coordinator may instead give you the findings of an `explorer` run: each with its persona, its steps, what it saw, and the source of its expectation. Reproduce each one yourself, independently of the explorer's own environment and evidence.
+The coordinator may instead give you the findings of an explorer run (`explorer-household`, `explorer-investor` or `explorer-mixed`): each with its persona, its steps, what it saw, and the source of its expectation. Reproduce each one yourself, independently of the explorer's own environment and evidence.
 
 1. **Bring up an environment of your own** with `pnpm --filter @envelope/scripts explore:up` (`scripts/README.md`, "Disposable environments"; the code is in `scripts/explore-env/`). It needs `KEYCLOAK_ADMIN_PASSWORD` and Docker, and prints the path of its manifest: the web and API URLs, the Keycloak token endpoint, the personas' usernames and passwords, and their workspace ids. The workspaces start empty, so build the data a finding needs yourself.
 2. **Reproduce through the API with `curl`** wherever the finding can be seen there. Get a persona's token with the password grant of the environment's `envelope-explore-cli` client, as `scripts/README.md` ("The manifest") shows, reading the password from the manifest through standard input, never as a command-line argument. Tokens live 15 minutes.
