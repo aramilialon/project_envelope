@@ -33,13 +33,13 @@ function csvFile(name: string, content: string): File {
   return new File([content], name, { type: "text/csv" });
 }
 
-function renderScreen(accounts: Account[] = [CHECKING, SAVINGS]) {
+function renderScreen(accounts: Account[] = [CHECKING, SAVINGS], accountId = "acc-checking") {
   useAuth.mockReturnValue({ user: { access_token: "t" } });
   vi.spyOn(accountsApi, "listAccounts").mockResolvedValue(accounts);
   vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
   vi.spyOn(importApi, "getImportMapping").mockResolvedValue(undefined);
   return renderWithIntl(
-    <MemoryRouter initialEntries={["/ws-1/accounts/acc-checking/import"]}>
+    <MemoryRouter initialEntries={[`/ws-1/accounts/${accountId}/import`]}>
       <Routes>
         <Route path="/:workspaceId/accounts/:accountId/import" element={<ImportScreen />} />
       </Routes>
@@ -256,5 +256,68 @@ describe("ImportScreen (#59)", () => {
     const inSelect = screen.getByLabelText("Category", { selector: "select[id='import-cat-in-1']" });
     expect([...outSelect.querySelectorAll("option")].map((o) => o.textContent)).toContain("Transfer to Savings");
     expect([...inSelect.querySelectorAll("option")].map((o) => o.textContent)).toContain("Transfer from Savings");
+  });
+
+  describe("a transfer from an off-budget account (#599)", () => {
+    const VISA: Account = { ...CHECKING, id: "acc-visa", name: "Visa", type: "credit_card", paymentCategoryId: "cat-visa-payment" };
+
+    async function stageOneInflow(accountId: string) {
+      vi.spyOn(importApi, "stageImport").mockResolvedValue({
+        staged: [
+          { id: "in-1", workspaceId: "ws-1", accountId, occurredAt: "2026-09-12", payee: "Broker withdrawal", memo: null, amountCents: 500_000, externalId: null, duplicateOf: null, createdAt: "2026-09-12" },
+        ],
+        duplicateCount: 0,
+      });
+      const input = document.querySelector("#import-file-in") as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+      await screen.findByText("Broker withdrawal");
+      fireEvent.change(screen.getByLabelText("Category", { selector: "select[id='import-cat-in-1']" }), { target: { value: "__transfer__acc-brokerage" } });
+      return document.querySelector("#import-transfer-cat-in-1") as HTMLSelectElement;
+    }
+
+    it("lands as Unassigned by default into a cash account, sending no category", async () => {
+      renderScreen([CHECKING, BROKERAGE]);
+      await screen.findByText(/Checking/);
+      const transferCategorySelect = await stageOneInflow("acc-checking");
+
+      expect([...transferCategorySelect.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Unassigned", "Groceries"]);
+      expect(transferCategorySelect).toHaveValue("");
+      expect(screen.queryByText("Needs a category")).not.toBeInTheDocument();
+      const confirm = vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([
+        { stagedTransactionId: "in-1", outcome: "confirmed", transactionId: "t1" },
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "Import 1 transaction" }));
+
+      await waitFor(() =>
+        expect(confirm).toHaveBeenCalledWith("t", "ws-1", "acc-checking", [{ stagedTransactionId: "in-1", kind: "transfer", otherAccountId: "acc-brokerage" }]),
+      );
+    });
+
+    it("goes into a chosen category instead", async () => {
+      renderScreen([CHECKING, BROKERAGE]);
+      await screen.findByText(/Checking/);
+      const transferCategorySelect = await stageOneInflow("acc-checking");
+      fireEvent.change(transferCategorySelect, { target: { value: "cat-groceries" } });
+      const confirm = vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([
+        { stagedTransactionId: "in-1", outcome: "confirmed", transactionId: "t1" },
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "Import 1 transaction" }));
+
+      await waitFor(() =>
+        expect(confirm).toHaveBeenCalledWith("t", "ws-1", "acc-checking", [
+          { stagedTransactionId: "in-1", kind: "transfer", otherAccountId: "acc-brokerage", categoryId: "cat-groceries" },
+        ]),
+      );
+    });
+
+    it("still needs a category into an on-budget card", async () => {
+      renderScreen([CHECKING, VISA, BROKERAGE], "acc-visa");
+      await screen.findByText(/Visa/);
+      const transferCategorySelect = await stageOneInflow("acc-visa");
+
+      expect([...transferCategorySelect.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Choose a category", "Groceries"]);
+      expect(screen.getByText("Needs a category")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Import 0 transactions" })).toBeDisabled();
+    });
   });
 });

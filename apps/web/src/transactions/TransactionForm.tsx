@@ -1,12 +1,14 @@
-import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
+import { availableAfterInflow, formatMoney, MAX_FREE_TEXT_LENGTH, monthOf, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState, type FormEvent } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
 import type { Account } from "../accounts/api.ts";
 import type { Category } from "../categories/api.ts";
+import { getBudgetMonth } from "../budget/api.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { ApiError } from "../apiFetch.ts";
+import { useFetchState } from "../useFetchState.ts";
 import {
   createTransaction,
   createTransfer,
@@ -20,6 +22,11 @@ import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
 type Kind = "out" | "in" | "transfer";
+
+/** A transfer's direction, seen from this account: "To another account" or "From another account" (#599). */
+type Direction = "out" | "in";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 interface SplitLine {
   categoryId: string;
@@ -54,6 +61,10 @@ function sameSplits(splits: readonly SplitInput[], original: Transaction): boole
   );
 }
 
+function endOf(account: Account): { onBudget: boolean; creditCard: boolean } {
+  return { onBudget: account.onBudget, creditCard: account.type === "credit_card" };
+}
+
 function centsToInput(cents: number, locale: string): string {
   return (cents / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -62,10 +73,18 @@ function centsToInput(cents: number, locale: string): string {
  * The register's "+ New transaction" / "edit a row" side panel (#54): outflow, inflow or
  * transfer, splitting an outflow across categories. `apps/api`'s `updateTransaction` has no
  * `occurredAt` field, so an existing transaction's date cannot be changed here, only at
- * creation. Editing an existing transfer is limited to its payee, memo and cleared status, which
- * stay the leg's own: the form never sends a transfer leg's splits, so its amount and destination
- * account are set only at creation (the API would move the other leg's amount too, #547, but the
- * mockup has no amount edit for a transfer). "Delete" (`#403`, the mockup's own `data-delete`) removes an
+ * creation. A transfer goes "To another account" or comes "From another account" (#599; credit
+ * cards are not offered as a source). When exactly one of the two accounts is off budget, the
+ * on-budget leg's category follows `@envelope/core`'s `transferCategoryRule`: required when the
+ * money leaves the budget or comes into an on-budget card, optional from an off-budget account
+ * into a cash account, where "Unassigned" (no category: income to assign) comes first and is the
+ * default, with a hint saying how much "Unassigned" (or the chosen category) goes from and to in
+ * the month of the transfer's date. Editing an existing transfer leg is limited to its payee, memo,
+ * cleared status and, on such an on-budget leg, its category (cleared back to "Unassigned" only
+ * where the rule allows it): the form sends a category change as the leg's one split with its
+ * own amount, so the other leg is left alone; the amount and the other account are set only at
+ * creation (the API would move the other leg's amount too, #547, but the mockup has no amount
+ * edit for a transfer). "Delete" (`#403`, the mockup's own `data-delete`) removes an
  * existing transaction outright — both legs together for a transfer, `apps/api`'s own
  * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
  * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
@@ -82,40 +101,114 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   const [payee, setPayee] = useState(transaction?.payee ?? "");
   const [memo, setMemo] = useState(transaction?.memo ?? "");
   const [cleared, setCleared] = useState(transaction ? transaction.status !== "pending" : false);
-  const [categoryId, setCategoryId] = useState(
-    !isTransferLeg && transaction?.splits.length === 1 ? (transaction.splits[0]!.categoryId ?? "") : "",
-  );
+  // On a transfer leg, "" is "Unassigned" where the category is optional and "no choice yet"
+  // where it is required; a leg with no category reads back as "".
+  const [categoryId, setCategoryId] = useState(transaction?.splits.length === 1 ? (transaction.splits[0]!.categoryId ?? "") : "");
   const [split, setSplit] = useState(!isTransferLeg && (transaction?.splits.length ?? 0) > 1);
   const [lines, setLines] = useState<SplitLine[]>(
     !isTransferLeg && (transaction?.splits.length ?? 0) > 1
       ? transaction!.splits.map((s) => ({ categoryId: s.categoryId ?? "", amountStr: centsToInput(Math.abs(s.amountCents), intl.locale) }))
       : [{ categoryId: "", amountStr: "" }, { categoryId: "", amountStr: "" }],
   );
-  const [destinationAccountId, setDestinationAccountId] = useState(
-    isTransferLeg ? (accounts.find((a) => a.id !== accountId && a.id !== transaction?.accountId)?.id ?? "") : "",
-  );
+  const [direction, setDirection] = useState<Direction>(isTransferLeg && totalOf(transaction) > 0 ? "in" : "out");
+  /** The other account of the transfer: its destination going out, its source coming in. */
+  const [otherAccountId, setOtherAccountId] = useState(isTransferLeg ? (transaction.transferAccountId ?? "") : "");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const otherAccounts = accounts.filter((a) => a.id !== accountId);
+  // "From another account" leaves credit cards out: money coming from a card (a cash advance) is
+  // not covered yet (design.md, "Account register"). An edited leg keeps its own account listed.
+  const otherAccounts = accounts.filter(
+    (a) => a.id !== accountId && (direction === "out" || a.type !== "credit_card" || a.id === transaction?.transferAccountId),
+  );
   // A card's own payment category is never a valid choice here (#386) — `packages/core` accepts
   // one as an ordinary Activity.categoryId only for the system-generated starting-balance split,
   // never a category the user picks by hand.
   const paymentCategoryIds = new Set(accounts.map((a) => a.paymentCategoryId).filter((id): id is string => id !== null));
   const openCategories = categories.filter((c) => !c.archived && !paymentCategoryIds.has(c.id));
 
-  // design.md, "Account register": "transfers to an off-budget account ask for a category" —
-  // money is leaving (or entering) the budget, the same as ordinary spending or income, on
-  // whichever of the two accounts is on-budget. Symmetric, since the same is true in reverse
-  // when this account is the off-budget one.
+  // design.md, "Account register": a transfer with an off-budget account moves money into or out
+  // of the budget, so its on-budget leg's category follows `transferCategoryRule` (#378, #598):
+  // whichever of the two accounts is on budget, since the category lands on that leg. On an
+  // existing leg, only the on-budget one has a category to edit.
   const currentAccount = accounts.find((a) => a.id === accountId);
-  const destinationAccount = accounts.find((a) => a.id === destinationAccountId);
-  const needsTransferCategory =
-    kind === "transfer" &&
-    !isEditing &&
-    currentAccount !== undefined &&
-    destinationAccount !== undefined &&
-    currentAccount.onBudget !== destinationAccount.onBudget;
+  const otherAccount = accounts.find((a) => a.id === otherAccountId);
+  const transferRuleOfAccounts: TransferCategoryRule =
+    currentAccount !== undefined && otherAccount !== undefined && (!isEditing || currentAccount.onBudget)
+      ? direction === "out"
+        ? transferCategoryRule(endOf(currentAccount), endOf(otherAccount))
+        : transferCategoryRule(endOf(otherAccount), endOf(currentAccount))
+      : "none";
+  const transferRule: TransferCategoryRule = kind === "transfer" ? transferRuleOfAccounts : "none";
+  /** The money comes into the budget from an off-budget account: what "Unassigned" or the category goes from and to is worth showing. */
+  const moneyEntersBudget =
+    transferRule !== "none" && currentAccount !== undefined && otherAccount !== undefined && (direction === "out" ? !currentAccount.onBudget : !otherAccount.onBudget);
+  const originalCategoryId = isTransferLeg && transaction.splits.length === 1 ? (transaction.splits[0]!.categoryId ?? "") : "";
+
+  // The budget month the money lands in (the month of the transfer's date): what "Unassigned" and
+  // each category hold before it, for the option's amount and the hint. Fetched only for such a
+  // transfer; while it loads, or if it fails, both are left out.
+  const budgetMonthOf = moneyEntersBudget && ISO_DATE.test(date) ? monthOf(date) : undefined;
+  const accessToken = auth.user?.access_token;
+  const budget = useFetchState(
+    () => (accessToken && budgetMonthOf ? getBudgetMonth(accessToken, workspaceId, budgetMonthOf).then((budgetMonth) => ({ budgetMonth })) : undefined),
+    [accessToken, workspaceId, budgetMonthOf],
+    { resetOnDepsChange: true },
+  );
+  const budgetMonth = budget.status === "ok" && budgetMonthOf !== undefined ? budget.budgetMonth : undefined;
+
+  const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
+
+  /** "The money comes into the budget: … goes from X to Y." — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
+  function inflowHint(): string | null {
+    if (!moneyEntersBudget || !budgetMonth || (isEditing && categoryId === originalCategoryId)) {
+      return null;
+    }
+    let amount: number;
+    try {
+      amount = isTransferLeg ? Math.abs(totalOf(transaction)) : parseAmount(amountStr, { locale: intl.locale, currency });
+    } catch {
+      return null;
+    }
+    if (!(amount > 0)) {
+      return null;
+    }
+    if (categoryId === "") {
+      if (transferRule !== "optional") {
+        return null;
+      }
+      const change = availableAfterInflow(budgetMonth.unassigned, amount);
+      return intl.formatMessage(
+        { id: "transactions.form.inflowHint.unassigned", defaultMessage: "The money comes into the budget: “Unassigned” goes from {from} to {to}." },
+        { from: money(change.fromCents), to: money(change.toCents) },
+      );
+    }
+    const category = budgetMonth.categories.find((c) => c.categoryId === categoryId);
+    if (!category) {
+      return null;
+    }
+    const change = availableAfterInflow(category.available, amount);
+    return intl.formatMessage(
+      { id: "transactions.form.inflowHint.category", defaultMessage: "The money comes into the budget: {category} goes from {from} to {to}." },
+      { category: category.name, from: money(change.fromCents), to: money(change.toCents) },
+    );
+  }
+
+  function changeKind(next: Kind) {
+    setKind(next);
+    // Into a transfer from an off-budget account to a cash account, the category starts back at "Unassigned" (the mockup).
+    if (next === "transfer" && transferRuleOfAccounts === "optional") {
+      setCategoryId("");
+    }
+  }
+
+  function changeDirection(next: Direction) {
+    setDirection(next);
+    // Switching direction keeps the account already chosen, except a card as the source.
+    if (next === "in" && otherAccount?.type === "credit_card") {
+      setOtherAccountId("");
+    }
+  }
 
   function parsePositive(text: string): number {
     const amount = parseAmount(text, { locale: intl.locale, currency });
@@ -210,26 +303,41 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     try {
       if (kind === "transfer") {
         if (isEditing) {
-          await saveChanges(transaction, editedFields(transaction));
-        } else {
-          if (!destinationAccountId) {
-            setError(intl.formatMessage({ id: "transactions.form.chooseDestination", defaultMessage: "Choose a destination account." }));
+          if (transferRule === "required" && !categoryId) {
+            setError(intl.formatMessage({ id: "transactions.form.chooseCategory", defaultMessage: "Choose a category." }));
             setSubmitting(false);
             return;
           }
-          if (needsTransferCategory && !categoryId) {
+          const legTotal = totalOf(transaction);
+          const categoryChanged = transferRule !== "none" && categoryId !== originalCategoryId;
+          await saveChanges(transaction, {
+            ...editedFields(transaction),
+            ...(categoryChanged ? { splits: [{ categoryId: categoryId || null, amountCents: legTotal }], amountCents: legTotal } : {}),
+          });
+        } else {
+          if (!otherAccountId) {
+            setError(
+              direction === "in"
+                ? intl.formatMessage({ id: "transactions.form.chooseSource", defaultMessage: "Choose a source account." })
+                : intl.formatMessage({ id: "transactions.form.chooseDestination", defaultMessage: "Choose a destination account." }),
+            );
+            setSubmitting(false);
+            return;
+          }
+          if (transferRule === "required" && !categoryId) {
             setError(intl.formatMessage({ id: "transactions.form.chooseCategory", defaultMessage: "Choose a category." }));
             setSubmitting(false);
             return;
           }
           await createTransfer(accessToken, workspaceId, {
-            sourceAccountId: accountId,
-            destinationAccountId,
+            sourceAccountId: direction === "out" ? accountId : otherAccountId,
+            destinationAccountId: direction === "out" ? otherAccountId : accountId,
             occurredAt: date,
             amountCents: amount,
             ...(payee ? { payee } : {}),
             ...(memo ? { memo } : {}),
-            ...(needsTransferCategory ? { categoryId } : {}),
+            // No category on an optional one leaves the money "Unassigned", income to assign.
+            ...(transferRule !== "none" && categoryId ? { categoryId } : {}),
             status: cleared ? "cleared" : "pending",
           });
         }
@@ -310,6 +418,8 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     }
   }
 
+  const hint = inflowHint();
+
   const title = intl.formatMessage(
     isEditing
       ? { id: "transactions.form.editTitle", defaultMessage: "Edit transaction" }
@@ -322,15 +432,15 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         <fieldset className="segs" disabled={isEditing}>
           <legend className="sr-only">{intl.formatMessage({ id: "transactions.form.kind", defaultMessage: "Kind" })}</legend>
           <label>
-            <input type="radio" name="kind" checked={kind === "out"} onChange={() => setKind("out")} />
+            <input type="radio" name="kind" checked={kind === "out"} onChange={() => changeKind("out")} />
             <span>{intl.formatMessage({ id: "transactions.form.kind.out", defaultMessage: "Outflow" })}</span>
           </label>
           <label>
-            <input type="radio" name="kind" checked={kind === "in"} onChange={() => setKind("in")} />
+            <input type="radio" name="kind" checked={kind === "in"} onChange={() => changeKind("in")} />
             <span>{intl.formatMessage({ id: "transactions.form.kind.in", defaultMessage: "Inflow" })}</span>
           </label>
           <label>
-            <input type="radio" name="kind" checked={kind === "transfer"} onChange={() => setKind("transfer")} />
+            <input type="radio" name="kind" checked={kind === "transfer"} onChange={() => changeKind("transfer")} />
             <span>{intl.formatMessage({ id: "transactions.form.kind.transfer", defaultMessage: "Transfer" })}</span>
           </label>
         </fieldset>
@@ -362,22 +472,36 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         </div>
 
         {kind === "transfer" && (
-          <div className="field">
-            <label htmlFor="tx-destination">{intl.formatMessage({ id: "transactions.form.destination", defaultMessage: "To account" })}</label>
-            <select
-              id="tx-destination"
-              value={destinationAccountId}
-              disabled={isEditing}
-              onChange={(event) => setDestinationAccountId(event.target.value)}
-            >
-              <option value="">{intl.formatMessage({ id: "transactions.form.chooseAccount", defaultMessage: "Choose an account" })}</option>
-              {otherAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <>
+            <fieldset className="segs" disabled={isEditing}>
+              <legend className="sr-only">{intl.formatMessage({ id: "transactions.form.direction", defaultMessage: "Direction" })}</legend>
+              <label>
+                <input type="radio" name="direction" checked={direction === "out"} onChange={() => changeDirection("out")} />
+                <span>{intl.formatMessage({ id: "transactions.form.direction.out", defaultMessage: "To another account" })}</span>
+              </label>
+              <label>
+                <input type="radio" name="direction" checked={direction === "in"} onChange={() => changeDirection("in")} />
+                <span>{intl.formatMessage({ id: "transactions.form.direction.in", defaultMessage: "From another account" })}</span>
+              </label>
+            </fieldset>
+            <div className="field">
+              <label htmlFor="tx-other-account">
+                {direction === "in"
+                  ? intl.formatMessage({ id: "transactions.form.source", defaultMessage: "From account" })
+                  : intl.formatMessage({ id: "transactions.form.destination", defaultMessage: "To account" })}
+              </label>
+              <select id="tx-other-account" value={otherAccountId} disabled={isEditing} onChange={(event) => setOtherAccountId(event.target.value)}>
+                <option value="">{intl.formatMessage({ id: "transactions.form.chooseAccount", defaultMessage: "Choose an account" })}</option>
+                {otherAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.onBudget
+                      ? account.name
+                      : intl.formatMessage({ id: "transactions.form.offBudgetAccount", defaultMessage: "{name} (off budget)" }, { name: account.name })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
         )}
 
         <div className="field">
@@ -385,11 +509,20 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
-        {(kind !== "transfer" || needsTransferCategory) && !split && (
+        {(kind === "transfer" ? transferRule !== "none" : !isTransferLeg) && !split && (
           <div className="field">
             <label htmlFor="tx-category">{intl.formatMessage({ id: "transactions.form.category", defaultMessage: "Category" })}</label>
             <select id="tx-category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
-              {kind === "in" ? (
+              {kind === "transfer" && transferRule === "optional" ? (
+                <option value="">
+                  {budgetMonth
+                    ? intl.formatMessage(
+                        { id: "transactions.form.unassignedWithAmount", defaultMessage: "Unassigned ({amount})" },
+                        { amount: money(budgetMonth.unassigned) },
+                      )
+                    : intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" })}
+                </option>
+              ) : kind === "in" ? (
                 <option value="">{intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" })}</option>
               ) : (
                 <option value="">{intl.formatMessage({ id: "transactions.form.chooseCategoryOption", defaultMessage: "Choose a category" })}</option>
@@ -402,6 +535,8 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             </select>
           </div>
         )}
+
+        {kind === "transfer" && hint !== null && <p className="hint">{hint}</p>}
 
         {kind === "out" && !isTransferLeg && (
           <>

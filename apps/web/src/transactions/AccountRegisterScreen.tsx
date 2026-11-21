@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
+import type { Account } from "../accounts/api.ts";
 import { ACCOUNT_TYPE_LABELS } from "../accounts/accountType.ts";
 import { recordScheduledTransaction } from "../budget/api.ts";
 import { daysInMonth, monthAbbrev, monthLabel, todayOf, toTimelineEvents } from "../budget/monthEvents.ts";
@@ -48,9 +49,45 @@ function withRunningBalance(transactions: readonly Transaction[]): TransactionWi
     .toReversed();
 }
 
-function rowLabel(transaction: Transaction, categoryNameById: Parameters<typeof categoryLabel>[1], unassignedLabel: string, splitLabel: string, transferLabel: string): string {
+interface TransferLabels {
+  /** "Transfer" */
+  readonly transfer: string;
+  /** "From {account}" / "To {account}" */
+  fromAccount(name: string): string;
+  toAccount(name: string): string;
+}
+
+/**
+ * A transfer leg's own label. With an off-budget account on the other side, the money moved into
+ * or out of the budget, so the on-budget leg names where it came from or went, and where it landed
+ * or came from in the budget (#599, the mockup): "Transfer · From Broker · Unassigned",
+ * "Transfer · To Broker · Investments". Any other transfer stays "Transfer".
+ */
+function transferRowLabel(
+  transaction: Transaction,
+  account: Account,
+  accountById: ReadonlyMap<string, Account>,
+  categoryNameById: Parameters<typeof categoryLabel>[1],
+  unassignedLabel: string,
+  labels: TransferLabels,
+): string {
+  const other = transaction.transferAccountId === null ? undefined : accountById.get(transaction.transferAccountId);
+  if (other === undefined || other.onBudget || !account.onBudget || transaction.splits.length !== 1) {
+    return labels.transfer;
+  }
+  const where = totalOf(transaction) > 0 ? labels.fromAccount(other.name) : labels.toAccount(other.name);
+  return [labels.transfer, where, categoryLabel(transaction.splits[0]!.categoryId, categoryNameById, unassignedLabel)].join(" · ");
+}
+
+function rowLabel(
+  transaction: Transaction,
+  categoryNameById: Parameters<typeof categoryLabel>[1],
+  unassignedLabel: string,
+  splitLabel: string,
+  transferLabel: (transaction: Transaction) => string,
+): string {
   if (transaction.transferId !== null) {
-    return transferLabel;
+    return transferLabel(transaction);
   }
   if (transaction.splits.length > 1) {
     return splitLabel;
@@ -184,7 +221,13 @@ export default function AccountRegisterScreen() {
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency: resolvedCurrency });
   const plain = (cents: number) => plainAmount(cents, intl.locale, resolvedCurrency);
   const unassignedLabel = intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" });
-  const transferLabel = intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" });
+  const accountById = new Map(accounts.map((a) => [a.id, a] as const));
+  const transferLabels: TransferLabels = {
+    transfer: intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" }),
+    fromAccount: (name) => intl.formatMessage({ id: "register.transfer.from", defaultMessage: "From {account}" }, { account: name }),
+    toAccount: (name) => intl.formatMessage({ id: "register.transfer.to", defaultMessage: "To {account}" }, { account: name }),
+  };
+  const transferLabel = (t: Transaction) => transferRowLabel(t, account, accountById, categoryNameById, unassignedLabel, transferLabels);
 
   const counts = { all: transactions.length, pending: 0, cleared: 0, reconciled: 0 };
   for (const t of transactions) {

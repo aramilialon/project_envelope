@@ -27,6 +27,8 @@ export interface Transaction {
   readonly memo: string | null;
   readonly status: TransactionStatus;
   readonly transferId: string | null;
+  /** The account of a transfer's other leg, or null when this is not a transfer leg (#599). */
+  readonly transferAccountId: string | null;
   readonly externalId: string | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
@@ -56,7 +58,12 @@ export interface CreateTransferInput {
   readonly payee?: string;
   readonly memo?: string;
   readonly status?: TransactionStatus;
-  /** Required when exactly one of the two accounts is off-budget (design.md, "Account register"). */
+  /**
+   * Lands on the on-budget leg when exactly one of the two accounts is off budget
+   * (`@envelope/core`'s `transferCategoryRule`): required when the money leaves the budget or comes
+   * into an on-budget card, optional from an off-budget account into a cash account, where leaving
+   * it out makes the money income to assign (#598, #599).
+   */
   readonly categoryId?: string;
 }
 
