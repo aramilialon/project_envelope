@@ -25,7 +25,7 @@ The maintainer wants German, Spanish and French as well. The maintainer cannot r
 ### A translator agent
 
 - A `translator` role agent (`.claude/agents/translator.md`) writes the translations on the developer's branch, after the developer and before the reviews, whenever the branch changes `en.json`. It follows the glossary, and it re-translates every key whose English text changed (`git diff origin/main...HEAD -- packages/i18n/locales/en.json`), not only the new ones.
-- For a screen whose mockup was approved in Italian before this ADR, the approved Italian (at the commit recorded in `docs/ux/README.md`) is the source for `it.json`, not a fresh translation of the English.
+- For a screen whose mockup was approved in Italian before this ADR, the approved Italian (at the commit recorded in `docs/ux/README.md`) is the source for `it.json`, not a fresh translation of the English; where the translation glossary (`packages/i18n/glossary.md`) records a later decision, the glossary wins.
 - An automated check for translations made from an English text that has since changed is optional (#623); until it exists, the translator's discipline above is the safeguard.
 
 ### Review status of each language

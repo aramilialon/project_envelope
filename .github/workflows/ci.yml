@@ -156,29 +156,19 @@ jobs:
       # Used by apps/api's Keycloak test helper to provision a throwaway realm per test run.
       KEYCLOAK_ADMIN_PASSWORD: envelope_test
     steps:
-      - uses: actions/checkout@v7
-
       # Keycloak needs an explicit "start-dev" command, which the "services:" block cannot
-      # pass, so it is started as a plain container instead of a service.
+      # pass, so it is started as a plain container instead of a service. It is the first
+      # step and runs in the background (pulling the image included), so its ~20 s boot
+      # overlaps with checkout, setup and install (#640); "Wait for Keycloak" comes only
+      # just before the first step that needs it.
       - name: Start Keycloak
         run: |
-          docker run -d --name keycloak -p 8080:8080 \
+          nohup docker run -d --name keycloak -p 8080:8080 \
             -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
             -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
-            quay.io/keycloak/keycloak:26.0 start-dev
+            quay.io/keycloak/keycloak:26.0 start-dev > "$RUNNER_TEMP/keycloak-start.log" 2>&1 &
 
-      - name: Wait for Keycloak
-        run: |
-          for _ in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
-              echo "Keycloak is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Keycloak did not become ready in time"
-          docker logs keycloak
-          exit 1
+      - uses: actions/checkout@v7
 
       # Reads the pnpm version from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@v6
@@ -201,6 +191,20 @@ jobs:
           fi
       - name: Apply database migrations
         run: pnpm --filter @envelope/api migrate
+
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
+              echo "Keycloak is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Keycloak did not become ready in time"
+          cat "$RUNNER_TEMP/keycloak-start.log"
+          docker logs keycloak || true
+          exit 1
 
       - name: Run pnpm test - apps/api - integration
         id: api_integration
@@ -251,29 +255,19 @@ jobs:
       EXPLORE_DATABASE_URL: postgres://explore_admin:explore_ci@localhost:55432/postgres
       KEYCLOAK_ADMIN_PASSWORD: envelope_test
     steps:
-      - uses: actions/checkout@v7
-
       # Keycloak needs an explicit "start-dev" command, which the "services:" block cannot
-      # pass, so it is started as a plain container instead of a service.
+      # pass, so it is started as a plain container instead of a service. It is the first
+      # step and runs in the background (pulling the image included), so its ~20 s boot
+      # overlaps with checkout, setup and install (#640); "Wait for Keycloak" comes only
+      # just before the first step that needs it.
       - name: Start Keycloak
         run: |
-          docker run -d --name keycloak -p 8080:8080 \
+          nohup docker run -d --name keycloak -p 8080:8080 \
             -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
             -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
-            quay.io/keycloak/keycloak:26.0 start-dev
+            quay.io/keycloak/keycloak:26.0 start-dev > "$RUNNER_TEMP/keycloak-start.log" 2>&1 &
 
-      - name: Wait for Keycloak
-        run: |
-          for _ in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
-              echo "Keycloak is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Keycloak did not become ready in time"
-          docker logs keycloak
-          exit 1
+      - uses: actions/checkout@v7
 
       # Reads the pnpm version from the "packageManager" field in package.json.
       - uses: pnpm/action-setup@v6
@@ -288,6 +282,20 @@ jobs:
 
       - name: Install the Playwright browser
         run: pnpm --filter @envelope/web exec playwright install --with-deps chromium
+
+      - name: Wait for Keycloak
+        run: |
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration > /dev/null; then
+              echo "Keycloak is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Keycloak did not become ready in time"
+          cat "$RUNNER_TEMP/keycloak-start.log"
+          docker logs keycloak || true
+          exit 1
 
       - name: Bring up a disposable environment
         run: |

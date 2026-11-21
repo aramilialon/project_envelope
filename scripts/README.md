@@ -368,6 +368,38 @@ created and does not give the memory back: it went from about 620 MiB to 900 MiB
 container may use there over a day of creating and deleting a dozen realms. It is the limit to
 watch when running several; restarting Keycloak gives the memory back.
 
+### The explorers' browsers
+
+The exploratory agents (`docs/how-to/work-with-the-agent-team.md`, "Exploratory runs before a
+release") use the app through a browser each: `.mcp.json` declares one Playwright MCP server per
+persona (`playwright-household`, `playwright-investor`, `playwright-mixed`), and each agent
+definition `.claude/agents/explorer-<persona>.md` lists only its own server's tools. The three can
+run at the same time on one environment: each server is its own process with its own browser and
+in-memory profile, so they share no tab, and `browser_close` ends only the caller's browser.
+
+`explore-env/playwright-mcp.sh <household|investor|mixed>` starts one server, headless, in a fresh
+`envelope-explorer-<persona>.XXXXXX` temporary directory where every file its tools write lands,
+with navigation kept on loopback, `file://` blocked, sign-in codes and tokens redacted from URLs,
+and no listening port (it speaks MCP over stdio only). The tools nobody needs are denied for every
+server in `.claude/settings.json`. Install the browser once:
+
+```bash
+$ pnpm --filter @envelope/scripts exec playwright-mcp install-browser chrome-for-testing
+```
+
+The three definitions share one text, `explore-env/explorer-instructions.md` (an explorer has no
+tool to read a file, so the text is written into each definition). After changing it, regenerate
+them:
+
+```bash
+$ cd scripts
+$ pnpm explore:agents
+```
+
+`explore-env/explorer-agents.test.ts` fails when a definition, `.mcp.json` or the deny list no
+longer matches. Claude Code asks the maintainer to approve each new project MCP server before its
+first use.
+
 ## Contents
 
 | File | What it does |
@@ -392,3 +424,6 @@ watch when running several; restarting Keycloak gives the memory back.
 | `explore-env/static-paths.ts` | The web server's path traversal guard |
 | `explore-env/guards.test.ts` | Tests of the guards above that need no server |
 | `explore-env/vapid.ts` | A fresh VAPID key pair for each run's API |
+| `explore-env/playwright-mcp.sh` | Starts one explorer's confined Playwright MCP server (above) |
+| `explore-env/explorer-instructions.md` | The explorers' shared instructions |
+| `explore-env/explorer-agents.ts` | Writes `.claude/agents/explorer-<persona>.md` from them; the server and tool names (`explore-env/explorer-agents.test.ts`) |
