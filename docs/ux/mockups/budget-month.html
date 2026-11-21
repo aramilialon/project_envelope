@@ -1036,7 +1036,7 @@ button{cursor:pointer}
     var explain;
     if (c.start && x.uncovered > 0 && beyond) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
     else if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
-    else if (x.uncovered > 0 && fromCats.length) explain = 'Il debito non coperto viene da spese con la carta oltre il disponibile: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. Se copri quelle categorie entro fine mese, i soldi arrivano qui; altrimenti a ottobre ripartono da zero e il debito resta da coprire in questa riga.';
+    else if (x.uncovered > 0 && fromCats.length) explain = 'Il debito non coperto viene da spese con la carta oltre il disponibile: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. Resta qui da coprire finché non assegni soldi a questa categoria.';
     else if (x.uncovered > 0) explain = 'Una parte del debito della carta non ha ancora soldi messi da parte: assegnali a questa categoria.';
     else if (beyond) explain = '';
     else explain = 'Il debito della carta è tutto coperto da soldi messi da parte. Quando paghi la carta dal conto corrente, il pagamento scala da qui.';
@@ -1153,7 +1153,7 @@ button{cursor:pointer}
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
       var gap = needOf(y);
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.credit > 0 ? 'La parte da un conto è coperta.' : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
+      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.credit > 0 ? (amount > gap ? 'La parte sforata in contanti è coperta. Gli altri ' + f(Math.min(amount - gap, y.credit)) + ' coprono spese con la carta e vanno alla carta.' : 'La parte sforata in contanti è coperta.') : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
     }
     var warn = from === null && amount > r ? 'Da assegnare scenderà sotto zero: stai assegnando soldi che non sono ancora arrivati.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1199,7 +1199,7 @@ button{cursor:pointer}
   var QK = [
     ['targets', 'Finanzia gli obiettivi', 'Porta ogni categoria a quanto chiede il suo obiettivo questo mese.'],
     ['res', 'Copri le spese programmate', 'Aggiunge quello che manca alle categorie che non bastano per le spese programmate del mese.'],
-    ['over', 'Copri gli sforamenti', 'Copre quanto le categorie hanno speso in contanti oltre il disponibile. Quanto speso con la carta fa già parte del debito delle carte.'],
+    ['over', 'Copri gli sforamenti', 'Copre quanto le categorie hanno speso in contanti oltre il disponibile e quello che manca per le loro spese programmate. Quanto speso con la carta fa già parte del debito delle carte.'],
     ['debt', 'Copri il debito delle carte', 'Mette da parte quello che manca per pagare le carte, saldo iniziale compreso.'],
     ['lastA', 'Come assegnato ad agosto', 'Porta l’assegnato di ogni categoria almeno a quello di agosto.'],
     ['lastS', 'Come speso ad agosto', 'Porta l’assegnato di ogni categoria almeno a quanto ci hai speso ad agosto.']
@@ -1213,7 +1213,9 @@ button{cursor:pointer}
         if (c.payment) { if (kind === 'debt') n = x.cash + x.uncovered; }
         else if (kind === 'targets') n = t ? t.need : 0;
         else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
-        else if (kind === 'over') n = x.cash > 0 ? needOf(x) : 0;
+        // The same figure as the API's cover_overspending (#728): needOf, so a category short only
+        // for its scheduled transactions gets its shortfall here too.
+        else if (kind === 'over') n = needOf(x);
         else if (kind === 'lastA') n = Math.max(0, c.lastAssigned - x.assigned);
         else if (kind === 'lastS') n = Math.max(0, c.lastSpent - x.assigned);
         if (n > 0) out.push([c.id, n]);
@@ -1465,7 +1467,7 @@ button{cursor:pointer}
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
       // #728: card overspending is no item of its own here; it is already in the card's debt below.
-      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: 'sforata in contanti: va coperta entro il 30', amount: needOf(x), cat: k });
+      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: x.credit === 0 && x.short > 0 ? 'sforata in contanti e non basta per le programmate: va coperta entro il 30' : 'sforata in contanti: va coperta entro il 30', amount: needOf(x), cat: k });
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
       list.push({ dot: '', title: 'Registrare ' + s.payee, sub: 'programmata del ' + dLabel(s.due) + ', non ancora nel conto', amount: s.amount, rec: s.id });
