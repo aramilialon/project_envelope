@@ -1,5 +1,5 @@
 import { formatMoney } from "@envelope/core";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
@@ -9,7 +9,7 @@ import { usePhoneWidth } from "../layout/usePhoneWidth.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { ACCOUNT_TYPE_LABELS } from "./accountType.ts";
 import AddAccountForm from "./AddAccountForm.tsx";
-import { closeAccount, type Account } from "./api.ts";
+import { AccountNotEmptyError, closeAccount, type Account } from "./api.ts";
 import { useAccountBalances } from "./useAccountBalances.ts";
 import { useAccounts } from "./useAccounts.ts";
 import "./AccountsScreen.css";
@@ -21,7 +21,9 @@ import "./AccountsScreen.css";
  * account's own name opens its register (`#54`); reopening a closed one has no endpoint yet, so
  * closed accounts are listed read-only. Each row's own balance (`#333`) is not part of the
  * `Account` shape the API returns — there is no bulk endpoint for it yet — so it is fetched
- * separately, the same sum the register itself computes, and rendered once it resolves.
+ * separately, the same sum the register itself computes, and rendered once it resolves. When the
+ * API refuses to close an account that still holds money or securities (`#703`), the reason is
+ * shown under that account's row, where its "Close" button is.
  */
 export default function AccountsScreen() {
   const intl = useIntl();
@@ -33,6 +35,7 @@ export default function AccountsScreen() {
   const isPhone = usePhoneWidth();
   const balances = useAccountBalances(workspaceId!, auth.user?.access_token, state.status === "ok" ? state.accounts : []);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [closeRefusal, setCloseRefusal] = useState<{ readonly accountId: string; readonly message: string } | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
 
   if (state.status === "loading") {
@@ -61,12 +64,58 @@ export default function AccountsScreen() {
       return;
     }
     setClosingId(account.id);
+    setCloseRefusal(null);
     try {
       await closeAccount(accessToken, workspaceId!, account.id);
       state.refetch();
+    } catch (caught) {
+      setCloseRefusal({ accountId: account.id, message: closeRefusalMessage(caught, account.currency) });
     } finally {
       setClosingId(null);
     }
+  }
+
+  /** Why closing failed, in plain words: the balance and the securities still in it (#703), or a generic failure. */
+  function closeRefusalMessage(caught: unknown, currency: string): string {
+    if (caught instanceof AccountNotEmptyError) {
+      const balance = money(caught.balanceCents, currency);
+      if (caught.holdsPositions && caught.balanceCents !== 0) {
+        return intl.formatMessage(
+          {
+            id: "accounts.closeRefused.balanceAndSecurities",
+            defaultMessage:
+              "This account still has a balance of {balance} and holds securities. An account can be closed once its balance is zero and it holds no securities.",
+          },
+          { balance },
+        );
+      }
+      if (caught.holdsPositions) {
+        return intl.formatMessage({
+          id: "accounts.closeRefused.securities",
+          defaultMessage: "This account still holds securities. An account can be closed once it holds none.",
+        });
+      }
+      return intl.formatMessage(
+        {
+          id: "accounts.closeRefused.balance",
+          defaultMessage: "This account still has a balance of {balance}. An account can be closed once its balance is zero.",
+        },
+        { balance },
+      );
+    }
+    return (
+      tooManyRequestsMessage(intl, caught) ??
+      intl.formatMessage({ id: "accounts.closeError", defaultMessage: "We could not close this account." })
+    );
+  }
+
+  /** The refusal under an account's row, where its Close button is. */
+  function refusalFor(account: Account) {
+    return closeRefusal?.accountId === account.id ? (
+      <p className="hint bad close-refusal" role="alert">
+        {closeRefusal.message}
+      </p>
+    ) : null;
   }
 
   return (
@@ -78,35 +127,38 @@ export default function AccountsScreen() {
       ) : isPhone ? (
         <div className="ph-accounts">
           {open.map((account) => (
-            <div key={account.id} className="ph-acc">
-              <button
-                type="button"
-                className="open"
-                onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
-              >
-                <span>
-                  {account.name}
-                  <small>
-                    {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
-                    {" · "}
-                    {account.onBudget
-                      ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
-                      : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
-                  </small>
-                </span>
-                <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                  {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="close"
-                disabled={closingId === account.id}
-                onClick={() => void handleClose(account)}
-              >
-                {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
-              </button>
-            </div>
+            <Fragment key={account.id}>
+              <div className="ph-acc">
+                <button
+                  type="button"
+                  className="open"
+                  onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
+                >
+                  <span>
+                    {account.name}
+                    <small>
+                      {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
+                      {" · "}
+                      {account.onBudget
+                        ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
+                        : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
+                    </small>
+                  </span>
+                  <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                    {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="close"
+                  disabled={closingId === account.id}
+                  onClick={() => void handleClose(account)}
+                >
+                  {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
+                </button>
+              </div>
+              {refusalFor(account)}
+            </Fragment>
           ))}
         </div>
       ) : (
@@ -133,6 +185,7 @@ export default function AccountsScreen() {
               >
                 {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
               </button>
+              {refusalFor(account)}
             </li>
           ))}
         </ul>

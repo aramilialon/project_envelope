@@ -151,6 +151,19 @@
   color: var(--pen);
 }
 
+/* Why an account could not be closed (#703): a line of its own under the row and its Close button. */
+.accounts-screen .close-refusal {
+  flex: 1 0 100%;
+  margin: 0;
+  padding: 0 0 8px;
+  font-size: 13px;
+  color: var(--red-text);
+}
+
+.accounts-screen .account-list .close-refusal {
+  padding: 0;
+}
+
 .accounts-screen .plain.danger {
   color: var(--red);
 }

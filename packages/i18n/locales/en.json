@@ -1,5 +1,9 @@
 {
   "accounts.close": "Close",
+  "accounts.closeError": "We could not close this account.",
+  "accounts.closeRefused.balance": "This account still has a balance of {balance}. An account can be closed once its balance is zero.",
+  "accounts.closeRefused.balanceAndSecurities": "This account still has a balance of {balance} and holds securities. An account can be closed once its balance is zero and it holds no securities.",
+  "accounts.closeRefused.securities": "This account still holds securities. An account can be closed once it holds none.",
   "accounts.closedTitle": "Closed",
   "accounts.empty": "No accounts yet: add one below.",
   "accounts.error": "We could not load your accounts.",

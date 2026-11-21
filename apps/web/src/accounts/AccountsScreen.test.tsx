@@ -256,4 +256,60 @@ describe("AccountsScreen (#51, #323)", () => {
 
     await waitFor(() => expect(closeAccount).toHaveBeenCalledWith("t", "ws-1", "a1"));
   });
+
+  describe("an account the API refuses to close because it is not empty (#703)", () => {
+    it("names the balance, in the account's own currency, under the account's row", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(-12_345, false));
+      renderScreen([{ ...CHECKING, currency: "USD", onBudget: false }]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(
+        "This account still has a balance of -$123.45. An account can be closed once its balance is zero.",
+      );
+      expect(alert.closest("li")).toHaveTextContent("Checking");
+      expect(screen.queryByText("Closed")).not.toBeInTheDocument();
+    });
+
+    it("says the account holds securities when that is the reason", async () => {
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(0, true));
+      renderScreen([{ ...CHECKING, type: "brokerage", onBudget: false }]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "This account still holds securities. An account can be closed once it holds none.",
+      );
+    });
+
+    it("names both the balance and the securities on the phone layout", async () => {
+      setWidth(390);
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(50_000, true));
+      renderScreen([{ ...CHECKING, type: "brokerage", onBudget: false }]);
+      await screen.findByRole("button", { name: /Checking/ });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "This account still has a balance of €500.00 and holds securities. An account can be closed once its balance is zero and it holds no securities.",
+      );
+    });
+
+    it("clears the message on the next attempt, and says so plainly when closing fails for another reason", async () => {
+      vi.spyOn(accountsApi, "closeAccount")
+        .mockRejectedValueOnce(new accountsApi.AccountNotEmptyError(100, false))
+        .mockRejectedValueOnce(new ApiError("PATCH failed: 500", 500, "internal_error", {}));
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("€1.00");
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not close this account."));
+    });
+  });
 });
