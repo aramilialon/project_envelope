@@ -26,3 +26,7 @@ ADR 0004 already decided the shape of the solution: every user-facing string com
 - `apps/web` depends on `react-intl`; `packages/core` still never imports it or produces any user-facing text (ADR 0004) — the core stays the same regardless of which i18n library the apps use.
 - The heavier of the three runtimes (roughly 20 kB minified and gzipped, against i18next's ~9 kB and Lingui's ~10 kB): accepted, since this is a self-hosted personal/family app, not a public product where every kilobyte of a CDN bill matters.
 - `@formatjs/cli`'s extraction becomes the source of truth for which keys exist; the English catalog is generated from the code's own `defaultMessage`s, and only the Italian (and any later language's) catalog is hand-translated and CI-checked for completeness against it.
+
+## Note (2026-11-21)
+
+[ADR 0015](0015-english-first-translations.md) keeps FormatJS and this decision as they are, and adds two things. Catalogs are no longer imported statically: the web app loads the chosen language's catalog with a dynamic `import()` before the first render, English has no runtime catalog (the `defaultMessage`s are the English text), and the service worker precaches every catalog so every language works offline. And the translations of the non-English catalogs are written by a translator agent rather than by hand by the developer; they are still CI-checked against the generated English catalog, for every shipped language.
