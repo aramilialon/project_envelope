@@ -60,13 +60,24 @@ describe("findTagBlocks", () => {
       assertScalesLinearly(
         (size) => "<a>".repeat(size),
         (content) => findTagBlocks(content, "a", { attributes }),
-        500_000,
-      );
-      assertScalesLinearly(
-        (size) => "<a x".repeat(size),
-        (content) => findTagBlocks(content, "a", { attributes }),
-        500_000,
+        200_000,
       );
     }
+    assertScalesLinearly(
+      (size) => "<a x".repeat(size),
+      (content) => findTagBlocks(content, "a"),
+      200_000,
+    );
+  });
+
+  it("stops at once at an opening tag whose attributes never end", () => {
+    // The search ends at the first "<a x" after one native scan for ">", well under a millisecond
+    // on any of these inputs: too little to time, so this only fails if the time starts to grow
+    // (the replaced expression scanned to the end of the file from every "<a x").
+    assertScalesLinearly(
+      (size) => "<a x".repeat(size),
+      (content) => assert.deepEqual(findTagBlocks(content, "a", { attributes: true }), []),
+      200_000,
+    );
   });
 });

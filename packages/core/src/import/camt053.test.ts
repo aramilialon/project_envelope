@@ -138,9 +138,15 @@ describe("parseCamt053", () => {
 describe("parseCamt053 on a hostile file (#675)", () => {
   it("parses in linear time a file of opening tags that never close", () => {
     assertScalesLinearly((size) => "<Ntry>".repeat(size), parseCamt053, 200_000);
-    assertScalesLinearly((size) => "<Ntry x".repeat(size), parseCamt053, 200_000);
     assertScalesLinearly((size) => `<Ntry>${"<Amt>".repeat(size)}</Ntry>`, (content) => {
       assert.throws(() => parseCamt053(content));
     }, 200_000);
+  });
+
+  it("stops at once at an opening tag whose attributes never end", () => {
+    // The search ends at the first "<Ntry x" after one native scan for ">", well under a
+    // millisecond on any of these inputs: too little to time, so this only fails if the time starts
+    // to grow (the replaced expression scanned to the end of the file from every "<Ntry x").
+    assertScalesLinearly((size) => "<Ntry x".repeat(size), (content) => assert.deepEqual(parseCamt053(content), []), 200_000);
   });
 });
