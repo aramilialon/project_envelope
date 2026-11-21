@@ -540,6 +540,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `split_leaves_no_quantity` | `{ "accountId", "instrumentId", "date" }` | the split rounds a whole position with a cost down to zero units |
 | `invalid_date` | `{ "value" }` | `tradeDate` is not a real date |
 | `invalid_amount`, `invalid_quantity`, `invalid_price` | `{ "label", "value" }` | not a safe integer (a decimal number, or too large); a negative price |
+| `amount_too_large` | `{ "label", "max", "value" }` | an amount, a cost or the cash leg they add up to above 10^11 minor units (€1,000,000,000.00; ADR 0002, #651); `label` is the field, or `cash` |
 | 409 `id_taken` | `{ "tradeId" }` | the client-generated id is already used, in this workspace or any other |
 
 `invalid_trade`'s `details.field` is usually a field of the request (`feesCents`, `grossCents`,
