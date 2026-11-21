@@ -326,7 +326,7 @@ export async function skipScheduledTransaction(
  * days, or `recurEvery` is short — is recorded repeatedly until its own `nextDueDate` is in the
  * future again, catching up every missed occurrence rather than only the most recent one.
  * One that would store income on an on-budget credit card (#548; stored before that was refused)
- * is left due and unrecorded, without stopping the others.
+ * is left due and unrecorded, without stopping the others, and so is one on a closed account (#729).
  */
 export async function fireDueScheduledTransactions(
   db: DbPool | DbClient,
@@ -335,7 +335,18 @@ export async function fireDueScheduledTransactions(
   queue?: QueueDriver,
 ): Promise<RecordScheduledTransactionResult[]> {
   const results: RecordScheduledTransactionResult[] = [];
-  const due = (await listScheduledTransactions(db, workspaceId)).filter((t) => t.nextDueDate <= today);
+  // A closed account takes no writes (#729, ADR 0018): recording a schedule on one would be refused
+  // by the database and abort the whole run, every other workspace's schedules included. Closing
+  // an account with a schedule is refused, but one closed before that rule may still have one: it
+  // stays due, unrecorded.
+  const { rows: closedRows } = await db.query<{ id: string }>(
+    "SELECT id FROM accounts WHERE workspace_id = $1 AND closed_at IS NOT NULL",
+    [workspaceId],
+  );
+  const closedAccountIds = new Set(closedRows.map((row) => row.id));
+  const due = (await listScheduledTransactions(db, workspaceId)).filter(
+    (t) => t.nextDueDate <= today && !closedAccountIds.has(t.accountId),
+  );
   for (const scheduledTransaction of due) {
     let current: ScheduledTransactionRecord | undefined = scheduledTransaction;
     while (current && current.nextDueDate <= today) {

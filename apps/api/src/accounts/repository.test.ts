@@ -5,7 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { isValidationError } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
-import { createPool, type DbPool } from "../db/pool.ts";
+import { createPool, type DbClient, type DbPool } from "../db/pool.ts";
 import { closeAccount, createAccount, isBrokerageOffBudgetViolation, listAccounts } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -163,7 +163,7 @@ describe("accounts repository", () => {
     const client = await pool.connect();
     try {
       const refused = await closeAccount(client, workspaceId, account.id);
-      assert.deepEqual(refused, { status: "not_empty", balanceCents: -12_345, holdsPositions: false });
+      assert.deepEqual(refused, { status: "not_empty", balanceCents: -12_345, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 } });
     } finally {
       client.release();
     }
@@ -202,7 +202,7 @@ describe("accounts repository", () => {
       }
 
       await writer.query("COMMIT");
-      assert.deepEqual(await closing, { status: "not_empty", balanceCents: 4200, holdsPositions: false });
+      assert.deepEqual(await closing, { status: "not_empty", balanceCents: 4200, laterRows: { count: 0, firstDate: null }, holdsPositions: false, scheduled: { count: 0 } });
       await closer.query("COMMIT");
     } finally {
       await writer.query("ROLLBACK").catch(() => {});
@@ -212,6 +212,145 @@ describe("accounts repository", () => {
     }
     const { rows } = await pool.query<{ closed_at: Date | null }>("SELECT closed_at FROM accounts WHERE id = $1", [account.id]);
     assert.equal(rows[0]?.closed_at, null);
+  });
+
+  describe("a closed account takes no writes (#729, migration 0033)", () => {
+    /** Whether `promise` was refused by migration 0033's trigger. */
+    async function assertAccountClosed(promise: Promise<unknown>): Promise<void> {
+      await assert.rejects(promise, (error: unknown) => {
+        const { code, constraint } = error as { code?: unknown; constraint?: unknown };
+        return code === "23514" && constraint === "account_closed";
+      });
+    }
+
+    async function insertTransaction(db: DbPool | DbClient, accountId: string, amountCents: number): Promise<string> {
+      const { rows } = await db.query<{ id: string }>(
+        "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, now(), 'pending') RETURNING id",
+        [workspaceId, accountId],
+      );
+      await db.query("INSERT INTO splits (workspace_id, transaction_id, category_id, amount_cents) VALUES ($1, $2, NULL, $3)", [
+        workspaceId,
+        rows[0]!.id,
+        amountCents,
+      ]);
+      return rows[0]!.id;
+    }
+
+    it("makes a write to an account being closed wait, then refuses it once the close commits", async () => {
+      const account = await createAccount(pool, { workspaceId, name: "Closing first", type: "checking", currency: "EUR", onBudget: true });
+      const closer = await pool.connect();
+      const writer = await pool.connect();
+      try {
+        await closer.query("BEGIN");
+        assert.equal((await closeAccount(closer, workspaceId, account.id)).status, "closed");
+
+        const { rows: pidRows } = await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        const writerPid = pidRows[0]!.pid;
+        await writer.query("BEGIN");
+        const writing = writer.query(
+          "INSERT INTO transactions (workspace_id, account_id, occurred_at, status) VALUES ($1, $2, now(), 'pending')",
+          [workspaceId, account.id],
+        );
+        // Kept from an unhandled rejection while the loop below waits; asserted after the commit.
+        writing.catch(() => {});
+
+        // The writer must be waiting on the close's row lock, not have read the account as open.
+        const deadline = Date.now() + 10_000;
+        for (;;) {
+          const { rows: waiting } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE pid = $1 AND wait_event_type = 'Lock'", [writerPid]);
+          if (waiting.length > 0) break;
+          assert.ok(Date.now() < deadline, "the write never waited for the close's lock");
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+
+        await closer.query("COMMIT");
+        await assertAccountClosed(writing);
+      } finally {
+        await writer.query("ROLLBACK").catch(() => {});
+        await closer.query("ROLLBACK").catch(() => {});
+        writer.release();
+        closer.release();
+      }
+      const { rows } = await pool.query("SELECT 1 FROM transactions WHERE account_id = $1", [account.id]);
+      assert.equal(rows.length, 0);
+    });
+
+    it("refuses inserting, changing and deleting a closed account's transactions and splits, and moving one into it", async () => {
+      const account = await createAccount(pool, { workspaceId, name: "Closed rows", type: "checking", currency: "EUR", onBudget: true });
+      const open = await createAccount(pool, { workspaceId, name: "Still open", type: "checking", currency: "EUR", onBudget: true });
+      const transactionId = await insertTransaction(pool, account.id, 0);
+      const openTransactionId = await insertTransaction(pool, open.id, 100);
+      await pool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [account.id]);
+
+      await assertAccountClosed(insertTransaction(pool, account.id, 0));
+      await assertAccountClosed(pool.query("UPDATE transactions SET memo = 'later' WHERE id = $1", [transactionId]));
+      await assertAccountClosed(pool.query("UPDATE splits SET amount_cents = 5 WHERE transaction_id = $1", [transactionId]));
+      await assertAccountClosed(
+        pool.query("INSERT INTO splits (workspace_id, transaction_id, amount_cents) VALUES ($1, $2, 5)", [workspaceId, transactionId]),
+      );
+      await assertAccountClosed(pool.query("DELETE FROM splits WHERE transaction_id = $1", [transactionId]));
+      await assertAccountClosed(pool.query("DELETE FROM transactions WHERE id = $1", [transactionId]));
+      // Out of the closed account, or into it: both sides are checked.
+      await assertAccountClosed(pool.query("UPDATE transactions SET account_id = $1 WHERE id = $2", [account.id, openTransactionId]));
+      await assertAccountClosed(pool.query("UPDATE transactions SET account_id = $1 WHERE id = $2", [open.id, transactionId]));
+      await assertAccountClosed(
+        pool.query(
+          "INSERT INTO scheduled_transactions (workspace_id, account_id, next_due_date, recur_every, recur_unit) VALUES ($1, $2, '2030-01-01', 1, 'month')",
+          [workspaceId, account.id],
+        ),
+      );
+      await assertAccountClosed(
+        pool.query("INSERT INTO reconciliations (workspace_id, account_id, reconciled_at, statement_balance_cents) VALUES ($1, $2, '2026-01-01', 0)", [
+          workspaceId,
+          account.id,
+        ]),
+      );
+
+      // The open account's own rows are untouched by the guard.
+      await pool.query("UPDATE transactions SET memo = 'fine' WHERE id = $1", [openTransactionId]);
+      const { rows } = await pool.query("SELECT 1 FROM transactions WHERE account_id = $1", [account.id]);
+      assert.equal(rows.length, 1);
+    });
+
+    it("still deletes a workspace whose closed account has transactions, transfers, splits, schedules and reconciliations", async () => {
+      const doomedWorkspaceId = randomUUID();
+      await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Doomed', 'EUR', 'Europe/Rome')", [
+        doomedWorkspaceId,
+      ]);
+      const closed = await createAccount(pool, { workspaceId: doomedWorkspaceId, name: "Closed", type: "checking", currency: "EUR", onBudget: true });
+      const open = await createAccount(pool, { workspaceId: doomedWorkspaceId, name: "Open", type: "checking", currency: "EUR", onBudget: true });
+      const leg = async (accountId: string, amountCents: number, reconciliationId: string | null): Promise<string> => {
+        const { rows } = await pool.query<{ id: string }>(
+          `INSERT INTO transactions (workspace_id, account_id, occurred_at, status, reconciliation_id)
+           VALUES ($1, $2, now(), $3, $4) RETURNING id`,
+          [doomedWorkspaceId, accountId, reconciliationId === null ? "cleared" : "reconciled", reconciliationId],
+        );
+        await pool.query("INSERT INTO splits (workspace_id, transaction_id, amount_cents) VALUES ($1, $2, $3)", [
+          doomedWorkspaceId,
+          rows[0]!.id,
+          amountCents,
+        ]);
+        return rows[0]!.id;
+      };
+      const { rows: reconciliations } = await pool.query<{ id: string }>(
+        "INSERT INTO reconciliations (workspace_id, account_id, reconciled_at, statement_balance_cents) VALUES ($1, $2, '2026-01-01', 0) RETURNING id",
+        [doomedWorkspaceId, closed.id],
+      );
+      const out = await leg(closed.id, -500, reconciliations[0]!.id);
+      const into = await leg(open.id, 500, null);
+      await pool.query("UPDATE transactions SET transfer_id = $1 WHERE id = $2", [into, out]);
+      await pool.query("UPDATE transactions SET transfer_id = $1 WHERE id = $2", [out, into]);
+      await pool.query(
+        "INSERT INTO scheduled_transactions (workspace_id, account_id, next_due_date, recur_every, recur_unit) VALUES ($1, $2, '2030-01-01', 1, 'month')",
+        [doomedWorkspaceId, closed.id],
+      );
+      // Closed directly: a schedule would refuse the close, but data from before #729 may hold one.
+      await pool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [closed.id]);
+
+      await pool.query("DELETE FROM workspaces WHERE id = $1", [doomedWorkspaceId]);
+      const { rows } = await pool.query("SELECT 1 FROM accounts WHERE workspace_id = $1", [doomedWorkspaceId]);
+      assert.equal(rows.length, 0);
+    });
   });
 
   describe("brokerage accounts (#74)", () => {

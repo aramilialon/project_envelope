@@ -31,6 +31,7 @@ export type ApplyOutcome =
   | "stale"
   | "unsupported_field"
   | "locked"
+  | "account_closed"
   | "trade_owned"
   | "invalid"
   | "not_found"
@@ -151,6 +152,28 @@ export async function isLocked(db: DbPool | DbClient, workspaceId: string, field
   return rows[0]?.status === "reconciled";
 }
 
+/**
+ * Whether the change writes to a closed account (#729, ADR 0018): a field of `transactions` names
+ * the transaction, whose account it reads. Migration 0033's trigger would refuse the write, and the
+ * error would abort the whole upload, the other changes in it included; asked first, the change
+ * alone is refused. The account is read `FOR KEY SHARE`, as the trigger does, so a close of it
+ * waits for this upload, or this upload sees it closed: the trigger is never reached for it.
+ * Extend this when a field of another table that belongs to an account is wired up.
+ */
+async function writesToClosedAccount(db: DbPool | DbClient, workspaceId: string, fieldName: string, entityId: string): Promise<boolean> {
+  if (!fieldName.startsWith("transactions.")) {
+    return false;
+  }
+  const { rows } = await db.query<{ closed: boolean }>(
+    `SELECT a.closed_at IS NOT NULL AS closed
+     FROM transactions t JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
+     WHERE t.id = $1 AND t.workspace_id = $2
+     FOR KEY SHARE OF a`,
+    [entityId, workspaceId],
+  );
+  return rows[0]?.closed === true;
+}
+
 /** What a change already recorded under the same id answers (#513): its own outcome, if it is the same change. */
 function outcomeOfRecorded(recorded: RecordedChange): ApplyOutcome {
   return recorded.sameChange ? recorded.outcome : "id_conflict";
@@ -229,6 +252,8 @@ export async function beforeApply(
  *   legitimate part of the entity's history), a rejected one never happened as far as this
  *   entity is concerned — if the device retries after the entity unlocks (#32), it can still
  *   apply then, undistorted by a change_log row from while it was refused.
+ * - `account_closed` when the change writes to a closed account (#729, ADR 0018), never recorded
+ *   either, for the same reason: the rest of the upload still applies.
  */
 export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: string, change: IncomingChange): Promise<ApplyOutcome> {
   if (!isUuid(change.id) || !isUuid(change.entityId)) {
@@ -251,6 +276,9 @@ export async function applyIncomingChange(db: DbPool | DbClient, workspaceId: st
   }
   if (await isLocked(db, workspaceId, change.fieldName, change.entityId)) {
     return "locked";
+  }
+  if (await writesToClosedAccount(db, workspaceId, change.fieldName, change.entityId)) {
+    return "account_closed";
   }
 
   const current = await getLatestChange(db, workspaceId, change.entityId, change.fieldName);

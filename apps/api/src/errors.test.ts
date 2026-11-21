@@ -111,6 +111,14 @@ describe("toErrorReply (#512)", () => {
     );
   });
 
+  it("maps a write to a closed account to 409 account_closed (#729)", () => {
+    const refused = Object.assign(databaseError("23514", "the account is closed"), { constraint: "account_closed" });
+    assert.deepEqual(toErrorReply(refused), { statusCode: 409, body: { error: "account_closed" } });
+    // Any other check violation is still a generic 500: only the closed-account trigger is a 409.
+    const other = Object.assign(databaseError("23514", "new row violates check constraint"), { constraint: "trades_buy_check" });
+    assert.deepEqual(toErrorReply(other), { statusCode: 500, body: { error: "internal_error" } });
+  });
+
   it("maps any other database error to a generic 500", () => {
     const reply = toErrorReply(databaseError("23505", 'duplicate key value violates unique constraint "accounts_pkey"'));
     assert.deepEqual(reply, { statusCode: 500, body: { error: "internal_error" } });
