@@ -61,6 +61,24 @@ test.describe("reconciliation (#60)", () => {
       await expect(page.getByRole("heading", { name: "Reconcile with your bank" })).toBeVisible();
       await expect(page.getByText("€500.00").first()).toBeVisible();
 
+      // Both statement fields stay inside the tally panel, at desktop and phone widths (#592).
+      for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(viewport);
+        const panel = await page.getByRole("complementary", { name: "Tally" }).boundingBox();
+        if (!panel) {
+          throw new Error("expected the tally panel to be laid out");
+        }
+        for (const label of ["Statement balance", "As of"]) {
+          const field = await page.getByLabel(label).boundingBox();
+          if (!field) {
+            throw new Error(`expected the "${label}" field to be laid out`);
+          }
+          expect(field.x, `${label} at ${viewport.width}px`).toBeGreaterThanOrEqual(panel.x);
+          expect(field.x + field.width, `${label} at ${viewport.width}px`).toBeLessThanOrEqual(panel.x + panel.width);
+        }
+      }
+      await page.setViewportSize({ width: 1280, height: 720 });
+
       await page.getByLabel("Statement balance").fill("500.00");
       await expect(page.getByText("Everything matches.")).toBeVisible();
       await page.getByRole("button", { name: "Lock 1 transaction" }).click();

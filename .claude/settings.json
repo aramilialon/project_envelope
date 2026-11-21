@@ -25,12 +25,12 @@
     ],
     "ask": [
       "Bash(git tag *)",
-      "Bash(gh release *)",
-      "Bash(gh api *)"
+      "Bash(gh release *)"
     ],
     "allow": [
       "Bash(gh pr merge * --squash --delete-branch)",
-      "Bash(gh pr review *)"
+      "Bash(gh pr review *)",
+      "Bash(gh api *)"
     ]
   }
 }

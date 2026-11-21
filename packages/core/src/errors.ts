@@ -56,6 +56,7 @@ export type ValidationErrorCode =
   | "account_not_brokerage"
   | "currency_mismatch"
   | "unknown_portfolio"
+  | "portfolio_archived"
   | "unknown_instrument"
   | "split_without_holdings"
   | "invalid_isin"
