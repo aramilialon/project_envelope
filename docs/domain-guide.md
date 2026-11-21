@@ -17,6 +17,38 @@ first, then spend" is also enforced: assigning more than is unassigned is allowe
 budget itself is sometimes unavoidable — rent is due before the paycheck clears), but it is shown
 as a warning, never silently.
 
+**A month's unassigned money counts only money received by then.** Looking at any month M, the
+app follows the money month by month from M on: for each month N, the income received by the end
+of N (and by today), less everything assigned to months up to N, less the cash overspending taken
+from the months before M. M's unassigned money is the smallest of these figures. So:
+
+- a month never shows income dated after it: browsing back to August does not show September's
+  salary;
+- money assigned ahead to a later month comes out of the month it was taken from;
+- but a later month's assignment paid for by that later month's own income is not blamed on M;
+- income dated after today counts nowhere until its date: it is expected income, not money
+  received. Spending dated after today does count against its category straight away, which errs
+  on the safe side.
+
+"Assigned to future months" is the part of M's own money that later months use.
+
+**Examples.** Today is 21 November 2026.
+
+1. Nothing in August, a €3,000 salary on 25 September: August shows **€0** unassigned, September
+   **€3,000**. A second €3,000 salary on 25 October leaves August and September as they were;
+   October shows €6,000.
+2. €1,000 received in September, €900 of it assigned to October's rent: September shows **€100**
+   unassigned and €900 assigned to future months; October shows €100.
+3. The same, but €1,100 assigned to October and no October income: September shows **−€100** (a
+   warning: more assigned than received), with €1,100 assigned to future months.
+4. €100 received in September; a €16,802 loan paid out on 5 October and assigned in October to the
+   loan's own category: September shows **€100**, not −€16,702, because October's own income pays
+   for October's assignment.
+5. €2,000 received on 10 November, €500 expected on 27 November, €300 assigned to Groceries and
+   €50 of groceries already entered for the 25th: November shows **€1,700** unassigned and
+   Groceries €250 available. The €500 counts from the 27th on, in November and every later month,
+   not before.
+
 ### A category's own month
 
 Four numbers describe a category in a given month:
@@ -157,8 +189,9 @@ unassigned, €1,800 is in "Groceries" and €1,000 in "Rent"; "Investments" hol
 2. The same transfer in "Investments" instead: "Investments" holds **€5,000**, Unassigned stays
    €200.
 3. €5,000 sent to the broker in June through "Investments", and coming back in September as
-   Unassigned: September's unassigned money grows by €5,000; June, and the spending of
-   "Investments" in it, does not change.
+   Unassigned: September's unassigned money grows by €5,000 (and every later month's with it);
+   June, July and August, and the spending of "Investments" in June, do not change: income never
+   shows in a month before its date.
 4. Starting from example 1, after assigning €4,000 to "Holiday" (Unassigned €1,200), the transfer's
    checking leg is edited to "Investments": Unassigned becomes **−€3,800** (more assigned than
    there is, shown as a warning) and "Investments" €5,000; the total is still €8,000, and the
@@ -196,8 +229,12 @@ Across every feature above, one equation must always hold:
 ```
 unassigned money + every category's available + reserved + assigned to future months
   + this month's credit overspending
-  = money actually sitting in the on-budget cash accounts (cards excluded)
+  = money in the on-budget cash accounts (cards excluded) at the end of the month,
+    less the income dated after today (not received yet)
 ```
+
+that is, income received by the earlier of the end of the month and today, plus the activity up to
+the end of the month. It holds in every month, not only the current one.
 
 Every code path that moves money — assigning, spending, a transfer, a scheduled transaction firing,
 a card payment — has to keep this equation true, or the budget and the real accounts have quietly
