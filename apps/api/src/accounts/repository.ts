@@ -310,8 +310,8 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
   const holdsPositions = positions.some((position) => position.accountId === accountId && position.quantity !== 0);
 
   // The count, and the schedule due first (earliest next due date, then lowest id) for the user to find (#741).
-  const { rows: scheduledRows } = await db.query<{ count: number; id: string; next_due_date: string }>(
-    `SELECT count(*) OVER ()::int AS count, id, to_char(next_due_date, 'YYYY-MM-DD') AS next_due_date
+  const { rows: scheduledRows } = await db.query<{ count: number; id: string; due_date: string }>(
+    `SELECT count(*) OVER ()::int AS count, id, to_char(next_due_date, 'YYYY-MM-DD') AS due_date
      FROM scheduled_transactions WHERE workspace_id = $1 AND account_id = $2
      ORDER BY next_due_date, id LIMIT 1`,
     [workspaceId, accountId],
@@ -320,7 +320,7 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
   const scheduled = {
     count: first?.count ?? 0,
     scheduledTransactionId: first?.id ?? null,
-    nextDueDate: first === undefined ? null : (first.next_due_date as LocalDate),
+    nextDueDate: first === undefined ? null : (first.due_date as LocalDate),
   };
 
   if (balanceCents !== 0 || later.count > 0 || holdsPositions || scheduled.count > 0) {
