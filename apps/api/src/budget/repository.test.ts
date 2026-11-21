@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { after, before, describe, it } from "node:test";
+import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 
 import { isValidationError } from "@envelope/core";
 
@@ -364,6 +364,10 @@ describe("budget month repository: unassigned money counts only money already re
   before(async () => {
     pool = createPool(databaseUrl);
     await runMigrations(pool, DEFAULT_MIGRATIONS_DIR);
+  });
+
+  // Each test gets its own workspace, so none depends on another's data.
+  beforeEach(async () => {
     workspaceId = randomUUID();
     await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Test', 'EUR', 'Europe/Rome')", [workspaceId]);
     const account = await pool.query<{ id: string }>(
@@ -373,8 +377,11 @@ describe("budget month repository: unassigned money counts only money already re
     checkingAccountId = account.rows[0]!.id;
   });
 
-  after(async () => {
+  afterEach(async () => {
     await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+  });
+
+  after(async () => {
     await pool.end();
   });
 
@@ -394,11 +401,12 @@ describe("budget month repository: unassigned money counts only money already re
     const later = addDays(today, 3);
     const thisMonth = today.slice(0, 7);
     const laterMonth = later.slice(0, 7);
+    await income(today, 100_000);
     const previous = {
       thisMonth: (await getBudgetMonth(pool, workspaceId, thisMonth)).unassigned,
       laterMonth: (await getBudgetMonth(pool, workspaceId, laterMonth)).unassigned,
     };
-    assert.equal(previous.thisMonth, 600_000, "everything received earlier counts");
+    assert.equal(previous.thisMonth, 100_000, "income dated today counts");
 
     await income(later, 50_000);
 
