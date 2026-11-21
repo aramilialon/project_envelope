@@ -467,8 +467,8 @@ describe("BudgetScreen (#53, #324)", () => {
 
     // The category's detail says where its card part went, and opens the card's payment category.
     fireEvent.click(within(document.querySelector(".bars")!).getByRole("button", { name: /^Groceries/ }));
-    expect(await screen.findByText("€300.00 spent with Visa payment beyond what was available is now part of that card's debt.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open the Visa payment payment category" }));
+    expect(await screen.findByText("€300.00 spent with a card beyond what was available is now part of the card's debt, in Visa payment.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Visa payment" }));
     expect(await screen.findByRole("button", { name: "Assign €300.00 from unassigned money" })).toBeInTheDocument();
   });
 

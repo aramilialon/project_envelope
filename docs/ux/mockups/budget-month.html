@@ -977,8 +977,8 @@ button{cursor:pointer}
     // says so, with a way to open the card's payment category.
     var cardPart = x.credit > 0 ? '<div class="sec" style="gap:6px">' + Object.keys(x.creditBy).filter(function (k) { return x.creditBy[k] > 0; }).map(function (k) {
       var card = byId[k].c.name;
-      return '<p class="explain">' + f(x.creditBy[k]) + ' spesi con la ' + esc(card) + ' oltre il disponibile ora fanno parte del debito della carta.</p>' +
-        '<button type="button" class="plain" style="align-self:flex-start" data-' + (p ? 'phcat' : 'cat') + '="' + k + '" data-todo="1">Apri la categoria di pagamento della ' + esc(card) + '</button>';
+      return '<p class="explain">' + f(x.creditBy[k]) + ' spesi con la carta oltre il disponibile ora fanno parte del debito della carta, in ' + esc(card) + '.</p>' +
+        '<button type="button" class="plain" style="align-self:flex-start" data-' + (p ? 'phcat' : 'cat') + '="' + k + '" data-todo="1">Apri ' + esc(card) + '</button>';
     }).join('') + '</div>' : '';
     var cover = '';
     var gap = needOf(x);

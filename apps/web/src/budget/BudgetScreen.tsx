@@ -485,7 +485,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
       .flatMap((card) =>
         (card.overspendingBy ?? [])
           .filter((o) => o.categoryId === categoryId && o.amount > 0)
-          .map((o) => ({ paymentCategoryId: card.categoryId, cardName: card.name, amount: o.amount })),
+          .map((o) => ({ paymentCategoryId: card.categoryId, paymentCategoryName: card.name, amount: o.amount })),
       );
   }
 

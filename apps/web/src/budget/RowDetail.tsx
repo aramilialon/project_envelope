@@ -41,8 +41,8 @@ interface Props {
 /** One card's share of a category's credit overspending (`BudgetMonthCategory.overspendingBy`, read from the card's side). */
 export interface CardPart {
   readonly paymentCategoryId: string;
-  /** The payment category's name, which is its card's. */
-  readonly cardName: string;
+  /** The card's payment category's own name. */
+  readonly paymentCategoryName: string;
   readonly amount: number;
 }
 
@@ -209,16 +209,16 @@ export default function RowDetail({
                 {intl.formatMessage(
                   {
                     id: "budget.row.cardPart",
-                    defaultMessage: "{amount} spent with {card} beyond what was available is now part of that card's debt.",
+                    defaultMessage: "{amount} spent with a card beyond what was available is now part of the card's debt, in {category}.",
                   },
-                  { amount: formatMoney(part.amount, { locale: intl.locale, currency }), card: part.cardName },
+                  { amount: formatMoney(part.amount, { locale: intl.locale, currency }), category: part.paymentCategoryName },
                 )}
               </p>
               {onOpenPaymentCategory && (
                 <button type="button" className="plain" onClick={() => onOpenPaymentCategory(part.paymentCategoryId)}>
                   {intl.formatMessage(
-                    { id: "budget.row.openPaymentCategory", defaultMessage: "Open the {card} payment category" },
-                    { card: part.cardName },
+                    { id: "budget.row.openPaymentCategory", defaultMessage: "Open {category}" },
+                    { category: part.paymentCategoryName },
                   )}
                 </button>
               )}

@@ -410,20 +410,20 @@ describe("RowDetail: a category overspent with a card (#728)", () => {
 
   it("says each card's part is now in that card's debt, with a link opening the card's payment category, and no way to cover it here", () => {
     const { onOpenPaymentCategory } = renderWithCardParts([
-      { paymentCategoryId: "mc", cardName: "Mastercard", amount: 4_567 },
-      { paymentCategoryId: "visa", cardName: "Visa", amount: 4_567 },
+      { paymentCategoryId: "mc", paymentCategoryName: "Mastercard payment", amount: 4_567 },
+      { paymentCategoryId: "visa", paymentCategoryName: "Visa payment", amount: 4_567 },
     ]);
-    expect(screen.getByText("€45.67 spent with Mastercard beyond what was available is now part of that card's debt.")).toBeInTheDocument();
-    expect(screen.getByText("€45.67 spent with Visa beyond what was available is now part of that card's debt.")).toBeInTheDocument();
+    expect(screen.getByText("€45.67 spent with a card beyond what was available is now part of the card's debt, in Mastercard payment.")).toBeInTheDocument();
+    expect(screen.getByText("€45.67 spent with a card beyond what was available is now part of the card's debt, in Visa payment.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Cover/ })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open the Visa payment category" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Visa payment" }));
     expect(onOpenPaymentCategory).toHaveBeenCalledWith("visa");
   });
 
   it("says nothing about cards when the category is not overspent with one", () => {
     renderWithCardParts([]);
     expect(screen.queryByText(/part of that card's debt/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /payment category/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Open / })).not.toBeInTheDocument();
   });
 });
