@@ -53,7 +53,7 @@ The portfolio endpoints (instruments, portfolios, trades, positions, brokerage a
 | `src/routes/reconciliation.ts` | `GET /workspaces/:workspaceId/accounts/:accountId/reconciliation-candidates?date=` (pending and cleared-tickable transactions up to that date, and the balance to build on); `POST .../reconciliations` (ticked transaction ids, a statement balance, and an optional adjustment); `POST /workspaces/:workspaceId/transactions/:transactionId/unlock-reconciliation` |
 | `src/reconciliation/repository.ts` | Computes the cleared balance (the last non-broken reconciliation's own statement balance, plus the ticked cleared transactions) against the given statement balance; a zero difference reconciles them all in one row (`reconciliations`) and marks each transaction reconciled; a real difference either suggests a pending or unticked transaction whose amount matches exactly (closest date first), or, given an adjustment, creates one (`createTransaction`) and reconciles immediately; unlocking sets the transaction back to `cleared`, marks its reconciliation `broken_at`, and writes to the audit log (#216, #32) |
 | `src/audit-log/repository.ts` | `recordAuditLog`: the only place that writes to `audit_log` (ADR 0005, #216), so every caller gets the same columns |
-| `src/errors.ts` | `sendIfValidationError`: maps any `@envelope/core` `ValidationError`, thrown by the core itself or mirrored by a repository, to a 400 response with its stable `code` and `details`. `sendIfTextTooLong`: checks a request's names and free-text fields against their limits (see "Length limits on names and free text" below). `toErrorReply`/`registerErrorHandler`: the app's global error handler, which never sends an error's own message (see "Error replies" below, #512) |
+| `src/errors.ts` | `sendIfValidationError`: maps any `@envelope/core` `ValidationError`, thrown by the core itself or mirrored by a repository, to a 400 response (422 for `amount_total_overflow`, #651) with its stable `code` and `details`. `sendIfTextTooLong`: checks a request's names and free-text fields against their limits (see "Length limits on names and free text" below). `toErrorReply`/`registerErrorHandler`: the app's global error handler, which never sends an error's own message (see "Error replies" below, #512) |
 | `src/ids.ts` | `isUuid`: whether an id from a request can name a row at all; `rejectMalformedIdParams`, a global preHandler answering 404 for any malformed `…Id` path parameter other than `workspaceId` before a route takes a connection (#512) |
 | `src/routes/account-ownership.ts` | `sendIfAccountNotFound` (an account id from a path or a body) and the route preHandler `requireAccountOfWorkspace` (the path's `:accountId`): answer 404 unless the account belongs to the request's workspace, before anything is written (#512) |
 | `src/auth/token-verifier.ts` | Verifies a Keycloak access token's signature (against the realm's JWKS), issuer, audience and expiry; a Fastify preHandler that attaches the decoded claims to `request.auth` |
@@ -232,6 +232,18 @@ No rows means nothing to fix. No migration changes them, because only the user k
 
 A reconciled transaction must be unlocked first (`POST .../transactions/:transactionId/unlock-reconciliation`). A scheduled transaction the query lists is fixed the same way: give its split a category (`PATCH .../scheduled-transactions/:scheduledTransactionId`), or delete it. Run the query again afterwards: it should list nothing.
 
+### Amounts above the cap stored before #651
+
+Before #651 a single amount could be as large as about 90 trillion; two such amounts make every `GET .../budget-months/:month` of the workspace answer 422 `amount_total_overflow` (before #651, 400 `invalid_amount` with `label` `unassigned`). To find any amount above today's cap already stored, run the read-only query in `scripts/dev/find-amounts-over-cap.sql` as the table owner (it lists transactions, scheduled transactions, assignments, targets, reconciliations, staged import rows and trades, across every workspace):
+
+```bash
+$ psql "$DATABASE_URL" -f scripts/dev/find-amounts-over-cap.sql
+# or, on a host without psql, through the PostgreSQL container:
+$ docker exec -i envelope-postgres-1 psql -U envelope -d envelope < scripts/dev/find-amounts-over-cap.sql
+```
+
+No rows means nothing to fix. No migration changes them, and no database constraint refuses them, because only the user knows what each one was: almost always a typing mistake. Fix each one by hand, through the API or the web app, as a member of the workspace with the `owner` or `editor` role: edit the amount to what it should have been (`PATCH` the transaction, scheduled transaction or trade, `PUT` the target), or delete it; an assignment is undone (`POST .../assignments/:entryId/undo`), a staged row rejected. A reconciliation's statement balance takes no part in the budget and can stay as it is. A reconciled transaction must be unlocked first (`POST .../transactions/:transactionId/unlock-reconciliation`). Run the query again afterwards: it should list nothing.
+
 ## Things to understand
 
 Comparisons with Perl/CGI/DBI, to find your way around the code.
@@ -262,6 +274,12 @@ Every create and update route caps the names and free text it accepts (#507), so
 
 The payee takes the free-text limit, not the name one, because a file import stores a bank's whole description in it. A value over its limit is refused with a 400, `{ "error": "text_too_long", "details": { "field": "<field>", "max": <limit> } }`, where `field` is the body property (`name`, `purpose`, `payee`, `memo`, `splits[1].memo`, `adjustment.memo`) or, for a sync upload, the change's `fieldName`; a sync upload with one such change applies none of the batch, and so does one whose `transactions.payee`/`transactions.memo` change carries anything but a string or `null` (a 400 naming the field). Payees and memos read from an imported file are not checked yet.
 
+### The cap on a single amount
+
+Every amount a request writes is at most `@envelope/core`'s `MAX_AMOUNT_CENTS`, 10^11 minor units either way (€1,000,000,000.00; ADR 0002, #651): a transaction's splits and its own total, a transfer and a transfer leg's edit, an assignment, a credit card's `startingBalanceCents`, a scheduled transaction's splits, a target, each row of an imported file and its `closingBalanceCents`, a reconciliation's `statementBalanceCents` and the adjustment it would write, and a trade's gross, fees, taxes, accrued interest, withholdings, cost basis and the cash leg they add up to. An amount above it is refused with a 400, `{ "error": "amount_too_large", "details": { "label": "<which amount>", "max": 100000000000, "value": "<value>" } }`, and nothing is written. `label` is `amount` for a single amount, `total` for a transaction's splits that add up beyond the cap, `startingBalance`, `closingBalance`, `statementBalance`, `adjustment`, or the trade field (`grossCents`, `feesCents`…, `cash` for the cash leg). A staged import row above the cap, from before #651, is rejected at confirmation with that code and stays staged.
+
+Sums are not capped: a balance or a budget figure can be above €1,000,000,000. A budget month whose stored amounts add up beyond the safe integer range, which only rows stored before the cap can do, answers 422 `{ "error": "amount_total_overflow", "details": { "label": "transactions", "transactionIds": "<id>,<id>", "count": 2 } }`, naming the transactions above the cap (or the largest ones, at most 20); when it is the assignments that overflow, `label` is `assignment` with its `month` and `categoryId`. See "Amounts above the cap stored before #651" below.
+
 ### Error replies
 
 A route checks every id it takes from the request before writing with it (#512). An account id, in the path (`/accounts/:accountId/…`: import, staging, reconciliation, creating and listing transactions) or in the body (`accountId` of a new scheduled transaction), must name an account of the selected workspace, or the route answers 404 `{ "error": "account not found" }` and writes nothing, the same for an account of another workspace as for one that does not exist. A malformed `…Id` path parameter answers 404 too, without reaching the database (`src/ids.ts`); a malformed workspace id answers 403, like any workspace the caller is not a member of. Malformed ids inside a body are answered by the route itself: a transfer's account as `unknown_account`, a staged row in a confirmation as `not_found`.
@@ -271,6 +289,7 @@ Anything a route does not answer itself goes through one global error handler (`
 | Error | Status | Body |
 | --- | --- | --- |
 | A `ValidationError` not already answered by its route | 400 | `{ "error": "<code>", "details": { … } }` |
+| A `ValidationError` with the code `amount_total_overflow` (#651) | 422 | `{ "error": "amount_total_overflow", "details": { … } }` |
 | PostgreSQL foreign-key violation (23503) | 400 | `{ "error": "invalid_reference" }` |
 | PostgreSQL invalid input syntax (22P02) | 400 | `{ "error": "invalid_input" }` |
 | PostgreSQL insufficient privilege (42501), a Row-Level Security refusal included | 403 | `{ "error": "forbidden" }` |
