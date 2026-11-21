@@ -33,6 +33,13 @@ describe("Todo (#326)", () => {
     expect(document.querySelector(".dot.r")).not.toBeNull();
   });
 
+  it("says when a cash overspending item also asks for what is scheduled (#728)", () => {
+    const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 3_500, reservationShortfallCents: 3_000 }];
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
+    expect(screen.getByText("overspent in cash and not enough for what is scheduled: cover it before the month ends")).toBeInTheDocument();
+    expect(screen.queryByText("overspent in cash: cover it before the month ends")).toBeNull();
+  });
+
   it("gives a reservation shortfall and uncovered card debt an amber dot", () => {
     const items: TodoItem[] = [
       { kind: "reservationShortfall", categoryId: "groceries", amountCents: 500 },

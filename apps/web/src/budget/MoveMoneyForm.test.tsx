@@ -156,7 +156,16 @@ describe("MoveMoneyForm (#328)", () => {
     const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -35_000, cashOverspending: 5_000, creditOverspending: 30_000 });
     renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });
     expect(screen.getByLabelText("Amount")).toHaveValue("50.00");
-    expect(screen.getByText("The part spent from an account is covered.")).toBeInTheDocument();
+    expect(screen.getByText("The part overspent in cash is covered.")).toBeInTheDocument();
+  });
+
+  it("'Move money' beyond a category's cash part says the rest covers card spending and moves to the card, up to its card part (#728)", () => {
+    const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -35_000, cashOverspending: 5_000, creditOverspending: 30_000 });
+    renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "60.00" } });
+    expect(screen.getByText("The part overspent in cash is covered. The other €10.00 covers card spending and moves to the card.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "500.00" } });
+    expect(screen.getByText("The part overspent in cash is covered. The other €300.00 covers card spending and moves to the card.")).toBeInTheDocument();
   });
 
   it("'Move money' on a category overspent only with a card preselects no amount (#728)", () => {

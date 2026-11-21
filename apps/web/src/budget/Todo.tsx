@@ -47,7 +47,14 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
     case "cashOverspending":
       return {
         title: intl.formatMessage({ id: "budget.todo.cover.title", defaultMessage: "Cover {category}" }, { category: categoryName(item.categoryId) }),
-        sub: intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash: cover it before the month ends" }),
+        // #728: an ordinary category with no card part asks for its reservation shortfall in the same item.
+        sub:
+          item.reservationShortfallCents !== undefined
+            ? intl.formatMessage({
+                id: "budget.todo.cashOverspendingAndReservation.sub",
+                defaultMessage: "overspent in cash and not enough for what is scheduled: cover it before the month ends",
+              })
+            : intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash: cover it before the month ends" }),
       };
     case "scheduledOverdue":
       return {
