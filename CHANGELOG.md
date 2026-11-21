@@ -6,6 +6,8 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-21
+
 ### Added
 
 - `apps/api`, `apps/web`: rate limits (`#566`, [ADR 0017](docs/adr/0017-api-rate-limiting.md)). Per client address, before authentication and on every route, the health check included (2400 requests a minute by default), and per signed-in user after it (1200 requests, 120 writes and 10 file imports a minute by default, sized from an ordinary web session of about 325 requests in 7 seconds; the per-address limit stays above the per-user one because one address can carry a whole household), all configurable by environment. CORS preflights are not counted, and `Retry-After` is exposed to the web app. A request over a limit is answered 429 `too_many_requests` with `Retry-After`; the web app says how long to wait where it saves a transaction, moves money, imports a file or reconciles. `TRUST_PROXY` names the reverse proxies whose `X-Forwarded-For` is believed (none by default; behind Caddy it must be `127.0.0.1`, or the whole household is counted as one address). Sign-in stays limited by Keycloak's own brute-force detection.
