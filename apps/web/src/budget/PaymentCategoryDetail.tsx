@@ -24,6 +24,8 @@ interface Props {
   onMoveMoneyHere(): void;
   /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
   readonly fullScreen?: boolean;
+  /** Brings the detail into view and focuses its heading when it changes (`DetailFrame`'s own `focusRequest`, #728). */
+  readonly focusRequest?: string | number | undefined;
   /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own two actions. */
   readonly readOnly?: boolean;
 }
@@ -59,6 +61,7 @@ export default function PaymentCategoryDetail({
   onAssignFromUnassigned,
   onMoveMoneyHere,
   fullScreen,
+  focusRequest,
   readOnly,
 }: Props) {
   const intl = useIntl();
@@ -124,7 +127,7 @@ export default function PaymentCategoryDetail({
         {
           id: "budget.payment.uncoveredFromCategories",
           defaultMessage:
-            "The uncovered debt comes from card spending beyond what was available: {categories}. Covering those categories by the end of the month sends the money here; otherwise they restart at zero next month and the debt stays here to cover.",
+            "The uncovered debt comes from card spending beyond what was available: {categories}. It stays here to cover until money is assigned to it.",
         },
         { categories: names },
       );
@@ -139,8 +142,13 @@ export default function PaymentCategoryDetail({
     <DetailFrame
       label={intl.formatMessage({ id: "budget.row.detailLabel", defaultMessage: "Detail for {category}" }, { category: categoryName })}
       fullScreen={fullScreen ?? false}
+      focusRequest={focusRequest}
       onClose={onClose}
     >
+      {/* The card's own name, the same heading an ordinary category's detail has (#728): the focus target when the detail is opened from elsewhere. */}
+      <div className="det-h">
+        <h3 tabIndex={-1}>{categoryName}</h3>
+      </div>
       <div className="sec">
         <span className="state-l">{intl.formatMessage({ id: "budget.payment.setAside", defaultMessage: "Set aside to pay the card" })}</span>
         <span className="big n">{money(debt.setAside)}</span>

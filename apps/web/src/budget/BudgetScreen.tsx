@@ -171,6 +171,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   const [panel, setPanel] = useState<Panel>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  /**
+   * A detail opened from elsewhere on the screen (a "To do" item, a category's link to its card;
+   * #728) asks to be brought into view and focused: `seq` changes on every such open, so opening
+   * the one already open still moves there.
+   */
+  const [detailFocus, setDetailFocus] = useState<{ readonly categoryId: string; readonly seq: number } | null>(null);
   const [moveMoney, setMoveMoney] = useState<MoveMoneyInitial | null>(null);
   /**
    * Changing month closes a category's detail and the Move money form (#698): their amounts, and
@@ -440,6 +446,9 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   }
 
   function renderDetail(category: BudgetGroupCategory, fullScreen: boolean) {
+    const requested = detailFocus?.categoryId === category.categoryId ? detailFocus.seq : undefined;
+    // On the phone the detail replaces the list, so it always opens at its top with focus on it.
+    const focusRequest = fullScreen ? `${category.categoryId}:${requested ?? 0}` : requested;
     return category.isPaymentCategory ? (
       <PaymentCategoryDetail
         categoryName={category.name}
@@ -450,6 +459,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         {...(category.overspendingBy !== undefined ? { overspendingBy: category.overspendingBy } : {})}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        focusRequest={focusRequest}
         readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
         onAssignFromUnassigned={() => setMoveMoney({ kind: "assignTo", categoryId: category.categoryId })}
@@ -467,6 +477,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         assigned={category.assigned}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
+        focusRequest={focusRequest}
         readOnly={!canWrite}
         onClose={() => setOpenCategoryId(null)}
         onChanged={() => refetchAndCheckProblems()}
@@ -492,6 +503,8 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
   /**
    * Opens a category's detail in its row. On the desktop, a collapsed group never renders its own
    * categories at all (`#411`): its group is expanded first, or nothing visible would change.
+   * The detail then scrolls into view and takes focus on its heading (#728): it may open far from
+   * the "To do" item or the link that opened it.
    */
   function openCategory(categoryId: string) {
     const ownGroup = groups.find((g) => g.categories.some((c) => c.categoryId === categoryId));
@@ -499,6 +512,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
       setCollapsed((c) => ({ ...c, [ownGroup.id]: false }));
     }
     setOpenCategoryId(categoryId);
+    setDetailFocus((f) => ({ categoryId, seq: (f?.seq ?? 0) + 1 }));
   }
 
   function handleTodoItemClick(item: TodoItem) {
@@ -723,7 +737,12 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
                               // Desktop toggles its own inline detail closed again on a second tap
                               // (`isOpen` is always false on phone, since its detail replaces this
                               // whole list instead — there is nothing here left to toggle back to).
-                              onClick={() => setOpenCategoryId(isPhone || !isOpen ? category.categoryId : null)}
+                              onClick={() => {
+                                // A row's own tap keeps focus on the row (desktop); only the phone,
+                                // whose detail replaces the list, moves it (`renderDetail`).
+                                setDetailFocus(null);
+                                setOpenCategoryId(isPhone || !isOpen ? category.categoryId : null);
+                              }}
                             >
                               {rowContent}
                             </button>

@@ -24,6 +24,8 @@ interface Props {
   onMoveMoney(): void;
   /** Full screen with a back link, not inline under the row (the phone layout, `#331`). */
   readonly fullScreen?: boolean;
+  /** Brings the detail into view and focuses its heading when it changes (`DetailFrame`'s own `focusRequest`, #728). */
+  readonly focusRequest?: string | number | undefined;
   /** A `read_only` member (#61, design.md: "resolving any of these needs the owner or editor role") still sees this detail, just not its own edit controls. */
   readonly readOnly?: boolean;
   /** Renames the category (#397); its "Rename" only shows when given, and never for a read-only member. */
@@ -67,6 +69,7 @@ export default function RowDetail({
   onChanged,
   onMoveMoney,
   fullScreen,
+  focusRequest,
   readOnly,
   onRename,
   cardParts,
@@ -177,6 +180,7 @@ export default function RowDetail({
     <DetailFrame
       label={intl.formatMessage({ id: "budget.row.detailLabel", defaultMessage: "Detail for {category}" }, { category: categoryName })}
       fullScreen={fullScreen ?? false}
+      focusRequest={focusRequest}
       onClose={onClose}
     >
       {renaming && onRename ? (
@@ -193,7 +197,7 @@ export default function RowDetail({
         />
       ) : (
         <div className="det-h">
-          <h3>{categoryName}</h3>
+          <h3 tabIndex={-1}>{categoryName}</h3>
           {!readOnly && onRename && (
             <button type="button" className="plain" onClick={() => setRenaming(true)}>
               {intl.formatMessage({ id: "budget.row.rename", defaultMessage: "Rename" })}

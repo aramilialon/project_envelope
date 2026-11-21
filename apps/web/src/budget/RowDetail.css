@@ -131,6 +131,11 @@
   gap: 18px;
 }
 
+/* Every plain action in the phone's detail is a 44px touch target, like its back link (#728). */
+.ph-detail .plain {
+  min-height: 44px;
+}
+
 .ph-back {
   display: inline-flex;
   align-items: center;
