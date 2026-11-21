@@ -5,7 +5,7 @@ import { isValidationError } from "../errors.ts";
 import type { PositionTrade } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
 import { amountOf, PRICE_FACTOR_HUNDREDTH } from "./quantity.ts";
-import { checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
+import { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
 import type { RegimeCheckedTrade } from "./trades.ts";
 
 type Amounts = Pick<
@@ -380,13 +380,60 @@ describe("checkRegimeChange (#653)", () => {
     checkRegimeChange([refund], { before: since("administered"), after: administeredThenSelf, domesticWithholdingAgent: true });
   });
 
-  it("leaves the domestic-withholding rule alone: it depends on the broker, not on the regime", () => {
-    const bondBuy = trade(
-      "t-bond",
-      "2026-03-01",
-      { type: "buy", grossCents: 10_000, accruedInterestCents: 100, withholdingDomesticCents: 12 },
-      "bond",
+  const bondBuy = trade(
+    "t-bond",
+    "2026-03-01",
+    { type: "buy", grossCents: 10_000, accruedInterestCents: 100, withholdingDomesticCents: 12 },
+    "bond",
+  );
+
+  it("checks the domestic-withholding rule on the first regime, not on a later change", () => {
+    for (const domesticWithholdingAgent of [null, false]) {
+      assert.throws(
+        () => checkRegimeChange([bondBuy], { before: [], after: since("self_declared"), domesticWithholdingAgent }),
+        conflict("t-bond", "2026-03-01", "domestic_withholding_requires_agent"),
+      );
+    }
+    checkRegimeChange([bondBuy], { before: [], after: since("administered"), domesticWithholdingAgent: true });
+    // A later change covers only the rules that depend on the regime: the broker did not change.
+    checkRegimeChange([bondBuy], {
+      before: since("self_declared"),
+      after: [...since("self_declared"), { validFrom: "2027-01-01", regime: "self_declared" }],
+      domesticWithholdingAgent: false,
+    });
+  });
+});
+
+describe("checkAccountTradesAgainstRegime (#653)", () => {
+  const history = [{ validFrom: "2020-01-01", regime: "self_declared" as const }];
+  const bondBuy: RegimeCheckedTrade = {
+    ...amounts({ type: "buy", grossCents: 10_000, accruedInterestCents: 100, withholdingDomesticCents: 12 }),
+    id: "t-bond",
+    date: "2026-03-01",
+    instrumentType: "bond",
+  };
+
+  it("refuses a broker that is not a withholding agent under a bond trade with domestic withholding", () => {
+    assert.throws(
+      () => checkAccountTradesAgainstRegime([bondBuy], { history, domesticWithholdingAgent: false }),
+      (error: unknown) =>
+        isValidationError(error, "tax_regime_conflicts_with_trade") &&
+        error.details.tradeId === "t-bond" &&
+        error.details.code === "domestic_withholding_requires_agent",
     );
-    checkRegimeChange([bondBuy], { before: [], after: since("self_declared"), domesticWithholdingAgent: false });
+    checkAccountTradesAgainstRegime([bondBuy], { history, domesticWithholdingAgent: true });
+  });
+
+  it("checks the rules that depend on the regime too", () => {
+    const managedTax: RegimeCheckedTrade = {
+      ...amounts({ type: "tax", taxKind: "managed_result_tax", grossCents: 500 }),
+      id: "t-managed",
+      date: "2026-03-01",
+      instrumentType: null,
+    };
+    assert.throws(
+      () => checkAccountTradesAgainstRegime([managedTax], { history, domesticWithholdingAgent: true }),
+      (error: unknown) => isValidationError(error, "tax_regime_conflicts_with_trade") && error.details.code === "tax_kind_not_allowed_in_regime",
+    );
   });
 });

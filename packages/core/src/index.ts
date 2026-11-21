@@ -50,8 +50,8 @@ export {
   validatePositionHistory,
   valuePosition,
 } from "./portfolio/positions.ts";
-export type { RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
-export { checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
+export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
+export { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";

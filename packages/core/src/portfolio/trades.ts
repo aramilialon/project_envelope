@@ -286,29 +286,76 @@ export interface RegimeChange {
  * rules of `checkTradeRegime` that depend on the regime. A trade the change does not cover is not
  * judged again, and neither is the domestic-withholding rule, which depends on the broker alone.
  *
+ * The account's first regime (an empty history before the change) covers every trade, and every
+ * trade is checked by the whole of `checkTradeRegime`, the domestic-withholding rule included
+ * (`checkAccountTradesAgainstRegime`): a trade entered while the account had no regime was never
+ * checked against the broker either.
+ *
  * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, and code,
  *   the trade's own failing code, such as "tax_kind_not_allowed_in_regime") for the first trade,
  *   by date then id, that the new history would break.
  */
 export function checkRegimeChange(trades: readonly RegimeCheckedTrade[], change: RegimeChange): void {
-  const sorted = [...trades].sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
-  for (const trade of sorted) {
+  if (change.before.length === 0) {
+    checkAccountTradesAgainstRegime(trades, { history: change.after, domesticWithholdingAgent: change.domesticWithholdingAgent });
+    return;
+  }
+  for (const trade of byDateThenId(trades)) {
     if (!coveredByChange(trade, change)) continue;
-    try {
+    asTradeConflict(trade, () =>
       checkTaxKindsInRegime(trade, {
         history: change.after,
         date: trade.date,
         domesticWithholdingAgent: change.domesticWithholdingAgent,
         instrumentType: trade.instrumentType,
-      });
-    } catch (error) {
-      if (!(error instanceof ValidationError)) throw error;
-      throw new ValidationError("tax_regime_conflicts_with_trade", `the change breaks the trade ${trade.id} of ${trade.date}`, {
-        tradeId: trade.id,
-        tradeDate: trade.date,
-        code: error.code,
-      });
-    }
+      }),
+    );
+  }
+}
+
+/** An account's regime history and broker, as `checkAccountTradesAgainstRegime` judges its trades. */
+export interface AccountRegime {
+  /** The account's whole regime history. */
+  readonly history: readonly TaxRegimeEntry[];
+  /** Whether the broker is a domestic (Italian) withholding agent. */
+  readonly domesticWithholdingAgent: boolean | null;
+}
+
+/**
+ * Checks every trade of an account by the whole of `checkTradeRegime` (#653): when the account
+ * gets its first regime, and when its withholding-agent flag is set while it has a regime history.
+ *
+ * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) for
+ *   the first trade, by date then id, that breaks a rule.
+ */
+export function checkAccountTradesAgainstRegime(trades: readonly RegimeCheckedTrade[], account: AccountRegime): void {
+  for (const trade of byDateThenId(trades)) {
+    asTradeConflict(trade, () =>
+      checkTradeRegime(trade, {
+        history: account.history,
+        date: trade.date,
+        domesticWithholdingAgent: account.domesticWithholdingAgent,
+        instrumentType: trade.instrumentType,
+      }),
+    );
+  }
+}
+
+function byDateThenId(trades: readonly RegimeCheckedTrade[]): RegimeCheckedTrade[] {
+  return [...trades].sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
+}
+
+/** Runs `check`, turning the trade's own `ValidationError` into "tax_regime_conflicts_with_trade". */
+function asTradeConflict(trade: RegimeCheckedTrade, check: () => void): void {
+  try {
+    check();
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    throw new ValidationError("tax_regime_conflicts_with_trade", `the regime breaks the trade ${trade.id} of ${trade.date}`, {
+      tradeId: trade.id,
+      tradeDate: trade.date,
+      code: error.code,
+    });
   }
 }
 
