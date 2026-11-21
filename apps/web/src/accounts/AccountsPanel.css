@@ -17,9 +17,10 @@
   padding: 20px 20px 14px;
 }
 
+/* --ink-2, not --muted: 13px text on --paper-2 needs 4.5:1 (#652). */
 .accl-head .where {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 
 .accl-head h2 {
@@ -46,7 +47,7 @@
 .accl-head .nw-note {
   margin: 6px 0 0;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ink-2);
 }
 
 .accl-close {
