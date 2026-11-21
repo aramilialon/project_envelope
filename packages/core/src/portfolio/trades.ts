@@ -220,6 +220,18 @@ function gainTaxAllowed(regime: TaxRegime, context: TradeRegimeContext): boolean
  *   or "taxKind" —, and taxKind for a tax); "domestic_withholding_requires_agent" (details: field).
  */
 export function checkTradeRegime(trade: TradeAmounts, context: TradeRegimeContext): void {
+  checkTaxKindsInRegime(trade, context);
+  if ((trade.type === "buy" || trade.type === "sell") && trade.withholdingDomesticCents !== 0 && context.domesticWithholdingAgent !== true) {
+    throw new ValidationError(
+      "domestic_withholding_requires_agent",
+      "only a domestic withholding agent withholds tax on the accrued interest of a bond trade",
+      { field: "withholdingDomesticCents" },
+    );
+  }
+}
+
+/** The rules of `checkTradeRegime` that depend on the regime history. */
+function checkTaxKindsInRegime(trade: TradeAmounts, context: TradeRegimeContext): void {
   const regime = regimeAt(context.history, context.date);
   if (regime === undefined) {
     throw new ValidationError("tax_regime_required", "the account has no tax regime", {});
@@ -236,20 +248,133 @@ export function checkTradeRegime(trade: TradeAmounts, context: TradeRegimeContex
     refuse("gainTaxCents");
   }
   if (trade.type === "tax" && trade.taxKind === "gain_tax_adjustment") {
-    // Every regime in force on or before the date: each period that started by then, and the
-    // first period, which also covers earlier dates.
-    const regimes = new Set<TaxRegime>([regime, ...context.history.filter((entry) => entry.validFrom <= context.date).map((entry) => entry.regime)]);
-    if (![...regimes].some((candidate) => gainTaxAllowed(candidate, context))) refuse("taxKind");
+    if (![...regimesUpTo(context.history, context.date)].some((candidate) => gainTaxAllowed(candidate, context))) refuse("taxKind");
   }
   if (trade.type === "tax" && trade.taxKind === "managed_result_tax" && regime !== "managed") {
     refuse("taxKind");
   }
+}
 
-  if ((trade.type === "buy" || trade.type === "sell") && trade.withholdingDomesticCents !== 0 && context.domesticWithholdingAgent !== true) {
-    throw new ValidationError(
-      "domestic_withholding_requires_agent",
-      "only a domestic withholding agent withholds tax on the accrued interest of a bond trade",
-      { field: "withholdingDomesticCents" },
+/**
+ * Every regime in force on or before `date`: each period that started by then, and the first
+ * period, which also covers earlier dates. Empty only for an empty history.
+ */
+function regimesUpTo(history: readonly TaxRegimeEntry[], date: LocalDate): Set<TaxRegime> {
+  const regimes = new Set<TaxRegime>(history.filter((entry) => entry.validFrom <= date).map((entry) => entry.regime));
+  const regime = regimeAt(history, date);
+  if (regime !== undefined) regimes.add(regime);
+  return regimes;
+}
+
+/** A stored trade, as `checkRegimeChange` reads it again. */
+export interface RegimeCheckedTrade extends TradeAmounts {
+  readonly id: string;
+  /** The trade date. */
+  readonly date: LocalDate;
+  /** The instrument's type, or null for a fee or a tax without one. */
+  readonly instrumentType: InstrumentType | null;
+}
+
+/** A change to an account's regime history, as `checkRegimeChange` judges it. */
+export interface RegimeChange {
+  /** The history as stored before the change; empty when the account has none yet. */
+  readonly before: readonly TaxRegimeEntry[];
+  /** The whole history once the change is applied. */
+  readonly after: readonly TaxRegimeEntry[];
+  /** Whether the broker is a domestic (Italian) withholding agent. */
+  readonly domesticWithholdingAgent: boolean | null;
+}
+
+/**
+ * Reads an account's trades again once its regime history changes (#653). Every trade the change
+ * covers — its date now falls under another regime or, for a gain tax adjustment, the regimes in
+ * force on or before its date are no longer the same — is checked against the new history by the
+ * rules of `checkTradeRegime` that depend on the regime. A trade the change does not cover is not
+ * judged again, and neither is the domestic-withholding rule, which depends on the broker alone.
+ *
+ * The account's first regime (an empty history before the change) covers every trade, and every
+ * trade is checked by the whole of `checkTradeRegime`, the domestic-withholding rule included
+ * (`checkAccountTradesAgainstRegime`): a trade entered while the account had no regime was never
+ * checked against the broker either.
+ *
+ * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, and code,
+ *   the trade's own failing code, such as "tax_kind_not_allowed_in_regime") for the first trade,
+ *   by date then id, that the new history would break.
+ */
+export function checkRegimeChange(trades: readonly RegimeCheckedTrade[], change: RegimeChange): void {
+  if (change.before.length === 0) {
+    checkAccountTradesAgainstRegime(trades, { history: change.after, domesticWithholdingAgent: change.domesticWithholdingAgent });
+    return;
+  }
+  for (const trade of byDateThenId(trades)) {
+    if (!coveredByChange(trade, change)) continue;
+    asTradeConflict(trade, () =>
+      checkTaxKindsInRegime(trade, {
+        history: change.after,
+        date: trade.date,
+        domesticWithholdingAgent: change.domesticWithholdingAgent,
+        instrumentType: trade.instrumentType,
+      }),
     );
   }
+}
+
+/** An account's regime history and broker, as `checkAccountTradesAgainstRegime` judges its trades. */
+export interface AccountRegime {
+  /** The account's whole regime history. */
+  readonly history: readonly TaxRegimeEntry[];
+  /** Whether the broker is a domestic (Italian) withholding agent. */
+  readonly domesticWithholdingAgent: boolean | null;
+}
+
+/**
+ * Checks every trade of an account by the whole of `checkTradeRegime` (#653): when the account
+ * gets its first regime, and when its withholding-agent flag is set while it has a regime history.
+ *
+ * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) for
+ *   the first trade, by date then id, that breaks a rule.
+ */
+export function checkAccountTradesAgainstRegime(trades: readonly RegimeCheckedTrade[], account: AccountRegime): void {
+  for (const trade of byDateThenId(trades)) {
+    asTradeConflict(trade, () =>
+      checkTradeRegime(trade, {
+        history: account.history,
+        date: trade.date,
+        domesticWithholdingAgent: account.domesticWithholdingAgent,
+        instrumentType: trade.instrumentType,
+      }),
+    );
+  }
+}
+
+function byDateThenId(trades: readonly RegimeCheckedTrade[]): RegimeCheckedTrade[] {
+  return [...trades].sort((a, b) => compareText(a.date, b.date) || compareText(a.id, b.id));
+}
+
+/** Runs `check`, turning the trade's own `ValidationError` into "tax_regime_conflicts_with_trade". */
+function asTradeConflict(trade: RegimeCheckedTrade, check: () => void): void {
+  try {
+    check();
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    throw new ValidationError("tax_regime_conflicts_with_trade", `the regime breaks the trade ${trade.id} of ${trade.date}`, {
+      tradeId: trade.id,
+      tradeDate: trade.date,
+      code: error.code,
+    });
+  }
+}
+
+/** Whether the regimes that judge `trade` differ between the two histories. */
+function coveredByChange(trade: RegimeCheckedTrade, change: RegimeChange): boolean {
+  if (trade.type === "tax" && trade.taxKind === "gain_tax_adjustment") {
+    const before = regimesUpTo(change.before, trade.date);
+    const after = regimesUpTo(change.after, trade.date);
+    return before.size !== after.size || [...after].some((regime) => !before.has(regime));
+  }
+  return regimeAt(change.before, trade.date) !== regimeAt(change.after, trade.date);
+}
+
+function compareText(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
