@@ -3,6 +3,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Navigate, useNavigate } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import CenteredCard from "../layout/CenteredCard.tsx";
 import CreateWorkspaceForm from "./CreateWorkspaceForm.tsx";
 import { clearLastUsedWorkspaceId, getLastUsedWorkspaceId, setLastUsedWorkspaceId } from "./lastUsedWorkspace.ts";
@@ -49,7 +50,7 @@ export default function WorkspaceGate() {
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M12 2 1 21h22L12 2Zm0 6 7 12H5l7-12Zm-1 4h2v5h-2v-5Zm0 6h2v2h-2v-2Z" />
           </svg>
-          <p>{intl.formatMessage({ id: "workspacePicker.error", defaultMessage: "We could not load your workspaces." })}</p>
+          <p>{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "workspacePicker.error", defaultMessage: "We could not load your workspaces." })}</p>
         </div>
       </CenteredCard>
     );

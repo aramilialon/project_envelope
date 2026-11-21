@@ -70,7 +70,7 @@ export default function ReconciliationScreen() {
     return <p role="status">{intl.formatMessage({ id: "reconcile.loading", defaultMessage: "Loading this account…" })}</p>;
   }
   if (state.status === "error") {
-    return <p role="alert">{intl.formatMessage({ id: "reconcile.error", defaultMessage: "We could not load this account." })}</p>;
+    return <p role="alert">{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "reconcile.error", defaultMessage: "We could not load this account." })}</p>;
   }
 
   const { account, categories, candidates } = state;

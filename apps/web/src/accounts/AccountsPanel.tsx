@@ -4,6 +4,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useNavigate } from "react-router-dom";
 
+import { tooManyRequestsMessage } from "../apiErrors.ts";
 import type { Account } from "./api.ts";
 import { useAccountBalances } from "./useAccountBalances.ts";
 import { useAccounts } from "./useAccounts.ts";
@@ -133,7 +134,7 @@ export default function AccountsPanel({ workspaceId, currency, currentAccountId,
       )}
       {state.status === "error" && (
         <p className="accl-note" role="alert">
-          {intl.formatMessage({ id: "accounts.error", defaultMessage: "We could not load your accounts." })}
+          {tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "accounts.error", defaultMessage: "We could not load your accounts." })}
         </p>
       )}
       {state.status === "ok" && open.length === 0 && (

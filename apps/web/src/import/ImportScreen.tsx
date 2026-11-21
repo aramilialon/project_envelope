@@ -109,7 +109,7 @@ export default function ImportScreen() {
     return <p role="status">{intl.formatMessage({ id: "import.loading", defaultMessage: "Loading this account…" })}</p>;
   }
   if (setup.status === "error") {
-    return <p role="alert">{intl.formatMessage({ id: "import.error", defaultMessage: "We could not load this account." })}</p>;
+    return <p role="alert">{tooManyRequestsMessage(intl, setup.error) ?? intl.formatMessage({ id: "import.error", defaultMessage: "We could not load this account." })}</p>;
   }
   const { account, accounts, categories, savedMapping } = setup;
   const currency = account.currency;
