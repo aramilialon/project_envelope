@@ -10,6 +10,7 @@ import SideSheet from "../layout/SideSheet.tsx";
 import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { shortDate } from "../format.ts";
 import { useFetchState } from "../useFetchState.ts";
 import {
   createTransaction,
@@ -168,7 +169,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
 
-  /** "The money comes into the budget: … goes from X to Y." — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
+  /** "The money comes into the budget: … goes from X to Y." (or, into "Unassigned" with a date after today, the day it comes in) — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
   function inflowHint(): string | null {
     if (!moneyEntersBudget || !budgetMonth || (isEditing && categoryId === originalCategoryId)) {
       return null;
@@ -186,7 +187,14 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       if (transferRule !== "optional") {
         return null;
       }
-      const change = availableAfterInflow(budgetMonth.unassigned, amount);
+      // Income counts from its own date on (#650): money dated after today leaves "Unassigned" as it is until then (#700).
+      const change = availableAfterInflow(budgetMonth.unassigned, amount, { date, today });
+      if (!change.received) {
+        return intl.formatMessage(
+          { id: "transactions.form.inflowHint.unassignedLater", defaultMessage: "The money comes into “Unassigned” on {date}." },
+          { date: shortDate(change.date, intl.locale) },
+        );
+      }
       return intl.formatMessage(
         { id: "transactions.form.inflowHint.unassigned", defaultMessage: "The money comes into the budget: “Unassigned” goes from {from} to {to}." },
         { from: money(change.fromCents), to: money(change.toCents) },
@@ -196,7 +204,11 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     if (!category) {
       return null;
     }
+    // Categorized money counts by month (#668), whatever its day: no timing.
     const change = availableAfterInflow(category.available, amount);
+    if (!change.received) {
+      return null;
+    }
     return intl.formatMessage(
       { id: "transactions.form.inflowHint.category", defaultMessage: "The money comes into the budget: {category} goes from {from} to {to}." },
       { category: category.name, from: money(change.fromCents), to: money(change.toCents) },
