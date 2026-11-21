@@ -61,7 +61,8 @@ The portfolio and the phone screens come from the mockups, in Italian (the portf
 | 0.1.6 | Offline sync | Released |
 | 0.1.7 | Web app | Released |
 | 0.1.8 | A real month of a household budget run with the app alone | Released |
-| 0.2.x | Portfolios, prices, allocation and rebalancing | In progress |
+| 0.2.0 | Portfolio schema and instruments: brokerage accounts, portfolios, instruments, trades and positions | Released |
+| 0.2.x | Prices, allocation and rebalancing | In progress |
 | 0.2.8 | AI assistants through a local, read-only MCP server ([ADR 0014](docs/adr/0014-assistant-access-through-mcp.md)) | Planned |
 | 0.3.x | Mobile app | Planned |
 | 0.4.0 | Self-hosting packaging: Docker images, a production install guide, Keycloak in production mode with multi-factor authentication, rate limiting, backups | Planned |
