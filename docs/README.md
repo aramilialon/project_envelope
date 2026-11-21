@@ -37,6 +37,7 @@
 | [0012](adr/0012-trade-cash-legs.md) | A trade owns its cash leg |
 | [0013](adr/0013-model-based-random-walk-tests.md) | Model-based random walk tests for the API |
 | [0014](adr/0014-assistant-access-through-mcp.md) | Assistant access through an MCP server that reaches data only through the API |
+| [0015](adr/0015-english-first-translations.md) | English mockups, four required translations, an agent translator |
 
 ## Rule
 

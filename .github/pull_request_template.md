@@ -14,4 +14,5 @@ Closes #
 
 - [ ] Code, comments and docs are in English, with no references to external products or people
 - [ ] Documentation updated where the change affects it
+- [ ] Translations: the translator ran for it/de/es/fr, or no English text changed (`packages/i18n/locales/en.json` unchanged)
 - [ ] `CHANGELOG.md` updated under "Unreleased" for user-visible changes

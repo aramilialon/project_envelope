@@ -2,6 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-09-25
+- **Partly superseded:** the "Languages" section, by [ADR 0015](0015-english-first-translations.md)
 
 ## Context
 
@@ -10,6 +11,8 @@ The project may become open source and be used outside Italy. The main user is I
 ## Decision
 
 ### Languages
+
+> **Superseded by [ADR 0015](0015-english-first-translations.md).** English stays the source; the mockups turn English, and Italian, German, Spanish and French are all required translations, written by a translator agent. The text below is kept as it was decided.
 
 - Code, comments, documentation, commit messages and issue titles are in **English**.
 - The user interface is **translatable**. English is the source language; Italian is the first translation and must always be complete.

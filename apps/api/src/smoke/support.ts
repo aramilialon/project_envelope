@@ -143,10 +143,16 @@ async function stopServer(child: ChildProcess): Promise<void> {
   }
   const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
   child.kill("SIGTERM");
+  let timer: NodeJS.Timeout | undefined;
   const timedOut = await Promise.race([
     exited.then(() => false),
-    new Promise<boolean>((resolve) => setTimeout(() => resolve(true), STOP_TIMEOUT_MS)),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), STOP_TIMEOUT_MS);
+    }),
   ]);
+  // A pending timer keeps the test file's process alive until it fires, STOP_TIMEOUT_MS after a
+  // server that stopped at once (#637).
+  clearTimeout(timer);
   if (timedOut) {
     child.kill("SIGKILL");
     await exited;

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "typecheck": "tsc -b",
-    "i18n:extract": "formatjs extract 'src/**/*.{ts,tsx}' --ignore 'src/**/*.test.{ts,tsx}' --format scripts/i18n-extract-format.mjs --out-file ../../packages/i18n/locales/en.json --throws"
+    "i18n:extract": "pnpm --filter @envelope/i18n extract"
   },
   "dependencies": {
     "@envelope/core": "workspace:*",
@@ -26,7 +26,7 @@
     "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
-    "@formatjs/cli": "^6.16.33",
+    "@formatjs/icu-messageformat-parser": "^3.5.21",
     "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

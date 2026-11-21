@@ -21,6 +21,19 @@ describe("composeBudgetAlert (#40)", () => {
     assert.match(content.body, /Groceries.*supera il budget/);
   });
 
+  it("falls back to English for every language without notification wording, the amount still in the member's locale (#620)", () => {
+    for (const [language, locale] of [["de", "de-DE"], ["es", "es-ES"], ["fr", "fr-FR"]] as const) {
+      const content = composeBudgetAlert([overspent], { language, locale, currency: "EUR" });
+      assert.equal(content.title, "Budget alert", language);
+      assert.equal(content.body, `"Groceries" is 50,00 € over budget.`, language);
+    }
+  });
+
+  it("reads a regional language tag by its primary subtag", () => {
+    const content = composeBudgetAlert([overspent], { language: "it-CH", locale: "it-CH", currency: "EUR" });
+    assert.equal(content.title, "Avviso di budget");
+  });
+
   it("covers every budget problem kind", () => {
     const content = composeBudgetAlert([overspent, uncovered, unassigned], { language: "en", locale: "en-US", currency: "EUR" });
     assert.equal(content.title, "3 budget alerts");

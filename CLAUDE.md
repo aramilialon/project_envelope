@@ -21,7 +21,7 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | Path | Contents |
 | --- | --- |
 | `packages/core` | Pure domain logic, no dependencies: money, months and dates, budget month, credit cards, transaction aggregation |
-| `packages/i18n` | Translation catalogs (ADR 0004, ADR 0009): `locales/en.json` (generated from the web app's own `defaultMessage`s), `locales/it.json` (hand-translated, CI-checked for completeness against it) |
+| `packages/i18n` | Translation catalogs and shipped languages (ADR 0004, ADR 0009, ADR 0015; [packages/i18n/README.md](packages/i18n/README.md)): `locales/index.json` (the shipped list and each language's review status), `locales/en.json` (generated from every app's `defaultMessage`s by `pnpm --filter @envelope/i18n extract`), one catalog per other language written by the `translator` agent (complete once shipped, in progress until then), `resolveLanguage` (the interface language and, separately, the formatting locale), `glossary.md` (from #621). `pnpm --filter @envelope/i18n check` runs outside `pnpm test` |
 | `apps/` | `api`, `web` (Vite + React PWA shell so far), then `mobile` |
 | `infra/docker-compose.yml` | PostgreSQL and Keycloak for development, both always bound to 127.0.0.1 |
 | `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |
@@ -50,7 +50,7 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 
 ## User interface
 
-- Web and mobile screens follow the "User interface" section of [docs/design.md](docs/design.md) and the mockups in `docs/ux/mockups/` (open them in a browser, or read their HTML): the same layout, states, interactions and copy. The mockups show the Italian translation; the English source strings go in the i18n catalogue.
+- Web and mobile screens follow the "User interface" section of [docs/design.md](docs/design.md) and the mockups in `docs/ux/mockups/` (open them in a browser, or read their HTML): the same layout, states, interactions and copy. The mockups are in English from #622 on (in Italian until then), and their copy becomes the English `defaultMessage`s; the developer writes English only, and the `translator` agent writes the other languages (ADR 0015).
 - Use the design tokens and type described there; no other colours, fonts, shadows or card styles. Self-host fonts.
 - A screen without a mockup is not built from scratch: stop and ask for its mockup, or propose one in `docs/ux/mockups/` in its own pull request.
 - Where the mockup cannot be followed, say why in the pull request and update the mockup and the design section in the same pull request once agreed.
@@ -58,7 +58,7 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 
 ## Agent team
 
-The main session coordinates a team of role agents defined in `.claude/agents/` (developer, architect, domain expert, UX reviewer, QA, security reviewer, integrator, explorer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). The agents recommend; decisions stay with the maintainer.
+The main session coordinates a team of role agents defined in `.claude/agents/` (developer, translator, architect, domain expert, UX reviewer, QA, security reviewer, integrator, explorer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). The agents recommend; decisions stay with the maintainer.
 
 ## Git and GitHub workflow
 
