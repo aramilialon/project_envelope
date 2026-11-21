@@ -82,6 +82,7 @@
 
 .accounts-screen .ph-acc {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   width: 100%;
@@ -130,7 +131,7 @@
   cursor: pointer;
 }
 
-.accounts-screen .ph-acc .close:disabled {
+.accounts-screen .ph-acc .close[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -151,7 +152,8 @@
   color: var(--pen);
 }
 
-/* Why an account could not be closed (#703): a line of its own under the row and its Close button. */
+/* Why an account could not be closed (#703): a line of its own under the row and its Close button,
+   inside the row's own element, so it stays above the row's divider. */
 .accounts-screen .close-refusal {
   flex: 1 0 100%;
   margin: 0;
@@ -160,7 +162,8 @@
   color: var(--red-text);
 }
 
-.accounts-screen .account-list .close-refusal {
+.accounts-screen .account-list .close-refusal,
+.accounts-screen .ph-acc .close-refusal {
   padding: 0;
 }
 
@@ -168,7 +171,8 @@
   color: var(--red);
 }
 
-.accounts-screen .plain:disabled {
+.accounts-screen .plain:disabled,
+.accounts-screen .plain[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }

@@ -298,6 +298,19 @@ describe("AccountsScreen (#51, #323)", () => {
       );
     });
 
+    it("keeps the message on the phone inside the account's own row, above its divider", async () => {
+      setWidth(390);
+      vi.spyOn(accountsApi, "closeAccount").mockRejectedValue(new accountsApi.AccountNotEmptyError(100, false));
+      renderScreen([{ ...CHECKING, name: "Everyday" }, { ...CHECKING, id: "a2", name: "Holidays" }]);
+      await screen.findByRole("button", { name: /Everyday/ });
+
+      fireEvent.click(screen.getAllByRole("button", { name: "Close" })[0]!);
+
+      const row = (await screen.findByRole("alert")).closest(".ph-acc");
+      expect(row).toHaveTextContent("Everyday");
+      expect(row).not.toHaveTextContent("Holidays");
+    });
+
     it("clears the message on the next attempt, and says so plainly when closing fails for another reason", async () => {
       vi.spyOn(accountsApi, "closeAccount")
         .mockRejectedValueOnce(new accountsApi.AccountNotEmptyError(100, false))
@@ -310,6 +323,31 @@ describe("AccountsScreen (#51, #323)", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Close" }));
       await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("We could not close this account."));
+    });
+
+    it("keeps focus on Close while the request runs and after it is refused, ignoring a second press", async () => {
+      let refuse: (error: unknown) => void = () => {};
+      const closeAccount = vi.spyOn(accountsApi, "closeAccount").mockReturnValue(
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+      );
+      renderScreen([CHECKING]);
+      await screen.findByRole("button", { name: "Checking" });
+      const button = screen.getByRole("button", { name: "Close" });
+      button.focus();
+
+      fireEvent.click(button);
+      await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+      expect(button).not.toBeDisabled();
+      expect(button).toHaveFocus();
+      fireEvent.click(button);
+      expect(closeAccount).toHaveBeenCalledTimes(1);
+
+      await act(async () => refuse(new accountsApi.AccountNotEmptyError(100, false)));
+      await screen.findByRole("alert");
+      expect(button).toHaveAttribute("aria-disabled", "false");
+      expect(button).toHaveFocus();
     });
   });
 });

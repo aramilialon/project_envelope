@@ -1,5 +1,5 @@
 import { formatMoney } from "@envelope/core";
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
@@ -60,7 +60,9 @@ export default function AccountsScreen() {
 
   async function handleClose(account: Account) {
     const accessToken = auth.user?.access_token;
-    if (!accessToken) {
+    // While its request runs, Close stays focusable (`aria-disabled`, not `disabled`, so focus does
+    // not fall to the page and back to its top) and a second press does nothing.
+    if (!accessToken || closingId === account.id) {
       return;
     }
     setClosingId(account.id);
@@ -127,38 +129,36 @@ export default function AccountsScreen() {
       ) : isPhone ? (
         <div className="ph-accounts">
           {open.map((account) => (
-            <Fragment key={account.id}>
-              <div className="ph-acc">
-                <button
-                  type="button"
-                  className="open"
-                  onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
-                >
-                  <span>
-                    {account.name}
-                    <small>
-                      {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
-                      {" · "}
-                      {account.onBudget
-                        ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
-                        : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
-                    </small>
-                  </span>
-                  <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
-                    {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="close"
-                  disabled={closingId === account.id}
-                  onClick={() => void handleClose(account)}
-                >
-                  {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
-                </button>
-              </div>
+            <div key={account.id} className="ph-acc">
+              <button
+                type="button"
+                className="open"
+                onClick={() => navigate(`/${workspaceId}/accounts/${account.id}`)}
+              >
+                <span>
+                  {account.name}
+                  <small>
+                    {intl.formatMessage(ACCOUNT_TYPE_LABELS[account.type])}
+                    {" · "}
+                    {account.onBudget
+                      ? intl.formatMessage({ id: "accounts.onBudget", defaultMessage: "On budget" })
+                      : intl.formatMessage({ id: "accounts.offBudget", defaultMessage: "Off budget" })}
+                  </small>
+                </span>
+                <span className={`n${(balances[account.id] ?? 0) > 0 ? " in" : ""}`}>
+                  {account.id in balances ? money(balances[account.id]!, account.currency) : ""}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="close"
+                aria-disabled={closingId === account.id}
+                onClick={() => void handleClose(account)}
+              >
+                {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
+              </button>
               {refusalFor(account)}
-            </Fragment>
+            </div>
           ))}
         </div>
       ) : (
@@ -180,7 +180,7 @@ export default function AccountsScreen() {
               <button
                 type="button"
                 className="plain danger"
-                disabled={closingId === account.id}
+                aria-disabled={closingId === account.id}
                 onClick={() => void handleClose(account)}
               >
                 {intl.formatMessage({ id: "accounts.close", defaultMessage: "Close" })}
