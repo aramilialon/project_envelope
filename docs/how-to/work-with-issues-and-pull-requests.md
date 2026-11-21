@@ -117,7 +117,7 @@ When every issue of a milestone is closed:
    ```
    Each alert is either fixed through an issue and a pull request like any other bug, or, when it is a false positive or does not apply to how the app is deployed, dismissed on GitHub with that reason written in the dismissal comment. A secret-scanning alert also means rotating the secret, not only removing it from the code. The release waits until all three lists are empty.
 4. Move the entries under **Unreleased** in `CHANGELOG.md` to a new section `## [0.1.0] - YYYY-MM-DD`, through a small pull request.
-5. After merging it, tag `main` and publish the release:
+5. After merging it, the coordinator tags `main` and publishes the release on its own, without asking first (the maintainer's decision; for a phase release, only after step 2):
    ```bash
    git switch main && git pull
    git tag -a v0.1.0 -m "v0.1.0 API skeleton"
@@ -132,6 +132,6 @@ When every issue of a milestone is closed:
 | --- | --- | --- |
 | Ruleset on GitHub (`protect-main.sh`) | Rejects any push to `main` that is not a merged pull request, only "Squash and merge" allowed, requires the `test` and `conventional-title` checks | The repository is public, so this works on the free plan |
 | Git hooks (`scripts/git-hooks/`) | `pre-push` refuses `git push` to `main`; `commit-msg` checks the commit convention | Local: must be activated in each clone |
-| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, force pushes and skipping hooks; allow squash merges, pull request reviews, raw API calls (`gh api`) and reading releases (`gh release view`, `gh release list`); ask before tags and before creating, editing or deleting a release | Match the usual command forms, not every possible variant |
+| Claude Code rules (`.claude/settings.json`) | Deny pushing to `main`, force pushes and skipping hooks; allow squash merges, pull request reviews, raw API calls (`gh api`) and reading releases (`gh release view`, `gh release list`); allow creating a `v*` tag, pushing it and creating its release; ask before deleting or moving a tag and before editing or deleting a release | Match the usual command forms, not every possible variant |
 
 Only the ruleset is a real boundary; the other two catch mistakes early.
