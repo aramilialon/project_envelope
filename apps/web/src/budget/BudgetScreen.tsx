@@ -5,6 +5,7 @@ import {
   computeTimeline,
   computeTodos,
   formatMoney,
+  MAX_AMOUNT_CENTS,
   monthOf,
   reservationShortfall,
   type Bar as BarGeometry,
@@ -17,6 +18,7 @@ import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { ApiError } from "../apiFetch.ts";
 import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { createCategory, createCategoryGroup, renameCategory, renameCategoryGroup } from "../categories/api.ts";
 import CategoryNameField from "../categories/CategoryNameField.tsx";
@@ -322,7 +324,20 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     return (
       <>
         {secondRow}
-        <p role="alert">{tooManyRequestsMessage(intl, state.error) ?? intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." })}</p>
+        <p role="alert">
+          {tooManyRequestsMessage(intl, state.error) ??
+            (state.error instanceof ApiError && state.error.code === "amount_total_overflow"
+              ? // #651: amounts stored before the cap on a single amount add up beyond what can be computed exactly.
+                intl.formatMessage(
+                  {
+                    id: "budget.error.amountTotalOverflow",
+                    defaultMessage:
+                      "This month cannot be shown: some amounts stored earlier add up to more than can be computed exactly. Edit or delete the transactions above {max} to see it again.",
+                  },
+                  { max: money(MAX_AMOUNT_CENTS) },
+                )
+              : intl.formatMessage({ id: "budget.error", defaultMessage: "We could not load your budget." }))}
+        </p>
       </>
     );
   }

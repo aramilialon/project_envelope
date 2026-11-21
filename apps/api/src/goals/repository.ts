@@ -1,4 +1,4 @@
-import { assertCents, assertMonth, computeTarget, type Target } from "@envelope/core";
+import { assertAmount, assertMonth, computeTarget, type Target } from "@envelope/core";
 
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
@@ -82,7 +82,7 @@ export async function upsertGoal(
   categoryId: string,
   input: GoalInput,
 ): Promise<GoalRecord> {
-  assertCents(input.amountCents);
+  assertAmount(input.amountCents);
   if (input.dueMonth !== undefined) {
     assertMonth(input.dueMonth);
   }

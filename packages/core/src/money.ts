@@ -24,8 +24,23 @@ export type CurrencyCode = string;
 export type Locale = string;
 
 /**
+ * The largest single amount the app accepts, in minor units: 10^12, which is
+ * €10,000,000,000.00 for a currency with two decimals (ADR 0002). Every amount
+ * a user or a file writes (a transaction, a split, a transfer, an assignment,
+ * a trade's figures, a target…) is checked against it with `assertAmount`, so
+ * that adding up all of a workspace's amounts stays inside the safe integer
+ * range: about 9,000 amounts at the cap before any sum could lose precision.
+ * Sums and balances, a statement's balance included, are not capped. It is a
+ * number of minor units, whatever the currency: ¥1,000,000,000,000 for one
+ * with no decimals, 1,000,000,000.000 for one with three.
+ */
+export const MAX_AMOUNT_CENTS: Cents = 1_000_000_000_000;
+
+/**
  * Checks that a value is a valid amount: a "safe" integer, meaning it can be
  * represented without losing precision (up to about 90 trillion euros).
+ * Sums and balances are checked with this one; a single amount being written
+ * is checked with `assertAmount`, which also applies the cap.
  *
  * @throws ValidationError with code "invalid_amount".
  */
@@ -38,14 +53,54 @@ export function assertCents(value: number, label = "amount"): void {
   }
 }
 
-/** Adds up a list of amounts, validating each one. */
+/**
+ * Checks a single amount being written: a safe integer (`assertCents`) no
+ * larger than `MAX_AMOUNT_CENTS` either way.
+ *
+ * @throws ValidationError "invalid_amount" for a value that is not a safe
+ *   integer; "amount_too_large" (details: label, max, value) for one beyond
+ *   the cap.
+ */
+export function assertAmount(value: number, label = "amount"): void {
+  if (Number.isInteger(value) && Math.abs(value) > MAX_AMOUNT_CENTS) {
+    throw amountTooLarge(value, label);
+  }
+  assertCents(value, label);
+}
+
+function amountTooLarge(value: number, label: string): ValidationError {
+  return new ValidationError("amount_too_large", `${label} is beyond ${MAX_AMOUNT_CENTS} minor units: ${value}`, {
+    label,
+    max: MAX_AMOUNT_CENTS,
+    value: String(value),
+  });
+}
+
+/**
+ * Checks that a total (a sum of amounts) is still a safe integer. Each amount
+ * is capped, so only a sum of tens of thousands of them at the cap, or of
+ * amounts stored before the cap, can fail this.
+ *
+ * @throws ValidationError "amount_total_overflow" (details: label, plus the
+ *   caller's own `details` naming what was being added up).
+ */
+export function assertTotal(value: number, label: string, details: Record<string, string | number> = {}): void {
+  if (!Number.isSafeInteger(value)) {
+    throw new ValidationError("amount_total_overflow", `${label} is beyond the safe range of minor units: ${value}`, {
+      ...details,
+      label,
+    });
+  }
+}
+
+/** Adds up a list of amounts, validating each one; a total beyond the safe range is "amount_total_overflow". */
 export function sumCents(values: readonly Cents[]): Cents {
   let total = 0;
   for (const value of values) {
     assertCents(value);
     total += value;
   }
-  assertCents(total, "total");
+  assertTotal(total, "total");
   return total;
 }
 
@@ -140,9 +195,31 @@ function groupPattern(group: string): string {
  *
  * @example parseAmount("1.234,56", { locale: "it-IT", currency: "EUR" }) // 123456
  * @example parseAmount("1,234.56", { locale: "en-US", currency: "USD" }) // 123456
- * @throws ValidationError with code "invalid_amount_format".
+ * @throws ValidationError with code "invalid_amount_format", or "amount_too_large"
+ *   (details: label, max, value) beyond `MAX_AMOUNT_CENTS`.
  */
 export function parseAmount(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
+  const result = parseMinorUnits(text, options);
+  // Too many digits to be exact is too large too: the cap is far inside the safe range.
+  if (!Number.isSafeInteger(result) || Math.abs(result) > MAX_AMOUNT_CENTS) throw amountTooLarge(result, "amount");
+  return result;
+}
+
+/**
+ * Parses a balance typed by the user, such as a statement's closing balance,
+ * like `parseAmount` but without the cap on a single amount: a balance is only
+ * compared with the account's, never written or added up (ADR 0002, #651).
+ *
+ * @throws ValidationError with code "invalid_amount_format", or "invalid_amount"
+ *   (details: label, value) beyond the safe range of minor units.
+ */
+export function parseBalance(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
+  const result = parseMinorUnits(text, options);
+  assertCents(result, "amount");
+  return result;
+}
+
+function parseMinorUnits(text: string, options: { locale: Locale; currency: CurrencyCode }): Cents {
   const decimals = currencyDecimals(options.currency);
   const parts = matchLocaleDecimal(text, options.locale, decimals);
   if (parts === null) {
@@ -154,8 +231,7 @@ export function parseAmount(text: string, options: { locale: Locale; currency: C
   const whole = Number(parts.integerDigits);
   const minor = decimals > 0 ? Number(parts.fractionDigits.padEnd(decimals, "0")) : 0;
   const result = whole * 10 ** decimals + minor;
-  assertCents(result);
-  // "-0" would become -0: normalize it to 0.
+  // "-0" would become -0: normalize it to 0. The callers check the range.
   return !parts.negative || result === 0 ? result : -result;
 }
 

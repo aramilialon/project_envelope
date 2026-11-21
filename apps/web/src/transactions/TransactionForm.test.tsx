@@ -1,4 +1,4 @@
-import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+import { MAX_AMOUNT_CENTS, MAX_FREE_TEXT_LENGTH } from "@envelope/core";
 import it_ from "@envelope/i18n/locales/it.json";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
@@ -8,7 +8,7 @@ import type { Account } from "../accounts/api.ts";
 import { ApiError } from "../apiFetch.ts";
 import * as budgetApi from "../budget/api.ts";
 import type { Category } from "../categories/api.ts";
-import { renderWithIntl } from "../test-utils.tsx";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as transactionsApi from "./api.ts";
 import type { Transaction } from "./api.ts";
 import TransactionForm from "./TransactionForm.tsx";
@@ -241,6 +241,32 @@ describe("TransactionForm (#54)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter an amount greater than zero.");
     expect(createTransaction).not.toHaveBeenCalled();
+  });
+
+  it("says how large an amount can be when the typed one is above the cap (#651)", async () => {
+    const createTransaction = vi.spyOn(transactionsApi, "createTransaction");
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS + 1) } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(createTransaction).not.toHaveBeenCalled();
+  });
+
+  it("says the same when the API refuses an amount above the cap (#651)", async () => {
+    vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(
+      new ApiError("POST failed: 400", 400, "amount_too_large", { label: "total", max: MAX_AMOUNT_CENTS, value: String(MAX_AMOUNT_CENTS + 1) }),
+    );
+    const { onSaved } = renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS) } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
   it("splits an outflow across two categories", async () => {

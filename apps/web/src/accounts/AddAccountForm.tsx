@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { defineMessages, useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { ACCOUNT_TYPE_HINTS, ACCOUNT_TYPE_LABELS, TAX_REGIME_HINTS, TAX_REGIME_LABELS } from "./accountType.ts";
 import { AccountTaxError, createAccount, type AccountTaxErrorCode, type AccountType } from "./api.ts";
@@ -93,6 +94,10 @@ export default function AddAccountForm({ workspaceId, baseCurrency, taxCountry, 
           setError(intl.formatMessage({ id: "accounts.form.invalidAmount", defaultMessage: "Enter a valid amount." }));
           return;
         }
+        if (isAmountTooLarge(parseError)) {
+          setError(amountTooLargeMessage(intl, baseCurrency));
+          return;
+        }
         throw parseError;
       }
     }
@@ -115,7 +120,9 @@ export default function AddAccountForm({ workspaceId, baseCurrency, taxCountry, 
       setError(
         createError instanceof AccountTaxError
           ? intl.formatMessage(TAX_ERROR_MESSAGES[createError.code])
-          : intl.formatMessage({ id: "accounts.form.error", defaultMessage: "We could not create this account." }),
+          : isAmountTooLarge(createError)
+            ? amountTooLargeMessage(intl, baseCurrency)
+            : intl.formatMessage({ id: "accounts.form.error", defaultMessage: "We could not create this account." }),
       );
       setSubmitting(false);
     }

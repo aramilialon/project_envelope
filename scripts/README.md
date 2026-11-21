@@ -6,6 +6,9 @@ Keycloak realm bootstrap (`keycloak/bootstrap.sh`) and the Postgres role passwor
 section 9) are bash too. `dev/find-card-income.sql` is a read-only query that lists income stored
 on an on-budget credit card before the API refused it (#548; how to fix one by hand is in
 [`apps/api/README.md`](../apps/api/README.md), "Income on a credit card stored before #548").
+`dev/find-amounts-over-cap.sql` is a read-only query that lists amounts stored above the cap on a
+single amount before the API refused them (#651, ADR 0002; how to fix one by hand is in
+[`apps/api/README.md`](../apps/api/README.md), "Amounts above the cap stored before #651").
 `dev/find-cross-currency.sql`, also read-only, lists an on-budget account outside its workspace's
 base currency, a transfer between accounts in different currencies, and a workspace or account
 whose currency is not three upper-case letters, stored before the API refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").

@@ -37,9 +37,9 @@
  * - No portfolio may hold a negative quantity at any point of the replay.
  */
 
-import { ValidationError } from "../errors.ts";
+import { isValidationError, ValidationError } from "../errors.ts";
 import type { Cents, CurrencyCode } from "../money.ts";
-import { assertCents } from "../money.ts";
+import { assertCents, assertTotal } from "../money.ts";
 import type { LocalDate } from "../month.ts";
 import { assertDate } from "../month.ts";
 import type { Price, PriceFactor, Quantity } from "./quantity.ts";
@@ -259,10 +259,18 @@ function emptyTotals(): MutableTotals {
   return totals;
 }
 
+// A running total, not an amount being written: beyond the safe range it is
+// "amount_total_overflow" (ADR 0002, #651), which the replay ties to its trade.
 function plus(a: Cents, b: Cents, label: string): Cents {
   const sum = a + b;
-  assertCents(sum, label);
+  assertTotal(sum, label);
   return sum;
+}
+
+/** Names the trade being replayed in an "amount_total_overflow" that does not name one yet. */
+function namingTrade(error: unknown, trade: PositionTrade): unknown {
+  if (!isValidationError(error, "amount_total_overflow") || error.details.tradeId !== undefined) return error;
+  return new ValidationError("amount_total_overflow", `trade ${trade.id}: ${error.message}`, { ...error.details, tradeId: trade.id });
 }
 
 function add(totals: MutableTotals, key: keyof PositionTotals, amount: Cents): void {
@@ -597,119 +605,123 @@ function replayInstrument(
   for (let i = 0; i < sorted.length; i++) {
     const trade = sorted[i] as PositionTrade;
     if (done.has(trade.id)) continue;
+    try {
 
-    if (trade.type === "split") {
-      // Every split row of this date (they sort first), applied per account. Every account
-      // already holding the instrument is checked, rows or not: a split affects every holding.
-      const byAccount = new Map<string, PositionTrade[]>();
-      for (let j = i; j < sorted.length; j++) {
-        const other = sorted[j] as PositionTrade;
-        if (other.type !== "split" || other.date !== trade.date) break;
-        // One ratio per instrument and date, in every account: from₁ × to₂ = from₂ × to₁
-        // (ratios checked positive by checkTrade).
-        if (BigInt(other.splitFrom ?? 1) * BigInt(trade.splitTo ?? 1) !== BigInt(trade.splitFrom ?? 1) * BigInt(other.splitTo ?? 1)) {
-          throw new ValidationError(
-            "split_ratio_mismatch",
-            `the split rows of instrument ${instrumentId} on ${trade.date} have different ratios`,
-            { accountId: other.accountId, instrumentId, date: trade.date },
-          );
-        }
-        const rows = byAccount.get(other.accountId) ?? [];
-        rows.push(other);
-        byAccount.set(other.accountId, rows);
-        done.add(other.id);
-      }
-      const accountIds = new Set([...accounts.keys(), ...byAccount.keys()]);
-      for (const accountId of [...accountIds].sort(compareIds)) {
-        const rows = byAccount.get(accountId) ?? [];
-        const state = rows[0] === undefined ? (accounts.get(accountId) as AccountState) : accountOf(rows[0]);
-        applySplits(state, trade.date, rows);
-      }
-      continue;
-    }
-
-    const state = accountOf(trade);
-    const portfolio = portfolioOf(state, trade.portfolioId);
-    const totals = portfolio.totals;
-    switch (trade.type) {
-      case "buy": {
-        const cost = plus(trade.grossCents, trade.feesCents, "cost");
-        state.cost = plus(state.cost, cost, "costBasisCents");
-        changeQuantity(state, portfolio, trade.quantity);
-        add(totals, "costInCents", cost);
-        add(totals, "tradeFeesCents", trade.feesCents);
-        add(totals, "transactionTaxCents", trade.transactionTaxCents);
-        add(totals, "accruedInterestPaidCents", trade.accruedInterestCents);
-        // Credited back with the accrued interest paid: a negative withholding.
-        add(totals, "withholdingDomesticCents", -trade.withholdingDomesticCents);
-        break;
-      }
-      case "sell": {
-        requireQuantity(state, trade, trade.quantity);
-        const removed = removeCost(state, trade.quantity);
-        changeQuantity(state, portfolio, -trade.quantity);
-        const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
-        add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
-        add(totals, "costSoldCents", removed);
-        add(totals, "tradeFeesCents", trade.feesCents);
-        add(totals, "transactionTaxCents", trade.transactionTaxCents);
-        add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
-        add(totals, "gainTaxWithheldCents", trade.gainTaxCents);
-        add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
-        break;
-      }
-      case "dividend":
-        add(totals, "incomeGrossCents", trade.grossCents);
-        add(totals, "incomeFeesCents", trade.feesCents);
-        add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
-        add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
-        break;
-      case "fee":
-        add(totals, "standaloneFeesCents", trade.feesCents);
-        break;
-      case "tax":
-        add(totals, ...taxEffect(trade));
-        break;
-      case "transfer": {
-        if (trade.transferTradeId === null) {
-          add(totals, "transferFeesCents", trade.feesCents);
-          if (trade.quantity < 0) {
-            // Out of the app: its proportional cost leaves, no gain.
-            const moved = -trade.quantity as Quantity;
-            requireQuantity(state, trade, moved);
-            add(totals, "costTransferredOutCents", removeCost(state, moved));
-            changeQuantity(state, portfolio, trade.quantity);
-          } else {
-            // In from outside the app: the units bring the cost they carry.
-            const cost = trade.costBasisCents ?? 0;
-            state.cost = plus(state.cost, cost, "costBasisCents");
-            add(totals, "costInCents", cost);
-            changeQuantity(state, portfolio, trade.quantity);
+      if (trade.type === "split") {
+        // Every split row of this date (they sort first), applied per account. Every account
+        // already holding the instrument is checked, rows or not: a split affects every holding.
+        const byAccount = new Map<string, PositionTrade[]>();
+        for (let j = i; j < sorted.length; j++) {
+          const other = sorted[j] as PositionTrade;
+          if (other.type !== "split" || other.date !== trade.date) break;
+          // One ratio per instrument and date, in every account: from₁ × to₂ = from₂ × to₁
+          // (ratios checked positive by checkTrade).
+          if (BigInt(other.splitFrom ?? 1) * BigInt(trade.splitTo ?? 1) !== BigInt(trade.splitFrom ?? 1) * BigInt(other.splitTo ?? 1)) {
+            throw new ValidationError(
+              "split_ratio_mismatch",
+              `the split rows of instrument ${instrumentId} on ${trade.date} have different ratios`,
+              { accountId: other.accountId, instrumentId, date: trade.date },
+            );
           }
+          const rows = byAccount.get(other.accountId) ?? [];
+          rows.push(other);
+          byAccount.set(other.accountId, rows);
+          done.add(other.id);
+        }
+        const accountIds = new Set([...accounts.keys(), ...byAccount.keys()]);
+        for (const accountId of [...accountIds].sort(compareIds)) {
+          const rows = byAccount.get(accountId) ?? [];
+          const state = rows[0] === undefined ? (accounts.get(accountId) as AccountState) : accountOf(rows[0]);
+          applySplits(state, trade.date, rows);
+        }
+        continue;
+      }
+
+      const state = accountOf(trade);
+      const portfolio = portfolioOf(state, trade.portfolioId);
+      const totals = portfolio.totals;
+      switch (trade.type) {
+        case "buy": {
+          const cost = plus(trade.grossCents, trade.feesCents, "cost");
+          state.cost = plus(state.cost, cost, "costBasisCents");
+          changeQuantity(state, portfolio, trade.quantity);
+          add(totals, "costInCents", cost);
+          add(totals, "tradeFeesCents", trade.feesCents);
+          add(totals, "transactionTaxCents", trade.transactionTaxCents);
+          add(totals, "accruedInterestPaidCents", trade.accruedInterestCents);
+          // Credited back with the accrued interest paid: a negative withholding.
+          add(totals, "withholdingDomesticCents", -trade.withholdingDomesticCents);
           break;
         }
-        const other = checkLegs(trade, byId.get(trade.transferTradeId));
-        checkLegs(other, trade);
-        done.add(other.id);
-        const outgoing = trade.quantity < 0 ? trade : other;
-        const incoming = trade.quantity < 0 ? other : trade;
-        const source = accountOf(outgoing);
-        const target = accountOf(incoming);
-        const sourcePortfolio = requireQuantity(source, outgoing, incoming.quantity);
-        const targetPortfolio = portfolioOf(target, incoming.portfolioId);
-        add(sourcePortfolio.totals, "transferFeesCents", outgoing.feesCents);
-        add(targetPortfolio.totals, "transferFeesCents", incoming.feesCents);
-        if (source !== target) {
-          // Between two accounts: the cost the outgoing leg removes is the cost the incoming one adds.
-          const removed = removeCost(source, incoming.quantity);
-          add(sourcePortfolio.totals, "costTransferredOutCents", removed);
-          target.cost = plus(target.cost, removed, "costBasisCents");
-          add(targetPortfolio.totals, "costInCents", removed);
+        case "sell": {
+          requireQuantity(state, trade, trade.quantity);
+          const removed = removeCost(state, trade.quantity);
+          changeQuantity(state, portfolio, -trade.quantity);
+          const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
+          add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
+          add(totals, "costSoldCents", removed);
+          add(totals, "tradeFeesCents", trade.feesCents);
+          add(totals, "transactionTaxCents", trade.transactionTaxCents);
+          add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
+          add(totals, "gainTaxWithheldCents", trade.gainTaxCents);
+          add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
+          break;
         }
-        changeQuantity(source, sourcePortfolio, outgoing.quantity);
-        changeQuantity(target, targetPortfolio, incoming.quantity);
-        break;
+        case "dividend":
+          add(totals, "incomeGrossCents", trade.grossCents);
+          add(totals, "incomeFeesCents", trade.feesCents);
+          add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
+          add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
+          break;
+        case "fee":
+          add(totals, "standaloneFeesCents", trade.feesCents);
+          break;
+        case "tax":
+          add(totals, ...taxEffect(trade));
+          break;
+        case "transfer": {
+          if (trade.transferTradeId === null) {
+            add(totals, "transferFeesCents", trade.feesCents);
+            if (trade.quantity < 0) {
+              // Out of the app: its proportional cost leaves, no gain.
+              const moved = -trade.quantity as Quantity;
+              requireQuantity(state, trade, moved);
+              add(totals, "costTransferredOutCents", removeCost(state, moved));
+              changeQuantity(state, portfolio, trade.quantity);
+            } else {
+              // In from outside the app: the units bring the cost they carry.
+              const cost = trade.costBasisCents ?? 0;
+              state.cost = plus(state.cost, cost, "costBasisCents");
+              add(totals, "costInCents", cost);
+              changeQuantity(state, portfolio, trade.quantity);
+            }
+            break;
+          }
+          const other = checkLegs(trade, byId.get(trade.transferTradeId));
+          checkLegs(other, trade);
+          done.add(other.id);
+          const outgoing = trade.quantity < 0 ? trade : other;
+          const incoming = trade.quantity < 0 ? other : trade;
+          const source = accountOf(outgoing);
+          const target = accountOf(incoming);
+          const sourcePortfolio = requireQuantity(source, outgoing, incoming.quantity);
+          const targetPortfolio = portfolioOf(target, incoming.portfolioId);
+          add(sourcePortfolio.totals, "transferFeesCents", outgoing.feesCents);
+          add(targetPortfolio.totals, "transferFeesCents", incoming.feesCents);
+          if (source !== target) {
+            // Between two accounts: the cost the outgoing leg removes is the cost the incoming one adds.
+            const removed = removeCost(source, incoming.quantity);
+            add(sourcePortfolio.totals, "costTransferredOutCents", removed);
+            target.cost = plus(target.cost, removed, "costBasisCents");
+            add(targetPortfolio.totals, "costInCents", removed);
+          }
+          changeQuantity(source, sourcePortfolio, outgoing.quantity);
+          changeQuantity(target, targetPortfolio, incoming.quantity);
+          break;
+        }
       }
+    } catch (error) {
+      throw namingTrade(error, trade);
     }
   }
   return accounts;
@@ -792,8 +804,12 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
         charges.set(key, charge);
       }
       if (trade.currency !== charge.currency) throw invalidTrade(trade, "currency", "differs from the account's currency");
-      if (trade.type === "fee") add(charge.totals, "standaloneFeesCents", trade.feesCents);
-      else add(charge.totals, ...taxEffect(trade));
+      try {
+        if (trade.type === "fee") add(charge.totals, "standaloneFeesCents", trade.feesCents);
+        else add(charge.totals, ...taxEffect(trade));
+      } catch (error) {
+        throw namingTrade(error, trade);
+      }
       continue;
     }
     const group = instruments.get(trade.instrumentId) ?? [];

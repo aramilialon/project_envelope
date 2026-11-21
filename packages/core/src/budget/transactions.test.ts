@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { MAX_AMOUNT_CENTS } from "../money.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
@@ -411,5 +412,76 @@ describe("budget invariant with accounts and credit cards", () => {
         );
       }
     }
+  });
+});
+
+describe("amounts at the cap (#651, ADR 0002)", () => {
+  const budgetOf = (transactions: readonly BudgetTransaction[], month: string) => {
+    const aggregated = aggregateTransactions(ACCOUNTS, transactions);
+    return computeBudgetMonth(
+      {
+        categoryIds: ["groceries"],
+        paymentCategoryIds: ["visa-payment", "amex-payment"],
+        income: aggregated.income,
+        assignments: [],
+        activity: aggregated.activity,
+        cardPayments: aggregated.cardPayments,
+        cardTransfers: aggregated.cardTransfers,
+        today: "2026-12-31",
+      },
+      month,
+    );
+  };
+
+  it("two transfers in at the cap from an off-budget account still give a readable budget month", () => {
+    const month = budgetOf(
+      [
+        tx({ accountId: "checking", date: "2026-09-01", amount: MAX_AMOUNT_CENTS, transferAccountId: "broker" }),
+        tx({ accountId: "broker", date: "2026-09-01", amount: -MAX_AMOUNT_CENTS, transferAccountId: "checking" }),
+        tx({ accountId: "checking", date: "2026-09-02", amount: MAX_AMOUNT_CENTS, transferAccountId: "broker" }),
+        tx({ accountId: "broker", date: "2026-09-02", amount: -MAX_AMOUNT_CENTS, transferAccountId: "checking" }),
+      ],
+      "2026-09",
+    );
+    assert.equal(month.unassigned, 2 * MAX_AMOUNT_CENTS);
+  });
+
+  it("names the transactions above the cap when the on-budget amounts add up beyond the safe range", () => {
+    // Only rows stored before the cap can be this large: the API refuses them on every write path.
+    const legacy = [
+      tx({ accountId: "checking", date: "2026-09-01", amount: Number.MAX_SAFE_INTEGER, categoryId: UNASSIGNED }),
+      tx({ accountId: "checking", date: "2026-09-02", amount: 100, categoryId: UNASSIGNED }),
+      tx({ accountId: "checking", date: "2026-09-03", amount: Number.MAX_SAFE_INTEGER - 1, categoryId: UNASSIGNED }),
+    ];
+    assert.throws(
+      () => budgetOf(legacy, "2026-09"),
+      (error) =>
+        isValidationError(error, "amount_total_overflow") &&
+        error.details.label === "transactions" &&
+        error.details.transactionIds === `${legacy[0]!.id},${legacy[2]!.id}` &&
+        error.details.count === 2,
+    );
+  });
+
+  it("names at most 20 transactions, and counts them all", () => {
+    const legacy = Array.from({ length: 25 }, (_, i) =>
+      tx({ accountId: "checking", date: "2026-09-01", amount: Math.floor(Number.MAX_SAFE_INTEGER / 10) - i, categoryId: UNASSIGNED }),
+    );
+    assert.throws(
+      () => budgetOf(legacy, "2026-09"),
+      (error) =>
+        isValidationError(error, "amount_total_overflow") &&
+        String(error.details.transactionIds).split(",").length === 20 &&
+        error.details.count === 25,
+    );
+  });
+
+  it("names the largest transactions when none is above the cap, and ignores off-budget accounts", () => {
+    const rows = Array.from({ length: 3 }, (_, i) =>
+      tx({ accountId: "checking", date: "2026-09-01", amount: MAX_AMOUNT_CENTS - i, categoryId: UNASSIGNED }),
+    );
+    // A huge off-budget row takes no part in the budget, so it cannot make it unreadable.
+    const offBudget = tx({ accountId: "broker", date: "2026-09-01", amount: Number.MAX_SAFE_INTEGER, categoryId: UNASSIGNED });
+    assert.equal(budgetOf([...rows, offBudget], "2026-09").unassigned, 3 * MAX_AMOUNT_CENTS - 3);
   });
 });

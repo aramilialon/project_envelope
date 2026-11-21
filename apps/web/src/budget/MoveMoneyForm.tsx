@@ -3,6 +3,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
 
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
@@ -100,10 +101,12 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
   const showMonth = isAssign && to !== "" && to !== UNASSIGNED;
 
   let amount: number | null = null;
+  let amountTooLarge = false;
   try {
     amount = amountText.trim() ? parseAmount(amountText, { locale: intl.locale, currency }) : null;
-  } catch {
+  } catch (caught) {
     amount = null;
+    amountTooLarge = isAmountTooLarge(caught);
   }
 
   let error: string | null = null;
@@ -111,6 +114,8 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
     error = intl.formatMessage({ id: "moveMoney.needTo", defaultMessage: "Choose where to put the money." });
   } else if (from === to) {
     error = intl.formatMessage({ id: "moveMoney.sameSourceAndDestination", defaultMessage: "The source and destination are the same." });
+  } else if (amountTooLarge) {
+    error = amountTooLargeMessage(intl, currency);
   } else if (amount === null || amount <= 0) {
     error = intl.formatMessage({ id: "moveMoney.needAmount", defaultMessage: "Enter an amount, for example 20 or 20.00." });
   } else if (from !== UNASSIGNED) {
@@ -148,7 +153,12 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
       ]);
       onChanged();
     } catch (caught) {
-      setSubmitError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." }));
+      setSubmitError(
+        tooManyRequestsMessage(intl, caught) ??
+          (isAmountTooLarge(caught)
+            ? amountTooLargeMessage(intl, currency)
+            : intl.formatMessage({ id: "moveMoney.error", defaultMessage: "We could not move this money." })),
+      );
       setSubmitting(false);
     }
   }

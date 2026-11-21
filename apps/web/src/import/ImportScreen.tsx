@@ -1,4 +1,4 @@
-import { formatMoney, parseAmount, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
+import { formatMoney, parseBalance, transferCategoryRule, type TransferCategoryRule } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -27,6 +27,7 @@ import {
 } from "./mapping.ts";
 import { useImportSetup } from "./useImportSetup.ts";
 import { shortDate } from "../format.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import "./ImportScreen.css";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
@@ -149,7 +150,8 @@ export default function ImportScreen() {
       return undefined;
     }
     try {
-      return parseAmount(closingBalanceStr, { locale: intl.locale, currency });
+      // A balance, not an amount being written: not held to the cap on a single amount (#651).
+      return parseBalance(closingBalanceStr, { locale: intl.locale, currency });
     } catch {
       return undefined;
     }
@@ -190,7 +192,12 @@ export default function ImportScreen() {
         initializeSelections(result.staged);
         setStep(3);
       } catch (caught) {
-        setError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+        setError(
+          tooManyRequestsMessage(intl, caught) ??
+            (isAmountTooLarge(caught)
+              ? amountTooLargeMessage(intl, currency)
+              : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
+        );
       } finally {
         setSubmitting(false);
       }
@@ -248,7 +255,12 @@ export default function ImportScreen() {
       initializeSelections(result.staged);
       setStep(3);
     } catch (caught) {
-      setError(tooManyRequestsMessage(intl, caught) ?? intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." }));
+      setError(
+        tooManyRequestsMessage(intl, caught) ??
+          (isAmountTooLarge(caught)
+            ? amountTooLargeMessage(intl, currency)
+            : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
+      );
     } finally {
       setSubmitting(false);
     }

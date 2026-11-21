@@ -10,6 +10,8 @@
 export type ValidationErrorCode =
   | "invalid_amount"
   | "invalid_amount_format"
+  | "amount_too_large"
+  | "amount_total_overflow"
   | "invalid_month"
   | "invalid_date"
   | "duplicate_category"

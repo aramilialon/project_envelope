@@ -6,13 +6,14 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import { assertCents, type Cents } from "../money.ts";
+import { assertAmount, type Cents } from "../money.ts";
 
 /**
  * An amount using either "." or "," as the decimal separator, with the other
  * character (when present) as a thousands group separator.
  *
- * @throws ValidationError with code "invalid_amount_format".
+ * @throws ValidationError with code "invalid_amount_format", or "amount_too_large" beyond
+ *   `MAX_AMOUNT_CENTS` (ADR 0002).
  */
 export function parseDecimalAmount(
   text: string,
@@ -27,7 +28,7 @@ export function parseDecimalAmount(
     throw new ValidationError("invalid_amount_format", `${errorPrefix}: "${text}"`, { text });
   }
   const cents = Math.round(Number(normalized) * 100);
-  assertCents(cents);
+  assertAmount(cents);
   return cents;
 }
 

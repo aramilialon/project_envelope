@@ -1,4 +1,4 @@
-import { formatMoney, MAX_FREE_TEXT_LENGTH, parseAmount } from "@envelope/core";
+import { formatMoney, MAX_FREE_TEXT_LENGTH, parseBalance } from "@envelope/core";
 import { useState } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -6,6 +6,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { ApiError } from "../apiFetch.ts";
+import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
 import { updateTransaction } from "../transactions/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
@@ -79,9 +80,11 @@ export default function ReconciliationScreen() {
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const openCategories = categories.filter((c) => !c.archived);
 
+  // A balance, not an amount being written: not held to the cap on a single amount (#651);
+  // only an adjustment, a transaction of its own, is.
   let statementCents: number | null = null;
   try {
-    statementCents = statementStr.trim() ? parseAmount(statementStr, { locale: intl.locale, currency }) : null;
+    statementCents = statementStr.trim() ? parseBalance(statementStr, { locale: intl.locale, currency }) : null;
   } catch {
     statementCents = null;
   }
@@ -192,7 +195,10 @@ export default function ReconciliationScreen() {
                 id: "reconcile.adjustment.cardIncomeNotSupported",
                 defaultMessage: "On a credit card, an adjustment needs a category.",
               })
-            : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." })),
+            : isAmountTooLarge(caught)
+              ? // #651: the adjustment would be above the cap on a single amount.
+                amountTooLargeMessage(intl, currency)
+              : intl.formatMessage({ id: "reconcile.error.save", defaultMessage: "We could not complete this reconciliation." })),
       );
     } finally {
       setSubmitting(false);

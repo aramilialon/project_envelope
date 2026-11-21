@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { MAX_AMOUNT_CENTS } from "../money.ts";
 import type { PositionTrade } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
 import { amountOf, PRICE_FACTOR_HUNDREDTH } from "./quantity.ts";
@@ -296,6 +297,38 @@ describe("checkTradeRegime (#508)", () => {
     for (const regime of ["administered", "self_declared", "managed"] as const) {
       checkTradeRegime(amounts({ type: "buy", grossCents: 1_000 }), context(regime, null, "stock"));
     }
+  });
+});
+
+describe("checkTradeEntry and the cap on a single amount (#651, ADR 0002)", () => {
+  const tooLarge = (label: string) => (error: unknown) =>
+    isValidationError(error, "amount_too_large") && error.details.label === label && error.details.max === MAX_AMOUNT_CENTS;
+
+  it("accepts a gross, fees and taxes at the cap", () => {
+    checkTradeEntry(amounts({ type: "sell", grossCents: MAX_AMOUNT_CENTS }), "fund");
+    checkTradeEntry(amounts({ type: "fee", feesCents: MAX_AMOUNT_CENTS }), null);
+    checkTradeEntry(amounts({ type: "tax", grossCents: MAX_AMOUNT_CENTS }), null);
+    checkTradeEntry(amounts({ type: "sell", grossCents: MAX_AMOUNT_CENTS, transactionTaxCents: MAX_AMOUNT_CENTS }), "fund");
+  });
+
+  it("refuses each amount one minor unit above the cap, naming the field", () => {
+    for (const field of ["grossCents", "feesCents", "transactionTaxCents", "gainTaxCents"] as const) {
+      assert.throws(
+        () => checkTradeEntry(amounts({ type: "sell", grossCents: 1, [field]: MAX_AMOUNT_CENTS + 1 }), "fund"),
+        tooLarge(field),
+      );
+    }
+    assert.throws(
+      () => checkTradeEntry(amounts({ type: "transfer", feesCents: 0, costBasisCents: MAX_AMOUNT_CENTS + 1 }), "fund"),
+      tooLarge("costBasisCents"),
+    );
+  });
+
+  it("refuses a trade whose cash leg would be above the cap", () => {
+    assert.throws(
+      () => checkTradeEntry(amounts({ type: "buy", grossCents: MAX_AMOUNT_CENTS, feesCents: 1 }), "fund"),
+      tooLarge("cash"),
+    );
   });
 });
 

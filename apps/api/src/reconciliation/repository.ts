@@ -9,7 +9,7 @@
  * future attempt no longer trusts it as the account's "last" one.
  */
 
-import { assertCents, assertDate, ValidationError } from "@envelope/core";
+import { assertAmount, assertCents, assertDate, ValidationError } from "@envelope/core";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { createTransaction, getTransaction, listTransactionsForAccount, type TransactionRecord } from "../transactions/repository.ts";
@@ -144,7 +144,7 @@ export type ReconcileResult =
  */
 export async function reconcileAccount(db: DbPool | DbClient, workspaceId: string, input: ReconcileInput): Promise<ReconcileResult> {
   assertDate(input.date);
-  assertCents(input.statementBalanceCents);
+  assertCents(input.statementBalanceCents, "statementBalance");
 
   const transactions = await listTransactionsForAccount(db, workspaceId, input.accountId);
   const eligibleCleared = transactions.filter((t) => t.status === "cleared" && t.budgetDate <= input.date);
@@ -170,6 +170,8 @@ export async function reconcileAccount(db: DbPool | DbClient, workspaceId: strin
   }
 
   if (input.adjustment) {
+    // The adjustment is a transaction of its own: refused beyond the cap before anything is written (#651).
+    assertAmount(differenceCents, "adjustment");
     const adjustment = await createTransaction(db, {
       workspaceId,
       accountId: input.accountId,

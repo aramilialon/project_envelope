@@ -1,4 +1,4 @@
-import { assertDate, assertKnownCurrency, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import { assertAmount, assertDate, assertKnownCurrency, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
@@ -84,8 +84,10 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * `account_tax_regimes` (`tax-regimes.ts`) in the same transaction.
  *
  * @throws ValidationError "tax_regime_required" / "tax_regime_not_applicable"
- * from `validateAccountTaxSettings`, and "invalid_date" for a bad
- * `taxRegimeValidFrom`.
+ * from `validateAccountTaxSettings`, "invalid_date" for a bad
+ * `taxRegimeValidFrom`, and "invalid_amount"/"amount_too_large" for a
+ * starting balance that is not a whole number of minor units or is beyond the
+ * cap (ADR 0002).
  *
  * @throws ValidationError "account_currency_not_base" (`details`: `currency`,
  * `baseCurrency`) for an on-budget account, card included, whose currency is
@@ -98,6 +100,9 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  */
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
   assertKnownCurrency(input.currency);
+  if (input.startingBalanceCents !== undefined) {
+    assertAmount(input.startingBalanceCents, "startingBalance");
+  }
   const workspace = await workspaceSettings(db, input.workspaceId);
   if (input.onBudget && workspace !== undefined && input.currency !== workspace.baseCurrency) {
     throw new ValidationError("account_currency_not_base", "an on-budget account must be in the workspace's base currency", {

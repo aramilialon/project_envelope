@@ -14,7 +14,7 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import { assertCents, type Cents } from "../money.ts";
+import { assertAmount, type Cents } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
 import type { ImportRow } from "./row.ts";
 import { findTagBlocks } from "./tag-blocks.ts";
@@ -43,7 +43,7 @@ function parseOfxAmount(text: string): Cents {
     throw new ValidationError("invalid_amount_format", `not a valid OFX TRNAMT: "${text}"`, { text });
   }
   const cents = Math.round(Number(trimmed) * 100);
-  assertCents(cents);
+  assertAmount(cents);
   return cents;
 }
 

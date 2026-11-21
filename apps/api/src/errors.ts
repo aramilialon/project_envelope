@@ -1,17 +1,26 @@
-import { assertTextLength, isValidationError } from "@envelope/core";
+import { assertTextLength, isValidationError, type ValidationError } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 /**
+ * The status of a `ValidationError`: 400, except "amount_total_overflow" (#651), 422. That one
+ * is not about the request: the rows already stored add up beyond what can be computed exactly,
+ * and its `details` name them.
+ */
+export function validationErrorStatus(error: ValidationError): 400 | 422 {
+  return error.code === "amount_total_overflow" ? 422 : 400;
+}
+
+/**
  * Maps a `packages/core` (or repository-level, same codes) `ValidationError`
- * to a 400 response carrying its stable `code` and `details` — never its
- * English `.message`, per the "no user-facing text in core" rule. Returns
+ * to a 400 (or, for "amount_total_overflow", 422) response carrying its stable `code` and
+ * `details` — never its English `.message`, per the "no user-facing text in core" rule. Returns
  * whether it handled the error, so a caller can rethrow anything else.
  */
 export async function sendIfValidationError(reply: FastifyReply, error: unknown): Promise<boolean> {
   if (!isValidationError(error)) {
     return false;
   }
-  await reply.code(400).send({ error: error.code, details: error.details });
+  await reply.code(validationErrorStatus(error)).send({ error: error.code, details: error.details });
   return true;
 }
 
@@ -111,7 +120,7 @@ function isRowLevelSecurityViolation(error: unknown): boolean {
  */
 export function toErrorReply(error: unknown): ErrorReply {
   if (isValidationError(error)) {
-    return { statusCode: 400, body: { error: error.code, details: error.details } };
+    return { statusCode: validationErrorStatus(error), body: { error: error.code, details: error.details } };
   }
 
   const sqlState = sqlStateOf(error);

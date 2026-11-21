@@ -1277,3 +1277,22 @@ describe("the account identity (#79)", () => {
     assert.equal(checkIdentity(history, eur(2000)), eur(10.58));
   });
 });
+
+describe("totals beyond the safe range (#651, ADR 0002)", () => {
+  // Amounts stored before the cap on a single amount can still add up beyond 2^53.
+  const half = 2 ** 52;
+  const overflowAt = (tradeId: string, label: string) => (error: unknown) =>
+    isValidationError(error, "amount_total_overflow") && error.details.tradeId === tradeId && error.details.label === label;
+
+  it("names the trade whose cost tips the position's cost beyond the safe range", () => {
+    const first = trade({ id: "big-1", date: "2026-01-10", type: "buy", quantity: units(1), price: price(1), grossCents: half });
+    const second = trade({ id: "big-2", date: "2026-01-11", type: "buy", quantity: units(1), price: price(1), grossCents: half });
+    assert.throws(() => computePositions([first, second]), overflowAt("big-2", "costBasisCents"));
+    assert.throws(() => validatePositionHistory([second, first]), overflowAt("big-2", "costBasisCents"));
+  });
+
+  it("names the standalone fee that tips its total beyond the safe range", () => {
+    const fee = (id: string, date: string) => trade({ id, date, type: "fee", instrumentId: null, feesCents: half });
+    assert.throws(() => computePositions([fee("fee-1", "2026-01-10"), fee("fee-2", "2026-01-11")]), overflowAt("fee-2", "standaloneFeesCents"));
+  });
+});

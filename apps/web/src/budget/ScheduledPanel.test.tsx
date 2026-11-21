@@ -1,3 +1,4 @@
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -5,8 +6,9 @@ import * as accountsApi from "../accounts/api.ts";
 import type { Account } from "../accounts/api.ts";
 import * as targetsApi from "../targets/api.ts";
 import type { GoalProgress } from "../targets/api.ts";
+import { ApiError } from "../apiFetch.ts";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import type { TargetsState } from "../targets/useTargets.ts";
-import { renderWithIntl } from "../test-utils.tsx";
 import * as budgetApi from "./api.ts";
 import type { ScheduledTransaction } from "./api.ts";
 import ScheduledPanel from "./ScheduledPanel.tsx";
@@ -213,6 +215,38 @@ describe("ScheduledPanel (#330)", () => {
       }),
     );
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("'+ New scheduled transaction' says how large an amount can be when the typed one is above the cap (#651)", async () => {
+    const createScheduledTransaction = vi.spyOn(budgetApi, "createScheduledTransaction");
+    renderPanel([]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ New scheduled transaction" }));
+    await screen.findByText("Checking");
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Landlord" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS + 1) } });
+    fireEvent.change(screen.getByLabelText("Next date"), { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(createScheduledTransaction).not.toHaveBeenCalled();
+  });
+
+  it("'+ New scheduled transaction' says the same when the API answers amount_too_large (#651)", async () => {
+    vi.spyOn(budgetApi, "createScheduledTransaction").mockRejectedValue(
+      new ApiError("POST failed: 400", 400, "amount_too_large", { label: "amount", max: MAX_AMOUNT_CENTS, value: String(MAX_AMOUNT_CENTS + 1) }),
+    );
+    const { onChanged } = renderPanel([]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "+ New scheduled transaction" }));
+    await screen.findByText("Checking");
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Landlord" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS) } });
+    fireEvent.change(screen.getByLabelText("Next date"), { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it("'+ New scheduled transaction' offers 'Use it as this category's target' when the category has none yet, and setting one (#217)", async () => {

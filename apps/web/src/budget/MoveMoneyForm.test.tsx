@@ -1,7 +1,8 @@
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { renderWithIntl } from "../test-utils.tsx";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as budgetApi from "./api.ts";
 import MoveMoneyForm, { type MoveMoneyInitial } from "./MoveMoneyForm.tsx";
 import type { BudgetGroup, BudgetGroupCategory } from "./useBudgetMonth.ts";
@@ -97,6 +98,15 @@ describe("MoveMoneyForm (#328)", () => {
       ]),
     );
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("an amount above the cap says how large one can be (#651)", () => {
+    const { createAssignments } = renderForm({ kind: "assign" });
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "groceries" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: typedAmount(MAX_AMOUNT_CENTS + 1) } });
+
+    expect(screen.getByText(AMOUNT_TOO_LARGE_EUR)).toBeInTheDocument();
+    expect(createAssignments).not.toHaveBeenCalled();
   });
 
   it("assigning more than is unassigned shows a warning, but still allows it", () => {

@@ -1,7 +1,9 @@
+import { MAX_AMOUNT_CENTS } from "@envelope/core";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { renderWithIntl } from "../test-utils.tsx";
+import { ApiError } from "../apiFetch.ts";
+import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as accountsApi from "./api.ts";
 import AddAccountForm from "./AddAccountForm.tsx";
 
@@ -175,6 +177,38 @@ describe("AddAccountForm (#51)", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid amount.");
     expect(createAccount).not.toHaveBeenCalled();
+  });
+
+  it("says how large an amount owed can be when the typed one is above the cap (#651)", async () => {
+    const createAccount = vi.spyOn(accountsApi, "createAccount");
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Visa" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Credit card" }));
+    fireEvent.change(screen.getByLabelText(/owe on this card/), { target: { value: typedAmount(MAX_AMOUNT_CENTS + 1) } });
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(createAccount).not.toHaveBeenCalled();
+    createAccount.mockRestore();
+  });
+
+  it("says the same when the API answers amount_too_large for the starting balance (#651)", async () => {
+    const createAccount = vi
+      .spyOn(accountsApi, "createAccount")
+      .mockRejectedValue(
+        new ApiError("POST failed: 400", 400, "amount_too_large", { label: "startingBalance", max: MAX_AMOUNT_CENTS, value: String(-MAX_AMOUNT_CENTS - 1) }),
+      );
+    const { onCreated } = renderForm();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Visa" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Credit card" }));
+    fireEvent.change(screen.getByLabelText(/owe on this card/), { target: { value: typedAmount(MAX_AMOUNT_CENTS) } });
+    fireEvent.click(screen.getByRole("button", { name: "Add account" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(AMOUNT_TOO_LARGE_EUR);
+    expect(onCreated).not.toHaveBeenCalled();
+    createAccount.mockRestore();
   });
 
   it("clears a previous error when the account type changes", async () => {
