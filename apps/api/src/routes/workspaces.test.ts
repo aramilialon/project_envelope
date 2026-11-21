@@ -202,6 +202,7 @@ describe("workspaces routes (#394)", () => {
       baseCurrency: "EUR",
       timeZone: "Europe/Rome",
       taxCountry: "IT",
+      accountsWithoutTaxRegime: [],
     });
     assert.equal(await listedTaxCountry(), "IT");
 
