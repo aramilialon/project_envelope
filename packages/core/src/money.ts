@@ -49,12 +49,37 @@ export function sumCents(values: readonly Cents[]): Cents {
   return total;
 }
 
+let knownCurrencies: ReadonlySet<string> | undefined;
+
+/**
+ * Whether a value is an upper-case ISO 4217 code the runtime knows and still
+ * lists as in use (`Intl.supportedValuesOf("currency")`): "EUR" and "JPY" are,
+ * "eur", "EURO", "XYZ" and the withdrawn "VEF" are not (#652). The one check
+ * for every currency the app stores, so a workspace and its accounts agree.
+ */
+export function isKnownCurrency(value: unknown): value is CurrencyCode {
+  if (typeof value !== "string" || !/^[A-Z]{3}$/.test(value)) return false;
+  knownCurrencies ??= new Set(Intl.supportedValuesOf("currency"));
+  return knownCurrencies.has(value);
+}
+
+/**
+ * @throws ValidationError "invalid_currency" (`details`: `currency`) unless
+ * `isKnownCurrency(value)`.
+ */
+export function assertKnownCurrency(value: unknown): asserts value is CurrencyCode {
+  if (!isKnownCurrency(value)) {
+    throw new ValidationError("invalid_currency", `"${String(value)}" is not a known currency code`, { currency: String(value) });
+  }
+}
+
 const currencyDecimalsCache = new Map<CurrencyCode, number>();
 
 /**
  * Number of decimals of a currency: 2 for EUR, 0 for JPY, 3 for KWD; 2 for a
- * code `Intl` cannot read at all (such as "EURO", stored before #652 checked
- * an account's currency), so one bad row never stops a whole screen.
+ * non-empty code `Intl` cannot read at all (such as "EURO", stored before #652
+ * checked an account's currency), so one bad row never stops a whole screen.
+ * A missing or empty currency is a bug, not stored data, and still throws.
  */
 export function currencyDecimals(currency: CurrencyCode): number {
   const cached = currencyDecimalsCache.get(currency);
@@ -62,8 +87,9 @@ export function currencyDecimals(currency: CurrencyCode): number {
   let decimals = 2;
   try {
     decimals = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits ?? 2;
-  } catch {
-    // An ill-formed code: keep the default.
+  } catch (error) {
+    // An ill-formed stored code keeps the default; a missing one is a caller's bug.
+    if (typeof currency !== "string" || currency === "") throw error;
   }
   currencyDecimalsCache.set(currency, decimals);
   return decimals;
@@ -196,8 +222,10 @@ export function formatMoney(cents: Cents, options: { locale: Locale; currency: C
   if (formatter === undefined) {
     try {
       formatter = new Intl.NumberFormat(options.locale, { style: "currency", currency: options.currency });
-    } catch {
-      // An ill-formed currency code (#652): the amount with its code, never an exception.
+    } catch (error) {
+      // A missing or empty currency is a caller's bug and still throws.
+      if (typeof options.currency !== "string" || options.currency === "") throw error;
+      // An ill-formed stored currency code (#652): the amount with its code, never an exception.
       const decimals = currencyDecimals(options.currency);
       const plain = new Intl.NumberFormat(options.locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
       return `${plain.format(cents / 10 ** decimals)} ${options.currency}`;

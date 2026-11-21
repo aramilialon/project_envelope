@@ -1,4 +1,4 @@
-import { assertDate, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
+import { assertDate, assertKnownCurrency, validateAccountTaxSettings, ValidationError, type LocalDate, type TaxRegime } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { addTaxRegime, isConstraintViolation, notApplicableError } from "./tax-regimes.ts";
@@ -93,21 +93,9 @@ export const PAYMENT_CATEGORY_GROUP_NAME = "Credit card payments";
  * and amounts in different currencies are never added together. An
  * off-budget account keeps any currency.
  * @throws ValidationError "invalid_currency" (`details`: `currency`) for a
- * currency that is not an upper-case ISO 4217 code the runtime knows (#652).
+ * currency that is not an upper-case ISO 4217 code the runtime knows
+ * (`@envelope/core`'s `assertKnownCurrency`, #652).
  */
-const KNOWN_CURRENCIES: ReadonlySet<string> = new Set(Intl.supportedValuesOf("currency"));
-
-/**
- * An account's currency must be an upper-case ISO 4217 code the runtime knows (#652): "eur",
- * "EURO" or "XYZ" would be stored as given and then break formatting on every screen that
- * shows the account.
- */
-function assertKnownCurrency(currency: string): void {
-  if (!/^[A-Z]{3}$/.test(currency) || !KNOWN_CURRENCIES.has(currency)) {
-    throw new ValidationError("invalid_currency", `"${currency}" is not a known currency code`, { currency });
-  }
-}
-
 export async function createAccount(db: DbPool | DbClient, input: CreateAccountInput): Promise<AccountRecord> {
   assertKnownCurrency(input.currency);
   const workspace = await workspaceSettings(db, input.workspaceId);

@@ -108,6 +108,22 @@ describe("workspaces routes (#394)", () => {
     assert.equal(response.json().error, "invalid_currency");
   });
 
+  it("refuses the base currencies an account would refuse, and stores nothing (#652)", async () => {
+    const name = `Bad base currency ${Date.now()}`;
+    for (const baseCurrency of ["eur", "XYZ", "VEF"]) {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: "/workspaces",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { name, baseCurrency, timeZone: "Europe/Rome" },
+      });
+      assert.equal(response.statusCode, 400, baseCurrency);
+      assert.deepEqual(response.json(), { error: "invalid_currency", details: { currency: baseCurrency } });
+    }
+    const { rows } = await superuserPool.query<{ count: string }>("SELECT count(*) FROM workspaces WHERE name = $1", [name]);
+    assert.equal(rows[0]?.count, "0");
+  });
+
   it("rejects an unknown IANA time zone", async () => {
     const response = await app.fastify.inject({
       method: "POST",

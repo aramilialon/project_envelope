@@ -7,8 +7,8 @@ section 9) are bash too. `dev/find-card-income.sql` is a read-only query that li
 on an on-budget credit card before the API refused it (#548; how to fix one by hand is in
 [`apps/api/README.md`](../apps/api/README.md), "Income on a credit card stored before #548").
 `dev/find-cross-currency.sql`, also read-only, lists an on-budget account outside its workspace's
-base currency and a transfer between accounts in different currencies stored before the API
-refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").
+base currency, a transfer between accounts in different currencies, and a workspace or account
+whose currency is not three upper-case letters, stored before the API refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").
 `@envelope/scripts` (this package) is the one part with real
 dependencies — the demo data seed and the disposable environments.
 

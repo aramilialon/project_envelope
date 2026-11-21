@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { ValidationError } from "@envelope/core";
+import { assertKnownCurrency, ValidationError } from "@envelope/core";
 
 import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
@@ -18,15 +18,6 @@ export interface CreatedWorkspace {
   readonly timeZone: string;
   /** Always null on creation; set later by the owner (#508). */
   readonly taxCountry: null;
-}
-
-/** `Intl` itself is the validator: it throws on a currency/time zone it does not recognize, with no need for a hand-maintained list of every valid one. */
-function assertValidCurrency(currency: string): void {
-  try {
-    new Intl.NumberFormat("en", { style: "currency", currency });
-  } catch {
-    throw new ValidationError("invalid_currency", `"${currency}" is not a known currency code`, { currency });
-  }
 }
 
 function assertValidTimeZone(timeZone: string): void {
@@ -47,7 +38,9 @@ function assertValidTimeZone(timeZone: string): void {
  * self-managed transaction (there is no single workspace to scope *that* one to either).
  */
 export async function createWorkspace(pool: DbPool, userId: string, input: CreateWorkspaceInput): Promise<CreatedWorkspace> {
-  assertValidCurrency(input.baseCurrency);
+  // The same check as an account's (#652): a base currency such as "eur" or "VEF" would leave
+  // the workspace unable to hold any on-budget account.
+  assertKnownCurrency(input.baseCurrency);
   assertValidTimeZone(input.timeZone);
 
   const id = randomUUID();

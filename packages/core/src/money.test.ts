@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { assertCents, currencyDecimals, formatMoney, parseAmount, sumCents } from "./money.ts";
+import { assertCents, assertKnownCurrency, currencyDecimals, formatMoney, isKnownCurrency, parseAmount, sumCents } from "./money.ts";
 
 const IT_EUR = { locale: "it-IT", currency: "EUR" };
 const US_USD = { locale: "en-US", currency: "USD" };
@@ -111,6 +111,32 @@ describe("currencyDecimals", () => {
   it("falls back to 2 for a code Intl cannot read, and formatMoney shows the amount with that code instead of throwing (#652)", () => {
     assert.equal(currencyDecimals("EURO"), 2);
     assert.equal(formatMoney(-123456, { locale: "en-US", currency: "EURO" }), "-1,234.56 EURO");
+  });
+
+  it("still throws for a missing or empty currency: only a non-empty stored code falls back", () => {
+    for (const currency of [undefined, ""]) {
+      assert.throws(() => currencyDecimals(currency as unknown as string));
+      assert.throws(() => formatMoney(100, { locale: "en-US", currency: currency as unknown as string }));
+    }
+  });
+});
+
+describe("isKnownCurrency and assertKnownCurrency", () => {
+  it("accept upper-case ISO 4217 codes in use", () => {
+    for (const currency of ["EUR", "USD", "JPY", "KWD", "VES"]) {
+      assert.equal(isKnownCurrency(currency), true, currency);
+      assert.doesNotThrow(() => assertKnownCurrency(currency));
+    }
+  });
+
+  it("refuse lower case, wrong lengths, unknown and withdrawn codes, and non-strings (#652)", () => {
+    for (const currency of ["eur", "Eur", "EURO", "EU", "", " EUR", "XYZ", "VEF", undefined, null, 978]) {
+      assert.equal(isKnownCurrency(currency), false, String(currency));
+      assert.throws(
+        () => assertKnownCurrency(currency),
+        (error) => isValidationError(error, "invalid_currency") && error.details["currency"] === String(currency),
+      );
+    }
   });
 });
 
