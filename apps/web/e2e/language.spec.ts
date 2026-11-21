@@ -21,9 +21,9 @@ test.describe("the interface language (#620)", () => {
       test.skip(!usesDisposableEnvironment, "the dev server registers no service worker; a disposable environment's build does");
       await page.goto("/");
       await expect(page.getByRole("button", { name: "Accedi" })).toBeVisible();
-      await page.evaluate(async () => {
-        await navigator.serviceWorker.ready;
-      });
+      // A string, run in the page: e2e/ is type-checked for Node (no DOM lib), where `navigator`
+      // has no `serviceWorker`.
+      await page.evaluate("navigator.serviceWorker.ready.then(() => undefined)");
       await context.setOffline(true);
       try {
         await page.reload();
