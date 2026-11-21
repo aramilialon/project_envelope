@@ -90,9 +90,35 @@ export async function createAccount(
   return (await response.json()) as Account;
 }
 
+/**
+ * The API's refusal to close an account that still holds money or securities (#703, 409
+ * `account_not_empty`): its balance over all dates, in the account's own currency, and whether it
+ * still holds any security.
+ */
+export class AccountNotEmptyError extends Error {
+  readonly balanceCents: number;
+  readonly holdsPositions: boolean;
+
+  constructor(balanceCents: number, holdsPositions: boolean) {
+    super("account not empty");
+    this.name = "AccountNotEmptyError";
+    this.balanceCents = balanceCents;
+    this.holdsPositions = holdsPositions;
+  }
+}
+
+/** Closes an account; a 409 `account_not_empty` becomes an `AccountNotEmptyError`, any other failure `apiFetch`'s `ApiError`. */
 export async function closeAccount(accessToken: string, workspaceId: string, accountId: string): Promise<Account> {
-  const response = await apiFetch(accessToken, "PATCH", `/workspaces/${workspaceId}/accounts/${accountId}/close`);
-  return (await response.json()) as Account;
+  try {
+    const response = await apiFetch(accessToken, "PATCH", `/workspaces/${workspaceId}/accounts/${accountId}/close`);
+    return (await response.json()) as Account;
+  } catch (caught) {
+    if (caught instanceof ApiError && caught.status === 409 && caught.code === "account_not_empty") {
+      const details = caught.details as Readonly<Record<string, unknown>>;
+      throw new AccountNotEmptyError(Number(details.balanceCents ?? 0), details.holdsPositions === true);
+    }
+    throw caught;
+  }
 }
 
 /**

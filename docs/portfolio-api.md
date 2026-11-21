@@ -297,6 +297,19 @@ change, and changes start on 1 January).
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code (`domestic_withholding_requires_agent` too, on a first regime) |
 | 400 `invalid_date` | `{ "value" }` |
 
+### Closing a brokerage account
+
+`PATCH /workspaces/:workspaceId/accounts/:accountId/close` — owner, editor. An account is closed
+only once it is empty: its balance over all dates, future-dated cash legs and transactions
+included, is zero, and it holds no security (every position's quantity is zero; a position sold
+out does not count). Otherwise nothing is closed (#703):
+
+| Error | Details | When |
+| --- | --- | --- |
+| 409 `account_not_empty` | `{ "balanceCents": 0, "holdsPositions": true }` (the balance in the account's currency) | the balance is not zero, or a security is still held |
+| 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
+| 404 | | the account is not found, or is already closed |
+
 ## Instruments
 
 The catalog is shared by every workspace: an instrument added by one household is found by all.
