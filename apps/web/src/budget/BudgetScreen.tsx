@@ -33,7 +33,7 @@ import { useTargets } from "../targets/useTargets.ts";
 import { canWrite as hasWriteAccess } from "../workspaces/canWrite.ts";
 import type { Workspace } from "../workspaces/api.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
-import { currentMonthIn } from "../workspaceDate.ts";
+import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import Bar from "./Bar.tsx";
 import type { MonthEvent, ScheduledTransaction } from "./api.ts";
 import GroupMenu from "./GroupMenu.tsx";
@@ -611,6 +611,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
               categoryNameById={categoryNameById}
               money={money}
               locale={intl.locale}
+              currentYear={timeZone === undefined ? undefined : Number(todayIsoIn(timeZone).slice(0, 4))}
               onItemClick={handleTodoItemClick}
               {...(isPhone ? { limit: 3 } : {})}
             />

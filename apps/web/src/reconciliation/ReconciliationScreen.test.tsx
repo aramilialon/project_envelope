@@ -1,7 +1,8 @@
 import { MAX_AMOUNT_CENTS } from "@envelope/core";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { IntlProvider } from "react-intl";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Account } from "../accounts/api.ts";
 import * as accountsApi from "../accounts/api.ts";
@@ -10,6 +11,7 @@ import type { Category } from "../categories/api.ts";
 import * as categoriesApi from "../categories/api.ts";
 import { AMOUNT_TOO_LARGE_EUR, renderWithIntl, typedAmount } from "../test-utils.tsx";
 import * as transactionsApi from "../transactions/api.ts";
+import type { Workspace } from "../workspaces/api.ts";
 import * as workspacesApi from "../workspaces/api.ts";
 import * as reconciliationApi from "./api.ts";
 import type { ReconciliationCandidates } from "./api.ts";
@@ -299,6 +301,77 @@ describe("ReconciliationScreen (#60)", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: /Gym/ }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent("We could not mark this transaction as cleared.");
+    });
+  });
+
+  describe("the 'As of' date follows the workspace's time zone (#814)", () => {
+    const ROME: Workspace = { id: "ws-1", name: "Family", role: "owner", baseCurrency: "EUR", timeZone: "Europe/Rome", taxCountry: null };
+
+    function ui() {
+      return (
+        <IntlProvider locale="en" defaultLocale="en" messages={{}}>
+          <MemoryRouter initialEntries={["/ws-1/accounts/acc-checking/reconcile"]}>
+            <Routes>
+              <Route path="/:workspaceId/accounts/:accountId/reconcile" element={<ReconciliationScreen />} />
+            </Routes>
+          </MemoryRouter>
+        </IntlProvider>
+      );
+    }
+
+    beforeEach(() => {
+      // 22:30 UTC on 15 September is already 00:30 on 16 September in Rome; the browser is on UTC.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-15T22:30:00.000Z"));
+      const resolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+      vi.spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions").mockImplementation(function (this: Intl.DateTimeFormat) {
+        return { ...resolvedOptions.call(this), timeZone: "UTC" };
+      });
+      useAuth.mockReturnValue({ user: { access_token: "t" } });
+      vi.spyOn(accountsApi, "listAccounts").mockResolvedValue([CHECKING]);
+      vi.spyOn(categoriesApi, "listCategories").mockResolvedValue([GROCERIES]);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("starts on the workspace's today, not the browser's, even when the workspace loads last", async () => {
+      let answerWorkspaces: (workspaces: Workspace[]) => void = () => {};
+      vi.spyOn(workspacesApi, "listMyWorkspaces").mockReturnValue(new Promise((resolve) => (answerWorkspaces = resolve)));
+      const getCandidates = vi.spyOn(reconciliationApi, "getReconciliationCandidates").mockResolvedValue(candidates());
+      render(ui());
+
+      // Nothing is asked for in the browser's own zone while the workspace is still loading.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(screen.getByRole("status")).toHaveTextContent("Loading this account…");
+      expect(getCandidates).not.toHaveBeenCalled();
+
+      answerWorkspaces([ROME]);
+      expect(await screen.findByLabelText("As of")).toHaveValue("2026-09-16");
+      expect(getCandidates).toHaveBeenCalledTimes(1);
+      expect(getCandidates).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "2026-09-16");
+    });
+
+    it("keeps a date the user changed when the workspace's time zone arrives again", async () => {
+      const listWorkspaces = vi
+        .spyOn(workspacesApi, "listMyWorkspaces")
+        .mockResolvedValueOnce([ROME])
+        // 22:30 UTC is 10:30 the next morning in Auckland: a new default would be 2026-09-16 again.
+        .mockResolvedValueOnce([{ ...ROME, timeZone: "Pacific/Auckland" }]);
+      const getCandidates = vi.spyOn(reconciliationApi, "getReconciliationCandidates").mockResolvedValue(candidates());
+      const { rerender } = render(ui());
+      expect(await screen.findByLabelText("As of")).toHaveValue("2026-09-16");
+
+      fireEvent.change(screen.getByLabelText("As of"), { target: { value: "2026-09-01" } });
+      await waitFor(() => expect(getCandidates).toHaveBeenLastCalledWith("t", "ws-1", "acc-checking", "2026-09-01"));
+
+      // A token refresh fetches the workspaces again, with their time zone.
+      useAuth.mockReturnValue({ user: { access_token: "t2" } });
+      rerender(ui());
+      await waitFor(() => expect(listWorkspaces).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(getCandidates).toHaveBeenLastCalledWith("t2", "ws-1", "acc-checking", "2026-09-01"));
+      expect(screen.getByLabelText("As of")).toHaveValue("2026-09-01");
     });
   });
 });

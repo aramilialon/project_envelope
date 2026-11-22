@@ -81,6 +81,14 @@ describe("Todo (#326)", () => {
     expect(screen.getByText(/Sep 22/)).toBeInTheDocument();
   });
 
+  it("names the year of an overdue date by the workspace's current year (#814)", () => {
+    const items: TodoItem[] = [
+      { kind: "scheduledOverdue", scheduledTransactionId: "s1", categoryId: "groceries", payee: "Vet clinic", date: "2026-12-31", amountCents: 4_500 },
+    ];
+    renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" currentYear={2027} />);
+    expect(screen.getByText(/Dec 31, 2026/)).toBeInTheDocument();
+  });
+
   it("names a single target by its own category, and counts several", () => {
     const one: TodoItem[] = [{ kind: "targetsNeeded", categoryIds: ["vacation"], amountCents: 1_000 }];
     const { rerender } = render(
