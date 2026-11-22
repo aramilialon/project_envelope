@@ -119,7 +119,8 @@ function toBudgetTransaction(transaction: TransactionRecord, accountByTransactio
  * regular category; a card payment is a transfer with no category at all).
  * `packages/core`'s own docs are explicit that this is not an `Activity`: it
  * feeds only the card's balance (`CardBalance.transactions`, read by core's
- * `owedAsOf`), never `aggregateTransactions`, which would otherwise reject it (a payment category is never a valid `Activity.categoryId`). The
+ * `owedAsOf`), never `aggregateTransactions`, which would otherwise reject it
+ * (a payment category is never a valid `Activity.categoryId`). The
  * rule itself (`isStartingBalanceSplit`) lives in `transactions/repository.ts`,
  * shared with `listTransactionEventsForMonth`'s own exclusion of the same thing (#326).
  */
