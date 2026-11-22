@@ -34,8 +34,7 @@ login form instead — an ordinary HTML form post, no headless browser needed fo
 
 The data recalls `docs/ux/mockups/budget-month.html` and `account-register.html` (category
 groups, two credit cards with starting debt, scheduled transactions, targets of several kinds),
-translated into English rather than the mockups' own Italian sample data (everything committed
-to the repository is English-only, `CLAUDE.md`). It covers one instance of every state those
+with the same English names the mockups' sample data uses (`#622`). It covers one instance of every state those
 mockups draw: a category overspent in cash, a category overspent on a card, a reservation a
 category cannot cover (a warning, not overspending), one card's payment category fully covered
 and the other's still short, a target still missing money, an overdue scheduled transaction not

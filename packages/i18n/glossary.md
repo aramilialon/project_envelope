@@ -3,7 +3,7 @@
 The words the interface uses for the app's own concepts, in every language it is translated into, with the form of address and the tone of each language ([ADR 0015](../../docs/adr/0015-english-first-translations.md)). It is binding: the `translator` agent uses these terms in every catalog in `locales/`, and the `ux-reviewer` checks the screens against them.
 
 - **What a term means** is defined once, in the domain glossary, [`docs/glossary.md`](../../docs/glossary.md), with the names the code uses. This file only says how each term is written in the interface, and is the one source for that in every language, Italian included.
-- **Italian** is the approved copy: taken from `locales/it.json` and from the Italian mockups in `docs/ux/mockups/` (Italian until #622, which records the last Italian commit in `docs/ux/README.md`). The maintainer reviews this column.
+- **Italian** is the approved copy: taken from `locales/it.json` and from the mockups in `docs/ux/mockups/` as they were approved in Italian, before #622 turned them into English (`git show be8c552:docs/ux/mockups/<file>`, recorded in `docs/ux/README.md`). The maintainer reviews this column.
 - **The glossary wins over the archived mockup Italian.** Where the Italian of the mockups (at that last Italian commit) and this file disagree, this file is right, and so is `it.json` once it follows it. Superseded mockup wording: *Dividi su più categorie* and *Divisa su più categorie* (now *Suddividi su più categorie* and *Suddivisione su più categorie*), *Annulla divisione* (now *Annulla la suddivisione*), *Il portafoglio* or *Il tuo portafoglio* as the cash account's hint (now *I contanti che hai con te*), and *Frazionamento* for a transaction split (now only the stock split).
 - **German, Spanish and French** were chosen by an agent and are reviewed only by agents; corrections are welcome.
 - **Changing a term** changes every catalog string that uses it, in the same pull request. A new term with a domain meaning gets a row here, every column filled, in the same commit as the strings that use it.
@@ -41,6 +41,7 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 
 | Language | Quotation marks | Apostrophe | Other |
 | --- | --- | --- | --- |
+| English | “ ” (*“Unassigned”*), as most of `en.json` writes them | The straight ' (U+0027), as in `en.json` | A negative amount takes the ASCII hyphen-minus that `Intl` writes; no catalog ever writes U+2212 (−). American spelling (*traveling*). |
 | Italian | « » with no inner spaces (*«Da assegnare»*) | ’ (U+2019) | Never the straight ' in a string. |
 | German | „ “ (*„Nicht zugewiesen“*) | ’ | Nouns capitalized; a label that is an adjective or participle starts with a capital (*Verfügbar*). |
 | Spanish | « » with no inner spaces | ’ | Opening ¿ and ¡ where a question or exclamation occurs (the English has almost none). |

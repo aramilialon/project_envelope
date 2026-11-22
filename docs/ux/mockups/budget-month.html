@@ -7,11 +7,12 @@
   Reference for docs/design.md, "User interface". Open it in a browser; it has
   no build step and no dependencies except the Bricolage Grotesque and Figtree
   fonts from Google Fonts (the app itself must self-host its fonts). The UI copy
-  is the Italian translation; English stays the source language of the app. The
+  is in English, the app's source language; the Italian approved before #622 is
+  kept at the commit recorded in docs/ux/README.md. The
   script checks the budget invariant after every change and logs an error if it
   breaks.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -392,7 +393,7 @@ button{cursor:pointer}
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, budget month mockup. The interface is shown in its Italian translation, with sample data of a household on 25 September 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “Da fare” (to do), the timeline, Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
+    <p><b>envelope</b>, budget month mockup. The interface is shown in English, with sample data of a household on September 25, 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “To do”, the timeline, Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -405,23 +406,23 @@ button{cursor:pointer}
         <header class="band">
           <div class="bt">
             <span class="brand">envelope</span>
-            <nav class="tnav" aria-label="Main (mockup)"><button type="button" aria-current="page">Budget</button><button type="button">Conti</button><button type="button">Portafoglio</button></nav>
-            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <nav class="tnav" aria-label="Main (mockup)"><button type="button" aria-current="page">Budget</button><button type="button">Accounts</button><button type="button">Portfolio</button></nav>
+            <button type="button" class="ws">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
             <button type="button" class="me">Giorgio</button>
           </div>
           <div class="bm">
             <div>
-              <div class="mnav"><button type="button" class="arrow" aria-label="Mese precedente"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button><span>agosto · ottobre</span><button type="button" class="arrow" aria-label="Mese successivo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button></div>
-              <h3 class="month">Settembre<small>2026</small></h3>
+              <div class="mnav"><button type="button" class="arrow" aria-label="Previous month"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button><span>Month</span><button type="button" class="arrow" aria-label="Next month"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button></div>
+              <h3 class="month">September<small>2026</small></h3>
             </div>
             <div class="rta">
-              <div><small>Da assegnare</small><span class="amt n" id="rta"></span></div>
-              <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
+              <div><small>Unassigned</small><span class="amt n" id="rta"></span></div>
+              <button type="button" class="btn primary" data-mvopen="rta">Assign</button>
             </div>
             <div class="facts">
-              <span>Prenotato <b class="n" id="resv"></b></span>
-              <span>Già assegnati a ottobre <b class="n" id="future"></b></span>
-              <span>Giorni di margine <b>38</b></span>
+              <span>Reserved for scheduled transactions <b class="n" id="resv"></b></span>
+              <span>From this month's money, assigned to later months <b class="n" id="future"></b></span>
+              <span>Days of buffer <b>38</b></span>
             </div>
           </div>
         </header>
@@ -432,22 +433,22 @@ button{cursor:pointer}
             <div class="todo" id="todo"></div>
           </div>
           <div class="bar-tools">
-            <div class="tabs" role="group" aria-label="Filtra le categorie" id="filters"></div>
+            <div class="tabs" role="group" aria-label="Filter the categories" id="filters"></div>
             <div class="acts">
-              <button type="button" class="btn" id="show-overview" data-panel="overview" aria-pressed="false">Riepilogo</button>
-              <button type="button" class="btn" id="show-goals" data-panel="goals" aria-pressed="false">Obiettivi</button>
-              <button type="button" class="btn" id="show-sched" data-panel="sched" aria-pressed="false">Programmate</button>
-              <button type="button" class="btn" id="show-quick" data-panel="quick" aria-pressed="false">Assegnazione rapida</button>
-              <button type="button" class="btn" id="show-move" data-panel="move" aria-pressed="false">Sposta denaro</button>
-              <button type="button" class="btn" id="reset" disabled title="Annulla l’ultima assegnazione">Annulla</button>
+              <button type="button" class="btn" id="show-overview" data-panel="overview" aria-pressed="false">Summary</button>
+              <button type="button" class="btn" id="show-goals" data-panel="goals" aria-pressed="false">Targets</button>
+              <button type="button" class="btn" id="show-sched" data-panel="sched" aria-pressed="false">Scheduled</button>
+              <button type="button" class="btn" id="show-quick" data-panel="quick" aria-pressed="false">Quick assign</button>
+              <button type="button" class="btn" id="show-move" data-panel="move" aria-pressed="false">Move money</button>
+              <button type="button" class="btn" id="reset" disabled title="Undo the last assignment">Undo</button>
             </div>
           </div>
           <div class="toast" role="status" aria-live="polite" id="toast" hidden></div>
           <div id="table"></div>
-          <div class="legend" aria-hidden="true"><span><i style="background:var(--spent)"></i>speso</span><span><i style="background:var(--bar)"></i>ancora disponibile</span><span><i style="background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)"></i>prenotato</span><span><i style="background:var(--red)"></i>sforato in contanti</span><span><i style="background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)"></i>sforato con la carta, debito da coprire</span><span><i style="border:1.5px dashed var(--warn)"></i>prenotato oltre il disponibile</span></div>
+          <div class="legend" aria-hidden="true"><span><i style="background:var(--spent)"></i>spent</span><span><i style="background:var(--bar)"></i>still available</span><span><i style="background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)"></i>reserved</span><span><i style="background:var(--red)"></i>overspent in cash</span><span><i style="background:repeating-linear-gradient(135deg,var(--hatch-bg) 0 4px,var(--hatch) 4px 6px)"></i>overspent with a card, debt to cover</span><span><i style="border:1.5px dashed var(--warn)"></i>reserved beyond what is available</span></div>
         </div>
 
-        <aside class="insp" aria-label="Pannello degli strumenti" id="insp" hidden></aside>
+        <aside class="insp" aria-label="Tools panel" id="insp" hidden></aside>
       </div>
     </div>
   </section>
@@ -459,13 +460,13 @@ button{cursor:pointer}
           <div id="ph-home">
             <div class="ph-band">
               <div class="ph-top">
-                <button type="button" class="arrow" aria-label="Mese precedente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
-                <div><h3>Settembre</h3><small>Famiglia · 2026</small></div>
-                <button type="button" class="arrow" aria-label="Mese successivo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+                <button type="button" class="arrow" aria-label="Previous month"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+                <div><h3>September</h3><small>Family · 2026</small></div>
+                <button type="button" class="arrow" aria-label="Next month"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
               </div>
               <div class="rta ph-rta">
-                <div style="flex:1"><small>Da assegnare</small><span class="amt n" id="ph-rta"></span></div>
-                <button type="button" class="btn primary" data-mvopen="rta">Assegna</button>
+                <div style="flex:1"><small>Unassigned</small><span class="amt n" id="ph-rta"></span></div>
+                <button type="button" class="btn primary" data-mvopen="rta">Assign</button>
               </div>
             </div>
             <div class="ph-time" id="ph-time"></div>
@@ -477,10 +478,10 @@ button{cursor:pointer}
         </div>
         <nav class="tabbar" aria-label="Main (phone mockup)">
           <button type="button" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg>Budget</button>
-          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Conti</button>
-          <button type="button" class="add" aria-label="Nuova transazione"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
-          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portafoglio</button>
-          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>Altro</button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Accounts</button>
+          <button type="button" class="add" aria-label="New expense"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portfolio</button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>More</button>
         </nav>
       </div>
       <div class="ph-note">
@@ -499,131 +500,131 @@ button{cursor:pointer}
 
 <script>
 (function () {
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function sum(a, fn) { return a.reduce(function (s, x) { return s + fn(x); }, 0); }
   var CHEV = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>';
   var NEXT = '<svg class="go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>';
-  var CLOSE = '<button type="button" class="plain closer" data-deselect="1" aria-label="Chiudi il pannello">× Chiudi</button>';
+  var CLOSE = '<button type="button" class="plain closer" data-deselect="1" aria-label="Close the panel">× Close</button>';
   var BACK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>';
   var CLOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>';
 
   // Today in the example: 25 September 2026.
   var TODAY = { y: 2026, m: 9, d: 25 }, CUR = 2026 * 12 + 9;
-  var MON3 = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
-  var MONTHS = ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio', 'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'];
+  var MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   function ymOf(dt) { return dt.y * 12 + dt.m; }
-  function dLabel(dt) { return dt.d + ' ' + MON3[dt.m - 1] + (dt.y !== 2026 ? ' ' + dt.y : ''); }
+  function dLabel(dt) { return MON3[dt.m - 1] + ' ' + dt.d + (dt.y !== 2026 ? ', ' + dt.y : ''); }
   function overdue(dt) { return ymOf(dt) < CUR || (ymOf(dt) === CUR && dt.d < TODAY.d); }
   function monthName(n) { return MONTHS[((n - 1) % 12)]; }
 
   // Cents. The example respects the budget invariant:
   // unassigned + available + reserved + assigned to future months + credit overspending
-  // = cash in the on-budget cash accounts (11.197,98 €; card balances are debt, not cash).
+  // = cash in the on-budget cash accounts (€11,197.98; card balances are debt, not cash).
   var GROUPS = [
-    { id: 'home', name: 'Casa e bollette', cats: [
-      { id: 'mutuo', name: 'Rata del mutuo', carried: 0, assigned: 85000, activity: -85000, lastAssigned: 85000, lastSpent: 85000,
+    { id: 'home', name: 'Home and bills', cats: [
+      { id: 'mutuo', name: 'Mortgage payment', carried: 0, assigned: 85000, activity: -85000, lastAssigned: 85000, lastSpent: 85000,
         target: { type: 'monthly', amount: 85000 },
-        txs: [['1 set', 'Banca, rata mutuo', 'Conto corrente', -85000]] },
-      { id: 'luce', name: 'Luce e gas', carried: 3200, assigned: 12000, activity: -9640, lastAssigned: 12000, lastSpent: 11230,
-        txs: [['16 set', 'Fornitore energia', 'Conto corrente', -9640]] },
-      { id: 'net', name: 'Internet e telefono', carried: 0, assigned: 4500, activity: -4500, lastAssigned: 4500, lastSpent: 4500,
-        txs: [['2 set', 'Operatore telefonico', 'Conto corrente', -4500]] },
-      { id: 'manut', name: 'Manutenzione casa', carried: 30000, assigned: 5000, activity: -12000, lastAssigned: 5000, lastSpent: 0,
-        txs: [['9 set', 'Idraulico', 'Conto corrente', -12000]] }
+        txs: [['Sep 1', 'Bank, mortgage payment', 'Checking', -85000]] },
+      { id: 'luce', name: 'Electricity and gas', carried: 3200, assigned: 12000, activity: -9640, lastAssigned: 12000, lastSpent: 11230,
+        txs: [['Sep 16', 'Energy provider', 'Checking', -9640]] },
+      { id: 'net', name: 'Internet and phone', carried: 0, assigned: 4500, activity: -4500, lastAssigned: 4500, lastSpent: 4500,
+        txs: [['Sep 2', 'Phone provider', 'Checking', -4500]] },
+      { id: 'manut', name: 'Home maintenance', carried: 30000, assigned: 5000, activity: -12000, lastAssigned: 5000, lastSpent: 0,
+        txs: [['Sep 9', 'Plumber', 'Checking', -12000]] }
     ] },
-    { id: 'daily', name: 'Spese di tutti i giorni', cats: [
-      { id: 'spesa', name: 'Spesa alimentare', carried: 0, assigned: 60000, activity: -64215, lastAssigned: 58000, lastSpent: 61240,
+    { id: 'daily', name: 'Everyday spending', cats: [
+      { id: 'spesa', name: 'Groceries', carried: 0, assigned: 60000, activity: -64215, lastAssigned: 58000, lastSpent: 61240,
         target: { type: 'monthly', amount: 60000 },
-        txs: [['24 set', 'Supermercato', 'Conto corrente', -8740], ['19 set', 'Mercato rionale', 'Contanti', -2350], ['17 set', 'Supermercato', 'Conto corrente', -11205], ['10 set', 'Panificio', 'Contanti', -1480]] },
-      { id: 'carb', name: 'Carburante e trasporti', carried: 0, assigned: 15000, activity: -8830, cardOut: 8830, lastAssigned: 15000, lastSpent: 13210,
-        txs: [['12 set', 'Distributore', 'Visa', -8830]] },
-      { id: 'rist', name: 'Ristoranti', carried: 0, assigned: 12000, activity: -16850, cardOut: 16850, lastAssigned: 12000, lastSpent: 10400,
-        txs: [['21 set', 'Trattoria', 'Visa', -6400], ['14 set', 'Pizzeria', 'Visa', -4250], ['6 set', 'Osteria', 'Visa', -6200]] },
-      { id: 'farm', name: 'Farmacia e salute', carried: 6000, assigned: 4000, activity: -6457, cardOut: 1890, cardOutTv: 4567, lastAssigned: 4000, lastSpent: 2500,
-        txs: [['20 set', 'Farmacia', 'Carta viaggi', -4567], ['3 set', 'Farmacia', 'Visa', -1890]] }
+        txs: [['Sep 24', 'Supermarket', 'Checking', -8740], ['Sep 19', 'Farmers market', 'Cash', -2350], ['Sep 17', 'Supermarket', 'Checking', -11205], ['Sep 10', 'Bakery', 'Cash', -1480]] },
+      { id: 'carb', name: 'Fuel and transport', carried: 0, assigned: 15000, activity: -8830, cardOut: 8830, lastAssigned: 15000, lastSpent: 13210,
+        txs: [['Sep 12', 'Gas station', 'Visa', -8830]] },
+      { id: 'rist', name: 'Restaurants', carried: 0, assigned: 12000, activity: -16850, cardOut: 16850, lastAssigned: 12000, lastSpent: 10400,
+        txs: [['Sep 21', 'Trattoria', 'Visa', -6400], ['Sep 14', 'Pizzeria', 'Visa', -4250], ['Sep 6', 'Bistro', 'Visa', -6200]] },
+      { id: 'farm', name: 'Pharmacy and health', carried: 6000, assigned: 4000, activity: -6457, cardOut: 1890, cardOutTv: 4567, lastAssigned: 4000, lastSpent: 2500,
+        txs: [['Sep 20', 'Pharmacy', 'Travel card', -4567], ['Sep 3', 'Pharmacy', 'Visa', -1890]] }
     ] },
-    { id: 'true', name: 'Spese prevedibili', cats: [
-      { id: 'ass', name: 'Assicurazione auto', carried: 30000, assigned: 5000, activity: 0, lastAssigned: 5000, lastSpent: 0,
+    { id: 'true', name: 'Predictable expenses', cats: [
+      { id: 'ass', name: 'Car insurance', carried: 30000, assigned: 5000, activity: 0, lastAssigned: 5000, lastSpent: 0,
         target: { type: 'repeat', amount: 60000, every: 12, due: '2027-03' } },
-      { id: 'bollo', name: 'Bollo auto', carried: 9000, assigned: 1500, activity: 0, lastAssigned: 1500, lastSpent: 0,
+      { id: 'bollo', name: 'Car tax', carried: 9000, assigned: 1500, activity: 0, lastAssigned: 1500, lastSpent: 0,
         target: { type: 'repeat', amount: 18000, every: 12, due: '2027-02' } },
-      { id: 'regali', name: 'Regali', carried: 14000, assigned: 4000, activity: 0, lastAssigned: 4000, lastSpent: 2000,
+      { id: 'regali', name: 'Gifts', carried: 14000, assigned: 4000, activity: 0, lastAssigned: 4000, lastSpent: 2000,
         target: { type: 'monthly', amount: 4000 } },
-      { id: 'vet', name: 'Veterinario', carried: 12000, assigned: 2500, activity: -8500, lastAssigned: 2500, lastSpent: 0,
-        txs: [['18 set', 'Clinica veterinaria', 'Conto corrente', -8500]] }
+      { id: 'vet', name: 'Vet', carried: 12000, assigned: 2500, activity: -8500, lastAssigned: 2500, lastSpent: 0,
+        txs: [['Sep 18', 'Vet clinic', 'Checking', -8500]] }
     ] },
-    { id: 'goals', name: 'Obiettivi e risparmio', cats: [
-      { id: 'fondo', name: 'Fondo emergenze', carried: 753190, assigned: 30000, activity: 0, lastAssigned: 30000, lastSpent: 0,
+    { id: 'goals', name: 'Goals and savings', cats: [
+      { id: 'fondo', name: 'Emergency fund', carried: 753190, assigned: 30000, activity: 0, lastAssigned: 30000, lastSpent: 0,
         target: { type: 'balance', amount: 750000 } },
-      { id: 'vac', name: 'Vacanze estate 2027', carried: 125000, assigned: 20000, activity: 0, lastAssigned: 25000, lastSpent: 0,
+      { id: 'vac', name: 'Summer vacation 2027', carried: 125000, assigned: 20000, activity: 0, lastAssigned: 25000, lastSpent: 0,
         target: { type: 'date', amount: 360000, due: '2027-06' } },
-      { id: 'pac', name: 'Versamento nel piano di accumulo', carried: 0, assigned: 50000, activity: -50000, lastAssigned: 50000, lastSpent: 50000,
+      { id: 'pac', name: 'Investment plan contribution', carried: 0, assigned: 50000, activity: -50000, lastAssigned: 50000, lastSpent: 50000,
         target: { type: 'monthly', amount: 50000 },
-        txs: [['5 set', 'Trasferimento a Broker ETF', 'Conto corrente', -50000]] }
+        txs: [['Sep 5', 'Transfer to ETF broker', 'Checking', -50000]] }
     ] },
-    { id: 'fun', name: 'Svago', cats: [
-      { id: 'abb', name: 'Abbonamenti', carried: 0, assigned: 3000, activity: -2597, lastAssigned: 3000, lastSpent: 2597,
-        txs: [['8 set', 'Musica in streaming', 'Conto corrente', -1099], ['4 set', 'Cloud per le foto', 'Conto corrente', -1498]] },
-      { id: 'hobby', name: 'Hobby', carried: 0, assigned: 6000, activity: -3500, lastAssigned: 6000, lastSpent: 5100,
-        txs: [['13 set', 'Negozio di musica', 'Conto corrente', -3500]] }
+    { id: 'fun', name: 'Fun', cats: [
+      { id: 'abb', name: 'Subscriptions', carried: 0, assigned: 3000, activity: -2597, lastAssigned: 3000, lastSpent: 2597,
+        txs: [['Sep 8', 'Music streaming', 'Checking', -1099], ['Sep 4', 'Photo storage', 'Checking', -1498]] },
+      { id: 'hobby', name: 'Hobbies', carried: 0, assigned: 6000, activity: -3500, lastAssigned: 6000, lastSpent: 5100,
+        txs: [['Sep 13', 'Music shop', 'Checking', -3500]] }
     ] },
     // A payment category holds the money set aside to pay its card. "paid" is this month's card payments;
     // "cardBase" the card's balance (debt) before anything changes in this mockup.
-    { id: 'cards', name: 'Pagamenti delle carte di credito', cats: [
+    { id: 'cards', name: 'Credit card payments', cats: [
       { id: 'visa', name: 'Visa', payment: true, card: 'visa', carried: 81660, assigned: 0, paid: -45000, cardBase: -64230, lastAssigned: 0, lastSpent: 45000,
-        txs: [['15 set', 'Pagamento della carta', 'Conto corrente', -45000]] },
+        txs: [['Sep 15', 'Card payment', 'Checking', -45000]] },
       { id: 'mc', name: 'Mastercard', payment: true, card: 'mc', carried: 0, assigned: 0, paid: 0, cardBase: -120000, lastAssigned: 0, lastSpent: 0,
-        start: { date: '25 set', amount: -120000 },
-        txs: [['25 set', 'Saldo iniziale', 'Mastercard', -120000, 'start']] },
+        start: { date: 'Sep 25', amount: -120000 },
+        txs: [['Sep 25', 'Starting balance', 'Mastercard', -120000, 'start']] },
       // #699's worked example: a card paid beyond what was set aside. Added on 1 September owing
-      // 500,00 €, 45,67 € spent on it and covered by "Farmacia e salute", 300,00 € paid from the
-      // checking account with nothing assigned here: the card owes 245,67 €, available is
-      // -254,33 € (cash overspending) and "to cover" is 500,00 €: cash overspending + uncovered,
+      // €500.00, €45.67 spent on it and covered by "Pharmacy and health", €300.00 paid from the
+      // checking account with nothing assigned here: the card owes €245.67, available is
+      // -€254.33 (cash overspending) and "to cover" is €500.00: cash overspending + uncovered,
       // max(0, max(0, owed) - available).
-      { id: 'tv', name: 'Carta viaggi', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
-        start: { date: '1 set', amount: -50000 },
-        txs: [['20 set', 'Pagamento della carta', 'Conto corrente', -30000], ['1 set', 'Saldo iniziale', 'Carta viaggi', -50000, 'start']] }
+      { id: 'tv', name: 'Travel card', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
+        start: { date: 'Sep 1', amount: -50000 },
+        txs: [['Sep 20', 'Card payment', 'Checking', -30000], ['Sep 1', 'Starting balance', 'Travel card', -50000, 'start']] }
     ] }
   ];
   var CAT = {};
   GROUPS.forEach(function (g) { g.cats.forEach(function (c) { CAT[c.id] = { c: c, g: g }; }); });
   var ACCTS = [
-    { id: 'cc', name: 'Conto corrente', bal: 311258 }, { id: 'risp', name: 'Conto risparmio', bal: 800000 }, { id: 'cont', name: 'Contanti', bal: 8540 },
+    { id: 'cc', name: 'Checking', bal: 311258 }, { id: 'risp', name: 'Savings', bal: 800000 }, { id: 'cont', name: 'Cash', bal: 8540 },
     { id: 'visa', name: 'Visa', card: true }, { id: 'mc', name: 'Mastercard', card: true },
-    { id: 'tv', name: 'Carta viaggi', card: true }
+    { id: 'tv', name: 'Travel card', card: true }
   ];
   function acct(id) { return ACCTS.filter(function (a) { return a.id === id; })[0]; }
   var RTA0 = 31200, FUTURE0 = 20000;
 
   // Scheduled transactions. Those due this month and not recorded yet reserve money in their category.
   var SCHED = [
-    { id: 's-vet', payee: 'Clinica veterinaria', memo: 'richiamo del vaccino', cat: 'vet', acc: 'cc', amount: 4500, due: { y: 2026, m: 9, d: 22 }, every: 12 },
-    { id: 's-stream', payee: 'Film e serie in streaming', cat: 'abb', acc: 'visa', amount: 1299, due: { y: 2026, m: 9, d: 27 }, every: 1 },
-    { id: 's-stip', payee: 'Stipendio di Anna', income: true, acc: 'cc', amount: 245000, due: { y: 2026, m: 9, d: 27 }, every: 1 },
-    { id: 's-cald', payee: 'Tecnico caldaia', memo: 'revisione annuale', cat: 'manut', acc: 'cc', amount: 9000, due: { y: 2026, m: 9, d: 29 }, every: 12 },
-    { id: 's-mutuo', payee: 'Banca, rata mutuo', cat: 'mutuo', acc: 'cc', amount: 85000, due: { y: 2026, m: 10, d: 1 }, every: 1 },
-    { id: 's-net', payee: 'Operatore telefonico', cat: 'net', acc: 'cc', amount: 4500, due: { y: 2026, m: 10, d: 2 }, every: 1 },
-    { id: 's-pac', payee: 'Trasferimento a Broker ETF', cat: 'pac', acc: 'cc', amount: 50000, due: { y: 2026, m: 10, d: 5 }, every: 1 },
-    { id: 's-music', payee: 'Musica in streaming', cat: 'abb', acc: 'cc', amount: 1099, due: { y: 2026, m: 10, d: 8 }, every: 1 }
+    { id: 's-vet', payee: 'Vet clinic', memo: 'vaccine booster', cat: 'vet', acc: 'cc', amount: 4500, due: { y: 2026, m: 9, d: 22 }, every: 12 },
+    { id: 's-stream', payee: 'Streaming service', cat: 'abb', acc: 'visa', amount: 1299, due: { y: 2026, m: 9, d: 27 }, every: 1 },
+    { id: 's-stip', payee: "Anna's salary", income: true, acc: 'cc', amount: 245000, due: { y: 2026, m: 9, d: 27 }, every: 1 },
+    { id: 's-cald', payee: 'Boiler technician', memo: 'annual service', cat: 'manut', acc: 'cc', amount: 9000, due: { y: 2026, m: 9, d: 29 }, every: 12 },
+    { id: 's-mutuo', payee: 'Bank, mortgage payment', cat: 'mutuo', acc: 'cc', amount: 85000, due: { y: 2026, m: 10, d: 1 }, every: 1 },
+    { id: 's-net', payee: 'Phone provider', cat: 'net', acc: 'cc', amount: 4500, due: { y: 2026, m: 10, d: 2 }, every: 1 },
+    { id: 's-pac', payee: 'Transfer to ETF broker', cat: 'pac', acc: 'cc', amount: 50000, due: { y: 2026, m: 10, d: 5 }, every: 1 },
+    { id: 's-music', payee: 'Music streaming', cat: 'abb', acc: 'cc', amount: 1099, due: { y: 2026, m: 10, d: 8 }, every: 1 }
   ];
-  function everyLabel(n) { return !n ? 'una volta' : n === 1 ? 'ogni mese' : n === 12 ? 'ogni anno' : n === 24 ? 'ogni 2 anni' : 'ogni ' + n + ' mesi'; }
+  function everyLabel(n) { return !n ? 'once' : n === 1 ? 'every month' : n === 12 ? 'every year' : n === 24 ? 'every 2 years' : 'every ' + n + ' months'; }
 
   // Monthly assignments are an append-only ledger (docs/adr/0008-assignment-ledger.md): null is "unassigned".
   // BASE is what was entered before today; state.entries what is entered in this mockup.
   var BASE = [
-    { id: 'b-spesa-1', date: '1 set', from: null, to: 'spesa', amount: 58000, who: 'Giorgio' },
-    { id: 'b-spesa-2', date: '12 set', from: null, to: 'spesa', amount: 2000, who: 'Anna' },
-    { id: 'b-rist-1', date: '1 set', from: null, to: 'rist', amount: 10000, who: 'Giorgio' },
-    { id: 'b-rist-2', date: '14 set', from: 'hobby', to: 'rist', amount: 2000, who: 'Anna' },
-    { id: 'b-hobby', date: '1 set', from: null, to: 'hobby', amount: 8000, who: 'Giorgio' }
+    { id: 'b-spesa-1', date: 'Sep 1', from: null, to: 'spesa', amount: 58000, who: 'Giorgio' },
+    { id: 'b-spesa-2', date: 'Sep 12', from: null, to: 'spesa', amount: 2000, who: 'Anna' },
+    { id: 'b-rist-1', date: 'Sep 1', from: null, to: 'rist', amount: 10000, who: 'Giorgio' },
+    { id: 'b-rist-2', date: 'Sep 14', from: 'hobby', to: 'rist', amount: 2000, who: 'Anna' },
+    { id: 'b-hobby', date: 'Sep 1', from: null, to: 'hobby', amount: 8000, who: 'Giorgio' }
   ];
   (function () {
     Object.keys(CAT).forEach(function (k) {
       var net = sum(BASE, function (e) { return (e.to === k ? e.amount : 0) - (e.from === k ? e.amount : 0); });
       var rest = CAT[k].c.assigned - net;
-      if (rest > 0) BASE.push({ id: 'b-' + k, date: '1 set', from: null, to: k, amount: rest, who: k === 'vac' || k === 'regali' ? 'Anna' : 'Giorgio' });
+      if (rest > 0) BASE.push({ id: 'b-' + k, date: 'Sep 1', from: null, to: k, amount: rest, who: k === 'vac' || k === 'regali' ? 'Anna' : 'Giorgio' });
     });
     BASE.forEach(function (e) { e.month = CUR; e.base = true; });
   })();
@@ -640,20 +641,20 @@ button{cursor:pointer}
   function delta(cat, month) { return sum(state.entries, function (e) { return e.month !== month ? 0 : (e.to === cat ? e.amount : 0) - (e.from === cat ? e.amount : 0); }); }
   function rta() { return RTA0 + state.income + sum(state.entries, function (e) { return (e.to === null ? e.amount : 0) - (e.from === null ? e.amount : 0); }); }
   function future() { return FUTURE0 + sum(state.entries, function (e) { return e.month <= CUR ? 0 : (e.from === null ? e.amount : 0) - (e.to === null ? e.amount : 0); }); }
-  function nm(id) { return id === null ? 'Da assegnare' : CAT[id].c.name; }
+  function nm(id) { return id === null ? 'Unassigned' : CAT[id].c.name; }
   function addBatch(list, text) {
     var b = ++state.batch;
     list.forEach(function (e) {
-      state.entries.push({ id: 'e' + (++state.seq), date: '25 set', from: e.from, to: e.to, amount: e.amount, month: e.month || CUR, who: 'Giorgio', reverses: e.reverses || null, batch: b });
+      state.entries.push({ id: 'e' + (++state.seq), date: 'Sep 25', from: e.from, to: e.to, amount: e.amount, month: e.month || CUR, who: 'Giorgio', reverses: e.reverses || null, batch: b });
     });
     state.toast = { text: text, batch: b };
     return b;
   }
   function moveText(from, to, amount, month) {
-    var when = month && month !== CUR ? ' per ' + monthName(month - 2026 * 12) : '';
-    if (from === null) return 'Assegnati ' + f(amount) + ' a ' + nm(to) + when + '.';
-    if (to === null) return 'Tolti ' + f(amount) + ' da ' + nm(from) + ': tornano in «da assegnare».';
-    return 'Spostati ' + f(amount) + ' da ' + nm(from) + ' a ' + nm(to) + '.';
+    var when = month && month !== CUR ? ' for ' + monthName(month - 2026 * 12) : '';
+    if (from === null) return 'Assigned ' + f(amount) + ' to ' + nm(to) + when + '.';
+    if (to === null) return 'Moved ' + f(amount) + ' from ' + nm(from) + ' back to unassigned.';
+    return 'Moved ' + f(amount) + ' from ' + nm(from) + ' to ' + nm(to) + '.';
   }
   function undoEntries(list, text) {
     var rev = reversedIds();
@@ -687,19 +688,19 @@ button{cursor:pointer}
     if (s.income) {
       state.income += s.amount; state.cashD[s.acc] = (state.cashD[s.acc] || 0) + s.amount;
       if (ymOf(s.due) === CUR) state.incomeTx.push({ d: s.due.d, amount: s.amount, payee: s.payee });
-      state.toast = { text: 'Registrata l’entrata ' + s.payee + ' (' + f(s.amount) + '): è in «da assegnare».' };
+      state.toast = { text: 'Recorded ' + s.payee + ' (' + f(s.amount) + '): it is now unassigned.' };
     } else {
       (state.rec[s.cat] = state.rec[s.cat] || []).push({ tx: [dLabel(s.due), s.payee, a.name, -s.amount], amount: s.amount, card: a.card ? a.id : null });
       if (a.card) state.cardD[a.id] = (state.cardD[a.id] || 0) + s.amount;
       else state.cashD[s.acc] = (state.cashD[s.acc] || 0) - s.amount;
-      state.toast = { text: 'Registrata: ' + s.payee + ', ' + f(-s.amount) + '. La prenotazione è diventata un movimento, il disponibile non cambia.' };
+      state.toast = { text: 'Recorded: ' + s.payee + ', ' + f(-s.amount) + '. The reservation is now a transaction; the available amount does not change.' };
     }
     advance(s);
   }
   function skip(id) {
     var s = state.sched.filter(function (x) { return x.id === id; })[0];
     if (!s) return;
-    state.toast = { text: 'Saltata questa volta: ' + s.payee + ' del ' + dLabel(s.due) + '.' + (s.every ? ' La prossima è il ' + (function () { var c = { y: s.due.y, m: s.due.m + s.every, d: s.due.d }; while (c.m > 12) { c.m -= 12; c.y++; } return dLabel(c); })() + '.' : '') };
+    state.toast = { text: 'Skipped this time: ' + s.payee + ' on ' + dLabel(s.due) + '.' + (s.every ? ' The next one is on ' + (function () { var c = { y: s.due.y, m: s.due.m + s.every, d: s.due.d }; while (c.m > 12) { c.m -= 12; c.y++; } return dLabel(c); })() + '.' : '') };
     advance(s);
   }
 
@@ -717,7 +718,7 @@ button{cursor:pointer}
         var real = c.carried + assigned + activity;
         var over = Math.max(0, -real);
         var credit = Math.min(over, outBy.visa + outBy.mc + outBy.tv);
-        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard, then the Carta viaggi.
+        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard, then the Travel card.
         var cv = Math.min(credit, outBy.visa), cm = Math.min(credit - cv, outBy.mc), ct = credit - cv - cm;
         covered.visa = (covered.visa || 0) + outBy.visa - cv;
         covered.mc = (covered.mc || 0) + outBy.mc - cm;
@@ -748,7 +749,7 @@ button{cursor:pointer}
     var left = rta() + sum(keys, function (k) { return byId[k].avail + byId[k].reserved + byId[k].credit; }) + future();
     if (left !== cashTotal()) console.error('Invariant broken', left, cashTotal());
   }
-  // What a category asks for itself (#728), the same figure in "Da fare", "Sposta denaro" and quick
+  // What a category asks for itself (#728), the same figure in "To do", "Move money" and quick
   // assign: card debt is asked once, on the card's payment category. An ordinary category asks for
   // its cash overspending, plus what its scheduled transactions are missing when it has no card
   // overspending (with card overspending, money assigned here goes to the card first); never its
@@ -767,17 +768,17 @@ button{cursor:pointer}
   function mLabel(ym) { var q = ym.split('-'); return MONTHS[Number(q[1]) - 1] + ' ' + q[0]; }
   function monthsLeft(ym) { var q = ym.split('-'); return (Number(q[0]) - 2026) * 12 + (Number(q[1]) - 9) + 1; }
   var TYPES = [
-    { id: 'monthly', name: 'Importo al mese', help: 'Per le spese di ogni mese: spesa, bollette, abbonamenti, versamenti fissi.' },
-    { id: 'date', name: 'Somma entro una data', help: 'Per mettere da parte una cifra entro un mese preciso: le vacanze, un acquisto importante.' },
-    { id: 'repeat', name: 'Spesa ricorrente', help: 'Per le spese irregolari ma prevedibili, come assicurazione e bollo: la cifra viene divisa sui mesi che mancano alla scadenza.' },
-    { id: 'balance', name: 'Saldo da mantenere', help: 'Per un cuscinetto che deve restare pieno, come il fondo emergenze: chiede soldi solo quando scende sotto la soglia.' }
+    { id: 'monthly', name: 'Monthly amount', help: 'Asks the same amount every month.' },
+    { id: 'date', name: 'Amount by a date', help: 'Saves up a total by a due month, spread over the months left.' },
+    { id: 'repeat', name: 'Repeating expense', help: 'Like "amount by a date", but the due month moves forward once it passes.' },
+    { id: 'balance', name: 'Balance to keep', help: 'Asks enough to keep the category\'s available amount at or above a threshold.' }
   ];
   function specOf(x) { return Object.prototype.hasOwnProperty.call(state.targets, x.c.id) ? state.targets[x.c.id] : (x.c.target || null); }
   function describe(sp) {
-    if (sp.type === 'monthly') return f(sp.amount) + ' al mese';
-    if (sp.type === 'date') return f(sp.amount) + ' entro ' + mLabel(sp.due);
-    if (sp.type === 'repeat') return f(sp.amount) + ' ' + everyLabel(sp.every) + ', prossima scadenza ' + mLabel(sp.due);
-    return 'Tieni almeno ' + f(sp.amount);
+    if (sp.type === 'monthly') return f(sp.amount) + ' a month';
+    if (sp.type === 'date') return f(sp.amount) + ' by ' + mLabel(sp.due);
+    if (sp.type === 'repeat') return f(sp.amount) + ' ' + everyLabel(sp.every) + ', next due ' + mLabel(sp.due);
+    return 'Keep at least ' + f(sp.amount);
   }
   // What a target asks of this month: "per" is the monthly amount, "need" what is still missing.
   function plan(sp, x) {
@@ -795,18 +796,18 @@ button{cursor:pointer}
     if (!sp) return null;
     var pl = plan(sp, x);
     var text;
-    if (pl.need > 0) text = sp.type === 'balance' ? 'mancano ' + f(pl.need) + ' per la soglia' : 'mancano ' + f(pl.need) + ' questo mese';
-    else if (pl.pct >= 100) text = 'obiettivo raggiunto';
-    else if (sp.type === 'date' || sp.type === 'repeat') text = 'in linea, ' + f(pl.per) + ' al mese';
-    else text = pl.pct + '% dell’obiettivo';
+    if (pl.need > 0) text = sp.type === 'balance' ? f(pl.need) + ' missing for the threshold' : f(pl.need) + ' missing this month';
+    else if (pl.pct >= 100) text = 'target reached';
+    else if (sp.type === 'date' || sp.type === 'repeat') text = 'on track, ' + f(pl.per) + ' a month';
+    else text = pl.pct + '% of the target';
     return { spec: sp, label: describe(sp), per: pl.per, pct: pl.pct, need: pl.need, text: text };
   }
   function parseAmount(str) {
-    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    var clean = String(str).trim().replace(/\s|€|,/g, '');
     if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
     return Math.round(Number(clean) * 100);
   }
-  function amountStr(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function amountStr(c) { return (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function needsMoney(x) { var t = target(x); return !!(t && t.need > 0) || x.short > 0 || (x.uncovered || 0) > 0; }
 
   // ---- Target editor (unchanged from the first mockup) ----
@@ -820,14 +821,14 @@ button{cursor:pointer}
   }
   function previewHtml(byId) {
     var e = state.edit, x = byId[e.cat], sp = draftSpec(e);
-    if (!sp) return '<span style="color:var(--red-text)">Scrivi un importo, per esempio 600 oppure 600,00.</span>';
+    if (!sp) return '<span style="color:var(--red-text)">Enter an amount greater than zero.</span>';
     var pl = plan(sp, x);
     var first = sp.type === 'balance'
-      ? 'Oggi la categoria ha ' + f(x.avail) + ' su una soglia di ' + f(sp.amount) + '.'
-      : 'Servono <b class="n">' + f(pl.per) + '</b> al mese' + (sp.type === 'monthly' ? '.' : ' per arrivare a ' + f(sp.amount) + ' entro ' + mLabel(sp.due) + ' (' + monthsLeft(sp.due) + ' mesi).');
+      ? 'Today the category has ' + f(x.avail) + ' of a ' + f(sp.amount) + ' threshold.'
+      : 'It takes <b class="n">' + f(pl.per) + '</b> a month' + (sp.type === 'monthly' ? '.' : ' to reach ' + f(sp.amount) + ' by ' + mLabel(sp.due) + ' (' + monthsLeft(sp.due) + ' months).');
     var second = pl.need > 0
-      ? 'A settembre hai assegnato ' + f(x.assigned) + ': <b class="n" style="color:var(--warn)">mancano ' + f(pl.need) + '</b>.'
-      : 'Per settembre sei già a posto.';
+      ? 'In September you assigned ' + f(x.assigned) + ': <b class="n" style="color:var(--warn)">' + f(pl.need) + ' missing</b>.'
+      : 'September is already covered.';
     return first + '<br>' + second;
   }
   function editorHtml(byId, p) {
@@ -838,19 +839,19 @@ button{cursor:pointer}
       return '<label class="opt"><input type="radio" name="' + p + 'gtype" id="' + p + 'gtype-' + t.id + '" value="' + t.id + '" data-gfield="type"' + (e.type === t.id ? ' checked' : '') + '>' +
         '<span><b>' + t.name + '</b><small>' + t.help + '</small></span></label>';
     }).join('');
-    var dueLabel = e.type === 'repeat' ? 'Prossima scadenza' : 'Entro';
-    var fields = '<div class="field"><label for="' + p + 'gamt">' + (e.type === 'balance' ? 'Soglia da mantenere' : e.type === 'monthly' ? 'Importo al mese' : 'Importo totale') + '</label>' +
+    var dueLabel = 'Due month';
+    var fields = '<div class="field"><label for="' + p + 'gamt">' + (e.type === 'balance' ? 'Threshold' : 'Amount') + '</label>' +
       '<span class="money-in"><input type="text" inputmode="decimal" id="' + p + 'gamt" data-gfield="amountStr" value="' + esc(e.amountStr) + '"><span>€</span></span></div>';
-    if (e.type === 'repeat') fields += '<div class="field"><label for="' + p + 'gevery">Si ripete</label><select id="' + p + 'gevery" data-gfield="every">' +
-      [2, 3, 4, 6, 12, 24].map(function (n) { return '<option value="' + n + '"' + (Number(e.every) === n ? ' selected' : '') + '>' + everyLabel(n) + '</option>'; }).join('') + '</select></div>';
+    if (e.type === 'repeat') fields += '<div class="field"><label for="' + p + 'gevery">Repeat interval</label><select id="' + p + 'gevery" data-gfield="every">' +
+      [2, 3, 4, 6, 12, 24].map(function (n) { return '<option value="' + n + '"' + (Number(e.every) === n ? ' selected' : '') + '>Every ' + n + ' months</option>'; }).join('') + '</select></div>';
     if (e.type === 'date' || e.type === 'repeat') fields += '<div class="field"><label for="' + p + 'gdue">' + dueLabel + '</label><select id="' + p + 'gdue" data-gfield="due">' +
       months.map(function (ym) { return '<option value="' + ym + '"' + (e.due === ym ? ' selected' : '') + '>' + mLabel(ym) + '</option>'; }).join('') + '</select></div>';
     var has = !!specOf(x);
-    return '<div><span class="where">' + (has ? 'Modifica obiettivo' : 'Nuovo obiettivo') + '</span><h4>' + esc(x.c.name) + '</h4></div>' +
-      '<fieldset class="types"><legend>Tipo di obiettivo</legend>' + types + '</fieldset>' + fields +
+    return '<div><span class="where">' + (has ? 'Edit target' : 'New target') + '</span><h4>' + esc(x.c.name) + '</h4></div>' +
+      '<fieldset class="types"><legend>Kind</legend>' + types + '</fieldset>' + fields +
       '<div class="preview" id="' + p + 'gprev" aria-live="polite">' + previewHtml(byId) + '</div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" data-goalsave="1">Salva obiettivo</button><button type="button" class="btn" data-goalcancel="1">Annulla</button>' +
-      (has ? '<button type="button" class="plain danger" data-goalremove="1">Rimuovi obiettivo</button>' : '') + '</div>';
+      '<div class="row-btns"><button type="button" class="btn primary" data-goalsave="1">Save</button><button type="button" class="btn" data-goalcancel="1">Cancel</button>' +
+      (has ? '<button type="button" class="plain danger" data-goalremove="1">Remove</button>' : '') + '</div>';
   }
   function startEdit(id, where) {
     var x = compute()[id], sp = specOf(x);
@@ -874,28 +875,28 @@ button{cursor:pointer}
       }).join('') + '</div>';
     }).join('');
     var fundable = Math.min(needTotal, Math.max(0, rta()));
-    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Obiettivi</h4></div>' +
-      '<div class="gstats"><div><small>Obiettivi</small><b class="n">' + withT.length + '</b></div>' +
-      '<div><small>Richiesti a settembre</small><b class="n">' + f(perTotal) + '</b></div>' +
-      '<div><small>Mancano</small><b class="n' + (needTotal ? ' warn' : '') + '">' + f(needTotal) + '</b></div></div>' +
-      (needTotal > 0 ? '<button type="button" class="btn primary" data-fund="all"' + (fundable > 0 ? '' : ' disabled') + '>Finanzia tutti gli obiettivi (' + f(fundable) + ')</button>' : '') +
+    return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Targets</h4></div>' +
+      '<div class="gstats"><div><small>Targets</small><b class="n">' + withT.length + '</b></div>' +
+      '<div><small>Asked in September</small><b class="n">' + f(perTotal) + '</b></div>' +
+      '<div><small>Missing</small><b class="n' + (needTotal ? ' warn' : '') + '">' + f(needTotal) + '</b></div></div>' +
+      (needTotal > 0 ? '<button type="button" class="btn primary" data-fund="all"' + (fundable > 0 ? '' : ' disabled') + '>Fund all targets (' + f(fundable) + ')</button>' : '') +
       byType +
-      (without.length ? '<div class="sec"><h5>Senza obiettivo</h5>' + without.map(function (k) {
-        return '<button type="button" class="goal-row" data-goaledit="' + k + '" data-where="desk"><span><b>' + esc(byId[k].c.name) + '</b></span><span class="plain">Aggiungi</span></button>';
+      (without.length ? '<div class="sec"><h5>No target yet</h5>' + without.map(function (k) {
+        return '<button type="button" class="goal-row" data-goaledit="' + k + '" data-where="desk"><span><b>' + esc(byId[k].c.name) + '</b></span><span class="plain">+ Add</span></button>';
       }).join('') + '</div>' : '');
   }
 
   // ---- Cells and lines ----
   function cell(x) {
     var st = status(x);
-    var lead = st === 'credit' ? '<span class="tag">carta</span>' : st === 'short' ? '<span class="tag">prenotato</span>' : st === 'cash' ? '<span class="sr">Sforato:</span>' : '';
+    var lead = st === 'credit' ? '<span class="tag">Card</span>' : st === 'short' ? '<span class="tag">Reserved</span>' : st === 'cash' ? '<span class="sr">Overspent:</span>' : '';
     return '<span class="amt-cell n ' + st + '">' + lead + f(x.avail) + '</span>';
   }
   function goalLine(t) {
     if (!t) return '';
     return '<span class="goal' + (t.need > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + t.pct + '%"></i></span>' + esc(t.text) + '</span>';
   }
-  // "Da coprire" is always the whole amount to cover: cash overspending + uncovered,
+  // "To cover" is always the whole amount to cover: cash overspending + uncovered,
   // max(0, max(0, owed) - available), the uncovered debt plus what was paid beyond what was set
   // aside (#699). The line shows whenever there is
   // any, also with no debt left at all.
@@ -905,18 +906,18 @@ button{cursor:pointer}
     if (x.debt <= 0 && toCover <= 0) return '';
     var pct = x.debt > 0 ? Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100))) : 0;
     var text = x.cash > 0
-      ? (x.debt > 0 ? 'da coprire ' + f(toCover) + ': ' + f(x.debt) + ' di debito e ' + f(x.cash) + ' pagati oltre i soldi messi da parte'
-        : 'da coprire ' + f(toCover) + ': pagati oltre i soldi messi da parte')
-      : x.uncovered > 0 ? 'da coprire ' + f(x.uncovered) + ' di ' + f(x.debt) + ' di debito' : 'debito di ' + f(x.debt) + ' coperto';
+      ? (x.debt > 0 ? f(toCover) + ' to cover: ' + f(x.debt) + ' of debt and ' + f(x.cash) + ' paid beyond what was set aside'
+        : f(toCover) + ' to cover: paid beyond what was set aside')
+      : x.uncovered > 0 ? f(x.uncovered) + ' to cover of ' + f(x.debt) + ' of debt' : f(x.debt) + ' of debt covered';
     return '<span class="goal pay' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span><span class="gt">' + text + '</span></span>';
   }
   function resLine(x) {
     var list = schedThisMonth(x.c.id);
     if (!list.length) return '';
     var late = list.filter(function (s) { return overdue(s.due); });
-    var what = list.length === 1 ? esc(list[0].payee) + ', ' + dLabel(list[0].due) : list.length + ' spese programmate';
-    var text = (late.length ? '<b>da registrare</b> · ' : '') + 'prenotati ' + f(x.reserved) + ' · ' + what;
-    if (x.short > 0 && x.credit === 0 && x.cash === 0) text += ' · mancano ' + f(x.short);
+    var what = list.length === 1 ? esc(list[0].payee) + ', ' + dLabel(list[0].due) : list.length + ' scheduled expenses';
+    var text = (late.length ? '<b>To record</b> · ' : '') + f(x.reserved) + ' reserved · ' + what;
+    if (x.short > 0 && x.credit === 0 && x.cash === 0) text += ' · ' + f(x.short) + ' missing';
     return '<span class="res' + (x.short > 0 ? ' need' : '') + '">' + CLOCK + '<span>' + text + '</span></span>';
   }
   function subLines(x) { return goalLine(target(x)) + debtLine(x) + resLine(x); }
@@ -933,52 +934,52 @@ button{cursor:pointer}
   // ---- Scheduled rows ----
   function schedRow(s, withCat) {
     var c = s.income ? null : CAT[s.cat].c;
-    var sub = (s.income ? 'Entrata' : (withCat ? esc(c.name) : '')) + (withCat || s.income ? ' · ' : '') + esc(acct(s.acc).name) + ' · ' + everyLabel(s.every) + (s.memo ? ' · ' + esc(s.memo) : '');
+    var sub = (s.income ? 'Income' : (withCat ? esc(c.name) : '')) + (withCat || s.income ? ' · ' : '') + esc(acct(s.acc).name) + ' · ' + everyLabel(s.every) + (s.memo ? ' · ' + esc(s.memo) : '');
     var now = ymOf(s.due) <= CUR;
     return '<div class="sch' + (overdue(s.due) ? ' late' : '') + '"><small class="n">' + dLabel(s.due) + '</small>' +
       '<span><b>' + esc(s.payee) + '</b><small>' + sub + '</small></span><span class="n">' + f(s.income ? s.amount : -s.amount) + '</span>' +
-      (now ? '<span class="sch-b"><button type="button" class="plain" data-rec="' + s.id + '">Registra</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Salta</button></span>' : '<span></span>') + '</div>';
+      (now ? '<span class="sch-b"><button type="button" class="plain" data-rec="' + s.id + '">Record</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Skip</button></span>' : '<span></span>') + '</div>';
   }
   function histHtml(cat) {
     var rev = reversedIds();
     var list = allEntries().filter(function (e) { return e.from === cat || e.to === cat; }).slice().reverse();
-    if (!list.length) return '<span style="color:var(--muted)">Nessuna assegnazione a settembre.</span>';
+    if (!list.length) return '<span style="color:var(--muted)">No assignments in September.</span>';
     return list.map(function (e) {
       var signed = e.to === cat ? e.amount : -e.amount;
-      var what = e.reverses ? 'Annulla la riga del ' + (allEntries().filter(function (x) { return x.id === e.reverses; })[0] || {}).date : nm(e.from) + ' → ' + nm(e.to);
-      var month = e.month !== CUR ? ' · per ' + monthName(e.month - 2026 * 12) : '';
-      return '<div class="tx hist' + (rev[e.id] ? ' gone' : '') + '"><small class="n">' + esc(e.date) + '</small><span>' + esc(what) + '<small>' + esc(e.who) + month + (rev[e.id] ? ' · annullata' : '') + '</small></span>' +
+      var what = e.reverses ? 'Undoes the entry of ' + (allEntries().filter(function (x) { return x.id === e.reverses; })[0] || {}).date : nm(e.from) + ' → ' + nm(e.to);
+      var month = e.month !== CUR ? ' · for ' + monthName(e.month - 2026 * 12) : '';
+      return '<div class="tx hist' + (rev[e.id] ? ' gone' : '') + '"><small class="n">' + esc(e.date) + '</small><span>' + esc(what) + '<small>' + esc(e.who) + month + (rev[e.id] ? ' · undone' : '') + '</small></span>' +
         '<span class="hist-r"><span class="n">' + (signed > 0 ? '+' : '') + f(signed) + '</span>' +
-        (!rev[e.id] && !e.reverses ? '<button type="button" class="plain" data-undo="' + e.id + '" aria-label="Annulla questa assegnazione">Annulla</button>' : '') + '</span></div>';
+        (!rev[e.id] && !e.reverses ? '<button type="button" class="plain" data-undo="' + e.id + '" aria-label="Undo this assignment">Undo</button>' : '') + '</span></div>';
     }).join('');
   }
 
   // ---- Category detail, for the desktop panel (prefix "") and the phone screen (prefix "ph-") ----
   // On the desktop the assigned amount is a field: a new amount, or +20 / -15, then Enter.
   function asgLine(x, p) {
-    if (p) return line('Assegnato a settembre', f(x.assigned));
-    return '<div class="qa asg-l" style="color:var(--ink-2);cursor:default"><label for="asg-' + x.c.id + '">Assegnato a settembre</label><span class="dots"></span>' +
+    if (p) return line('Assigned this month', f(x.assigned));
+    return '<div class="qa asg-l" style="color:var(--ink-2);cursor:default"><label for="asg-' + x.c.id + '">Assigned this month</label><span class="dots"></span>' +
       '<input type="text" inputmode="decimal" class="asg-in n" id="asg-' + x.c.id + '" data-asg="' + x.c.id + '" value="' + amountStr(x.assigned) + '" aria-describedby="asg-h"></div>' +
-      '<small class="asg-h" id="asg-h">Scrivi un importo o +20 / −15, poi Invio.</small>';
+      '<small class="asg-h" id="asg-h">Type an amount, or +20 / -15, then Enter.</small>';
   }
   function catDetail(byId, x, p) {
     if (x.c.payment) return payDetail(byId, x, p);
     var st = status(x), t = target(x), deficit = Math.max(0, -x.real);
-    var LABEL = { pos: 'Disponibile', zero: 'Disponibile', credit: 'Sforato con la carta', cash: 'Sforato', short: 'Non basta per le programmate' };
+    var LABEL = { pos: 'Available', zero: 'Available', credit: 'Overspent with a card', cash: 'Overspent', short: 'Not enough for what is scheduled' };
     var explain;
-    if (st === 'cash') explain = 'Hai speso ' + f(deficit) + ' più del disponibile da un conto. Se non lo copri entro fine mese, la categoria riparte da zero a ottobre e l’importo viene tolto da «da assegnare».';
-    else if (st === 'credit' && x.cash > 0) explain = 'Hai speso ' + f(deficit) + ' più del disponibile: ' + f(x.cash) + ' da un conto e ' + f(x.credit) + ' con la carta. La parte da un conto, se non la copri entro fine mese, viene tolta da «da assegnare» di ottobre. A ottobre la categoria riparte da zero.';
-    else if (st === 'credit') explain = 'Hai speso ' + f(deficit) + ' più del disponibile con la carta. Non tocca «da assegnare». A ottobre la categoria riparte da zero.';
-    else if (st === 'short') explain = 'Hai prenotato ' + f(x.reserved) + ' per spese programmate, ma la categoria ne ha solo ' + f(Math.max(0, x.real)) + ': mancano ' + f(x.short) + '. È un avviso, non uno sforamento: la spesa non è ancora avvenuta. Assegna o sposta denaro prima della data.';
-    else if (st === 'pos') explain = 'Questi soldi sono già assegnati' + (x.reserved ? ', al netto di ' + f(x.reserved) + ' prenotati per spese programmate' : '') + '. Quello che resta a fine mese passa a ottobre.';
-    else explain = 'Nessun disponibile: una spesa qui renderebbe la categoria sforata.';
+    if (st === 'cash') explain = 'You spent ' + f(deficit) + ' more than was available, from an account. If it is not covered by the end of the month, the category starts again from zero in October and the amount comes out of unassigned money.';
+    else if (st === 'credit' && x.cash > 0) explain = 'You spent ' + f(deficit) + ' more than was available: ' + f(x.cash) + ' from an account and ' + f(x.credit) + ' with a card. If the part from an account is not covered by the end of the month, it comes out of October\'s unassigned money. In October the category starts again from zero.';
+    else if (st === 'credit') explain = 'You spent ' + f(deficit) + ' more than was available, with a card. It does not touch unassigned money. In October the category starts again from zero.';
+    else if (st === 'short') explain = 'Scheduled expenses reserve ' + f(x.reserved) + ', but the category has ' + f(Math.max(0, x.real)) + ': ' + f(x.short) + ' missing. This is not overspending: the expense has not happened yet. Money assigned or moved here before the date covers it.';
+    else if (st === 'pos') explain = 'This money is already assigned' + (x.reserved ? ', net of ' + f(x.reserved) + ' reserved for scheduled expenses' : '') + '. What is left at the end of the month carries over to October.';
+    else explain = 'Nothing available: an expense here would overspend the category.';
 
     // #728: the card part is already in the card's debt and is covered there, once; this line only
     // says so, with a way to open the card's payment category.
     var cardPart = x.credit > 0 ? '<div class="sec" style="gap:6px">' + Object.keys(x.creditBy).filter(function (k) { return x.creditBy[k] > 0; }).map(function (k) {
       var card = byId[k].c.name;
-      return '<p class="explain">' + f(x.creditBy[k]) + ' spesi con la carta oltre il disponibile ora fanno parte del debito della carta, in ' + esc(card) + '.</p>' +
-        '<button type="button" class="plain" style="align-self:flex-start" data-' + (p ? 'phcat' : 'cat') + '="' + k + '" data-todo="1">Apri ' + esc(card) + '</button>';
+      return '<p class="explain">' + f(x.creditBy[k]) + ' spent with a card beyond what was available is now part of the card\'s debt, in ' + esc(card) + '.</p>' +
+        '<button type="button" class="plain" style="align-self:flex-start" data-' + (p ? 'phcat' : 'cat') + '="' + k + '" data-todo="1">Open ' + esc(card) + '</button>';
     }).join('') + '</div>' : '';
     var cover = '';
     var gap = needOf(x);
@@ -990,39 +991,39 @@ button{cursor:pointer}
       var src = state.src && sources.indexOf(state.src) >= 0 ? state.src : (preferred.length ? preferred[preferred.length - 1] : sources[0]);
       var amount = src ? Math.min(gap, byId[src].avail) : 0;
       var fromRta = Math.min(gap, Math.max(0, rta()));
-      cover = '<div class="cover"><label for="' + p + 'cover-src">Copri prendendo da</label><select id="' + p + 'cover-src" data-src-select="1">' +
+      cover = '<div class="cover"><label for="' + p + 'cover-src">Cover by taking from</label><select id="' + p + 'cover-src" data-src-select="1">' +
         sources.map(function (k) { return '<option value="' + k + '"' + (k === src ? ' selected' : '') + '>' + esc(byId[k].c.name) + ' (' + f(byId[k].avail) + ')</option>'; }).join('') +
-        '</select><button type="button" class="btn primary" data-cover="' + x.c.id + '" data-src="' + (src || '') + '" data-amount="' + amount + '">Sposta ' + f(amount) + '</button>' +
-        (fromRta > 0 ? '<button type="button" class="plain" data-fundgap="' + x.c.id + '" data-amount="' + fromRta + '">oppure assegna ' + f(fromRta) + ' da «da assegnare»</button>' : '') + '</div>';
+        '</select><button type="button" class="btn primary" data-cover="' + x.c.id + '" data-src="' + (src || '') + '" data-amount="' + amount + '">Move ' + f(amount) + '</button>' +
+        (fromRta > 0 ? '<button type="button" class="plain" data-fundgap="' + x.c.id + '" data-amount="' + fromRta + '">or assign ' + f(fromRta) + ' from unassigned money</button>' : '') + '</div>';
     }
     var fund = '';
     if (t && t.need > 0) {
       var can = Math.min(t.need, Math.max(0, rta()));
-      fund = '<button type="button" class="btn primary" data-fund="' + x.c.id + '"' + (can > 0 ? '' : ' disabled') + '>Assegna ' + f(can) + ' da «da assegnare»</button>';
+      fund = '<button type="button" class="btn primary" data-fund="' + x.c.id + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>';
     }
     var rec = (state.rec[x.c.id] || []).map(function (r) { return r.tx; }).reverse();
     var txs = rec.concat(x.c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
-    }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
+    }).join('') || '<span style="color:var(--muted)">No activity this month.</span>';
     var sch = state.sched.filter(function (s) { return s.cat === x.c.id; }).sort(function (a, b) { return ymOf(a.due) * 40 + a.due.d - (ymOf(b.due) * 40 + b.due.d); });
-    var mv = '<button type="button" class="plain" data-mvopen="' + (gap > 0 ? 'to:' : 'from:') + x.c.id + '">Sposta denaro</button>';
+    var mv = '<button type="button" class="plain" data-mvopen="' + (gap > 0 ? 'to:' : 'from:') + x.c.id + '">Move money</button>';
 
     return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(x.c.name) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">' + LABEL[st] + '</span>' +
       '<span class="big n ' + st + '">' + f(x.avail) + '</span><p class="explain">' + esc(explain) + '</p></div>' +
       cardPart + cover +
-      '<div class="sec"><h5><span>Conto del mese</span>' + mv + '</h5>' + line('Riportato da agosto', f(x.c.carried)) + asgLine(x, p) +
-      line('Movimenti', f(x.activity)) + (x.reserved ? line('Prenotato per le programmate', f(-x.reserved)) : '') + line('Disponibile', f(x.avail)) + '</div>' +
-      (sch.length ? '<div class="sec"><h5>Spese programmate</h5>' + sch.map(function (s) { return schedRow(s, false); }).join('') + '</div>' : '') +
-      (t ? '<div class="sec"><h5><span>Obiettivo</span><button type="button" class="plain" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Modifica</button></h5><span>' + esc(t.label) + '</span>' +
+      '<div class="sec"><h5><span>The month in numbers</span>' + mv + '</h5>' + line('Carried over from August', f(x.c.carried)) + asgLine(x, p) +
+      line('Activity', f(x.activity)) + (x.reserved ? line('Reserved for scheduled transactions', f(-x.reserved)) : '') + line('Available', f(x.avail)) + '</div>' +
+      (sch.length ? '<div class="sec"><h5>Scheduled expenses</h5>' + sch.map(function (s) { return schedRow(s, false); }).join('') + '</div>' : '') +
+      (t ? '<div class="sec"><h5><span>Target</span><button type="button" class="plain" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Edit</button></h5><span>' + esc(t.label) + '</span>' +
         '<span class="meter wide" style="margin:6px 0"><i style="width:' + t.pct + '%;' + (t.need > 0 ? 'background:var(--warn)' : '') + '"></i></span>' +
         '<span class="goal' + (t.need > 0 ? ' need' : '') + '" style="font-size:13px;margin-bottom:6px">' + esc(t.text) + '</span>' + fund + '</div>'
-        : '<div class="sec"><h5>Obiettivo</h5><span style="color:var(--muted)">Nessun obiettivo per questa categoria.</span><button type="button" class="btn" style="align-self:flex-start;margin-top:6px" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Aggiungi un obiettivo</button></div>') +
-      '<div class="sec"><h5>Assegnazione rapida</h5>' +
-      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastAssigned + '"><span>Come assegnato ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastAssigned) + '</span></button>' +
-      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastSpent + '"><span>Come speso ad agosto</span><span class="dots"></span><span class="n">' + f(x.c.lastSpent) + '</span></button></div>' +
-      '<div class="sec"><h5>Assegnazioni di settembre</h5>' + histHtml(x.c.id) + '</div>' +
-      '<div class="sec"><h5>Movimenti di settembre</h5>' + txs + '</div>';
+        : '<div class="sec"><h5>Target</h5><span style="color:var(--muted)">No target for this category.</span><button type="button" class="btn" style="align-self:flex-start;margin-top:6px" data-goaledit="' + x.c.id + '" data-where="' + (p ? 'ph' : 'desk') + '">Add a target</button></div>') +
+      '<div class="sec"><h5>Quick assign</h5>' +
+      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastAssigned + '"><span>As assigned in August</span><span class="dots"></span><span class="n">' + f(x.c.lastAssigned) + '</span></button>' +
+      '<button type="button" class="qa" data-qset="' + x.c.id + ':' + x.c.lastSpent + '"><span>As spent in August</span><span class="dots"></span><span class="n">' + f(x.c.lastSpent) + '</span></button></div>' +
+      '<div class="sec"><h5>September assignments</h5>' + histHtml(x.c.id) + '</div>' +
+      '<div class="sec"><h5>September activity</h5>' + txs + '</div>';
   }
 
   // A card's payment category: money set aside, the card's debt and what no assigned money covers yet.
@@ -1032,34 +1033,34 @@ button{cursor:pointer}
     // #699: what was paid beyond what was set aside comes first, then where the uncovered debt
     // comes from; after it, the starting-balance sentence drops "takes nothing from unassigned
     // money", which the first sentence would seem to contradict.
-    var beyond = x.cash > 0 ? 'La ' + card + ' è stata pagata ' + f(x.cash) + ' in più di quanto messo da parte per lei. Copri questa cifra qui questo mese, altrimenti viene tolta da «Da assegnare» di ottobre.' : '';
+    var beyond = x.cash > 0 ? 'The card was paid ' + f(x.cash) + ' more than was set aside for it. Cover it here this month, or it comes out of next month\'s unassigned money.' : '';
     var explain;
-    if (c.start && x.uncovered > 0 && beyond) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
-    else if (c.start && x.uncovered > 0) explain = 'La ' + card + ' aveva già ' + f(-c.start.amount) + ' di debito quando l’hai aggiunta, il ' + c.start.date + ': è il suo saldo iniziale. Non toglie nulla da «da assegnare» e non è uno sforamento, perché non è uscito nessun contante. Mettilo da parte un po’ alla volta assegnando soldi a questa categoria: «da coprire» scende di pari passo.';
-    else if (x.uncovered > 0 && fromCats.length) explain = 'Il debito non coperto viene da spese con la carta oltre il disponibile: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. Resta qui da coprire finché non assegni soldi a questa categoria.';
-    else if (x.uncovered > 0) explain = 'Una parte del debito della carta non ha ancora soldi messi da parte: assegnali a questa categoria.';
+    if (c.start && x.uncovered > 0 && beyond) explain = 'Some of this debt was already there when you added the card — its starting balance. Assign money to this category a bit at a time to cover it.';
+    else if (c.start && x.uncovered > 0) explain = 'Some of this debt was already there when you added the card — its starting balance. It does not come from new spending, so it takes nothing from unassigned money. Assign money to this category a bit at a time to cover it.';
+    else if (x.uncovered > 0 && fromCats.length) explain = 'The uncovered debt comes from card spending beyond what was available: ' + fromCats.map(function (k) { return byId[k].c.name + ' (' + f(byId[k].creditBy[c.card]) + ')'; }).join(', ') + '. It stays here to cover until money is assigned to it.';
+    else if (x.uncovered > 0) explain = 'Some of the card\'s debt has no money set aside yet: assign money to this category to cover it.';
     else if (beyond) explain = '';
-    else explain = 'Il debito della carta è tutto coperto da soldi messi da parte. Quando paghi la carta dal conto corrente, il pagamento scala da qui.';
+    else explain = 'The card\'s debt is fully covered by money set aside. When you pay the card from the checking account, the payment counts against it.';
     // What it takes to cover the whole debt again: what was paid beyond what was set aside (cash
     // overspending) plus the debt still uncovered, max(0, debt - avail) (#699).
     var toCover = x.cash + x.uncovered;
-    // "Assegna" offers that whole amount, the same as the card's one "Da sistemare" item; this
+    // "Assign" offers that whole amount, the same as the card's one "To fix" item; this
     // mockup caps it at what is still unassigned, as every other assign button here does.
     var can = Math.min(toCover, Math.max(0, rta()));
     var txs = (c.txs || []).map(function (r) {
-      return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · è debito, non conta nei movimenti' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
-    }).join('') || '<span style="color:var(--muted)">Nessun movimento questo mese.</span>';
+      return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · debt, not counted as activity' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
+    }).join('') || '<span style="color:var(--muted)">No activity this month.</span>';
     return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' : '') +
-      '<div class="sec" style="gap:8px"><span class="state-l">Messi da parte per pagare la carta</span>' +
+      '<div class="sec" style="gap:8px"><span class="state-l">Set aside to pay the card</span>' +
       '<span class="big n ' + (x.avail > 0 ? 'pos' : 'zero') + '">' + f(Math.max(0, x.avail)) + '</span>' + (beyond ? '<p class="explain">' + esc(beyond) + '</p>' : '') + (explain ? '<p class="explain">' + esc(explain) + '</p>' : '') + '</div>' +
-      '<div class="sec"><h5><span>Debito della carta</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Sposta denaro qui</button></h5>' + line('Saldo della carta', f(-x.debt)) + line('Messi da parte', f(Math.max(0, x.avail))) +
-      (x.cash > 0 ? line('Pagato oltre i soldi messi da parte', f(x.cash)) : '') +
-      line('Da coprire', f(toCover), toCover > 0 ? 'warnl' : '') +
-      (toCover > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assegna ' + f(can) + ' da «da assegnare»</button>' : '') + '</div>' +
-      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(c.carried)) + asgLine(x, p) +
-      line('Spese con la carta coperte', f(x.covered)) + line('Pagamenti della carta', f(c.paid)) + line('Disponibile', f(x.avail)) + '</div>' +
-      '<div class="sec"><h5>Assegnazioni di settembre</h5>' + histHtml(c.id) + '</div>' +
-      '<div class="sec"><h5>Movimenti di settembre</h5>' + txs + '</div>';
+      '<div class="sec"><h5><span>Card debt</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Move money here</button></h5>' + line('Card balance', f(-x.debt)) + line('Set aside', f(Math.max(0, x.avail))) +
+      (x.cash > 0 ? line('Paid beyond what was set aside', f(x.cash)) : '') +
+      line('To cover', f(toCover), toCover > 0 ? 'warnl' : '') +
+      (toCover > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>' : '') + '</div>' +
+      '<div class="sec"><h5>The month in numbers</h5>' + line('Carried over from August', f(c.carried)) + asgLine(x, p) +
+      line('Card spending covered', f(x.covered)) + line('Card payments', f(c.paid)) + line('Available', f(x.avail)) + '</div>' +
+      '<div class="sec"><h5>September assignments</h5>' + histHtml(c.id) + '</div>' +
+      '<div class="sec"><h5>September activity</h5>' + txs + '</div>';
   }
 
   function groupSums(byId, g) {
@@ -1076,18 +1077,18 @@ button{cursor:pointer}
   function groupDetail(byId, g) {
     var s = groupSums(byId, g);
     var fundable = Math.min(s.need, Math.max(0, rta()));
-    var state_ = s.over.length ? '<p class="explain" style="color:var(--red-text)"><b>' + (s.over.length === 1 ? '1 categoria sforata' : s.over.length + ' categorie sforate') + ' per ' + f(s.overTotal) + '.</b> Selezionala qui sotto per coprirla.</p>'
-      : '<p class="explain">Nessuna categoria sforata in questo gruppo.</p>';
-    return CLOSE + '<div><span class="where">Gruppo</span><h4>' + esc(g.name) + '</h4></div>' +
-      '<div class="sec" style="gap:8px"><span class="state-l">Disponibile nel gruppo</span><span class="big n' + (s.avail < 0 ? ' cash' : '') + '">' + f(s.avail) + '</span>' + state_ + '</div>' +
-      '<div class="gstats"><div><small>Categorie</small><b class="n">' + g.cats.length + '</b></div>' +
-      '<div><small>Sforate</small><b class="n' + (s.over.length ? ' bad' : '') + '">' + s.over.length + '</b></div>' +
-      '<div><small>Obiettivi raggiunti</small><b class="n' + (s.reached < s.targets ? ' warn' : '') + '">' + (s.targets ? s.reached + ' di ' + s.targets : '–') + '</b></div></div>' +
-      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(s.carried)) + line('Assegnato a settembre', f(s.assigned)) +
-      line('Movimenti', f(s.activity)) + line('Disponibile', f(s.avail)) + '</div>' +
-      (s.need > 0 ? '<div class="sec"><h5>Obiettivi</h5><span class="goal need" style="font-size:13px;margin-bottom:6px">Mancano ' + f(s.need) + ' questo mese per gli obiettivi del gruppo</span>' +
-        '<button type="button" class="btn primary" data-fund="g:' + g.id + '"' + (fundable > 0 ? '' : ' disabled') + '>Finanzia gli obiettivi (' + f(fundable) + ')</button></div>' : '') +
-      '<div class="sec"><h5>Categorie del gruppo</h5>' + g.cats.map(function (c) {
+    var state_ = s.over.length ? '<p class="explain" style="color:var(--red-text)"><b>' + (s.over.length === 1 ? '1 category overspent' : s.over.length + ' categories overspent') + ' by ' + f(s.overTotal) + '.</b> Select it below to cover it.</p>'
+      : '<p class="explain">No category overspent in this group.</p>';
+    return CLOSE + '<div><span class="where">Group</span><h4>' + esc(g.name) + '</h4></div>' +
+      '<div class="sec" style="gap:8px"><span class="state-l">Available in the group</span><span class="big n' + (s.avail < 0 ? ' cash' : '') + '">' + f(s.avail) + '</span>' + state_ + '</div>' +
+      '<div class="gstats"><div><small>Categories</small><b class="n">' + g.cats.length + '</b></div>' +
+      '<div><small>Overspent</small><b class="n' + (s.over.length ? ' bad' : '') + '">' + s.over.length + '</b></div>' +
+      '<div><small>Targets reached</small><b class="n' + (s.reached < s.targets ? ' warn' : '') + '">' + (s.targets ? s.reached + ' of ' + s.targets : '–') + '</b></div></div>' +
+      '<div class="sec"><h5>The month in numbers</h5>' + line('Carried over from August', f(s.carried)) + line('Assigned this month', f(s.assigned)) +
+      line('Activity', f(s.activity)) + line('Available', f(s.avail)) + '</div>' +
+      (s.need > 0 ? '<div class="sec"><h5>Targets</h5><span class="goal need" style="font-size:13px;margin-bottom:6px">' + f(s.need) + ' missing this month for the group\'s targets</span>' +
+        '<button type="button" class="btn primary" data-fund="g:' + g.id + '"' + (fundable > 0 ? '' : ' disabled') + '>Fund the targets (' + f(fundable) + ')</button></div>' : '') +
+      '<div class="sec"><h5>Categories in the group</h5>' + g.cats.map(function (c) {
         return '<button type="button" class="jump" data-cat="' + c.id + '"><b>' + esc(c.name) + '</b>' + cell(byId[c.id]) + '</button>';
       }).join('') + '</div>';
   }
@@ -1099,35 +1100,35 @@ button{cursor:pointer}
     var todo = keys.filter(function (k) { return overspent.indexOf(k) >= 0; }).concat(keys.filter(function (k) { return overspent.indexOf(k) < 0 && needsMoney(byId[k]); }));
     var late = state.sched.filter(function (s) { return overdue(s.due); });
     var starts = keys.filter(function (k) { return byId[k].c.start; });
-    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Riepilogo del mese</h4></div>' +
-      '<div class="sec" style="gap:8px"><span class="state-l">Da assegnare</span><span class="big n' + (r < 0 ? ' cash' : '') + '">' + f(r) + '</span>' +
-      '<p class="explain">' + (r > 0 ? 'Soldi arrivati e non ancora assegnati. Assegnali alle categorie o ai mesi futuri.' : r === 0 ? 'Tutti i soldi arrivati sono assegnati.' : 'Hai assegnato più soldi di quelli che hai: togline da qualche categoria.') + '</p></div>' +
-      '<div class="gstats"><div><small>Categorie</small><b class="n">' + keys.length + '</b></div>' +
-      '<div><small>Sforate</small><b class="n' + (overspent.length ? ' bad' : '') + '">' + overspent.length + '</b></div>' +
-      '<div><small>Da finanziare</small><b class="n' + (todo.length - overspent.length ? ' warn' : '') + '">' + (todo.length - overspent.length) + '</b></div></div>' +
-      (todo.length || late.length ? '<div class="sec"><h5>Da sistemare</h5>' + todo.map(function (k) {
+    return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Month summary</h4></div>' +
+      '<div class="sec" style="gap:8px"><span class="state-l">Unassigned</span><span class="big n' + (r < 0 ? ' cash' : '') + '">' + f(r) + '</span>' +
+      '<p class="explain">' + (r > 0 ? 'Money that has arrived and is not assigned yet to a category or a future month.' : r === 0 ? 'All the money that has arrived is assigned.' : 'You assigned more than you have: take money back from a category.') + '</p></div>' +
+      '<div class="gstats"><div><small>Categories</small><b class="n">' + keys.length + '</b></div>' +
+      '<div><small>Overspent</small><b class="n' + (overspent.length ? ' bad' : '') + '">' + overspent.length + '</b></div>' +
+      '<div><small>Underfunded</small><b class="n' + (todo.length - overspent.length ? ' warn' : '') + '">' + (todo.length - overspent.length) + '</b></div></div>' +
+      (todo.length || late.length ? '<div class="sec"><h5>To fix</h5>' + todo.map(function (k) {
         var x = byId[k], t = target(x);
-        var right = x.credit + x.cash > 0 ? cell(x) : x.uncovered > 0 ? '<span class="goal need">da coprire ' + f(x.uncovered) + '</span>' : x.short > 0 ? '<span class="goal need">mancano ' + f(x.short) + ' per le programmate</span>' : '<span class="goal need">' + esc(t.text) + '</span>';
+        var right = x.credit + x.cash > 0 ? cell(x) : x.uncovered > 0 ? '<span class="goal need">' + f(x.uncovered) + ' to cover</span>' : x.short > 0 ? '<span class="goal need">' + f(x.short) + ' missing for what is scheduled</span>' : '<span class="goal need">' + esc(t.text) + '</span>';
         return '<button type="button" class="jump" data-cat="' + k + '"><b>' + esc(x.c.name) + '</b>' + right + '</button>';
       }).join('') + late.map(function (s) {
-        return '<button type="button" class="jump" data-panel="sched"><b>' + esc(s.payee) + '</b><span class="goal">da registrare, ' + dLabel(s.due) + '</span></button>';
+        return '<button type="button" class="jump" data-panel="sched"><b>' + esc(s.payee) + '</b><span class="goal">to record, ' + dLabel(s.due) + '</span></button>';
       }).join('') + '</div>' : '') +
-      '<div class="sec"><h5>Conto del mese</h5>' + line('Riportato da agosto', f(sums.carried)) + line('Assegnato a settembre', f(sums.assigned)) +
-      line('Movimenti', f(sums.activity)) + line('Prenotato per le programmate', f(-sums.reserved)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Già assegnati a ottobre', f(future())) + line('Giorni di margine', '38 giorni') + '</div>' +
-      '<div class="sec"><h5>Quadratura</h5>' + line('Da assegnare', f(r)) + line('Disponibile nelle categorie', f(sums.avail)) + line('Prenotato per le programmate', f(sums.reserved)) + line('Già assegnati a ottobre', f(future())) +
-      line('Spese con carta non coperte, questo mese', f(sums.credit)) +
-      '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Soldi nei conti in budget (carte escluse)</span><span class="dots"></span><span class="n">' + f(r + sums.avail + sums.reserved + future() + sums.credit) + '</span></div>' +
-      '<p class="explain" style="font-size:13px">Il budget torna sempre con i conti: ogni euro nei conti è da assegnare, in una categoria, prenotato per una spesa programmata, già assegnato ai mesi futuri o serve a coprire spese fatte con la carta.' +
-      (starts.length ? ' Il saldo iniziale della ' + starts.map(function (k) { return byId[k].c.name; }).join(' e della ') + ' non entra: è debito che avevi già, non soldi usciti dai conti.' : '') + '</p></div>' +
-      '<p class="explain" style="font-size:13px;color:var(--muted)">Clicca su una categoria per aprirne il dettaglio nella sua riga, o sul nome di un gruppo per vederne il riepilogo qui.</p>';
+      '<div class="sec"><h5>The month in numbers</h5>' + line('Carried over from August', f(sums.carried)) + line('Assigned this month', f(sums.assigned)) +
+      line('Activity', f(sums.activity)) + line('Reserved for scheduled transactions', f(-sums.reserved)) + line('Available in categories', f(sums.avail)) + line('From this month\'s money, assigned to later months', f(future())) + line('Days of buffer', '38 days') + '</div>' +
+      '<div class="sec"><h5>How it adds up</h5>' + line('Unassigned', f(r)) + line('Available in categories', f(sums.avail)) + line('Reserved for scheduled transactions', f(sums.reserved)) + line('From this month\'s money, assigned to later months', f(future())) +
+      line('Card spending not covered, this month', f(sums.credit)) +
+      '<div class="qa" style="cursor:default;border-bottom:0;border-top:1px solid var(--rule-strong);font-weight:700;color:var(--ink)"><span>Money in on-budget accounts (cards excluded)</span><span class="dots"></span><span class="n">' + f(r + sums.avail + sums.reserved + future() + sums.credit) + '</span></div>' +
+      '<p class="explain" style="font-size:13px">The budget always matches the accounts: every euro in them is unassigned, in a category, reserved for a scheduled expense, assigned to a future month, or covering card spending.' +
+      (starts.length ? ' The starting balance of the ' + starts.map(function (k) { return byId[k].c.name; }).join(' and of the ') + ' is not included: it is debt you already had, not money that left the accounts.' : '') + '</p></div>' +
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Click a category to open its detail in its row, or a group name to see its summary here.</p>';
   }
 
   // ---- Move money: one form for "Assign" (from unassigned) and "Move money" (between categories) ----
   // o.rta: offer "unassigned"; o.avail: only categories with money (plus the selected one); o.pick: a "choose" placeholder.
   function mvOptions(byId, sel, o) {
     var out = '';
-    if (o.pick && !sel) out += '<option value="" selected>Scegli una categoria</option>';
-    if (o.rta) out += '<option value="rta"' + (sel === 'rta' ? ' selected' : '') + '>Da assegnare (' + f(rta()) + ')</option>';
+    if (o.pick && !sel) out += '<option value="" selected>Choose a category</option>';
+    if (o.rta) out += '<option value="rta"' + (sel === 'rta' ? ' selected' : '') + '>Unassigned (' + f(rta()) + ')</option>';
     GROUPS.forEach(function (g) {
       var opts = g.cats.filter(function (c) { return !o.avail || byId[c.id].avail > 0 || c.id === sel; }).map(function (c) {
         return '<option value="' + c.id + '"' + (sel === c.id ? ' selected' : '') + '>' + esc(c.name) + ' (' + f(byId[c.id].avail) + ')</option>';
@@ -1140,22 +1141,22 @@ button{cursor:pointer}
     var m = state.mv, amount = parseAmount(m.amt), r = rta();
     var from = m.from === 'rta' ? null : m.from, to = m.to === 'rta' ? null : (m.to || undefined);
     var month = from === null && to !== null ? Number(m.month) : CUR;
-    if (to === undefined) return { err: 'Scegli dove mettere i soldi.' };
-    if (from === to) return { err: 'Origine e destinazione sono la stessa.' };
-    if (amount === null || amount <= 0) return { err: 'Scrivi un importo, per esempio 20 oppure 20,00.' };
-    if (from !== null && amount > Math.max(0, byId[from].avail)) return { err: nm(from) + (byId[from].avail > 0 ? ' ha solo ' + f(byId[from].avail) + ' disponibili.' : ' non ha disponibile da spostare.') };
+    if (to === undefined) return { err: 'Choose where to put the money.' };
+    if (from === to) return { err: 'The source and destination are the same.' };
+    if (amount === null || amount <= 0) return { err: 'Enter an amount, for example 20 or 20.00.' };
+    if (from !== null && amount > Math.max(0, byId[from].avail)) return { err: nm(from) + (byId[from].avail > 0 ? ' has only ' + f(byId[from].avail) + ' available.' : ' has no money available to move.') };
     var lines = [];
     function ba(label, a, b) { return '<div class="ba"><span>' + esc(label) + '</span><span class="n">' + f(a) + ' → <b>' + f(b) + '</b></span></div>'; }
-    if (from === null) lines.push(ba('Da assegnare', r, r - amount)); else lines.push(ba(nm(from), byId[from].avail, byId[from].avail - amount));
-    if (to === null) lines.push(ba('Da assegnare', r, r + amount));
-    else if (month !== CUR) lines.push(ba('Già assegnati a ' + monthName(month - 2026 * 12), future(), future() + amount));
+    if (from === null) lines.push(ba('Unassigned', r, r - amount)); else lines.push(ba(nm(from), byId[from].avail, byId[from].avail - amount));
+    if (to === null) lines.push(ba('Unassigned', r, r + amount));
+    else if (month !== CUR) lines.push(ba('Already assigned to ' + monthName(month - 2026 * 12), future(), future() + amount));
     else {
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
       var gap = needOf(y);
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'Il debito della carta è tutto coperto.' : y.credit > 0 ? (amount > gap ? 'La parte sforata in contanti è coperta. Gli altri ' + f(Math.min(amount - gap, y.credit)) + ' coprono spese con la carta e vanno alla carta.' : 'La parte sforata in contanti è coperta.') : y.real < 0 ? 'Lo sforamento è coperto.' : 'Le spese programmate sono coperte.') : 'Ne mancano ancora ' + f(gap - amount) + '.') + '</div>');
+      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
     }
-    var warn = from === null && amount > r ? 'Da assegnare scenderà sotto zero: stai assegnando soldi che non sono ancora arrivati.' : '';
+    var warn = from === null && amount > r ? 'Unassigned will go below zero: you are assigning money that has not arrived yet.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
   }
   function mvPreview(byId) {
@@ -1166,16 +1167,16 @@ button{cursor:pointer}
   function moveHtml(byId, p) {
     var m = state.mv, fromRta = m.from === 'rta';
     var ck = mvCheck(byId);
-    var months = fromRta && m.to !== 'rta' ? '<div class="field"><label for="' + p + 'mv-month">Per il mese</label><select id="' + p + 'mv-month" data-mv="month">' +
-      [CUR, CUR + 1, CUR + 2].map(function (n) { return '<option value="' + n + '"' + (Number(m.month) === n ? ' selected' : '') + '>' + monthName(n - 2026 * 12) + ' 2026' + (n === CUR ? '' : ' (mese futuro)') + '</option>'; }).join('') + '</select></div>' : '';
-    return (p ? '' : CLOSE) + '<div><span class="where">Famiglia · settembre 2026</span><h4>' + (fromRta ? 'Assegna' : 'Sposta denaro') + '</h4></div>' +
-      '<p class="explain">' + (fromRta ? 'Dai a una categoria una parte dei soldi arrivati e non ancora assegnati, per questo mese o per uno futuro.' : 'Sposta soldi già assegnati da una categoria a un’altra, o riportali in «da assegnare». Ogni spostamento è una sola riga nel registro delle assegnazioni, e si annulla con una riga uguale e contraria.') + '</p>' +
-      '<div class="field"><label for="' + p + 'mv-from">Da</label><select id="' + p + 'mv-from" data-mv="from">' + mvOptions(byId, m.from, { rta: true, avail: true }) + '</select></div>' +
-      '<div class="field"><label for="' + p + 'mv-to">A</label><select id="' + p + 'mv-to" data-mv="to">' + mvOptions(byId, m.to, { rta: m.from !== 'rta', pick: true }) + '</select></div>' +
+    var months = fromRta && m.to !== 'rta' ? '<div class="field"><label for="' + p + 'mv-month">For the month</label><select id="' + p + 'mv-month" data-mv="month">' +
+      [CUR, CUR + 1, CUR + 2].map(function (n) { return '<option value="' + n + '"' + (Number(m.month) === n ? ' selected' : '') + '>' + monthName(n - 2026 * 12) + ' 2026' + (n === CUR ? '' : ' (future month)') + '</option>'; }).join('') + '</select></div>' : '';
+    return (p ? '' : CLOSE) + '<div><span class="where">Family · September 2026</span><h4>' + (fromRta ? 'Assign' : 'Move money') + '</h4></div>' +
+      '<p class="explain">' + (fromRta ? 'Give a category some of the money that has arrived and is not assigned yet, for this month or a future one.' : 'Move money already assigned from one category to another, or back to unassigned. Each move is one line in the assignment ledger, undone by an equal and opposite line.') + '</p>' +
+      '<div class="field"><label for="' + p + 'mv-from">From</label><select id="' + p + 'mv-from" data-mv="from">' + mvOptions(byId, m.from, { rta: true, avail: true }) + '</select></div>' +
+      '<div class="field"><label for="' + p + 'mv-to">To</label><select id="' + p + 'mv-to" data-mv="to">' + mvOptions(byId, m.to, { rta: m.from !== 'rta', pick: true }) + '</select></div>' +
       months +
-      '<div class="field"><label for="' + p + 'mv-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="' + p + 'mv-amt" data-mv="amt" value="' + esc(m.amt) + '"><span>€</span></span></div>' +
+      '<div class="field"><label for="' + p + 'mv-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="' + p + 'mv-amt" data-mv="amt" value="' + esc(m.amt) + '"><span>€</span></span></div>' +
       '<div class="preview" id="' + p + 'mv-prev" aria-live="polite">' + mvPreview(byId) + '</div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" id="' + p + 'mv-go" data-mvgo="1"' + (ck.err ? ' disabled' : '') + '>' + (fromRta ? 'Assegna' : 'Sposta') + (ck.err ? '' : ' ' + f(ck.amount)) + '</button><button type="button" class="btn" data-mvcancel="1">Annulla</button></div>';
+      '<div class="row-btns"><button type="button" class="btn primary" id="' + p + 'mv-go" data-mvgo="1"' + (ck.err ? ' disabled' : '') + '>' + (fromRta ? 'Assign' : 'Move') + (ck.err ? '' : ' ' + f(ck.amount)) + '</button><button type="button" class="btn" data-mvcancel="1">Cancel</button></div>';
   }
   function openMove(spec, where) {
     var byId = compute(), m = { from: 'rta', to: '', amt: '', month: CUR, where: where };
@@ -1197,12 +1198,12 @@ button{cursor:pointer}
 
   // ---- Quick assign ----
   var QK = [
-    ['targets', 'Finanzia gli obiettivi', 'Porta ogni categoria a quanto chiede il suo obiettivo questo mese.'],
-    ['res', 'Copri le spese programmate', 'Aggiunge quello che manca alle categorie che non bastano per le spese programmate del mese.'],
-    ['over', 'Copri gli sforamenti', 'Copre quanto le categorie hanno speso in contanti oltre il disponibile e quello che manca per le loro spese programmate. Quanto speso con la carta fa già parte del debito delle carte.'],
-    ['debt', 'Copri il debito delle carte', 'Mette da parte quello che manca per pagare le carte, saldo iniziale compreso.'],
-    ['lastA', 'Come assegnato ad agosto', 'Porta l’assegnato di ogni categoria almeno a quello di agosto.'],
-    ['lastS', 'Come speso ad agosto', 'Porta l’assegnato di ogni categoria almeno a quanto ci hai speso ad agosto.']
+    ['targets', 'Fund the targets', 'Brings each category up to what its target asks this month.'],
+    ['res', 'Cover the scheduled transactions', 'Adds what is missing to the categories that are short for the month\'s scheduled transactions.'],
+    ['over', 'Cover overspending', 'Covers what categories spent in cash beyond what was available, and what is missing for their scheduled transactions. Card spending is already part of the cards\' debt.'],
+    ['debt', 'Cover the cards\' debt', 'Sets aside what is missing to pay the cards, starting balance included.'],
+    ['lastA', 'As assigned last month', 'Brings each category\'s assigned amount up to at least August\'s.'],
+    ['lastS', 'As spent last month', 'Brings each category\'s assigned amount up to at least what was spent in it in August.']
   ];
   function qaNeeds(kind, byId, scope) {
     var out = [];
@@ -1229,21 +1230,21 @@ button{cursor:pointer}
     var opts = QK.map(function (k) {
       var list = qaNeeds(k[0], byId, q.scope), tot = sum(list, function (z) { return z[1]; });
       return '<label class="opt"><input type="radio" name="qakind" value="' + k[0] + '" data-qa="kind"' + (q.kind === k[0] ? ' checked' : '') + '>' +
-        '<span><b>' + k[1] + '</b><small>' + k[2] + '</small><small class="n" style="color:var(--ink-2)">' + (list.length ? list.length + (list.length === 1 ? ' categoria, ' : ' categorie, ') + f(tot) : 'Niente da fare') + '</small></span></label>';
+        '<span><b>' + k[1] + '</b><small>' + k[2] + '</small><small class="n" style="color:var(--ink-2)">' + (list.length ? list.length + (list.length === 1 ? ' category, ' : ' categories, ') + f(tot) : 'Nothing to do') + '</small></span></label>';
     }).join('');
     var list = qaNeeds(q.kind, byId, q.scope), give = sum(list, function (z) { return z[2]; }), want = sum(list, function (z) { return z[1]; });
     var prev = list.length ? list.map(function (z) {
-      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' di ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
-    }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Da assegnare</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
-      (give < want ? '<div class="ba note" style="color:var(--warn)">Da assegnare non basta per tutto: le categorie ricevono soldi nell’ordine della tabella finché ce ne sono.</div>' : '')
-      : '<span style="color:var(--muted)">Per questa scelta non c’è niente da assegnare.</span>';
-    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Assegnazione rapida</h4></div>' +
-      '<div class="field"><label for="qa-scope">Categorie</label><select id="qa-scope" data-qa="scope"><option value="all">Tutte le categorie</option>' +
+      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
+    }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Unassigned</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
+      (give < want ? '<div class="ba note" style="color:var(--warn)">Unassigned is not enough for everything: categories get money in the order of the table while it lasts.</div>' : '')
+      : '<span style="color:var(--muted)">Nothing to assign for this choice.</span>';
+    return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Quick assign</h4></div>' +
+      '<div class="field"><label for="qa-scope">Scope</label><select id="qa-scope" data-qa="scope"><option value="all">All categories</option>' +
       GROUPS.map(function (g) { return '<option value="' + g.id + '"' + (q.scope === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select></div>' +
-      '<fieldset class="types"><legend>Cosa assegnare</legend>' + opts + '</fieldset>' +
+      '<fieldset class="types"><legend>Mode</legend>' + opts + '</fieldset>' +
       '<div class="preview">' + prev + '</div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" data-qaapply="1"' + (give > 0 ? '' : ' disabled') + '>Assegna ' + f(give) + '</button></div>' +
-      '<p class="explain" style="font-size:13px;color:var(--muted)">Ogni categoria riceve una riga nel registro delle assegnazioni; «Annulla» le toglie tutte insieme.</p>';
+      '<div class="row-btns"><button type="button" class="btn primary" data-qaapply="1"' + (give > 0 ? '' : ' disabled') + '>Run</button></div>' +
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Each category gets one line in the assignment ledger; “Undo” removes them all together.</p>';
   }
 
   // ---- Scheduled transactions panel ----
@@ -1257,12 +1258,12 @@ button{cursor:pointer}
       if (sp && sp.type !== 'balance') per = sp.type === 'monthly' ? sp.amount : plan(sp, x).per;
       var items = oct.filter(function (s) { return s.cat === k; }).sort(function (a, b) { return a.due.d - b.due.d; });
       var st, cls = '';
-      if (per !== null && per >= byCat[k]) { st = 'dentro l’obiettivo (' + describe(sp) + ')'; inT += byCat[k]; }
-      else if (per !== null) { st = 'l’obiettivo chiede ' + f(per) + ': mancano ' + f(byCat[k] - per); cls = ' need'; inT += per; }
-      else { st = 'senza obiettivo'; cls = ' need'; }
+      if (per !== null && per >= byCat[k]) { st = 'Within the target (' + describe(sp) + ')'; inT += byCat[k]; }
+      else if (per !== null) { st = 'The target asks ' + f(per) + ': ' + f(byCat[k] - per) + ' missing'; cls = ' need'; inT += per; }
+      else { st = 'No target'; cls = ' need'; }
       rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return esc(s.payee); }).join(', ') + '</small>' +
         '<span class="goal' + cls + '">' + esc(st) + '</span></span><span class="n">' + f(-byCat[k]) + '</span>' +
-        (per === null ? '<span class="sch-b"><button type="button" class="plain" data-sugg="' + k + '">Usa come obiettivo</button></span>' : '<span></span>') + '</div>';
+        (per === null ? '<span class="sch-b"><button type="button" class="plain" data-sugg="' + k + '">Use as target</button></span>' : '<span></span>') + '</div>';
     });
     return { total: total, inT: inT, n: oct.length, rows: rows };
   }
@@ -1273,49 +1274,49 @@ button{cursor:pointer}
     var inc = now.filter(function (s) { return s.income; });
     var reserved = sum(now.filter(function (s) { return !s.income; }), function (s) { return s.amount; });
     var o = octPreview(byId);
-    return CLOSE + '<div><span class="where">Famiglia · settembre 2026</span><h4>Spese programmate</h4></div>' +
-      '<div class="gstats"><div><small>Prenotato a settembre</small><b class="n">' + f(reserved) + '</b></div>' +
-      '<div><small>Da registrare</small><b class="n">' + late.length + '</b></div>' +
-      '<div><small>Previsto a ottobre</small><b class="n">' + f(o.total) + '</b></div></div>' +
-      '<p class="explain">Una spesa programmata prenota i suoi soldi nella categoria dal primo giorno del mese: il disponibile li mostra già tolti. Quando la registri diventa un movimento e il disponibile non cambia.</p>' +
-      (late.length ? '<div class="sec"><h5>Da registrare</h5>' + late.map(function (s) { return schedRow(s, true); }).join('') +
-        '<p class="explain" style="font-size:13px">La data è passata ma la spesa non è nel registro: resta prenotata finché non la registri o la salti.</p></div>' : '') +
-      '<div class="sec"><h5>Entro fine settembre</h5>' + (soon.map(function (s) { return schedRow(s, true); }).join('') || '<span style="color:var(--muted)">Nessuna.</span>') + '</div>' +
-      (inc.length ? '<div class="sec"><h5>Entrate previste</h5>' + inc.map(function (s) { return schedRow(s, true); }).join('') +
-        '<p class="explain" style="font-size:13px">Le entrate non prenotano nulla: quando le registri, arrivano in «da assegnare».</p></div>' : '') +
-      '<div class="sec"><h5>Anteprima: inizio di ottobre</h5><p class="explain">Il 1° ottobre verranno prenotati <b class="n">' + f(o.total) + '</b> per ' + o.n + ' spese programmate' +
-        (o.total ? ': <b class="n">' + f(o.inT) + '</b> sono già dentro un obiettivo' + (o.total - o.inT > 0 ? ', per <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> serve assegnare a mano' : '') : '') +
-        '. Aprendo ottobre, il riepilogo del mese parte da questo elenco.</p>' + o.rows + '</div>' +
-      (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ Nuova spesa programmata</button>');
+    return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Scheduled</h4></div>' +
+      '<div class="gstats"><div><small>Reserved this month</small><b class="n">' + f(reserved) + '</b></div>' +
+      '<div><small>To record</small><b class="n">' + late.length + '</b></div>' +
+      '<div><small>Expected next month</small><b class="n">' + f(o.total) + '</b></div></div>' +
+      '<p class="explain">A scheduled transaction reserves its own money in its category from the first day of the month: the available amount already shows it taken out. Recording it turns the reservation into a transaction; the available amount does not change.</p>' +
+      (late.length ? '<div class="sec"><h5>To record</h5>' + late.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">The date has passed but the expense is not in the register: it stays reserved until it is recorded or skipped.</p></div>' : '') +
+      '<div class="sec"><h5>By the end of the month</h5>' + (soon.map(function (s) { return schedRow(s, true); }).join('') || '<span style="color:var(--muted)">None.</span>') + '</div>' +
+      (inc.length ? '<div class="sec"><h5>Expected income</h5>' + inc.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">Income reserves nothing: once recorded, it lands in Unassigned.</p></div>' : '') +
+      '<div class="sec"><h5>Preview: the start of next month</h5><p class="explain">On October 1, <b class="n">' + f(o.total) + '</b> will be reserved for ' + o.n + ' scheduled expenses' +
+        (o.total ? ': <b class="n">' + f(o.inT) + '</b> is already within a target' + (o.total - o.inT > 0 ? ', and <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> is left to assign by hand' : '') : '') +
+        '. When October opens, the month summary starts from this list.</p>' + o.rows + '</div>' +
+      (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ New scheduled transaction</button>');
   }
   var SF_DAYS = (function () { var a = []; for (var d = 26; d <= 30; d++) a.push({ y: 2026, m: 9, d: d }); for (d = 1; d <= 31; d++) a.push({ y: 2026, m: 10, d: d }); return a; })();
   function sfKey(dt) { return dt.m + '-' + dt.d; }
   function sfPreview(byId) {
     var s = state.sf, amt = parseAmount(s.amt);
-    if (!s.payee.trim()) return '<span style="color:var(--red-text)">Scrivi a chi va il pagamento.</span>';
-    if (amt === null || amt <= 0) return '<span style="color:var(--red-text)">Scrivi un importo, per esempio 20 oppure 20,00.</span>';
-    if (s.kind === 'in') return 'Un’entrata non prenota nulla: quando la registri, arriva in «da assegnare».';
-    if (!s.cat) return '<span style="color:var(--red-text)">Scegli la categoria: ogni spesa ne ha una.</span>';
+    if (!s.payee.trim()) return '<span style="color:var(--red-text)">Write who this payment goes to.</span>';
+    if (amt === null || amt <= 0) return '<span style="color:var(--red-text)">Enter an amount, for example 20 or 20.00.</span>';
+    if (s.kind === 'in') return 'Income reserves nothing: once recorded, it lands in Unassigned.';
+    if (!s.cat) return '<span style="color:var(--red-text)">Choose a category: every expense has one.</span>';
     var x = byId[s.cat], due = SF_DAYS.filter(function (d) { return sfKey(d) === s.due; })[0];
-    if (ymOf(due) > CUR) return 'Prenoterà ' + f(amt) + ' in ' + esc(x.c.name) + ' dal 1° ' + monthName(due.m) + '.';
+    if (ymOf(due) > CUR) return 'Will reserve ' + f(amt) + ' in ' + esc(x.c.name) + ' from ' + monthName(due.m) + ' 1.';
     var after = x.avail - amt;
-    return 'Prenota subito ' + f(amt) + ' in ' + esc(x.c.name) + ': il disponibile passa da ' + f(x.avail) + ' a <b class="n">' + f(after) + '</b>.' +
-      (after < 0 ? '<br><span style="color:var(--warn)">Non basta: mancano ' + f(-after) + '. È un avviso, non uno sforamento.</span>' : '');
+    return 'Reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' right away: available goes from ' + f(x.avail) + ' to <b class="n">' + f(after) + '</b>.' +
+      (after < 0 ? '<br><span style="color:var(--warn)">Not enough: ' + f(-after) + ' missing. This is not overspending.</span>' : '');
   }
   function sfHtml(byId) {
     var s = state.sf, x = s.cat ? byId[s.cat] : null;
     var canTarget = s.kind === 'out' && x && !specOf(x) && s.every > 0;
-    return '<div class="sec sf"><h5>Nuova spesa programmata</h5>' +
-      '<div class="seg" role="group" aria-label="Tipo"><button type="button" class="btn" data-sfkind="out" aria-pressed="' + (s.kind === 'out') + '">Spesa</button><button type="button" class="btn" data-sfkind="in" aria-pressed="' + (s.kind === 'in') + '">Entrata</button></div>' +
-      '<div class="field"><label for="sf-payee">' + (s.kind === 'in' ? 'Da chi' : 'A chi') + '</label><span class="money-in"><input type="text" id="sf-payee" data-sf="payee" value="' + esc(s.payee) + '" placeholder="Per esempio: Palestra"></span></div>' +
-      (s.kind === 'out' ? '<div class="field"><label for="sf-cat">Categoria</label><select id="sf-cat" data-sf="cat">' + mvOptions(byId, s.cat, { pick: true }) + '</select></div>' : '') +
-      '<div class="field"><label for="sf-acc">Conto</label><select id="sf-acc" data-sf="acc">' + ACCTS.filter(function (a) { return s.kind === 'out' || !a.card; }).map(function (a) { return '<option value="' + a.id + '"' + (s.acc === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="sf-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="sf-amt" data-sf="amt" value="' + esc(s.amt) + '"><span>€</span></span></div>' +
-      '<div class="two"><div class="field"><label for="sf-due">Prossima data</label><select id="sf-due" data-sf="due">' + SF_DAYS.map(function (d) { return '<option value="' + sfKey(d) + '"' + (s.due === sfKey(d) ? ' selected' : '') + '>' + dLabel(d) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="sf-every">Si ripete</label><select id="sf-every" data-sf="every">' + [0, 1, 3, 6, 12].map(function (n) { return '<option value="' + n + '"' + (Number(s.every) === n ? ' selected' : '') + '>' + everyLabel(n) + '</option>'; }).join('') + '</select></div></div>' +
-      (canTarget ? '<label class="chk"><input type="checkbox" data-sf="asTarget"' + (s.asTarget ? ' checked' : '') + '> Usala anche come obiettivo di ' + esc(x.c.name) + '</label>' : '') +
+    return '<div class="sec sf"><h5>New scheduled transaction</h5>' +
+      '<div class="seg" role="group" aria-label="Kind"><button type="button" class="btn" data-sfkind="out" aria-pressed="' + (s.kind === 'out') + '">Expense</button><button type="button" class="btn" data-sfkind="in" aria-pressed="' + (s.kind === 'in') + '">Income</button></div>' +
+      '<div class="field"><label for="sf-payee">' + (s.kind === 'in' ? 'Payee' : 'Payee') + '</label><span class="money-in"><input type="text" id="sf-payee" data-sf="payee" value="' + esc(s.payee) + '" placeholder="For example: Gym"></span></div>' +
+      (s.kind === 'out' ? '<div class="field"><label for="sf-cat">Category</label><select id="sf-cat" data-sf="cat">' + mvOptions(byId, s.cat, { pick: true }) + '</select></div>' : '') +
+      '<div class="field"><label for="sf-acc">Account</label><select id="sf-acc" data-sf="acc">' + ACCTS.filter(function (a) { return s.kind === 'out' || !a.card; }).map(function (a) { return '<option value="' + a.id + '"' + (s.acc === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="sf-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="sf-amt" data-sf="amt" value="' + esc(s.amt) + '"><span>€</span></span></div>' +
+      '<div class="two"><div class="field"><label for="sf-due">Next date</label><select id="sf-due" data-sf="due">' + SF_DAYS.map(function (d) { return '<option value="' + sfKey(d) + '"' + (s.due === sfKey(d) ? ' selected' : '') + '>' + dLabel(d) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="sf-every">Repeats</label><select id="sf-every" data-sf="every">' + [0, 1, 3, 6, 12].map(function (n) { return '<option value="' + n + '"' + (Number(s.every) === n ? ' selected' : '') + '>' + everyLabel(n) + '</option>'; }).join('') + '</select></div></div>' +
+      (canTarget ? '<label class="chk"><input type="checkbox" data-sf="asTarget"' + (s.asTarget ? ' checked' : '') + '> Use it as this category\'s target</label>' : '') +
       '<div class="preview" id="sf-prev" aria-live="polite">' + sfPreview(byId) + '</div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Salva</button><button type="button" class="btn" data-sfcancel="1">Annulla</button></div></div>';
+      '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Save</button><button type="button" class="btn" data-sfcancel="1">Cancel</button></div></div>';
   }
   function targetFromSched(cat, amount, every, due) {
     if (every === 1) return { type: 'monthly', amount: amount };
@@ -1330,7 +1331,7 @@ button{cursor:pointer}
     if (s.kind === 'in') item.income = true; else item.cat = s.cat;
     state.sched.push(item);
     if (s.kind === 'out' && s.asTarget && !specOf(byId[s.cat]) && item.every > 0) state.targets[s.cat] = targetFromSched(s.cat, amt, item.every, item.due);
-    state.toast = { text: 'Programmata: ' + item.payee + ', ' + f(item.income ? amt : -amt) + ' il ' + dLabel(item.due) + (ymOf(item.due) <= CUR && !item.income ? '. I soldi sono già prenotati.' : '.') };
+    state.toast = { text: 'Scheduled: ' + item.payee + ', ' + f(item.income ? amt : -amt) + ' on ' + dLabel(item.due) + (ymOf(item.due) <= CUR && !item.income ? '. The money is already reserved.' : '.') };
     state.sf = null;
     return true;
   }
@@ -1364,9 +1365,9 @@ button{cursor:pointer}
     if (x.c.payment) return '';
     var B = budgetOf(x), S = spentOf(x);
     // #728: overspent both ways, the two parts are named apart.
-    if (x.cash > 0 && x.credit > 0) return '<small class="spent n">' + f(x.cash) + ' sforati in contanti, ' + f(x.credit) + ' con la carta</small>';
-    var card = x.credit > 0 ? ' con la carta' : '';
-    return '<small class="spent n">' + (S > 0 ? f(S) + ' spesi' + card + (B > 0 ? ' di ' + f(B) : '') : (B > 0 ? f(B) + ' da spendere' : 'nessun movimento')) + '</small>';
+    if (x.cash > 0 && x.credit > 0) return '<small class="spent n">' + f(x.cash) + ' overspent in cash, ' + f(x.credit) + ' with a card</small>';
+    var card = x.credit > 0 ? ' with a card' : '';
+    return '<small class="spent n">' + (S > 0 ? f(S) + ' spent' + card + (B > 0 ? ' of ' + f(B) : '') : (B > 0 ? f(B) + ' to spend' : 'No activity')) + '</small>';
   }
   function rowLines(x) { return spentLine(x) + subLines(x); }
 
@@ -1376,7 +1377,7 @@ button{cursor:pointer}
       g.cats.forEach(function (c) {
         (c.txs || []).concat((state.rec[c.id] || []).map(function (r) { return r.tx; })).forEach(function (t) {
           if (t[4] === 'start') return;
-          ev.push({ d: Number(String(t[0]).split(' ')[0]), amount: -t[3], label: t[1], kind: 'out' });
+          ev.push({ d: Number(String(t[0]).split(' ')[1]), amount: -t[3], label: t[1], kind: 'out' });
         });
       });
     });
@@ -1387,9 +1388,9 @@ button{cursor:pointer}
     });
     return ev;
   }
-  var SHORT = { 'Banca, rata mutuo': 'mutuo', 'Trasferimento a Broker ETF': 'piano di accumulo', 'Pagamento della carta': 'Visa', 'Clinica veterinaria': 'veterinario', 'Tecnico caldaia': 'caldaia', 'Stipendio di Anna': 'stipendio', 'Film e serie in streaming': 'streaming', 'Supermercato': 'spesa' };
+  var SHORT = { 'Bank, mortgage payment': 'mortgage', 'Transfer to ETF broker': 'investment plan', 'Card payment': 'Visa', 'Vet clinic': 'vet', 'Boiler technician': 'boiler', "Anna's salary": 'salary', 'Streaming service': 'streaming', 'Supermarket': 'groceries' };
   function short(s) { return SHORT[s] || s.toLowerCase(); }
-  function euros(c) { return (c / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
+  function euros(c) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(c / 100); }
   // The month as a running total, day by day: not a value judgement (pen/ink, never red/amber —
   // those stay reserved for actual problems), dashed past "today" for what has not happened yet.
   function timelineSvg(byId, compact) {
@@ -1421,7 +1422,7 @@ button{cursor:pointer}
     // left of the plot, as wide as the widest amount (10px, at most about 6.2 units a character), so
     // the line never runs over a label and a long negative amount is never cut off (#405, #591).
     var ticks = [];
-    function tickLabel(v) { return (v < 0 ? '-' : '') + (Math.abs(v) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+    function tickLabel(v) { return (v < 0 ? '-' : '') + '€' + (Math.abs(v) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     if (!compact) {
       var rough = (maxV - minV) / 4, ex = Math.pow(10, Math.floor(Math.log10(rough))), fr = rough / ex;
       var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 5 ? 5 : 10) * ex;
@@ -1433,8 +1434,8 @@ button{cursor:pointer}
     var tx = x(today), zeroY = y(0), curY = y(actual[today]);
 
     var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' +
-      esc('Settembre, il totale del mese giorno per giorno: oggi è a ' + (actual[today] >= 0 ? '+' : '') + euros(actual[today]) + ' €' +
-        (projected[30] !== actual[today] ? ', con ' + (projected[30] - actual[today] >= 0 ? '+' : '') + euros(projected[30] - actual[today]) + ' € ancora previsti entro fine mese' : '') + '.') +
+      esc('September, the month\'s total day by day: today it is at ' + (actual[today] >= 0 ? '+' : '') + euros(actual[today]) +
+        (projected[30] !== actual[today] ? ', with ' + (projected[30] - actual[today] >= 0 ? '+' : '') + euros(projected[30] - actual[today]) + ' still expected by the end of the month' : '') + '.') +
       '">';
     out += '<rect x="' + tx + '" y="' + PT + '" width="' + (X1 - tx + 6) + '" height="' + plot + '" class="t-future"/>';
     ticks.forEach(function (t) {
@@ -1455,11 +1456,11 @@ button{cursor:pointer}
     }
     if (overdueHere !== 0) out += '<circle cx="' + tx + '" cy="' + y(projected[today]).toFixed(1) + '" r="3.5" class="t-overdue"/>';
 
-    out += '<line x1="' + tx + '" y1="4" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - (compact ? 4 : 6)) + '" y="16" class="t-today-l" text-anchor="end">' + (compact ? 'oggi' : 'oggi, ' + today) + '</text>';
+    out += '<line x1="' + tx + '" y1="4" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - (compact ? 4 : 6)) + '" y="16" class="t-today-l" text-anchor="end">' + (compact ? 'today' : 'today, ' + today) + '</text>';
     // The current value: a short dashed line at today's own height, out to the right edge, with
     // its amount — the equivalent of a price chart's own "current price" tag.
     out += '<line x1="' + tx + '" y1="' + curY.toFixed(1) + '" x2="' + X1 + '" y2="' + curY.toFixed(1) + '" class="t-cur"/>';
-    if (!compact) out += '<text x="' + (X1 - 2) + '" y="' + (curY - 5).toFixed(1) + '" text-anchor="end" class="t-cur-l">' + (actual[today] >= 0 ? '+' : '') + euros(actual[today]) + ' €</text>';
+    if (!compact) out += '<text x="' + (X1 - 2) + '" y="' + (curY - 5).toFixed(1) + '" text-anchor="end" class="t-cur-l">' + (actual[today] >= 0 ? '+' : '') + euros(actual[today]) + '</text>';
     return out + '</svg>';
   }
   function todos(byId) {
@@ -1467,39 +1468,39 @@ button{cursor:pointer}
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
       // #728: card overspending is no item of its own here; it is already in the card's debt below.
-      if (x.cash > 0) list.push({ dot: 'r', title: 'Coprire ' + x.c.name, sub: x.credit === 0 && x.short > 0 ? 'sforata in contanti e non basta per le programmate: va coperta entro il 30' : 'sforata in contanti: va coperta entro il 30', amount: needOf(x), cat: k });
+      if (x.cash > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.credit === 0 && x.short > 0 ? 'overspent in cash and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash: cover it before the month ends', amount: needOf(x), cat: k });
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
-      list.push({ dot: '', title: 'Registrare ' + s.payee, sub: 'programmata del ' + dLabel(s.due) + ', non ancora nel conto', amount: s.amount, rec: s.id });
+      list.push({ dot: '', title: 'Record ' + s.payee, sub: 'scheduled for ' + dLabel(s.due) + ', not yet in the account', amount: s.amount, rec: s.id });
     });
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
       if (x.short > 0 && x.credit + x.cash === 0) {
         var s = schedThisMonth(k)[0];
-        list.push({ dot: 'w', title: x.c.name + ': non basta per le programmate', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + 'mancano', amount: x.short, cat: k });
+        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + 'still missing', amount: x.short, cat: k });
       }
     });
-    Object.keys(byId).forEach(function (k) { var x = byId[k]; if (x.uncovered > 0 && x.cash === 0) list.push({ dot: 'w', title: 'Debito da coprire: ' + x.c.name, sub: x.c.start ? 'saldo iniziale della carta' : 'spese con la carta senza soldi messi da parte', amount: x.uncovered, cat: k }); });
+    Object.keys(byId).forEach(function (k) { var x = byId[k]; if (x.uncovered > 0 && x.cash === 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: x.uncovered, cat: k }); });
     var need = Object.keys(byId).filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
-    if (need.length) list.push({ dot: '', title: need.length === 1 ? 'Finanziare l’obiettivo di ' + byId[need[0]].c.name : 'Finanziare ' + need.length + ' obiettivi', sub: 'quello che manca questo mese', amount: sum(need, function (k) { return target(byId[k]).need; }), fund: need.length === 1 ? need[0] : 'all' });
-    if (rta() < 0) list.unshift({ dot: 'r', title: 'Hai assegnato più di quello che hai', sub: 'togli soldi da qualche categoria', amount: -rta(), panel: 'move' });
+    if (need.length) list.push({ dot: '', title: need.length === 1 ? 'Fund the ' + byId[need[0]].c.name + ' target' : 'Fund ' + need.length + ' targets', sub: 'what is still missing this month', amount: sum(need, function (k) { return target(byId[k]).need; }), fund: need.length === 1 ? need[0] : 'all' });
+    if (rta() < 0) list.unshift({ dot: 'r', title: 'You assigned more than you have', sub: 'take money back from a category', amount: -rta(), panel: 'move' });
     return list;
   }
   function todoHtml(byId, max) {
     var list = todos(byId), shown = max ? list.slice(0, max) : list;
-    if (!list.length) return '<h5>Da fare</h5><p class="explain">Niente da sistemare questo mese.</p>';
-    return '<h5>Da fare <span>' + (list.length === 1 ? '1 cosa' : list.length + ' cose') + '</span></h5>' + shown.map(function (t) {
+    if (!list.length) return '<h5>To do</h5><p class="explain">Nothing to fix this month.</p>';
+    return '<h5>To do <span>' + (list.length === 1 ? '1 thing' : list.length + ' things') + '</span></h5>' + shown.map(function (t) {
       var act = t.rec ? ' data-rec="' + t.rec + '"' : t.fund ? ' data-fund="' + t.fund + '"' : t.panel ? ' data-panel="' + t.panel + '"' : ' data-' + (max ? 'phcat' : 'cat') + '="' + t.cat + '" data-todo="1"';
-      var verb = t.rec ? 'Registra' : t.fund ? 'Finanzia' : t.panel ? 'Sposta' : 'Apri';
+      var verb = t.rec ? 'Record' : t.fund ? 'Fund' : t.panel ? 'Move' : 'Open';
       return '<button type="button" class="todo-i"' + act + '><span class="dot ' + t.dot + '"></span><span><b>' + esc(t.title) + '</b>' + (max ? '' : '<small>' + esc(t.sub) + '</small>') + '</span><span class="n">' + f(t.amount) + '<small class="go-l">' + verb + '</small></span></button>';
-    }).join('') + (max && list.length > max ? '<p class="explain" style="font-size:13px">e altre ' + (list.length - max) + '</p>' : '');
+    }).join('') + (max && list.length > max ? '<p class="explain" style="font-size:13px">+' + (list.length - max) + ' more</p>' : '');
   }
 
   function rowHtml(x, phone) {
     var c = x.c, open = !phone && state.sel === c.id;
     if (phone) return '<button type="button" class="pc pc2" data-phcat="' + c.id + '"><span class="pt"><span class="cn"><b>' + esc(c.name) + '</b>' + subLines(x) + '</span><span style="display:flex;align-items:center;gap:6px">' + cell(x) + NEXT + '</span></span>' + barHtml(x) + '</button>';
     return '<button type="button" class="brow" data-cat="' + c.id + '" aria-expanded="' + open + '"><span class="cn"><b>' + esc(c.name) + '</b>' + rowLines(x) + '</span>' + barHtml(x) + '<span class="av">' + cell(x) + '</span></button>' +
-      (open ? '<div class="inl" role="region" aria-label="Dettaglio di ' + esc(c.name) + '"><button type="button" class="plain closer" data-deselect="1" aria-label="Chiudi il dettaglio">× Chiudi</button><div class="inl-c">' + catDetail(compute(), x, '') + '</div></div>' : '');
+      (open ? '<div class="inl" role="region" aria-label="Detail for ' + esc(c.name) + '"><button type="button" class="plain closer" data-deselect="1" aria-label="Close the detail">× Close</button><div class="inl-c">' + catDetail(compute(), x, '') + '</div></div>' : '');
   }
 
   function render() {
@@ -1516,10 +1517,10 @@ button{cursor:pointer}
     el('rta').classList.toggle('low', r < 0); el('ph-rta').classList.toggle('low', r < 0);
     el('future').textContent = f(future());
     el('resv').textContent = f(reservedTotal);
-    el('time').innerHTML = '<h5>Settembre, giorno per giorno</h5>' + timelineSvg(byId, false) + '<p class="t-note">Quanto si è mosso finora questo mese, non il saldo del conto; tratteggiato quello che deve ancora succedere.</p>';
+    el('time').innerHTML = '<h5>September, day by day</h5>' + timelineSvg(byId, false) + '<p class="t-note">What has moved so far this month, not your account balance; dashed is what has not happened yet.</p>';
     el('todo').innerHTML = todoHtml(byId, 0);
 
-    var FILTERS = [['all', 'Tutte', keys.length, 'neutral'], ['under', 'Da finanziare', under.length, 'under'], ['over', 'Sforate', overspent.length, 'over'], ['avail', 'Con disponibile', withMoney.length, 'neutral']];
+    var FILTERS = [['all', 'All', keys.length, 'neutral'], ['under', 'Underfunded', under.length, 'under'], ['over', 'Overspent', overspent.length, 'over'], ['avail', 'With money', withMoney.length, 'neutral']];
     el('filters').innerHTML = FILTERS.map(function (fl) {
       return '<button type="button" data-filter="' + fl[0] + '" aria-pressed="' + (state.filter === fl[0]) + '">' + esc(fl[1]) + count(fl[2], fl[3]) + '</button>';
     }).join('');
@@ -1527,7 +1528,7 @@ button{cursor:pointer}
     el('reset').disabled = lb === null;
     var t = state.toast;
     el('toast').hidden = !t;
-    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Chiudi il messaggio">×</button>';
+    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Close this message">×</button>';
 
     // Bars
     var body = '';
@@ -1537,12 +1538,12 @@ button{cursor:pointer}
       if (!rows && state.filter !== 'all') return;
       var open = !state.collapsed[g.id], on = state.sel === 'g:' + g.id;
       body += '<div class="bgr' + (on ? ' on' : '') + '"><span class="gh">' +
-        '<button type="button" class="chev" data-group="' + g.id + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Chiudi ' : 'Apri ') + esc(g.name) + '">' + CHEV + '</button>' +
+        '<button type="button" class="chev" data-group="' + g.id + '" aria-expanded="' + open + '" aria-label="' + (open ? 'Close ' : 'Open ') + esc(g.name) + '">' + CHEV + '</button>' +
         '<button type="button" class="gname" data-gsel="' + g.id + '" aria-pressed="' + on + '">' + esc(g.name) + '</button>' +
-        (s.over.length ? '<span class="count over n" title="Categorie sforate">' + s.over.length + '</span>' : '') + '</span>' +
+        (s.over.length ? '<span class="count over n" title="Overspent categories">' + s.over.length + '</span>' : '') + '</span>' +
         '<span class="n gsum">' + f(s.avail) + '</span></div>' + (open ? rows : '');
     });
-    el('table').innerHTML = body || '<div class="empty">Nessuna categoria con questo filtro.</div>';
+    el('table').innerHTML = body || '<div class="empty">No categories match this filter.</div>';
 
     // The side sheet holds the month-wide tools; a category's detail opens in its own row.
     var desk = document.querySelector('.desk');
@@ -1561,7 +1562,7 @@ button{cursor:pointer}
 
     // Phone
     el('ph-toast').hidden = !t || !!state.ph;
-    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Annulla</button>' : '');
+    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '');
     el('ph-home').hidden = !!state.ph;
     el('ph-detail').hidden = !state.ph;
     if (state.ph) {
@@ -1606,7 +1607,7 @@ button{cursor:pointer}
     inp.dataset.done = '1';
     var cat = inp.dataset.asg, x = compute()[cat], s = inp.value.trim().replace('−', '-');
     var rel = /^[+\-]/.test(s), v = parseAmount(rel ? s.slice(1) : s);
-    if (v === null) { state.toast = { text: 'Importo non valido: l’assegnato di ' + x.c.name + ' non è cambiato.' }; return render(); }
+    if (v === null) { state.toast = { text: 'Not a valid amount: the amount assigned to ' + x.c.name + ' did not change.' }; return render(); }
     var goal = rel ? x.assigned + (s[0] === '+' ? v : -v) : v, diff = goal - x.assigned;
     if (diff === 0) return;
     addBatch([diff > 0 ? { from: null, to: cat, amount: diff } : { from: cat, to: null, amount: -diff }], moveText(diff > 0 ? null : cat, diff > 0 ? cat : null, Math.abs(diff)));
@@ -1633,7 +1634,7 @@ button{cursor:pointer}
       byId = compute();
       var ids = d.fund === 'all' ? Object.keys(CAT) : d.fund.indexOf('g:') === 0 ? GROUPS.filter(function (g) { return 'g:' + g.id === d.fund; })[0].cats.map(function (c) { return c.id; }) : [d.fund];
       var list = fundList(ids, byId);
-      if (list.length) addBatch(list, list.length === 1 ? moveText(null, list[0].to, list[0].amount) : 'Finanziati ' + list.length + ' obiettivi per ' + f(sum(list, function (z) { return z.amount; })) + '.');
+      if (list.length) addBatch(list, list.length === 1 ? moveText(null, list[0].to, list[0].amount) : 'Funded ' + list.length + ' targets with ' + f(sum(list, function (z) { return z.amount; })) + '.');
       return render();
     }
     if (d.qset) {
@@ -1643,13 +1644,13 @@ button{cursor:pointer}
     }
     if (d.qaapply) {
       var ql = qaNeeds(state.qa.kind, compute(), state.qa.scope).filter(function (z) { return z[2] > 0; });
-      if (ql.length) addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }), 'Assegnazione rapida: ' + f(sum(ql, function (z) { return z[2]; })) + ' in ' + ql.length + (ql.length === 1 ? ' categoria.' : ' categorie.'));
+      if (ql.length) addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }), 'Quick assign: ' + f(sum(ql, function (z) { return z[2]; })) + ' to ' + ql.length + (ql.length === 1 ? ' category.' : ' categories.'));
       return render();
     }
-    if (d.undo) { var en = allEntries().filter(function (x) { return x.id === d.undo; })[0]; undoEntries([en], 'Annullata la riga del ' + en.date + ': ' + moveText(en.from, en.to, en.amount, en.month).toLowerCase()); return render(); }
-    if (d.toastundo) { undoEntries(batchEntries(Number(d.toastundo)), 'Annullato.'); return render(); }
+    if (d.undo) { var en = allEntries().filter(function (x) { return x.id === d.undo; })[0]; undoEntries([en], 'Undid the entry of ' + en.date + ': ' + moveText(en.from, en.to, en.amount, en.month).toLowerCase()); return render(); }
+    if (d.toastundo) { undoEntries(batchEntries(Number(d.toastundo)), 'Undone.'); return render(); }
     if (d.toastclose) { state.toast = null; return render(); }
-    if (b.id === 'reset') { var lb = lastBatch(); if (lb !== null) undoEntries(batchEntries(lb), 'Annullata l’ultima assegnazione.'); return render(); }
+    if (b.id === 'reset') { var lb = lastBatch(); if (lb !== null) undoEntries(batchEntries(lb), 'Undid the last assignment.'); return render(); }
     if (d.mvopen) { openMove(d.mvopen === 'rta' ? null : d.mvopen, inPhone(b) ? 'ph' : 'desk'); if (d.mvopen === 'rta') state.mv.from = 'rta'; render(); var ia = el((inPhone(b) ? 'ph-' : '') + 'mv-amt'); if (ia && state.mv.to) ia.focus(); return; }
     if (d.mvgo) {
       var ck = mvCheck(compute());
@@ -1666,7 +1667,7 @@ button{cursor:pointer}
       var it = state.sched.filter(function (s) { return s.cat === d.sugg && ymOf(s.due) === CUR + 1; });
       var tot = sum(it, function (s) { return s.amount; });
       state.targets[d.sugg] = it.length === 1 ? targetFromSched(d.sugg, tot, it[0].every, it[0].due) : { type: 'monthly', amount: tot };
-      state.toast = { text: 'Nuovo obiettivo per ' + nm(d.sugg) + ': ' + describe(state.targets[d.sugg]) + '.' };
+      state.toast = { text: 'New target for ' + nm(d.sugg) + ': ' + describe(state.targets[d.sugg]) + '.' };
       return render();
     }
     if (d.sfnew) { state.sf = { payee: '', kind: 'out', cat: '', acc: 'cc', amt: '', due: '9-30', every: 1, asTarget: true }; render(); var ip = el('sf-payee'); if (ip) ip.focus(); return; }
@@ -1711,7 +1712,7 @@ button{cursor:pointer}
     el(p + 'mv-prev').innerHTML = mvPreview(byId);
     var go = el(p + 'mv-go');
     go.disabled = !!ck.err;
-    go.textContent = (state.mv.from === 'rta' ? 'Assegna' : 'Sposta') + (ck.err ? '' : ' ' + f(ck.amount));
+    go.textContent = (state.mv.from === 'rta' ? 'Assign' : 'Move') + (ck.err ? '' : ' ' + f(ck.amount));
   }
   document.addEventListener('input', function (e) {
     var ds = e.target.dataset || {};

@@ -6,7 +6,7 @@
 
 <img alt="The budget month, half in the light theme and half in the dark one, split along a diagonal: a mariner band with the month and unassigned money, the month as a running line of what has moved day by day next to a to-do list, and every category as a bar of what it was given, spent and reserved, with overspending in red or amber" src="docs/ux/screenshots/budget-month-split.png">
 
-> `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. Most screens on this page come from the real running app, in English; the portfolio and the phone screens come from the [interactive mockups](docs/ux/mockups/), which show the Italian translation. Every screenshot exists in a light and a dark version ([docs/ux/screenshots/](docs/ux/screenshots/)); the gallery below shows the one that matches your browser's theme.
+> `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. Most screens on this page come from the real running app, in English; the portfolio and the phone screens come from the [interactive mockups](docs/ux/mockups/), in English too. Every screenshot exists in a light and a dark version ([docs/ux/screenshots/](docs/ux/screenshots/)); the gallery below shows the one that matches your browser's theme.
 
 ## What it does
 
@@ -41,7 +41,7 @@
 | **Accounts panel** ([mockup](docs/ux/mockups/accounts-panel.html)) | |
 | <a href="docs/ux/screenshots/accounts-panel-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/accounts-panel-dark.png"><img alt="The accounts panel open beside an account register: the net worth at its head, then on-budget accounts, credit cards and off-budget accounts with their balances, the account on screen highlighted" src="docs/ux/screenshots/accounts-panel-light.png"></picture></a> | |
 
-The portfolio and the phone screens come from the mockups, in Italian (the portfolio has no screen in the app yet); every other screenshot is from the real running app, in English, over the demo workspace (`scripts/README.md`, "Reference screenshots"). "Choose a workspace" has no dedicated full-page mockup yet (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher).
+The portfolio and the phone screens come from the mockups, in English (the portfolio has no screen in the app yet); every other screenshot is from the real running app, in English, over the demo workspace (`scripts/README.md`, "Reference screenshots"). "Choose a workspace" has no dedicated full-page mockup yet (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher).
 
 ## Principles
 
