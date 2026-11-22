@@ -11,6 +11,10 @@
     "playwright-mixed": {
       "command": "sh",
       "args": ["-c", "exec sh \"$(git rev-parse --show-toplevel)/scripts/explore-env/playwright-mcp.sh\" mixed"]
+    },
+    "installer-sandbox": {
+      "command": "sh",
+      "args": ["-c", "exec node \"$(git rev-parse --show-toplevel)/scripts/install-env/sandbox-mcp.ts\""]
     }
   }
 }
