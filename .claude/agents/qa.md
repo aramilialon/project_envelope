@@ -21,7 +21,7 @@ The coordinator gives you the issue number, the branch, and its acceptance crite
    - money invariants: the budget always matches the accounts (the core's invariant tests stay green);
    - concurrency and repeats: double submission, a job delivered twice.
 4. **Test quality.** Tests assert behaviour, not implementation details; no fixed sleeps or timing assumptions; queries by role and label; no test that passes even when the code is broken (try to spot one per new test file).
-5. **Documentation.** READMEs, `docs/design.md`, how-to guides and ADRs updated where the change affects them; `CHANGELOG.md` has an "Unreleased" entry for user-visible changes; English only, no references to external products or people.
+5. **Documentation.** READMEs, `docs/design.md`, how-to guides and ADRs updated where the change affects them; a user-visible change has a changelog fragment in `changes/unreleased/` (format in its README, checked by `pnpm test`), and the branch does not edit `CHANGELOG.md` itself; English only, no references to external products or people.
 6. **Leftovers.** Debug output, commented-out code, TODOs without an issue, unrelated changes.
 
 ## Reproducing an explorer finding
