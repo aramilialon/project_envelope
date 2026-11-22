@@ -125,6 +125,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Credit card payments (the group) | Pagamenti delle carte di credito | Kreditkartenzahlungen | Pagos de tarjetas de crédito | Paiements des cartes de crédit | |
 | Card payment (paying the card) | Pagamento della carta | Kartenausgleich | Pago de la tarjeta | Règlement de la carte | Not *Kartenzahlung*, which means paying *with* a card |
 | Card spending | Spesa con la carta | Kartenausgaben | Gastos con tarjeta | Dépenses par carte | |
+| Credit on a card (a card balance in the user's favour; *in credit*) | Credito sulla carta; *in credito* | Guthaben auf der Karte; *im Guthaben* | Saldo a favor en la tarjeta; *con saldo a favor* | Crédit sur la carte; *créditrice* | A card paid beyond its debt (#660); the credit is used up by card spending. Not *Kredit* in German, which means a loan |
 
 ### Accounts
 
