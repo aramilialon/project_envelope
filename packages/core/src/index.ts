@@ -157,7 +157,14 @@ export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetPr
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
 export type { AccountsPanelGroups, ExcludedAmount, PanelAccount } from "./presentation/accountsPanel.ts";
 export { groupAccountsForPanel } from "./presentation/accountsPanel.ts";
-export type { InstrumentInput, InstrumentSearch, InstrumentTextField, InstrumentType, NormalizedInstrument } from "./portfolio/instrument.ts";
+export type {
+  InstrumentInput,
+  InstrumentSearch,
+  InstrumentTextField,
+  InstrumentType,
+  NormalizedInstrument,
+  PrivateInstrumentInput,
+} from "./portfolio/instrument.ts";
 export {
   assertIsin,
   INSTRUMENT_FIELD_MAX_LENGTH,
@@ -167,6 +174,7 @@ export {
   isinCheckDigit,
   isValidIsin,
   normalizeInstrument,
+  normalizePrivateInstrument,
   parseInstrumentSearch,
 } from "./portfolio/instrument.ts";
 export type {

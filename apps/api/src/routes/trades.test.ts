@@ -503,6 +503,41 @@ describe("trades routes (#77)", () => {
     await rejected({ ...base, accountId: await account(), portfolioId: foreignPortfolio }, "unknown_portfolio");
   });
 
+  it("records trades of the workspace's own private instrument, and refuses another workspace's, on create and on edit (#505)", async () => {
+    const elsewhere = await addWorkspace("owner");
+    const privateInstrument = async (ws: string): Promise<string> => {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${ws}/instruments`,
+        headers: await auth(),
+        payload: { name: "Flat in town", type: "other", currency: "EUR", assetClass: "Real estate" },
+      });
+      assert.equal(response.statusCode, 201, response.body);
+      return response.json().id;
+    };
+    const ours = await privateInstrument(workspaceId);
+    const theirs = await privateInstrument(elsewhere);
+    const broker = await account();
+    const growth = await portfolio();
+    const base = { type: "buy", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(250_000) };
+
+    const [bought] = await created({ ...base, instrumentId: ours });
+    assert.equal(bought!.instrumentId, ours);
+    await rejected({ ...base, instrumentId: theirs }, "unknown_instrument");
+    await rejected({ ...base, type: "fee", instrumentId: theirs, feesCents: 100, quantityE8: undefined, priceE6: undefined }, "unknown_instrument");
+
+    const moved = await app.fastify.inject({
+      method: "PATCH",
+      url: `/workspaces/${workspaceId}/trades/${bought!.id}`,
+      headers: await auth(),
+      payload: { instrumentId: theirs },
+    });
+    assert.equal(moved.statusCode, 400, moved.body);
+    assert.equal(moved.json().error, "unknown_instrument");
+    const { rows } = await superuserPool.query("SELECT instrument_id FROM trades WHERE id = $1", [bought!.id]);
+    assert.deepEqual(rows, [{ instrument_id: ours }]);
+  });
+
   it("refuses negative amounts, a misplaced tax kind, accrued interest on a non-bond and withholdings above the gross", async () => {
     const stock = await instrument("stock");
     const broker = await account();

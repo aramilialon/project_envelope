@@ -29,11 +29,23 @@ describe("prices (#82), as the envelope_app role", () => {
   let workspaceA: string;
   let workspaceB: string;
   let userA: string;
+  /** Workspace B's private instrument (#505): a known id workspace A must not be able to use. */
+  let privateOfB: string;
+  /** Workspace A's own private instrument. */
+  let privateOfA: string;
 
   async function createInstrument(name: string): Promise<string> {
     const { rows } = await superuserPool.query<{ id: string }>(
       "INSERT INTO instruments (ticker, exchange, name, type, currency) VALUES ($1, 'XMIL', $2, 'fund', 'EUR') RETURNING id",
       [`P${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`, name],
+    );
+    return rows[0]!.id;
+  }
+
+  async function createPrivateInstrument(workspaceId: string, name: string): Promise<string> {
+    const { rows } = await superuserPool.query<{ id: string }>(
+      "INSERT INTO instruments (workspace_id, name, type, currency) VALUES ($1, $2, 'other', 'EUR') RETURNING id",
+      [workspaceId, name],
     );
     return rows[0]!.id;
   }
@@ -87,6 +99,8 @@ describe("prices (#82), as the envelope_app role", () => {
     otherInstrumentId = await createInstrument("Prices test fund without prices");
     workspaceA = await createWorkspace("Prices A");
     workspaceB = await createWorkspace("Prices B");
+    privateOfA = await createPrivateInstrument(workspaceA, "Flat of A");
+    privateOfB = await createPrivateInstrument(workspaceB, "Flat of B");
     userA = (
       await superuserPool.query<{ id: string }>("INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id", [
         randomUUID(),
@@ -199,16 +213,70 @@ describe("prices (#82), as the envelope_app role", () => {
       });
     });
 
-    it("refuses a price on an instrument the caller cannot see", async () => {
-      // Every instrument is shared until #505; an unknown id stands in for another workspace's
-      // private instrument, which #505 adds to this test.
+    it("refuses a price on an instrument the caller cannot see: another workspace's private one, or an unknown id", async () => {
+      for (const hidden of [privateOfB, randomUUID()]) {
+        await as({ workspaceId: workspaceA }, async (client) => {
+          await rejectsWith(
+            () => upsertWorkspacePrices(client, workspaceA, hidden, [{ priceDate: "2026-04-01", closeE6: 1 }], "manual"),
+            CHECK_VIOLATION,
+            "instrument_not_found",
+          );
+        });
+      }
+      const { rows } = await superuserPool.query("SELECT 1 FROM prices WHERE instrument_id = $1", [privateOfB]);
+      assert.deepEqual(rows, []);
+    });
+
+    it("refuses a price of one workspace on another workspace's private instrument even to a caller that bypasses Row-Level Security", async () => {
+      await rejectsWith(
+        () =>
+          superuserPool.query(
+            "INSERT INTO prices (workspace_id, instrument_id, price_date, close_e6, source) VALUES ($1, $2, '2026-04-01', 1, 'manual')",
+            [workspaceA, privateOfB],
+          ),
+        CHECK_VIOLATION,
+        "instrument_not_found",
+      );
+    });
+
+    it("takes a workspace's manual and CSV prices on its own private instrument, seen by that workspace only", async () => {
       await as({ workspaceId: workspaceA }, async (client) => {
+        assert.deepEqual(
+          await upsertWorkspacePrices(client, workspaceA, privateOfA, [{ priceDate: "2026-04-01", closeE6: 250_000_000_000 }], "manual", userA),
+          { inserted: 1, replaced: 0, unchanged: 0 },
+        );
+        assert.deepEqual(await upsertWorkspacePrices(client, workspaceA, privateOfA, [{ priceDate: "2026-04-01", closeE6: 260_000_000_000 }], "csv"), {
+          inserted: 0,
+          replaced: 1,
+          unchanged: 0,
+        });
+        const candidates = await loadPriceCandidates(client, workspaceA, [privateOfA], "2026-12-31");
+        assert.deepEqual(candidates.get(privateOfA), [{ priceDate: "2026-04-01", closeE6: 260_000_000_000, origin: "own" }]);
+        assert.equal(await deleteWorkspacePrice(client, workspaceA, privateOfA, "2026-04-01"), true);
+      });
+    });
+
+    it("refuses a shared price on a private instrument, even from a system job or a caller that bypasses Row-Level Security", async () => {
+      await as({ systemJob: true }, async (client) => {
         await rejectsWith(
-          () => upsertWorkspacePrices(client, workspaceA, randomUUID(), [{ priceDate: "2026-04-01", closeE6: 1 }], "manual"),
+          () =>
+            client.query(
+              "INSERT INTO prices (workspace_id, instrument_id, price_date, close_e6, source, provider) VALUES (NULL, $1, '2026-04-01', 1, 'provider', 'test')",
+              [privateOfA],
+            ),
           CHECK_VIOLATION,
           "instrument_not_found",
         );
       });
+      await rejectsWith(
+        () =>
+          superuserPool.query(
+            "INSERT INTO prices (workspace_id, instrument_id, price_date, close_e6, source, provider) VALUES (NULL, $1, '2026-04-01', 1, 'provider', 'test')",
+            [privateOfA],
+          ),
+        CHECK_VIOLATION,
+        "instrument_not_found",
+      );
     });
 
     it("gives a request no way to move a price to another workspace, instrument or date, or to make it shared", async () => {

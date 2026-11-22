@@ -18,9 +18,10 @@ checked against a running server.
 
 What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain or net result
 (milestone 0.2.1); exchange rates are stored ([Exchange rates](#exchange-rates), milestone 0.2.1)
-but nothing converts with them yet, so a trade's instrument must be in its account's currency;
-no private instruments (no ISIN and no ticker, milestone 0.2.1); no settlement date on a trade; no
-import of a broker's statement; and no field of a trade is synced from devices yet.
+but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
+settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
+from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
+[Private instruments](#private-instruments)).
 
 ## Contents
 
@@ -51,7 +52,7 @@ shows how to get one for a persona with `curl`; tokens there last 15 minutes. Bo
 | Endpoint | Who |
 | --- | --- |
 | `PATCH /workspaces/:workspaceId` (tax country) | the workspace's `owner` |
-| `POST /instruments`, `GET /instruments…` | any signed-in user, no workspace needed: the catalog is shared |
+| `POST /instruments`, `GET /instruments…` | any signed-in user, no workspace needed: the catalog is shared (these routes never see a workspace's private instruments) |
 | Every `GET` under `/workspaces/:workspaceId/` | any member, `read_only` included |
 | Every other write under `/workspaces/:workspaceId/` | `owner` and `editor`; a `read_only` member gets 403 |
 
@@ -100,20 +101,21 @@ never creates a duplicate. (For a request whose answer was lost, see
 
 ## The schema
 
-Migrations 0025 to 0031 in `apps/api/migrations/`. The parts and how they connect:
+Migrations 0025 to 0031 in `apps/api/migrations/`, and 0035 for private instruments. The parts and how they connect:
 
 ```
 workspaces (tax_country)
  ├─ accounts (type 'brokerage', on_budget false, domestic_withholding_agent)
  │   ├─ account_tax_regimes (valid_from, regime)        one row per period
  │   ├─ transactions (trade_id → the trade it is the cash leg of)
- │   └─ trades ──────────── instrument_id → instruments (shared, no workspace)
+ │   └─ trades ──────────── instrument_id → instruments (shared, or this workspace's own)
+ ├─ instruments (workspace_id set: private instruments)
  └─ portfolios ──────────── ◄ trades.portfolio_id
 ```
 
 | Table | What a row is | Workspace isolation |
 | --- | --- | --- |
-| `instruments` | one listing of a security in the shared catalog: an ISIN, or a ticker on an exchange | none: shared by every workspace, like `users`. The app may only read and insert (`SELECT`, `INSERT`); an administrator corrects it with SQL (`apps/api/README.md`, "Correcting the instruments catalog") |
+| `instruments` | one listing of a security in the shared catalog (an ISIN, or a ticker on an exchange, `workspace_id` null), or a workspace's private instrument (`workspace_id` set, no ISIN, ticker or exchange) | Row-Level Security since migration 0035, one policy per command: every caller reads the shared rows and its own workspace's, and inserts a shared row or one of its own workspace's. The app may only read and insert (`SELECT`, `INSERT`); an administrator corrects it with SQL (`apps/api/README.md`, "Correcting the instruments catalog") |
 | `portfolios` | a named group of holdings with a free-text purpose; archivable | Row-Level Security |
 | `trades` | one buy, sell, dividend or coupon, fee, tax, split row or transfer leg | Row-Level Security |
 | `account_tax_regimes` | one period of a brokerage account's tax regime | Row-Level Security |
@@ -139,7 +141,7 @@ from migrations 0028 to 0031; migration 0029 (#504) converted the older tables' 
 | `trades (workspace_id, transfer_trade_id)` | `trades (workspace_id, id)`, the other leg of a transfer | no action, deferrable, so both legs are inserted pointing at each other and only deleted together |
 | `transactions (workspace_id, trade_id, account_id)` | `trades (workspace_id, id, account_id)` | cascade; on update cascade, so a cash leg can only ever sit on its trade's account |
 | `account_tax_regimes (workspace_id, account_id)` | `accounts (workspace_id, id)` | cascade |
-| `trades (instrument_id)` | `instruments (id)` | no action: an instrument a trade uses is never removed. Single-column, since the catalog belongs to no workspace |
+| `trades (instrument_id)` | `instruments (id)` | no action: an instrument a trade uses is never removed. Single-column, since a shared instrument belongs to no workspace; a trigger (migration 0035) refuses an instrument that is neither shared nor the trade's own workspace's, with a `check_violation` naming `instrument_not_found` |
 
 **The `trades` columns.** Every amount is in the account's minor unit; `quantity_e8` and
 `price_e6` are scaled integers (ADR 0011). A column a type does not use is 0 (amounts, quantity,
@@ -323,7 +325,8 @@ closed account, and `insufficient_quantity` only on an open one.
 
 ## Instruments
 
-The catalog is shared by every workspace: an instrument added by one household is found by all.
+The shared catalog is open to every workspace: an instrument added by one household is found by
+all (an asset with no ISIN and no ticker is a workspace's own instead: [Private instruments](#private-instruments)).
 A row is a **listing**: the same ISIN can trade on several exchanges, in different currencies, and
 appears once per exchange. A row cannot be changed or removed through the API, since other
 workspaces may already use it.
@@ -357,7 +360,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 
 ```json
 {
-  "id": "6af8fb3b-…", "isin": null, "ticker": "WORLD1", "exchange": "XMIL",
+  "id": "6af8fb3b-…", "workspaceId": null, "isin": null, "ticker": "WORLD1", "exchange": "XMIL",
   "name": "World equity ETF", "type": "fund", "currency": "EUR", "assetClass": null,
   "priceFactorE6": 1000000
 }
@@ -385,6 +388,47 @@ case, an exact ticker first, then by name. At most 20 rows:
 `{ "minLength": 2 }`. There is no endpoint that lists the whole catalog.
 
 `GET /instruments/:instrumentId` returns one row, or 404.
+
+Every instrument row carries `workspaceId`: `null` for the shared catalog, the workspace's id for
+a private instrument. The `/instruments` routes run with no workspace, so they find shared
+instruments only: a private instrument is a 404 there, even for a member of its workspace, and a
+search never returns one.
+
+### Private instruments
+
+An asset with no ISIN and no exchange ticker (real estate, a company pension fund, private
+company shares) is a **private instrument**: it belongs to one workspace, which can trade it and
+record its prices, and no other workspace can find it or point a trade or a price at it. Like a
+shared instrument, it cannot be changed or removed through the API; it goes with its workspace
+when the workspace is deleted.
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `POST /workspaces/:workspaceId/instruments` | `owner`, `editor` | 201, the row |
+| `GET /workspaces/:workspaceId/instruments` | any member | 200 `{ "instruments": [ … ] }`: the workspace's private instruments, by name; never the shared catalog |
+| `GET /workspaces/:workspaceId/instruments/:instrumentId` | any member | 200, the row: a shared instrument or one of the workspace's own; 404 for another workspace's, an unknown or a malformed id |
+
+```json
+{ "name": "Flat in town", "type": "other", "currency": "EUR", "assetClass": "Real estate" }
+```
+
+The body takes `name`, `type`, `currency`, `assetClass` and `priceFactorE6`, with the same rules
+and errors as [Adding an instrument](#adding-an-instrument). `isin`, `ticker` and `exchange` must be
+left out (or `null`): any other value is 400 `invalid_instrument_field` `{ "field" }`. A name is
+unique among the workspace's private instruments, ignoring case and the spaces around it: a second
+one answers 409 `name_taken` and writes nothing. Another workspace's names, and the shared
+catalog's, never conflict, so a private instrument may be named like a shared one. The answer:
+
+```json
+{
+  "id": "0b6c1d52-…", "workspaceId": "4e1f…", "isin": null, "ticker": null, "exchange": null,
+  "name": "Flat in town", "type": "other", "currency": "EUR", "assetClass": "Real estate",
+  "priceFactorE6": 1000000
+}
+```
+
+A trade names a private instrument by its `instrumentId` like any other; in another workspace the
+same id is `unknown_instrument`.
 
 ## Exchange rates
 
@@ -830,7 +874,7 @@ A position row:
 
 | Field | Meaning |
 | --- | --- |
-| `accountId`, `instrument` | the account, and the instrument's catalog row |
+| `accountId`, `instrument` | the account, and the instrument's row (`workspaceId` set for a private instrument) |
 | `currency` | the account's currency; every amount in the row is in it |
 | `quantityE8` | units held: the portfolio's own, or the account's |
 | `costBasisCents` | the cost of the units held. For a portfolio, its share of the account's cost |

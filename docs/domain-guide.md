@@ -969,8 +969,8 @@ regimes it is under:
 - **Managed** (*gestito*). The investor has given a manager a mandate to manage the account. The
   tax applies to the result the mandate accrued over the year, realized or not, and the manager,
   an Italian intermediary, applies it. Such an account is normally recorded as one private
-  "mandate" instrument with a value entered by hand, which needs private instruments
-  (milestone 0.2.1); until then it records individual trades only.
+  "mandate" instrument, an instrument of the workspace's own (#505), with a value entered by
+  hand; it can also record individual trades.
 
 **One account, one dossier.** An account in the app is one dossier at the broker. One broker can
 hold several dossiers under different regimes, each recorded as its own account.
