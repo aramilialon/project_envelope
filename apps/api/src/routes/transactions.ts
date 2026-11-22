@@ -22,6 +22,29 @@ const STATUSES: readonly TransactionStatus[] = ["pending", "cleared", "reconcile
 /** Every field a `PATCH` of a transaction takes (#655); anything else is a 400 `unknown_field`. */
 const PATCH_KEYS: ReadonlySet<string> = new Set(["payee", "memo", "status", "splits", "amountCents", "occurredAt"]);
 
+/**
+ * A date with a time and an optional offset ("Z" or "+02:00"; without one, the time is in the
+ * workspace's time zone, as `insertTransactionRow` anchors it). Group 1 is the date.
+ */
+const INSTANT_PATTERN = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * A new transaction's `occurredAt` (#655): a real "YYYY-MM-DD" date, or that date with a time
+ * (`INSTANT_PATTERN`), which the create routes have always taken (a client that knows the time;
+ * the random walk sends those). Anything else, "2026-02-30", "2026-1-5" or "not-a-date" included, is a 400 `invalid_date`;
+ * a time that does not exist ("25:00") is left to the error handler's safety net, same code.
+ *
+ * @throws ValidationError "invalid_date".
+ */
+function assertOccurredAt(value: string): void {
+  const date = INSTANT_PATTERN.exec(value)?.[1] ?? value;
+  try {
+    assertDate(date);
+  } catch {
+    throw new ValidationError("invalid_date", `not a valid date: "${value}"`, { value });
+  }
+}
+
 /** A field of the right name but the wrong type or value: a 400 `invalid_field` naming it (#655). */
 function invalidField(field: string): ValidationError {
   return new ValidationError("invalid_field", `${field} has the wrong type or value`, { field });
@@ -99,8 +122,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       await reply.code(400).send({ error: "invalid transaction: occurredAt and a non-empty splits array are required" });
       return;
     }
-    // A real "YYYY-MM-DD" date (#655): "2026-02-30" or "2026-1-5" is a 400 `invalid_date`.
-    assertDate(occurredAt);
+    // A real date, or an instant on one (#655): "2026-02-30" or "2026-1-5" is a 400 `invalid_date`.
+    assertOccurredAt(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
@@ -252,7 +275,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       });
       return;
     }
-    assertDate(occurredAt);
+    assertOccurredAt(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, undefined))) {
       return;
     }

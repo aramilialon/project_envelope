@@ -289,8 +289,23 @@ describe("editing a transaction: strict body, amount and date (#655)", () => {
       assert.equal(await count(), before);
     });
 
-    it("still takes a leap day that exists", async () => {
+    it("still takes a leap day that exists, and an instant with an offset on a real date", async () => {
       await create(checkingId, { occurredAt: "2028-02-29", splits: [{ categoryId: groceriesId, amountCents: -100 }] });
+      const instant = await create(checkingId, { occurredAt: "2026-10-05T10:30:00+13:00", splits: [{ categoryId: groceriesId, amountCents: -100 }] });
+      assert.equal(instant.budgetDate, "2026-10-05");
+    });
+
+    it("refuses an instant on a date that does not exist, or at a time that does not exist, with invalid_date", async () => {
+      const before = await count();
+      for (const occurredAt of ["2026-02-30T10:00:00Z", "2026-10-05T25:00:00Z", "2026-1-5T10:00:00Z", "2026-10-05 10:00"]) {
+        const refused = await request<ErrorBody>("POST", `/accounts/${checkingId}/transactions`, {
+          occurredAt,
+          splits: [{ categoryId: groceriesId, amountCents: -100 }],
+        });
+        assert.equal(refused.status, 400, `${occurredAt}: ${JSON.stringify(refused.body)}`);
+        assert.equal(refused.body.error, "invalid_date", occurredAt);
+      }
+      assert.equal(await count(), before);
     });
   });
 });
