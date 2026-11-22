@@ -60,6 +60,15 @@ function queryDate(query: Record<string, unknown>, field: "from" | "to", fallbac
   return value;
 }
 
+/** The date in the path: one `YYYY-MM-DD` date, or `invalid_date` naming the field, as on PUT. */
+function pathDate(date: string): asserts date is LocalDate {
+  try {
+    assertDate(date);
+  } catch {
+    throw new ValidationError("invalid_date", `not a valid YYYY-MM-DD date: "${date}"`, { field: "date" });
+  }
+}
+
 /** `closeE6` of a PUT body: a non-negative safe integer, or 400 `invalid_price` naming the field. */
 function closeOf(body: Record<string, unknown>): number {
   const value = body.closeE6;
@@ -181,7 +190,7 @@ export function registerPricesRoutes(app: FastifyInstance, pool: DbPool): void {
       const { date } = request.params as { date: string };
       const workspaceId = request.workspace!.id;
       try {
-        assertDate(date);
+        pathDate(date);
         const before = await ownPrice(request, instrumentId, date);
         if (!before || !(await deleteWorkspacePrice(request.db!, workspaceId, instrumentId, date))) {
           await reply.code(404).send({ error: "price not found" });

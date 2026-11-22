@@ -301,11 +301,13 @@ describe("prices routes (#83)", () => {
       assert.equal((await get(url(instrumentId))).json().prices.length, 1);
     });
 
-    it("refuses a malformed date with invalid_date", async () => {
+    it("refuses a malformed date with invalid_date naming the field, as PUT does", async () => {
       const instrumentId = await sharedInstrument();
-      const response = await del(url(instrumentId, "/2026-02-30"));
-      assert.equal(response.statusCode, 400);
-      assert.equal(response.json().error, "invalid_date");
+      for (const date of ["2026-02-30", "31-03-2026", "today"]) {
+        const response = await del(url(instrumentId, `/${date}`));
+        assert.equal(response.statusCode, 400, date);
+        assert.deepEqual(response.json(), { error: "invalid_date", details: { field: "date" } }, date);
+      }
     });
   });
 
