@@ -94,6 +94,13 @@ export interface CreateTransactionInput {
   /** Optional cross-check (a receipt or statement total): if given, must equal the sum of `splits`. */
   readonly amountCents?: number;
   readonly externalId?: string;
+  /**
+   * Recording a scheduled transaction (`recordScheduledTransaction`): its splits are written as
+   * scheduled, so a category on an off-budget account is not refused (#710). A scheduled outflow
+   * is told from scheduled income by its category, so one on an off-budget account has one;
+   * refusing it here would leave it due forever and stop the automatic firing.
+   */
+  readonly fromSchedule?: boolean;
 }
 
 export interface UpdateTransactionInput {
@@ -180,6 +187,35 @@ export async function assertNotCardIncome(
   }
 }
 
+/**
+ * Refuses a category on a split of a transaction, not a transfer leg, on an off-budget account
+ * (#710). Money there is outside the budget, so `packages/core` ignores such a category: stored,
+ * it would only say something the budget never counts. Transfer legs follow their own rule
+ * (`createTransfer`, `classifyTransferLeg`): the on-budget leg carries the category, the
+ * off-budget leg never does. Checked before the splits' own shape, so a split that only fails
+ * because of its category is answered with this code. A malformed or unknown account is left to
+ * the caller's own check.
+ *
+ * @throws ValidationError with code "category_not_allowed" and `details.field` "categoryId".
+ */
+export async function assertNoCategoryOffBudget(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  splits: readonly { readonly categoryId: string | null }[],
+): Promise<void> {
+  if (!splits.some((split) => split.categoryId !== null) || !isUuid(accountId)) {
+    return;
+  }
+  const { rows } = await db.query<{ on_budget: boolean }>("SELECT on_budget FROM accounts WHERE id = $1 AND workspace_id = $2", [
+    accountId,
+    workspaceId,
+  ]);
+  if (rows[0]?.on_budget === false) {
+    throw new ValidationError("category_not_allowed", "a transaction on an off-budget account has no category", { field: "categoryId" });
+  }
+}
+
 /** An instant with its own explicit offset ("Z" or "+02:00") needs no anchoring: it already names one exact moment. */
 const HAS_EXPLICIT_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/;
 
@@ -238,6 +274,9 @@ export async function createTransaction(
   input: CreateTransactionInput,
   queue?: QueueDriver,
 ): Promise<TransactionRecord> {
+  if (input.fromSchedule !== true) {
+    await assertNoCategoryOffBudget(db, input.workspaceId, input.accountId, input.splits);
+  }
   validateSplits(input.splits, input.amountCents);
   await assertNotCardIncome(db, input.workspaceId, input.accountId, input.splits);
 
@@ -754,6 +793,10 @@ async function classifyTransferLeg(
  * leg) leaves the other leg alone. The payee, memo and status the request gives stay the edited
  * leg's own.
  *
+ * New splits of a transaction that is not a transfer leg, on an off-budget account, carry no
+ * category (`category_not_allowed`, #710), checked after the reconciled and trade-owned refusals
+ * and before the unknown-category one. An amount alone rewrites the stored split as it is.
+ *
  * A leg's category follows `createTransfer` (#552, #598; `classifyTransferLeg`), so no stored leg
  * can make every budget-month read of the workspace fail:
  * - the on-budget leg of a transfer to an off-budget account keeps the category sent, and a new
@@ -834,6 +877,11 @@ export async function updateTransaction(
     throw new ValidationError("amount_needs_splits", "a transaction with several splits takes a new amount only with its splits", {
       splitCount: existing.splits.length,
     });
+  }
+  if (patch.splits !== undefined && existing.transferId === null) {
+    // New splits on an off-budget account carry no category (#710). Only the splits sent: an
+    // amount alone keeps the stored split as it is.
+    await assertNoCategoryOffBudget(db, workspaceId, existing.accountId, patch.splits);
   }
   if (patch.splits !== undefined) {
     // After the path-account and closed-account checks (#655), so an unknown category never hides

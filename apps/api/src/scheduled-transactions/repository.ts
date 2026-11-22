@@ -289,6 +289,8 @@ export async function recordScheduledTransaction(
       occurredAt: existing.nextDueDate,
       ...(existing.payee ? { payee: existing.payee } : {}),
       ...(existing.memo ? { memo: existing.memo } : {}),
+      // Written as scheduled, category included, on an off-budget account too (#710).
+      fromSchedule: true,
       // A scheduled split's own amount is always positive (a reservation, or income expected to
       // arrive); a real outflow split is negative, the same sign flip `listScheduledEventsForMonth`
       // (#325) already does — income (`categoryId: null`, #347) stays positive either way, the
