@@ -89,6 +89,15 @@ export type {
 export { moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn, yearFraction } from "./portfolio/returns.ts";
 export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/external-flows.ts";
 export { externalFlows } from "./portfolio/external-flows.ts";
+export type {
+  MissingInput,
+  MissingReason,
+  MonthlyPerformanceInput,
+  MonthPerformance,
+  PerformanceTotals,
+  PortfolioPerformance,
+} from "./portfolio/performance.ts";
+export { assertPerformanceRange, lastDayOfMonth, MAX_PERFORMANCE_MONTHS, monthlyPerformance } from "./portfolio/performance.ts";
 export type { AmountInCurrency, Conversion, FxRate, FxRateTable, RateOnDate } from "./market-data/fx.ts";
 export { convertAmount, convertSum, FX_BASE_CURRENCY, FX_RATE_DECIMALS, fxRateTable, rateOn, valueIn } from "./market-data/fx.ts";
 export type { EcbRatesFileProblem, EcbReferenceRates } from "./market-data/ecb.ts";
