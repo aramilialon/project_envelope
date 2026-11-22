@@ -3,13 +3,17 @@ import { toPriceFactor, type InstrumentSearch, type InstrumentType, type Normali
 import type { DbClient, DbPool } from "../db/pool.ts";
 
 /**
- * The shared instruments catalog (#76, migration 0026): no workspace and no Row-Level Security,
- * so these queries run on the pool directly. Neither `created_by` nor `created_at` is ever read
- * back: the catalog is shared, and who added an instrument, or when, is another workspace's
- * private data.
+ * Instruments (#76, migration 0026): the shared catalog, and since #505 (migration 0035) each
+ * workspace's private instruments. Row-Level Security decides which rows a query sees: the shared
+ * ones always, a workspace's own only on a connection whose request selected that workspace
+ * (`request.db`). The /instruments routes run on the pool with no workspace, so they see the
+ * shared catalog only. Neither `created_by` nor `created_at` is ever read back: who added a shared
+ * instrument, or when, is another workspace's private data.
  */
 export interface Instrument {
   readonly id: string;
+  /** The workspace a private instrument belongs to; `null` for the shared catalog. */
+  readonly workspaceId: string | null;
   readonly isin: string | null;
   readonly ticker: string | null;
   readonly exchange: string | null;
@@ -22,7 +26,7 @@ export interface Instrument {
 }
 
 /** Which uniqueness rule a duplicate broke, so the route can answer with a stable 409 `code`. */
-export type InstrumentConflict = "isin_taken" | "ticker_taken";
+export type InstrumentConflict = "isin_taken" | "ticker_taken" | "name_taken";
 
 export class InstrumentConflictError extends Error {
   readonly code: InstrumentConflict;
@@ -44,12 +48,14 @@ const UNIQUE_VIOLATION = "23505";
 const CONFLICT_BY_CONSTRAINT: Readonly<Record<string, InstrumentConflict>> = {
   instruments_isin_exchange_key: "isin_taken",
   instruments_ticker_exchange_key: "ticker_taken",
+  instruments_workspace_name_key: "name_taken",
 };
 
-const COLUMNS = `id, isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6`;
+const COLUMNS = `id, workspace_id, isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6`;
 
 interface InstrumentRow {
   id: string;
+  workspace_id: string | null;
   isin: string | null;
   ticker: string | null;
   exchange: string | null;
@@ -64,6 +70,7 @@ interface InstrumentRow {
 function toInstrument(row: InstrumentRow): Instrument {
   return {
     id: row.id,
+    workspaceId: row.workspace_id,
     isin: row.isin,
     ticker: row.ticker,
     exchange: row.exchange,
@@ -76,21 +83,26 @@ function toInstrument(row: InstrumentRow): Instrument {
 }
 
 /**
- * Adds an already-normalized instrument (`@envelope/core`'s `normalizeInstrument`) to the catalog.
+ * Adds an already-normalized instrument to the shared catalog (`@envelope/core`'s
+ * `normalizeInstrument`, `workspaceId` null) or to a workspace's own instruments
+ * (`normalizePrivateInstrument`, on the request's connection: Row-Level Security refuses another
+ * workspace's id).
  *
  * @throws InstrumentConflictError when the same ISIN on the same exchange, or the same ticker on
- *   the same exchange, is already there — decided by the unique indexes, so two concurrent
- *   requests cannot both succeed.
+ *   the same exchange, is already in the shared catalog, or when the workspace already has a
+ *   private instrument with the same name, ignoring case (`name_taken`) — decided by the unique
+ *   indexes, so two concurrent requests cannot both succeed.
  */
 export async function createInstrument(
   db: DbPool | DbClient,
   userId: string,
   instrument: NormalizedInstrument,
+  workspaceId: string | null = null,
 ): Promise<Instrument> {
   try {
     const { rows } = await db.query<InstrumentRow>(
-      `INSERT INTO instruments (isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO instruments (isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6, created_by, workspace_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING ${COLUMNS}`,
       [
         instrument.isin,
@@ -102,6 +114,7 @@ export async function createInstrument(
         instrument.assetClass,
         instrument.priceFactorE6,
         userId,
+        workspaceId,
       ],
     );
     return toInstrument(rows[0]!);
@@ -133,6 +146,18 @@ export async function getInstruments(db: DbPool | DbClient, ids: readonly string
   }
   const { rows } = await db.query<InstrumentRow>(`SELECT ${COLUMNS} FROM instruments WHERE id = ANY($1)`, [ids]);
   return new Map(rows.map((row) => [row.id, toInstrument(row)]));
+}
+
+/**
+ * A workspace's own private instruments, by name (ignoring case), then id. Filtered on the
+ * workspace as well as by Row-Level Security, so the shared catalog never shows up here.
+ */
+export async function listWorkspaceInstruments(db: DbClient, workspaceId: string): Promise<Instrument[]> {
+  const { rows } = await db.query<InstrumentRow>(
+    `SELECT ${COLUMNS} FROM instruments WHERE workspace_id = $1 ORDER BY lower(name), id`,
+    [workspaceId],
+  );
+  return rows.map(toInstrument);
 }
 
 /** `LIKE`'s own wildcards, escaped so a typed `%` or `_` matches itself. */

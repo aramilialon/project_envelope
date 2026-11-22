@@ -27,6 +27,11 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#719** (2026-11-22, architect): the positions answer carries no list or count of trades dated after `asOf`; how later trades show is decided with the portfolio dashboard (#106, 0.2.4) and its mockup.
 - **#782** (2026-11-22, domain-expert): negative income in a later month is left out of an earlier month's unassigned calculation item by item, not as the month's net; a later month's positive income still pays its own assignments.
 - **#660** (2026-11-22, domain-expert): budget problems flag a payment category only beyond its card's credit (same figure as `cashOverspending`).
+- **#505** (2026-11-22, architect): a workspace's private instruments live under `/workspaces/:workspaceId/instruments`; GET by id there also returns a shared instrument, and another workspace's private one is a 404.
+- **#505** (2026-11-22, architect): a private instrument carries no ISIN, ticker or exchange, so the shared catalog's unique indexes can never answer a 409 that reveals another workspace's holdings.
+- **#505** (2026-11-22, architect): every instrument response carries `workspaceId` (`null` for a shared instrument).
+- **#505** (2026-11-22, architect): a private instrument's name is unique per workspace, ignoring case, after trimming (409 `name_taken`).
+- **#505** (2026-11-22, architect): a workspace-scoped instrument search is deferred to #789.
 
 ### 0.2.0
 

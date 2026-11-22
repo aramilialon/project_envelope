@@ -197,6 +197,7 @@ describe("positions routes (#79)", () => {
         accountId: broker,
         instrument: {
           id: etf,
+          workspaceId: null,
           isin: null,
           ticker: ofA.positions[0]!.instrument.ticker,
           exchange: "XMIL",

@@ -105,8 +105,10 @@ async function toRecords(db: DbClient, rows: readonly (AccountPosition | Portfol
   return rows.map((row) => {
     const instrument = instruments.get(row.instrumentId);
     if (!instrument) {
-      // Trades reference the catalog with ON DELETE RESTRICT: this cannot happen.
-      throw new Error(`instrument ${row.instrumentId} of a trade is not in the catalog`);
+      // A trade's foreign key (NO ACTION) keeps its instrument from being deleted, and migration
+      // 0035's trigger keeps it shared or the trade's own workspace's, so this request sees it:
+      // this cannot happen.
+      throw new Error(`instrument ${row.instrumentId} of a trade is not visible to its workspace`);
     }
     return {
       accountId: row.accountId,

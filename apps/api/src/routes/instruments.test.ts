@@ -112,6 +112,7 @@ describe("instruments routes (#76)", () => {
       { ...body, id: undefined },
       {
         id: undefined,
+        workspaceId: null,
         isin,
         ticker,
         exchange: "XMIL",
@@ -440,5 +441,199 @@ describe("instruments routes (#76)", () => {
       ]),
       { code: "23514", constraint: "instruments_ticker_check" },
     );
+  });
+
+  describe("a workspace's private instruments (#505)", () => {
+    function postPrivate(token: string, workspaceId: string, payload: Record<string, unknown>) {
+      return app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/instruments`,
+        headers: { authorization: `Bearer ${token}` },
+        payload,
+      });
+    }
+
+    async function addMembership(token: string, workspaceId: string, role: "owner" | "editor" | "read_only"): Promise<void> {
+      const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
+      await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)", [rows[0]!.id, workspaceId, role]);
+    }
+
+    it("creates one with only a name, a type, a currency and an asset class, and finds it in its own workspace only", async () => {
+      const token = await ctx.realm.getUserToken();
+      const created = await postPrivate(token, ctx.workspaceId, {
+        name: `${namePrefix} Flat in town`,
+        type: "other",
+        currency: "eur",
+        assetClass: "Real estate",
+      });
+      assert.equal(created.statusCode, 201, created.body);
+      const body = created.json();
+      assert.deepEqual(
+        { ...body, id: undefined },
+        {
+          id: undefined,
+          workspaceId: ctx.workspaceId,
+          isin: null,
+          ticker: null,
+          exchange: null,
+          name: `${namePrefix} Flat in town`,
+          type: "other",
+          currency: "EUR",
+          assetClass: "Real estate",
+          priceFactorE6: 1_000_000,
+        },
+      );
+
+      // Its own workspace lists it and reads it.
+      const listed = await get(token, `/workspaces/${ctx.workspaceId}/instruments`);
+      assert.equal(listed.statusCode, 200);
+      assert.deepEqual(
+        listed.json().instruments.map((instrument: { id: string }) => instrument.id),
+        [body.id],
+      );
+      const read = await get(token, `/workspaces/${ctx.workspaceId}/instruments/${body.id}`);
+      assert.equal(read.statusCode, 200);
+      assert.deepEqual(read.json(), body);
+
+      // Another workspace neither lists nor reads it, knowing its id.
+      const tokenOfB = tokenB;
+      const listedByB = await get(tokenOfB, `/workspaces/${workspaceB}/instruments`);
+      assert.equal(listedByB.statusCode, 200);
+      assert.deepEqual(listedByB.json().instruments, []);
+      assert.equal((await get(tokenOfB, `/workspaces/${workspaceB}/instruments/${body.id}`)).statusCode, 404);
+      assert.equal((await get(tokenOfB, `/workspaces/${ctx.workspaceId}/instruments`)).statusCode, 403);
+
+      // The /instruments routes have no workspace: they see the shared catalog only, even for
+      // the user whose workspace owns the instrument.
+      for (const userToken of [token, tokenOfB]) {
+        assert.equal((await get(userToken, `/instruments/${body.id}`)).statusCode, 404);
+        const searched = await get(userToken, `/instruments?q=${encodeURIComponent(`${namePrefix} Flat`)}`);
+        assert.equal(searched.statusCode, 200);
+        assert.deepEqual(searched.json().instruments, []);
+      }
+    });
+
+    it("reads a shared instrument through the workspace too, and answers 404 for an unknown or malformed id", async () => {
+      const token = await ctx.realm.getUserToken();
+      const sharedOne = await post(token, { isin: randomIsin(), name: `${namePrefix} Shared bond`, type: "bond", currency: "EUR" });
+      assert.equal(sharedOne.statusCode, 201);
+      const read = await get(token, `/workspaces/${ctx.workspaceId}/instruments/${sharedOne.json().id}`);
+      assert.equal(read.statusCode, 200);
+      assert.equal(read.json().workspaceId, null);
+      assert.equal((await get(token, `/workspaces/${ctx.workspaceId}/instruments/${randomUUID()}`)).statusCode, 404);
+      assert.equal((await get(token, `/workspaces/${ctx.workspaceId}/instruments/not-a-uuid`)).statusCode, 404);
+      // The workspace's list holds its private instruments, never the shared catalog.
+      const listed = await get(token, `/workspaces/${ctx.workspaceId}/instruments`);
+      assert.ok(listed.json().instruments.every((instrument: { workspaceId: string | null }) => instrument.workspaceId === ctx.workspaceId));
+    });
+
+    it("refuses an ISIN, a ticker or an exchange, and invalid fields, with stable codes", async () => {
+      const token = await ctx.realm.getUserToken();
+      const base = { name: `${namePrefix} Pension fund`, type: "fund", currency: "EUR" };
+      for (const [field, value] of [
+        ["isin", randomIsin()],
+        ["ticker", "FLAT"],
+        ["exchange", "XMIL"],
+        ["isin", ""],
+        ["ticker", 12],
+      ] as const) {
+        const response = await postPrivate(token, ctx.workspaceId, { ...base, [field]: value });
+        assert.equal(response.statusCode, 400, `${field}: ${response.body}`);
+        assert.deepEqual(response.json(), { error: "invalid_instrument_field", details: { field } });
+      }
+      // null is the same as leaving an identifier out.
+      const withNulls = await postPrivate(token, ctx.workspaceId, { ...base, isin: null, ticker: null, exchange: null });
+      assert.equal(withNulls.statusCode, 201, withNulls.body);
+
+      for (const [payload, code] of [
+        [{ ...base, name: " " }, "invalid_instrument_field"],
+        [{ ...base, name: undefined }, "invalid_instrument_field"],
+        [{ ...base, type: "house" }, "invalid_instrument_type"],
+        [{ ...base, currency: "EURO" }, "invalid_currency"],
+        [{ ...base, assetClass: 3 }, "invalid_instrument_field"],
+        [{ ...base, priceFactorE6: 0 }, "invalid_price_factor"],
+      ] as const) {
+        const response = await postPrivate(token, ctx.workspaceId, payload);
+        assert.equal(response.statusCode, 400, JSON.stringify(payload));
+        assert.equal(response.json().error, code, JSON.stringify(payload));
+      }
+    });
+
+    it("lets owners and editors add one, every member list them, and nobody outside the workspace either", async () => {
+      const token = await ctx.realm.getUserToken();
+      const payload = { name: `${namePrefix} Company shares`, type: "stock", currency: "EUR" };
+      for (const role of ["editor", "read_only"] as const) {
+        const workspaceId = randomUUID();
+        await superuserPool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Role test', 'EUR', 'Europe/Rome')", [
+          workspaceId,
+        ]);
+        try {
+          await addMembership(token, workspaceId, role);
+          const response = await postPrivate(token, workspaceId, payload);
+          assert.equal(response.statusCode, role === "editor" ? 201 : 403, `${role}: ${response.body}`);
+          const listed = await get(token, `/workspaces/${workspaceId}/instruments`);
+          assert.equal(listed.statusCode, 200);
+          assert.equal(listed.json().instruments.length, role === "editor" ? 1 : 0);
+        } finally {
+          await superuserPool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+        }
+      }
+      // Not a member: 403, and nothing written.
+      const outsider = await postPrivate(tokenB, ctx.workspaceId, payload);
+      assert.equal(outsider.statusCode, 403);
+      assert.equal((await post(undefined, payload)).statusCode, 401);
+      assert.equal(
+        (await app.fastify.inject({ method: "POST", url: `/workspaces/${ctx.workspaceId}/instruments`, payload })).statusCode,
+        401,
+      );
+      const { rows } = await superuserPool.query("SELECT 1 FROM instruments WHERE name = $1", [payload.name]);
+      assert.deepEqual(rows, []);
+    });
+
+    it("refuses a second private instrument with the same name in one workspace, whatever its case or spaces, as name_taken", async () => {
+      const token = await ctx.realm.getUserToken();
+      const name = `${namePrefix} Holiday home`;
+      const first = await postPrivate(token, ctx.workspaceId, { name, type: "other", currency: "EUR" });
+      assert.equal(first.statusCode, 201, first.body);
+      for (const duplicateName of [name, name.toUpperCase(), `  ${name.toLowerCase()}  `]) {
+        const duplicate = await postPrivate(token, ctx.workspaceId, { name: duplicateName, type: "fund", currency: "USD" });
+        assert.equal(duplicate.statusCode, 409, duplicateName);
+        assert.equal(duplicate.json().code, "name_taken");
+      }
+      const { rows } = await superuserPool.query("SELECT 1 FROM instruments WHERE workspace_id = $1 AND lower(name) = lower($2)", [
+        ctx.workspaceId,
+        name,
+      ]);
+      assert.equal(rows.length, 1);
+
+      // Another workspace may use the same name: the names of one workspace are never compared
+      // with another's, so the answer tells it nothing.
+      const inB = await postPrivate(tokenB, workspaceB, { name, type: "other", currency: "EUR" });
+      assert.equal(inB.statusCode, 201, inB.body);
+    });
+
+    it("accepts a private instrument named like a shared one", async () => {
+      const token = await ctx.realm.getUserToken();
+      const name = `${namePrefix} Listed and private`;
+      const sharedOne = await post(token, { isin: randomIsin(), name, type: "stock", currency: "EUR" });
+      assert.equal(sharedOne.statusCode, 201, sharedOne.body);
+      const privateOne = await postPrivate(token, ctx.workspaceId, { name, type: "stock", currency: "EUR" });
+      assert.equal(privateOne.statusCode, 201, privateOne.body);
+    });
+
+    it("has no endpoint that updates or deletes a private instrument", async () => {
+      const token = await ctx.realm.getUserToken();
+      const created = await postPrivate(token, ctx.workspaceId, { name: `${namePrefix} Fixed flat`, type: "other", currency: "EUR" });
+      assert.equal(created.statusCode, 201);
+      for (const method of ["PATCH", "PUT", "DELETE"] as const) {
+        const response = await app.fastify.inject({
+          method,
+          url: `/workspaces/${ctx.workspaceId}/instruments/${created.json().id}`,
+          headers: { authorization: `Bearer ${token}` },
+          payload: { name: "Changed" },
+        });
+        assert.equal(response.statusCode, 404, method);
+      }
+    });
   });
 });

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isValidationError } from "../errors.ts";
+import { isValidationError, type ValidationErrorCode } from "../errors.ts";
 import {
   assertIsin,
   INSTRUMENT_TYPES,
   isinCheckDigit,
   isValidIsin,
   normalizeInstrument,
+  normalizePrivateInstrument,
   parseInstrumentSearch,
 } from "./instrument.ts";
 import { PRICE_FACTOR_HUNDREDTH, PRICE_FACTOR_ONE } from "./quantity.ts";
@@ -194,6 +195,42 @@ describe("normalizeInstrument", () => {
       () => normalizeInstrument({ isin: "US0378331005", name: "X", type: "stock", currency: "USD", priceFactorE6: -1 }),
       (error) => isValidationError(error, "invalid_price_factor") && error.details.label === "priceFactorE6" && error.details.value === "-1",
     );
+  });
+});
+
+describe("normalizePrivateInstrument", () => {
+  it("needs only a name, a type and a currency, and has no identifiers", () => {
+    assert.deepEqual(normalizePrivateInstrument({ name: "  Flat in town \u200b", type: " other ", currency: "eur", assetClass: " Real estate " }), {
+      isin: null,
+      ticker: null,
+      exchange: null,
+      name: "Flat in town",
+      type: "other",
+      currency: "EUR",
+      assetClass: "Real estate",
+      priceFactorE6: PRICE_FACTOR_ONE,
+    });
+    assert.equal(normalizePrivateInstrument({ name: "Pension fund", type: "fund", currency: "EUR" }).assetClass, null);
+  });
+
+  it("keeps a price factor of 0.01", () => {
+    const instrument = normalizePrivateInstrument({ name: "Private bond", type: "bond", currency: "EUR", priceFactorE6: 10_000 });
+    assert.equal(instrument.priceFactorE6, PRICE_FACTOR_HUNDREDTH);
+  });
+
+  it("rejects invalid input with the same codes as a shared instrument", () => {
+    const cases: [Parameters<typeof normalizePrivateInstrument>[0], ValidationErrorCode][] = [
+      [{ name: " ", type: "other", currency: "EUR" }, "invalid_instrument_field"],
+      [{ name: "x".repeat(201), type: "other", currency: "EUR" }, "invalid_instrument_field"],
+      [{ name: "House", type: "property", currency: "EUR" }, "invalid_instrument_type"],
+      [{ name: "House", type: "other", currency: "EURO" }, "invalid_currency"],
+      [{ name: "House", type: "other", currency: "EUR", assetClass: "x".repeat(65) }, "invalid_instrument_field"],
+      [{ name: "House", type: "other", currency: "EUR", priceFactorE6: 0 }, "invalid_price_factor"],
+      [{ name: "House", type: "other", currency: "EUR", priceFactorE6: "1000000" }, "invalid_price_factor"],
+    ];
+    for (const [input, code] of cases) {
+      assert.throws(() => normalizePrivateInstrument(input), (error) => isValidationError(error, code), JSON.stringify(input));
+    }
   });
 });
 
