@@ -80,6 +80,27 @@ describe("installer sandbox container", () => {
   const args = sandboxRunArgs();
   const joined = args.join(" ");
 
+  it("starts with exactly these arguments (pinned: any added flag fails here)", () => {
+    assert.deepEqual(args, [
+      "run", "--detach",
+      "--name", "envelope-installer-sandbox",
+      "--hostname", "envelope-dev",
+      "--label", "envelope.installer=1",
+      "--privileged",
+      "--cgroupns=private",
+      "--network", "envelope-installer-net",
+      "--cpus", "2",
+      "--memory", "4g",
+      "--memory-swap", "4g",
+      "--pids-limit", "4096",
+      "--tmpfs", "/run",
+      "--tmpfs", "/run/lock",
+      "--mount", "type=volume,src=envelope-installer-docker,dst=/var/lib/docker",
+      "--mount", "type=volume,src=envelope-installer-containerd,dst=/var/lib/containerd",
+      "envelope-installer-sandbox:latest",
+    ]);
+  });
+
   it("mounts no host path and no Docker socket", () => {
     assert.ok(!args.some((arg) => arg === "-v" || arg === "--volume" || arg.startsWith("--volume=") || arg.startsWith("-v=")), "uses -v/--volume");
     for (const [index, arg] of args.entries()) {
@@ -120,6 +141,7 @@ describe("installer sandbox container", () => {
   });
 
   it("drops every private range from its bridge, and everything to the host", () => {
+    assert.deepEqual([...BLOCKED_RANGES], ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"]);
     const script = firewallScript();
     for (const range of BLOCKED_RANGES) assert.match(script, new RegExp(`-d ${range.replace(/[./]/g, "\\$&")} -j DROP`));
     assert.match(script, /iptables -I DOCKER-USER 1 -i "\$bridge"/);
