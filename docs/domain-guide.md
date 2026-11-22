@@ -949,10 +949,10 @@ on 20 September, because it divides the gain by the money weighted by days held.
 **Money-weighted return (MWR, XIRR)** answers how the household's own money did, given exactly
 when it went in and out: the rate that brings the household's flows to zero (the opposite of the
 portfolio's flows, the value at the start paid in on the start date and the value at the end
-received on the end date), each flow timed in calendar years from the first (see Periods). It is
-found by bisection, on the figure shown (the yearly rate from a year on, the period's own rate
-before), from just above −100% to +1000%; no rate in that range makes it unknown, and money never
-received back at all (nothing received after the clock starts) is exactly −100%. With flows that
+received on the end date), each flow timed in calendar years from the start of its clock (see
+Periods). It is found by bisection, on the figure shown (the yearly rate from a year on, the
+period's own rate before), from just above −100% to +1000%; no rate in that range makes it
+unknown, and money never received back at all (nothing received after the clock starts) is exactly −100%. With flows that
 change sign several times there can be more than one such rate; the figure is the one nearest 0.
 €10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is
 8.02% a year. The MWR assumes money stays invested at that rate, so the period ends at the last
@@ -1005,8 +1005,9 @@ rounded monthly figures linked together. In the example above, September's gain 
 
 - **A month with nothing held**, before the first buy or after the last sale, shows its value
   (0), its contributions, its income and its gain (0 when nothing moved), and no returns, since
-  there is nothing to measure. Over a range, the gain is the sum of the months' gains; the TWR leaves out the
-  money that moves while nothing is held, the MWR counts it, as the household paid or received it.
+  there is nothing to measure. Over a range, the gain is the sum of the months' gains; the TWR
+  leaves out the money that moves while nothing is held, the MWR counts it, as the household paid
+  or received it.
 - **A missing price or rate** makes the value unknown, never a partial sum of the positions that
   have one, and every figure that needs it unknown too; the app lists what is missing, with the
   earliest date that lacks it.
