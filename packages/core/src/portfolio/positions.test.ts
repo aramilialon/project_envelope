@@ -1379,3 +1379,52 @@ describe("positions as of a date (#719)", () => {
     );
   });
 });
+
+describe("a position's quantity beyond the safe range (#662)", () => {
+  // 9 × 10^15 (units × 10^8) is a safe integer; two of them together are not.
+  const big = 9e15 as Quantity;
+  const overflowAt = (tradeId: string) => (error: unknown) =>
+    isValidationError(error, "invalid_quantity") && error.details.tradeId === tradeId && error.details.label === "positionQuantity";
+
+  it("names the buy that pushes the position over", () => {
+    const first = trade({ id: "q-1", date: "2026-01-10", type: "buy", quantity: big, price: 1 as Price });
+    const second = trade({ id: "q-2", date: "2026-01-11", type: "buy", quantity: big, price: 1 as Price });
+    assert.throws(() => computePositions([second, first]), overflowAt("q-2"));
+  });
+
+  it("names the split row of the holding the split pushes over, not the date's first row", () => {
+    const held = trade({ id: "q-held", date: "2026-01-10", type: "buy", portfolioId: "A", quantity: 1e15 as Quantity, price: 1 as Price });
+    const small = trade({ id: "q-small", date: "2026-01-10", type: "buy", portfolioId: "B", quantity: 1 as Quantity, price: 1 as Price });
+    // B's row sorts first by id; A's is the one that leaves the safe range.
+    const rowB = split("2026-02-01", "B", 1, 10, { id: "q-split-a" });
+    const rowA = split("2026-02-01", "A", 1, 10, { id: "q-split-b" });
+    assert.throws(() => computePositions([held, small, rowA, rowB]), overflowAt("q-split-b"));
+  });
+
+  it("names the incoming leg of a transfer, even when the outgoing leg is replayed first", () => {
+    const source = trade({ id: "q-src", date: "2026-01-10", type: "buy", portfolioId: "A", quantity: big, price: 1 as Price });
+    // In another account: one account holding both would already be beyond the safe range.
+    const target = trade({ id: "q-dst", date: "2026-01-10", type: "buy", accountId: OTHER_ACCOUNT, portfolioId: "B", quantity: big, price: 1 as Price });
+    const out = trade({ id: "q-leg-0", date: "2026-02-01", type: "transfer", portfolioId: "A", quantity: -big as Quantity, transferTradeId: "q-leg-1" });
+    const into = trade({
+      id: "q-leg-1",
+      date: "2026-02-01",
+      type: "transfer",
+      accountId: OTHER_ACCOUNT,
+      portfolioId: "B",
+      quantity: big,
+      transferTradeId: "q-leg-0",
+      occurredAt: out.occurredAt,
+      createdAt: out.createdAt,
+    });
+    assert.throws(() => computePositions([source, target, out, into]), overflowAt("q-leg-1"));
+  });
+
+  it("names no trade for a trade's own quantity beyond the safe range: it is not a running total", () => {
+    const own = trade({ id: "q-own", date: "2026-01-10", type: "buy", quantity: 2 ** 53 as Quantity, price: 1 as Price });
+    assert.throws(
+      () => computePositions([own]),
+      (error) => isValidationError(error, "invalid_quantity") && error.details.tradeId === undefined && error.details.label === "quantity",
+    );
+  });
+});

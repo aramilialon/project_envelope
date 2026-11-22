@@ -279,10 +279,15 @@ function plus(a: Cents, b: Cents, label: string): Cents {
   return sum;
 }
 
-/** Names the trade being replayed in an "amount_total_overflow" that does not name one yet. */
+/**
+ * Names the trade being replayed in a running total's overflow that does not name one yet: an
+ * "amount_total_overflow", or an "invalid_quantity" of a position's quantity (#662), which only a
+ * running total can raise here, since `checkTrade` has already checked each trade's own quantity.
+ */
 function namingTrade(error: unknown, trade: PositionTrade): unknown {
-  if (!isValidationError(error, "amount_total_overflow") || error.details.tradeId !== undefined) return error;
-  return new ValidationError("amount_total_overflow", `trade ${trade.id}: ${error.message}`, { ...error.details, tradeId: trade.id });
+  if (!isValidationError(error) || error.details.tradeId !== undefined) return error;
+  if (error.code !== "amount_total_overflow" && error.code !== "invalid_quantity") return error;
+  return new ValidationError(error.code, `trade ${trade.id}: ${error.message}`, { ...error.details, tradeId: trade.id });
 }
 
 function add(totals: MutableTotals, key: keyof PositionTotals, amount: Cents): void {
@@ -496,9 +501,15 @@ function portfolioOf(state: AccountState, portfolioId: string): PortfolioState {
   return portfolio;
 }
 
+/**
+ * The label of an "invalid_quantity" raised by a position's running quantity, the portfolio's or
+ * the account's, leaving the safe range (#662); the replay adds the trade's id to it.
+ */
+const POSITION_QUANTITY = "positionQuantity";
+
 function changeQuantity(state: AccountState, portfolio: PortfolioState, delta: number): void {
-  portfolio.quantity = toQuantity(portfolio.quantity + delta);
-  state.quantity = toQuantity(state.quantity + delta);
+  portfolio.quantity = toQuantity(portfolio.quantity + delta, POSITION_QUANTITY);
+  state.quantity = toQuantity(state.quantity + delta, POSITION_QUANTITY);
 }
 
 function requireQuantity(state: AccountState, trade: PositionTrade, requested: number): PortfolioState {
@@ -560,7 +571,12 @@ function applySplits(state: AccountState, date: LocalDate, splits: readonly Posi
     const portfolio = portfolioOf(state, split.portfolioId);
     // Toward zero, to 8 decimals.
     const scaled = (BigInt(portfolio.quantity) * BigInt(split.splitTo ?? 1)) / BigInt(split.splitFrom ?? 1);
-    changeQuantity(state, portfolio, toQuantity(Number(scaled)) - portfolio.quantity);
+    try {
+      changeQuantity(state, portfolio, toQuantity(Number(scaled), POSITION_QUANTITY) - portfolio.quantity);
+    } catch (error) {
+      // The split row of the holding that leaves the safe range, not the date's first one (#662).
+      throw namingTrade(error, split);
+    }
   }
   if (state.quantity === 0 && state.cost !== 0) {
     throw new ValidationError(
@@ -728,7 +744,12 @@ function replayInstrument(
             add(targetPortfolio.totals, "costInCents", removed);
           }
           changeQuantity(source, sourcePortfolio, outgoing.quantity);
-          changeQuantity(target, targetPortfolio, incoming.quantity);
+          try {
+            changeQuantity(target, targetPortfolio, incoming.quantity);
+          } catch (error) {
+            // The leg that adds the units, whichever leg sorts first (#662).
+            throw namingTrade(error, incoming);
+          }
           break;
         }
       }
