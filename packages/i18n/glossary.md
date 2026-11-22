@@ -61,6 +61,8 @@ No catalog writes a currency symbol, a decimal or grouping separator, a minus si
 | `es-ES` | -1234,56 € | -5,00 € | 5 sept | No grouping below 10,000; U+00A0 before € |
 | `fr-FR` | -1 234,56 € | -5,00 € | 5 sept. | A narrow no-break space (U+202F) groups thousands; U+00A0 before € |
 
+Italian: before a `shortDate` argument write *il giorno {date}* (and *del giorno*, *al giorno*, *per il giorno*), never *il {date}*: *il 8 nov* and *il 11 nov* need an elision (*l’8*, *l’11*) that a message cannot know. *con data {date}* is fine as it is.
+
 The minus is the ASCII hyphen-minus in every locale. A message never adds its own space between an amount and a word that `Intl` already spaces.
 
 ### Plurals
