@@ -4,7 +4,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
+import { invalidField, sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
@@ -44,11 +44,6 @@ function assertOccurredAt(value: string): void {
   } catch {
     throw new ValidationError("invalid_date", `not a valid date: "${value}"`, { value });
   }
-}
-
-/** A field of the right name but the wrong type or value: a 400 `invalid_field` naming it (#655). */
-function invalidField(field: string): ValidationError {
-  return new ValidationError("invalid_field", `${field} has the wrong type or value`, { field });
 }
 
 function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {

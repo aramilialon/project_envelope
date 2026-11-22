@@ -4,9 +4,12 @@
  *
  * Every write follows the same steps, all in the caller's database transaction:
  * 0. check that every account the request touches is open (#741): a closed account answers 409
- *    `account_closed`, never a replay's code;
+ *    `account_closed`, never a replay's code; a create first checks its own figures
+ *    (`checkTradeFigures`: quantity, then price, a dividend's gross, a split's ratio, #600, #662),
+ *    which need no database;
  * 1. build the rows the request stands for (one trade, the two legs of a transfer, or one split row
- *    per portfolio holding the instrument);
+ *    per portfolio holding the instrument); an edit checks the figures it changes there, before a
+ *    buy's or a sale's gross is computed again from them;
  * 2. check their references (brokerage account, portfolio, instrument in the account's currency)
  *    and `@envelope/core`'s `checkTradeEntry`;
  * 3. replay the workspace's whole history of the instrument, every account, with the new rows
@@ -23,6 +26,10 @@
  * still writes its row there, and a transfer out of it is allowed.
  *
  * Nothing is written before every check has passed: a request answered with a 400 commits nothing.
+ *
+ * An error's `details.tradeId` always names a stored trade, or is null for a trade the request
+ * itself adds (#662): a new trade, a new leg, a new split row. The id such a row would have been
+ * given is never shown, since no trade has it.
  */
 import { randomUUID } from "node:crypto";
 
@@ -30,8 +37,10 @@ import {
   amountOf,
   applyTradeChanges,
   checkTradeEntry,
+  checkTradeFigures,
   checkTradeRegime,
   computePositions,
+  isValidationError,
   PRICE_FACTOR_ONE,
   startOfLocalDay,
   TAX_REGIME_COUNTRY,
@@ -46,6 +55,7 @@ import {
   type Quantity,
   type TaxKind,
   type TradeChange,
+  type TradeFigures,
   type TradeType,
 } from "@envelope/core";
 
@@ -59,6 +69,44 @@ export type { TaxKind, TradeType };
 
 export const TRADE_TYPES: readonly TradeType[] = ["buy", "sell", "dividend", "fee", "tax", "split", "transfer"];
 export const TAX_KINDS: readonly TaxKind[] = ["stamp_duty", "managed_result_tax", "gain_tax_adjustment", "other"];
+
+/** What every buy, sell, dividend, fee and tax request may carry, besides `type`. */
+const SINGLE_FIELDS = ["id", "accountId", "portfolioId", "instrumentId", "tradeDate", "occurredAt", "memo", "taxKind"] as const;
+const BUY_FIELDS = [
+  ...SINGLE_FIELDS,
+  "quantityE8",
+  "priceE6",
+  "grossCents",
+  "feesCents",
+  "transactionTaxCents",
+  "accruedInterestCents",
+  "withholdingDomesticCents",
+] as const;
+
+/**
+ * The fields a create request of each type takes besides `type` (#594): any other field the API
+ * knows is "invalid_trade" naming it, a field of another kind of request (`from` on a buy,
+ * `accountId` on a split, `gainTaxCents` on a buy). `taxKind` is taken by every single trade, so
+ * that one on anything but a tax keeps its own code, "tax_kind_not_allowed_for_trade_type".
+ */
+export const TRADE_REQUEST_FIELDS: Readonly<Record<TradeType, readonly string[]>> = {
+  buy: BUY_FIELDS,
+  sell: [...BUY_FIELDS, "gainTaxCents"],
+  dividend: [...SINGLE_FIELDS, "grossCents", "feesCents", "withholdingForeignCents", "withholdingDomesticCents"],
+  fee: [...SINGLE_FIELDS, "feesCents"],
+  tax: [...SINGLE_FIELDS, "grossCents"],
+  transfer: ["instrumentId", "tradeDate", "occurredAt", "memo", "quantityE8", "from", "to"],
+  split: ["instrumentId", "tradeDate", "occurredAt", "memo", "splitFrom", "splitTo"],
+};
+
+/**
+ * The fields an edit of each type takes: its create request's, but never `id`, and on a split not
+ * `instrumentId` (a split's instrument is what makes it that split); `type` too, if it is the
+ * trade's own.
+ */
+function tradePatchFields(type: TradeType): readonly string[] {
+  return ["type", ...TRADE_REQUEST_FIELDS[type].filter((field) => field !== "id" && !(type === "split" && field === "instrumentId"))];
+}
 
 /** A trade as the API returns it: the row, plus its cash leg. */
 export interface TradeRecord {
@@ -635,9 +683,7 @@ function transferRows(input: TransferInput): NewTradeRow[] {
   if (!input.from && !input.to) {
     throw new ValidationError("invalid_trade", "a transfer needs a from leg, a to leg or both", { field: "from" });
   }
-  if (input.quantityE8 <= 0) {
-    throw new ValidationError("invalid_trade", "a transfer moves a positive quantity", { field: "quantityE8" });
-  }
+  // Its quantity was checked positive by `checkTradeFigures`, before anything else.
   if (input.from && input.to && input.from.accountId === input.to.accountId && input.from.portfolioId === input.to.portfolioId) {
     throw new ValidationError("invalid_trade", "a transfer needs two different holdings", { field: "to" });
   }
@@ -995,14 +1041,16 @@ async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * cash-moving row with its cash leg (ADR 0012), and records them in the audit log. `db` must be in
  * a transaction: the request's own.
  *
- * @throws ValidationError "unknown_account", "account_not_brokerage", "unknown_portfolio",
+ * @throws ValidationError the codes of `checkTradeFigures` first ("invalid_quantity",
+ *   "invalid_trade", "invalid_price"), then "unknown_account", "account_not_brokerage", "unknown_portfolio",
  *   "portfolio_archived" (details: portfolioId; a row in an archived portfolio other than a split
  *   row or a transfer's outgoing leg, #597), "unknown_instrument",
  *   "currency_mismatch", "split_without_holdings", "tax_regime_required",
  *   the codes of `checkTradeEntry`, of `checkTradeRegime` and of `validatePositionHistory` ("insufficient_quantity",
  *   "split_missing_for_portfolio", "split_duplicate", "split_ratio_mismatch",
  *   "split_leaves_no_quantity", "invalid_trade", "invalid_date", "invalid_amount",
- *   "invalid_quantity", "invalid_price"); nothing is written then.
+ *   "invalid_quantity", "invalid_price"); nothing is written then. A `details.tradeId` that would
+ *   name one of the request's own rows is null (#662).
  * @throws TradeIdTakenError when a client-generated id is already taken.
  */
 export async function createTrades(
@@ -1010,6 +1058,60 @@ export async function createTrades(
   workspaceId: string,
   userId: string | null,
   input: TradeEntryInput,
+): Promise<TradeRecord[]> {
+  // The figures the rest is computed from, before anything else (#600, #662).
+  checkTradeFigures(entryFigures(input));
+  // Every row is new: an error that names one names it as null (#662).
+  const newIds = new Set<string>();
+  try {
+    return await writeNewTrades(db, workspaceId, userId, input, newIds);
+  } catch (error) {
+    throw withoutNewTradeIds(error, newIds);
+  }
+}
+
+/** The figures of a create request, as `checkTradeFigures` reads them; an amount left out is 0. */
+function entryFigures(input: TradeEntryInput): TradeFigures {
+  switch (input.kind) {
+    case "single":
+      return {
+        type: input.type,
+        quantity: input.quantityE8 ?? 0,
+        price: input.priceE6 ?? 0,
+        grossCents: input.grossCents ?? 0,
+        splitFrom: null,
+        splitTo: null,
+      };
+    case "transfer":
+      return { type: "transfer", quantity: input.quantityE8, price: 0, grossCents: 0, splitFrom: null, splitTo: null };
+    case "split":
+      return { type: "split", quantity: 0, price: 0, grossCents: 0, splitFrom: input.splitFrom, splitTo: input.splitTo };
+  }
+}
+
+/**
+ * `error` with a `details.tradeId` among `newIds` replaced by null (#662): the trade the request
+ * is adding is the one at fault, and the id it would have had names no trade. Any other error is
+ * returned as it is.
+ */
+function withoutNewTradeIds(error: unknown, newIds: ReadonlySet<string>): unknown {
+  if (!isValidationError(error)) {
+    return error;
+  }
+  const { tradeId } = error.details;
+  if (typeof tradeId !== "string" || !newIds.has(tradeId)) {
+    return error;
+  }
+  return new ValidationError(error.code, error.message, { ...error.details, tradeId: null });
+}
+
+/** `createTrades` once the figures are checked; adds the id of each row it builds to `newIds`. */
+async function writeNewTrades(
+  db: DbClient,
+  workspaceId: string,
+  userId: string | null,
+  input: TradeEntryInput,
+  newIds: Set<string>,
 ): Promise<TradeRecord[]> {
   const instrumentId = input.instrumentId;
   const instrument = instrumentId === null ? undefined : await loadInstrument(db, instrumentId);
@@ -1028,6 +1130,7 @@ export async function createTrades(
 
   const rows =
     input.kind === "single" ? [singleRow(input, instrument)] : input.kind === "transfer" ? transferRows(input) : splitRows(input, history);
+  for (const row of rows) newIds.add(row.id);
   // A split's accounts come from the history: every account holding the instrument.
   await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
   await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
@@ -1097,46 +1200,21 @@ export interface TradePatchInput extends TradeAmountsInput {
   readonly to?: TransferLegPatch;
 }
 
-const COMMON_PATCH_FIELDS = ["type", "tradeDate", "occurredAt", "memo"] as const;
-const PATCH_FIELDS: Readonly<Record<"single" | "transfer" | "split", readonly (keyof TradePatchInput)[]>> = {
-  single: [
-    ...COMMON_PATCH_FIELDS,
-    "accountId",
-    "portfolioId",
-    "instrumentId",
-    "taxKind",
-    "quantityE8",
-    "priceE6",
-    "grossCents",
-    "feesCents",
-    "transactionTaxCents",
-    "accruedInterestCents",
-    "withholdingForeignCents",
-    "withholdingDomesticCents",
-    "gainTaxCents",
-    "costBasisCents",
-    "splitFrom",
-    "splitTo",
-  ],
-  transfer: [...COMMON_PATCH_FIELDS, "instrumentId", "quantityE8", "from", "to"],
-  split: [...COMMON_PATCH_FIELDS, "splitFrom", "splitTo"],
-};
-
 function groupKind(type: TradeType): "single" | "transfer" | "split" {
   return type === "transfer" || type === "split" ? type : "single";
 }
 
 /**
  * @throws ValidationError "invalid_trade" (details: field) for a field the trade's type does not
- *   take in an edit, or a `type` other than its own.
+ *   take in an edit (`tradePatchFields`, #594), or a `type` other than its own.
  */
 function checkPatchFields(type: TradeType, patch: TradePatchInput): void {
   if (patch.type !== undefined && patch.type !== type) {
     throw new ValidationError("invalid_trade", "the type of a trade cannot change", { field: "type" });
   }
-  const allowed = PATCH_FIELDS[groupKind(type)];
+  const allowed = tradePatchFields(type);
   for (const [field, value] of Object.entries(patch)) {
-    if (value !== undefined && !allowed.includes(field as keyof TradePatchInput)) {
+    if (value !== undefined && !allowed.includes(field)) {
       throw new ValidationError("invalid_trade", `an edit of a ${type} does not take ${field}`, { field });
     }
   }
@@ -1210,6 +1288,19 @@ function editedSingleRow(record: TradeRecord, patch: TradePatchInput, instrument
     splitFrom: patch.splitFrom ?? current.splitFrom,
     splitTo: patch.splitTo ?? current.splitTo,
   };
+  // The figures again only when the edit changes one of them (#600): a buy stored at a price of 0,
+  // or a dividend of 0, before they were refused keeps taking every other edit, as #653 does for
+  // the tax regime.
+  if (patch.quantityE8 !== undefined || patch.priceE6 !== undefined || patch.grossCents !== undefined) {
+    checkTradeFigures({
+      type: row.type,
+      quantity: row.quantityE8,
+      price: row.priceE6,
+      grossCents: row.grossCents,
+      splitFrom: row.splitFrom,
+      splitTo: row.splitTo,
+    });
+  }
   const unitsChanged = patch.quantityE8 !== undefined || patch.priceE6 !== undefined || patch.instrumentId !== undefined;
   if ((row.type === "buy" || row.type === "sell") && patch.grossCents === undefined && unitsChanged && instrument) {
     // As on create: the amount of the units, rounded once (ADR 0011), unless the edit gives the
@@ -1230,12 +1321,12 @@ function editedTransferRows(group: readonly TradeRecord[], patch: TradePatchInpu
   if (patch.to !== undefined && !to) {
     throw new ValidationError("invalid_trade", "this transfer has no incoming leg", { field: "to" });
   }
-  const quantityE8 = patch.quantityE8 ?? Math.abs(group[0]!.quantityE8);
-  if (quantityE8 <= 0) {
-    throw new ValidationError("invalid_trade", "a transfer moves a positive quantity", { field: "quantityE8" });
-  }
   if (patch.instrumentId === null) {
     throw new ValidationError("invalid_trade", "a transfer needs an instrument", { field: "instrumentId" });
+  }
+  const quantityE8 = patch.quantityE8 ?? Math.abs(group[0]!.quantityE8);
+  if (patch.quantityE8 !== undefined) {
+    checkTradeFigures({ type: "transfer", quantity: quantityE8, price: 0, grossCents: 0, splitFrom: null, splitTo: null });
   }
   const leg = (record: TradeRecord, legPatch: TransferLegPatch | undefined, sign: 1 | -1): NewTradeRow => {
     const current = rowOf(record);
@@ -1267,6 +1358,12 @@ function editedSplitRows(
   historyWithoutSplit: readonly PositionTrade[],
 ): NewTradeRow[] {
   const first = group[0]!;
+  const splitFrom = patch.splitFrom ?? first.splitFrom!;
+  const splitTo = patch.splitTo ?? first.splitTo!;
+  // A new ratio is checked before the holdings on the date are looked for (#662).
+  if (patch.splitFrom !== undefined || patch.splitTo !== undefined) {
+    checkTradeFigures({ type: "split", quantity: 0, price: 0, grossCents: 0, splitFrom, splitTo });
+  }
   const occurredAt = patched(patch.occurredAt, first.occurredAt);
   const memo = patched(patch.memo, first.memo);
   const rows = splitRows(
@@ -1274,8 +1371,8 @@ function editedSplitRows(
       kind: "split",
       instrumentId: first.instrumentId!,
       tradeDate: patch.tradeDate ?? first.tradeDate,
-      splitFrom: patch.splitFrom ?? first.splitFrom!,
-      splitTo: patch.splitTo ?? first.splitTo!,
+      splitFrom,
+      splitTo,
       ...(occurredAt === null ? {} : { occurredAt }),
       ...(memo === null ? {} : { memo }),
     },
@@ -1438,6 +1535,25 @@ export async function updateTrade(
   tradeId: string,
   patch: TradePatchInput,
 ): Promise<TradeRecord[] | "not_found" | "reconciled" | "nothing_to_change"> {
+  // The rows the edit adds (a split's row for a holding it did not cover): an error that names
+  // one names it as null, while an edited trade keeps its own id (#662).
+  const addedIds = new Set<string>();
+  try {
+    return await editTrade(db, workspaceId, userId, tradeId, patch, addedIds);
+  } catch (error) {
+    throw withoutNewTradeIds(error, addedIds);
+  }
+}
+
+/** `updateTrade`, adding to `addedIds` the id of each row it builds that is not stored yet. */
+async function editTrade(
+  db: DbClient,
+  workspaceId: string,
+  userId: string | null,
+  tradeId: string,
+  patch: TradePatchInput,
+  addedIds: Set<string>,
+): Promise<TradeRecord[] | "not_found" | "reconciled" | "nothing_to_change"> {
   const group = await lockTradeGroup(db, workspaceId, tradeId, patch.instrumentId);
   if (!group) {
     return "not_found";
@@ -1488,6 +1604,9 @@ export async function updateTrade(
       : kind === "transfer"
         ? editedTransferRows(group, patch)
         : editedSplitRows(group, patch, histories.get(instrumentId)!.filter((trade) => !oldIds.has(trade.id)));
+  for (const row of rows) {
+    if (!oldIds.has(row.id)) addedIds.add(row.id);
+  }
   // A split moved to another date may cover an account it did not before.
   await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
   const { accounts, timeZone } = await checkRows(db, workspaceId, rows, instrument, "edit", group);

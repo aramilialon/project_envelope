@@ -565,29 +565,36 @@ describe("trades routes (#77)", () => {
     assert.equal(withholding.withheld, 1_001);
   });
 
-  it("refuses a body that breaks the shape of its type, with the core's codes", async () => {
+  it("refuses a body that breaks the shape of its type, each with a code and the field (#594, #600)", async () => {
     const etf = await instrument();
     const base = { accountId: await account(), portfolioId: await portfolio(), instrumentId: etf, tradeDate: "2026-01-10" };
-    const field = await rejected({ ...base, type: "dividend", grossCents: 100, quantityE8: units(1) }, "invalid_trade");
-    assert.equal(field.field, "quantity");
-    await rejected({ ...base, type: "buy", quantityE8: 0, priceE6: price(1) }, "invalid_trade");
-    await rejected({ ...base, type: "buy", quantityE8: 0.5, priceE6: price(1) }, "invalid_quantity");
-    await rejected({ ...base, type: "buy", quantityE8: units(1), priceE6: -1 }, "invalid_price");
-    await rejected({ ...base, tradeDate: "2026-02-30", type: "buy", quantityE8: units(1), priceE6: price(1) }, "invalid_date");
-    await rejected({ ...base, type: "buy", occurredAt: "yesterday", quantityE8: units(1), priceE6: price(1) }, "invalid_trade");
+    const buy = { ...base, type: "buy", quantityE8: units(1), priceE6: price(1) };
+    assert.deepEqual(await rejected({ ...base, type: "dividend", grossCents: 100, quantityE8: units(1) }, "invalid_trade"), { field: "quantityE8" });
+    assert.deepEqual(await rejected({ ...buy, quantityE8: 0 }, "invalid_trade"), { field: "quantity" });
+    await rejected({ ...buy, quantityE8: 0.5 }, "invalid_quantity");
+    await rejected({ ...buy, priceE6: -1 }, "invalid_price");
+    await rejected({ ...buy, tradeDate: "2026-02-30" }, "invalid_date");
+    // No made-up id for the trade being recorded (#662).
+    assert.deepEqual(await rejected({ ...buy, occurredAt: "yesterday" }, "invalid_trade"), { tradeId: null, field: "occurredAt" });
 
-    for (const payload of [
-      { ...base, type: "swap" },
-      { ...base, type: "buy", tradeDate: undefined },
-      { ...base, type: "buy", accountId: "not-a-uuid" },
-      { ...base, type: "buy", quantityE8: "10" },
-      { ...base, type: "buy", taxKind: "vat" },
-      { ...base, type: "transfer", quantityE8: units(1) },
-      { ...base, type: "split", splitFrom: 1 },
-    ]) {
-      const response = await post(payload);
-      assert.equal(response.statusCode, 400, JSON.stringify(payload));
-      assert.match(response.json().error, /^invalid trade: /);
+    const { tradeDate: _tradeDate, ...undated } = buy;
+    for (const [payload, code, field] of [
+      [{ ...base, type: "swap" }, "invalid_field", "type"],
+      [{ ...base, type: 7 }, "invalid_field", "type"],
+      [{ ...base, quantityE8: units(1) }, "invalid_trade", "type"],
+      [undated, "invalid_trade", "tradeDate"],
+      [{ ...buy, tradeDate: 20260110 }, "invalid_field", "tradeDate"],
+      [{ ...buy, accountId: "not-a-uuid" }, "invalid_field", "accountId"],
+      [{ ...buy, quantityE8: "10" }, "invalid_field", "quantityE8"],
+      [{ ...buy, memo: 12 }, "invalid_field", "memo"],
+      [{ ...buy, taxKind: "vat" }, "invalid_field", "taxKind"],
+      [{ type: "transfer", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1) }, "invalid_trade", "from"],
+      [{ type: "transfer", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), from: "a leg" }, "invalid_field", "from"],
+      [{ type: "transfer", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), to: { accountId: base.accountId } }, "invalid_trade", "to.portfolioId"],
+      [{ type: "transfer", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), to: { accountId: "x", portfolioId: base.portfolioId } }, "invalid_field", "to.accountId"],
+      [{ type: "split", instrumentId: etf, tradeDate: "2026-01-10", splitFrom: 1 }, "invalid_trade", "splitTo"],
+    ] as const) {
+      assert.deepEqual(await rejected(payload as Record<string, unknown>, code), { field }, JSON.stringify(payload));
     }
   });
 
@@ -609,17 +616,15 @@ describe("trades routes (#77)", () => {
     const broker = await account();
     const growth = await portfolio();
     await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(5), priceE6: price(10) });
-    const before = await countTrades();
-    for (const payload of [
-      { type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 100, fee: 100 },
-      { type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(10), quantity: 1 },
-      { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: growth, fees: 1 } },
-    ]) {
-      const response = await post(payload);
-      assert.equal(response.statusCode, 400, JSON.stringify(payload));
-      assert.match(response.json().error, /^invalid trade: .* is not a field of this request$/);
+    for (const [payload, field] of [
+      [{ type: "fee", accountId: broker, portfolioId: growth, tradeDate: "2026-01-10", feesCents: 100, fee: 100 }, "fee"],
+      [{ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(1), priceE6: price(10), quantity: 1 }, "quantity"],
+      [{ type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: growth, fees: 1 } }, "from.fees"],
+      // Even a field that would be wrong for the type: the unknown one is named first.
+      [{ type: "dividend", accountId: broker, portfolioId: growth, instrumentId: etf, tradeDate: "2026-01-10", priceE6: "x", colour: "red" }, "colour"],
+    ] as const) {
+      assert.deepEqual(await rejected(payload, "unknown_field"), { field }, JSON.stringify(payload));
     }
-    assert.equal(await countTrades(), before);
   });
 
   describe("transfers", () => {
@@ -784,6 +789,7 @@ describe("trades routes (#77)", () => {
 
     const bad = await list("?portfolioId=nope");
     assert.equal(bad.statusCode, 400);
+    assert.deepEqual(bad.json(), { error: "invalid_field", details: { field: "portfolioId" } });
   });
 
   it("lets a read_only member list but not record, and an editor record", async () => {
@@ -1730,10 +1736,17 @@ describe("trades routes (#77)", () => {
 
     it("refuses a body that cannot be read as an edit", async () => {
       const [fee] = await created({ type: "fee", accountId: await account(), portfolioId: await portfolio(), tradeDate: "2026-01-10", feesCents: 100 });
-      for (const payload of [{ id: randomUUID() }, { feesCents: "1" }, { colour: "red" }, { accountId: "nope" }, { from: { id: randomUUID() } }, { taxKind: "vat" }]) {
-        const response = await patch(fee!.id, payload);
-        assert.equal(response.statusCode, 400, JSON.stringify(payload));
-        assert.match(response.json().error, /^invalid trade: /);
+      for (const [payload, code, field] of [
+        [{ id: randomUUID() }, "unknown_field", "id"],
+        [{ colour: "red" }, "unknown_field", "colour"],
+        [{ from: { id: randomUUID() } }, "unknown_field", "from.id"],
+        [{ feesCents: "1" }, "invalid_field", "feesCents"],
+        [{ accountId: "nope" }, "invalid_field", "accountId"],
+        [{ taxKind: "vat" }, "invalid_field", "taxKind"],
+        [{ type: 3 }, "invalid_field", "type"],
+        [{ to: [] }, "invalid_field", "to"],
+      ] as const) {
+        assert.deepEqual(await refusedEdit(fee!.id, payload, code), { field }, JSON.stringify(payload));
       }
       const long = await patch(fee!.id, { memo: "x".repeat(MAX_FREE_TEXT_LENGTH + 1) });
       assert.equal(long.statusCode, 400);
@@ -1885,7 +1898,7 @@ describe("trades routes (#77)", () => {
         ] as const) {
           const response = await app.fastify.inject({ method, url, headers: { ...(await auth()), ...json }, payload: raw });
           assert.equal(response.statusCode, 400, `${method} ${raw}: ${response.body}`);
-          assert.equal(response.json().error, "invalid trade: the body must be a JSON object", `${method} ${raw}`);
+          assert.equal(response.json().error, "invalid_body", `${method} ${raw}`);
         }
       }
 
@@ -1895,7 +1908,7 @@ describe("trades routes (#77)", () => {
       for (const payload of [{}, { type: "fee" }, { from: null, to: null }]) {
         const response = await patch(fee!.id, payload);
         assert.equal(response.statusCode, 400, JSON.stringify(payload));
-        assert.equal(response.json().error, "invalid trade: nothing to change");
+        assert.equal(response.json().error, "invalid_body");
       }
       // Another type alone names the field, as it does when other fields come with it (#596).
       for (const payload of [{ type: "tax" }, { type: "tax", memo: "x" }, { type: "buy" }]) {
@@ -2071,6 +2084,316 @@ describe("trades routes (#77)", () => {
         // Moved after the archived portfolio's buy, the split gains a row there.
         const moved = await edited(split!.id, { tradeDate: "2026-04-01" });
         assert.deepEqual(moved.map((row) => row.portfolioId).sort(), [active, archived].sort());
+      });
+    });
+  });
+
+  describe("what each request takes and needs, and the order of checks (#594, #600, #662)", () => {
+    async function patchTrade(tradeId: string, payload: Record<string, unknown>) {
+      return app.fastify.inject({ method: "PATCH", url: `/workspaces/${workspaceId}/trades/${tradeId}`, headers: await auth(), payload });
+    }
+
+    async function editRefused(tradeId: string, payload: Record<string, unknown>, code: string): Promise<Record<string, unknown>> {
+      const before = await superuserPool.query("SELECT * FROM trades WHERE workspace_id = $1 ORDER BY id", [workspaceId]);
+      const response = await patchTrade(tradeId, payload);
+      assert.equal(response.statusCode, 400, response.body);
+      assert.equal(response.json().error, code, response.body);
+      const after = await superuserPool.query("SELECT * FROM trades WHERE workspace_id = $1 ORDER BY id", [workspaceId]);
+      assert.deepEqual(after.rows, before.rows);
+      return response.json().details;
+    }
+
+    async function editAccepted(tradeId: string, payload: Record<string, unknown>): Promise<TradeBody[]> {
+      const response = await patchTrade(tradeId, payload);
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json().trades;
+    }
+
+    async function holding() {
+      const etf = await instrument();
+      const broker = await account();
+      const growth = await portfolio();
+      const base = { accountId: broker, portfolioId: growth, instrumentId: etf };
+      const [bought] = await created({ ...base, type: "buy", tradeDate: "2026-01-10", quantityE8: units(100), priceE6: price(12) });
+      return { etf, broker, growth, base, bought: bought! };
+    }
+
+    /** A trade written straight to the table, as one recorded before a rule existed. */
+    async function storedBefore(fields: { accountId: string; portfolioId: string; instrumentId: string; type: string; quantityE8: number; priceE6: number; grossCents: number }) {
+      const { rows } = await superuserPool.query<{ id: string }>(
+        `INSERT INTO trades (workspace_id, account_id, portfolio_id, instrument_id, type, trade_date, quantity_e8, price_e6, gross_cents)
+         VALUES ($1, $2, $3, $4, $5, '2026-01-05', $6, $7, $8) RETURNING id`,
+        [workspaceId, fields.accountId, fields.portfolioId, fields.instrumentId, fields.type, fields.quantityE8, fields.priceE6, fields.grossCents],
+      );
+      return rows[0]!.id;
+    }
+
+    describe("fields of another kind of request (#594)", () => {
+      it("refuses, on create, each field a request of that type does not take, naming it", async () => {
+        const { etf, broker, growth, base } = await holding();
+        const leg = { accountId: broker, portfolioId: growth };
+        const buy = { ...base, type: "buy", tradeDate: "2026-02-01", quantityE8: units(1), priceE6: price(10) };
+        const transfer = { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: leg, to: { accountId: broker, portfolioId: await portfolio() } };
+        const split = { type: "split", instrumentId: etf, tradeDate: "2026-02-01", splitFrom: 1, splitTo: 2 };
+        for (const [payload, field] of [
+          [{ ...buy, from: leg }, "from"],
+          [{ ...buy, to: leg }, "to"],
+          [{ ...buy, gainTaxCents: 100 }, "gainTaxCents"],
+          [{ ...buy, withholdingForeignCents: 0 }, "withholdingForeignCents"],
+          [{ ...buy, costBasisCents: 100 }, "costBasisCents"],
+          [{ ...buy, splitTo: 2 }, "splitTo"],
+          [{ ...base, type: "dividend", tradeDate: "2026-02-01", grossCents: 100, priceE6: price(1) }, "priceE6"],
+          [{ ...base, type: "fee", tradeDate: "2026-02-01", feesCents: 100, grossCents: 100 }, "grossCents"],
+          [{ ...base, type: "tax", tradeDate: "2026-02-01", taxKind: "other", grossCents: 100, feesCents: 1 }, "feesCents"],
+          [{ ...transfer, accountId: broker }, "accountId"],
+          [{ ...transfer, portfolioId: growth }, "portfolioId"],
+          [{ ...transfer, id: randomUUID() }, "id"],
+          [{ ...transfer, taxKind: "other" }, "taxKind"],
+          [{ ...transfer, feesCents: 100 }, "feesCents"],
+          [{ ...split, accountId: broker }, "accountId"],
+          [{ ...split, portfolioId: growth }, "portfolioId"],
+          [{ ...split, id: randomUUID() }, "id"],
+          [{ ...split, taxKind: "other" }, "taxKind"],
+          [{ ...split, quantityE8: units(1) }, "quantityE8"],
+          [{ ...split, from: leg }, "from"],
+        ] as const) {
+          assert.deepEqual(await rejected(payload, "invalid_trade"), { field }, JSON.stringify(payload));
+        }
+      });
+
+      it("reads null as left out, so a field of another kind sent as null is not refused", async () => {
+        const { base } = await holding();
+        const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-02-01", quantityE8: units(1), priceE6: price(10), from: null, splitTo: null });
+        assert.equal(buy!.type, "buy");
+      });
+
+      it("keeps the tax kind's own code on a trade that is not a tax", async () => {
+        const { base } = await holding();
+        const details = await rejected({ ...base, type: "dividend", tradeDate: "2026-02-01", grossCents: 100, taxKind: "stamp_duty" }, "tax_kind_not_allowed_for_trade_type");
+        assert.deepEqual(details, { type: "dividend", taxKind: "stamp_duty" });
+      });
+
+      it("refuses, on edit, each field the trade's type does not take, naming it", async () => {
+        const { etf, broker, growth, base, bought } = await holding();
+        const [transferLeg] = await created({ type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: growth } });
+        const [splitRow] = await created({ type: "split", instrumentId: etf, tradeDate: "2026-03-01", splitFrom: 1, splitTo: 2 });
+        const [fee] = await created({ ...base, type: "fee", tradeDate: "2026-02-01", feesCents: 100 });
+        for (const [tradeId, payload, field] of [
+          [bought.id, { gainTaxCents: 100 }, "gainTaxCents"],
+          [bought.id, { from: { feesCents: 1 } }, "from"],
+          [bought.id, { costBasisCents: 1 }, "costBasisCents"],
+          [fee!.id, { grossCents: 100 }, "grossCents"],
+          [fee!.id, { quantityE8: units(1) }, "quantityE8"],
+          [transferLeg!.id, { accountId: broker }, "accountId"],
+          [transferLeg!.id, { priceE6: price(1) }, "priceE6"],
+          [splitRow!.id, { instrumentId: etf }, "instrumentId"],
+          [splitRow!.id, { portfolioId: growth }, "portfolioId"],
+        ] as const) {
+          assert.deepEqual(await editRefused(tradeId, payload, "invalid_trade"), { field }, JSON.stringify(payload));
+        }
+      });
+    });
+
+    describe("required fields and the price and gross each type needs (#600)", () => {
+      it("refuses a buy or a sale without a price and a dividend without a gross, naming the field", async () => {
+        const { base } = await holding();
+        const trade = { ...base, tradeDate: "2026-02-01" };
+        for (const [payload, field] of [
+          [{ ...trade, type: "buy", quantityE8: units(10) }, "priceE6"],
+          [{ ...trade, type: "sell", quantityE8: units(10) }, "priceE6"],
+          [{ ...trade, type: "buy", priceE6: price(10) }, "quantityE8"],
+          [{ ...trade, type: "buy", quantityE8: units(10), priceE6: null }, "priceE6"],
+          [{ ...trade, type: "dividend" }, "grossCents"],
+          [{ ...trade, type: "dividend", feesCents: 100 }, "grossCents"],
+          [{ ...trade, type: "fee" }, "feesCents"],
+          [{ ...trade, type: "tax", grossCents: 100 }, "taxKind"],
+          [{ ...trade, type: "tax", taxKind: "other" }, "grossCents"],
+          [{ type: "buy", tradeDate: "2026-02-01", portfolioId: base.portfolioId, instrumentId: base.instrumentId, quantityE8: units(1), priceE6: price(1) }, "accountId"],
+          [{ type: "dividend", tradeDate: "2026-02-01", accountId: base.accountId, portfolioId: base.portfolioId, grossCents: 100 }, "instrumentId"],
+        ] as const) {
+          assert.deepEqual(await rejected(payload, "invalid_trade"), { field }, JSON.stringify(payload));
+        }
+      });
+
+      it("refuses a buy at a price of 0 and a dividend of 0", async () => {
+        const { base } = await holding();
+        const trade = { ...base, tradeDate: "2026-02-01" };
+        // Buy 10 at €0: refused; shares received for free are a transfer in at their tax cost.
+        assert.deepEqual(await rejected({ ...trade, type: "buy", quantityE8: units(10), priceE6: 0 }, "invalid_trade"), { field: "priceE6" });
+        assert.deepEqual(await rejected({ ...trade, type: "buy", quantityE8: units(10), priceE6: 0, grossCents: 100 }, "invalid_trade"), { field: "priceE6" });
+        assert.deepEqual(await rejected({ ...trade, type: "dividend", grossCents: 0 }, "invalid_trade"), { field: "grossCents" });
+      });
+
+      it("records a sale at a price of 0: the whole cost removed is a realized loss", async () => {
+        const { base, growth } = await holding();
+        // 100 units bought at €12 (€1,200), the instrument delisted, then sold for nothing.
+        const [sale] = await created({ ...base, type: "sell", tradeDate: "2026-02-01", quantityE8: units(100), priceE6: 0 });
+        assert.equal(sale!.grossCents, 0);
+        assert.equal(sale!.cashCents, 0);
+        const response = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/portfolios/${growth}/positions`, headers: await auth() });
+        assert.equal(response.statusCode, 200, response.body);
+        const [position] = response.json().positions;
+        assert.equal(position.quantityE8, 0);
+        assert.equal(position.realizedCents, -120_000);
+      });
+
+      it("checks a stored buy at a price of 0, or a dividend of 0, only when an edit changes its quantity, price or gross", async () => {
+        const { base } = await holding();
+        const freeBuy = await storedBefore({ ...base, type: "buy", quantityE8: units(5), priceE6: 0, grossCents: 0 });
+        const emptyDividend = await storedBefore({ ...base, type: "dividend", quantityE8: 0, priceE6: 0, grossCents: 0 });
+        assert.equal((await editAccepted(freeBuy, { memo: "received for free" }))[0]!.memo, "received for free");
+        assert.equal((await editAccepted(emptyDividend, { memo: "announced" }))[0]!.memo, "announced");
+        assert.deepEqual(await editRefused(freeBuy, { quantityE8: units(6) }, "invalid_trade"), { field: "priceE6" });
+        assert.deepEqual(await editRefused(freeBuy, { grossCents: 10 }, "invalid_trade"), { field: "priceE6" });
+        assert.deepEqual(await editRefused(emptyDividend, { feesCents: 0, grossCents: 0 }, "invalid_trade"), { field: "grossCents" });
+        // A new price fixes the buy, a gross the dividend.
+        assert.equal((await editAccepted(freeBuy, { priceE6: price(2) }))[0]!.grossCents, 1_000);
+        assert.equal((await editAccepted(emptyDividend, { grossCents: 300 }))[0]!.grossCents, 300);
+      });
+
+      it("refuses an edit that sets a buy's price to 0, and takes one that sets a sale's", async () => {
+        const { base, bought } = await holding();
+        assert.deepEqual(await editRefused(bought.id, { priceE6: 0 }, "invalid_trade"), { field: "priceE6" });
+        const [sale] = await created({ ...base, type: "sell", tradeDate: "2026-02-01", quantityE8: units(10), priceE6: price(13) });
+        assert.equal((await editAccepted(sale!.id, { priceE6: 0 }))[0]!.grossCents, 0);
+      });
+    });
+
+    describe("the order of checks (#662)", () => {
+      it("names a negative or zero quantity before anything computed from it", async () => {
+        const { base, bought } = await holding();
+        const buy = { ...base, type: "buy", tradeDate: "2026-02-01" };
+        // Before #662 the gross computed from a negative quantity was refused instead.
+        assert.deepEqual(await rejected({ ...buy, quantityE8: -units(5), priceE6: price(10) }, "invalid_trade"), { field: "quantity" });
+        assert.deepEqual(await rejected({ ...buy, quantityE8: -units(5), priceE6: -1 }, "invalid_trade"), { field: "quantity" });
+        assert.deepEqual(await rejected({ ...buy, quantityE8: -units(5), priceE6: price(10), feesCents: -1 }, "invalid_trade"), { field: "quantity" });
+        assert.deepEqual(await rejected({ ...buy, type: "sell", quantityE8: -units(5), priceE6: price(10) }, "invalid_trade"), { field: "quantity" });
+        assert.deepEqual(await editRefused(bought.id, { quantityE8: -units(5) }, "invalid_trade"), { field: "quantity" });
+        // The price, then the amounts.
+        await rejected({ ...buy, quantityE8: units(5), priceE6: -1, feesCents: -1 }, "invalid_price");
+        assert.deepEqual(await rejected({ ...buy, quantityE8: units(5), priceE6: price(10), feesCents: -1 }, "negative_amount_not_allowed"), { field: "feesCents" });
+      });
+
+      it("checks the shape before the required fields, and those before the figures", async () => {
+        const { base, broker, growth } = await holding();
+        const buy = { ...base, type: "buy", tradeDate: "2026-02-01" };
+        // A field of another kind with a price missing and a negative quantity: the shape first.
+        assert.deepEqual(await rejected({ ...buy, quantityE8: -1, from: { accountId: broker, portfolioId: growth } }, "invalid_trade"), { field: "from" });
+        // A wrong JSON type with a price missing: still the shape.
+        assert.deepEqual(await rejected({ ...buy, quantityE8: "-1" }, "invalid_field"), { field: "quantityE8" });
+        // A price missing with a negative quantity: the required field.
+        assert.deepEqual(await rejected({ ...buy, quantityE8: -1 }, "invalid_trade"), { field: "priceE6" });
+        // An unknown instrument with a negative quantity: the figure, which needs no lookup.
+        assert.deepEqual(await rejected({ ...buy, instrumentId: randomUUID(), quantityE8: -1, priceE6: price(1) }, "invalid_trade"), { field: "quantity" });
+      });
+
+      it("checks a split's ratio before looking for the holdings it covers", async () => {
+        const nothingHeld = await instrument();
+        const split = { type: "split", instrumentId: nothingHeld, tradeDate: "2026-02-01" };
+        assert.deepEqual(await rejected({ ...split, splitFrom: 1, splitTo: 0 }, "invalid_trade"), { field: "splitTo" });
+        assert.deepEqual(await rejected({ ...split, splitFrom: -2, splitTo: 1 }, "invalid_trade"), { field: "splitFrom" });
+        await rejected({ ...split, splitFrom: 1, splitTo: 2 }, "split_without_holdings");
+
+        const { etf } = await holding();
+        const [row] = await created({ ...split, instrumentId: etf, splitFrom: 1, splitTo: 2 });
+        // An edit to a date with no holdings and a ratio of 0: the ratio first.
+        assert.deepEqual(await editRefused(row!.id, { tradeDate: "2025-01-01", splitTo: 0 }, "invalid_trade"), { field: "splitTo" });
+      });
+
+      it("refuses a transfer that moves no units before looking at its legs", async () => {
+        const { etf, broker, growth } = await holding();
+        const leg = { accountId: broker, portfolioId: growth };
+        const transfer = { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01" };
+        assert.deepEqual(await rejected({ ...transfer, quantityE8: 0, from: leg, to: leg }, "invalid_trade"), { field: "quantityE8" });
+        assert.deepEqual(await rejected({ ...transfer, quantityE8: -units(1), from: leg }, "invalid_trade"), { field: "quantityE8" });
+        await rejected({ ...transfer, quantityE8: 2 ** 53, from: leg }, "invalid_quantity");
+      });
+    });
+
+    describe("the trade an error names (#662)", () => {
+      it("names the trade being recorded as null, never by an id the server made up", async () => {
+        const { base } = await holding();
+        const oversold = await rejected({ ...base, type: "sell", tradeDate: "2026-02-01", quantityE8: units(101), priceE6: price(10) }, "insufficient_quantity");
+        assert.equal(oversold.tradeId, null);
+        // A client id names a trade that was never stored either.
+        const withId = await rejected({ ...base, id: randomUUID(), type: "sell", tradeDate: "2026-02-01", quantityE8: units(101), priceE6: price(10) }, "insufficient_quantity");
+        assert.equal(withId.tradeId, null);
+      });
+
+      it("names a stored trade by its id: the later sale a backdated one makes oversell, the trade being edited", async () => {
+        const { base } = await holding();
+        const [later] = await created({ ...base, type: "sell", tradeDate: "2026-03-01", quantityE8: units(100), priceE6: price(10) });
+        const backdated = await rejected({ ...base, type: "sell", tradeDate: "2026-02-01", quantityE8: units(1), priceE6: price(10) }, "insufficient_quantity");
+        assert.equal(backdated.tradeId, later!.id);
+        const edited = await editRefused(later!.id, { quantityE8: units(101) }, "insufficient_quantity");
+        assert.equal(edited.tradeId, later!.id);
+      });
+
+      it("names a transfer's new legs as null", async () => {
+        const { etf, broker } = await holding();
+        const empty = await portfolio();
+        const details = await rejected(
+          { type: "transfer", instrumentId: etf, tradeDate: "2026-02-01", quantityE8: units(1), from: { accountId: broker, portfolioId: empty }, to: { accountId: broker, portfolioId: await portfolio() } },
+          "insufficient_quantity",
+        );
+        assert.equal(details.tradeId, null);
+      });
+    });
+
+    describe("a position's quantity beyond the safe range (#662)", () => {
+      // 9 × 10^15 (units × 10^8) is a safe integer; two of them together are not.
+      const big = 9e15;
+
+      function overflow(details: Record<string, unknown>, tradeId: string | null): void {
+        assert.equal(details.label, "positionQuantity");
+        assert.equal(details.tradeId, tradeId);
+      }
+
+      it("names a new buy as null, and a stored buy a backdated transfer in pushes over by its id", async () => {
+        const etf = await instrument();
+        const broker = await account();
+        const growth = await portfolio();
+        const buy = { type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, quantityE8: big, priceE6: 1 };
+        const [stored] = await created({ ...buy, tradeDate: "2026-02-01" });
+        overflow(await rejected({ ...buy, tradeDate: "2026-03-01" }, "invalid_quantity"), null);
+        // A transfer in before it: the stored buy is where the total leaves the safe range.
+        overflow(
+          await rejected(
+            { type: "transfer", instrumentId: etf, tradeDate: "2026-01-15", quantityE8: big, to: { accountId: broker, portfolioId: await portfolio(), costBasisCents: 0 } },
+            "invalid_quantity",
+          ),
+          stored!.id,
+        );
+      });
+
+      it("names the buy an edit pushes over by its id", async () => {
+        const etf = await instrument();
+        const broker = await account();
+        const buy = { type: "buy", accountId: broker, instrumentId: etf, priceE6: 1, tradeDate: "2026-02-01" };
+        await created({ ...buy, portfolioId: await portfolio(), quantityE8: 5e15 });
+        const [second] = await created({ ...buy, portfolioId: await portfolio(), tradeDate: "2026-02-02", quantityE8: 4e15 });
+        overflow(await editRefused(second!.id, { quantityE8: 5e15 }, "invalid_quantity"), second!.id);
+      });
+
+      it("names a new split row and a new incoming leg as null", async () => {
+        const etf = await instrument();
+        const broker = await account();
+        const growth = await portfolio();
+        await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, quantityE8: 1e15, priceE6: 1, tradeDate: "2026-01-10" });
+        overflow(await rejected({ type: "split", instrumentId: etf, tradeDate: "2026-02-01", splitFrom: 1, splitTo: 10 }, "invalid_quantity"), null);
+
+        const other = await instrument();
+        await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: other, quantityE8: big, priceE6: 1, tradeDate: "2026-01-10" });
+        const elsewhere = await account();
+        const there = await portfolio();
+        await created({ type: "buy", accountId: elsewhere, portfolioId: there, instrumentId: other, quantityE8: big, priceE6: 1, tradeDate: "2026-01-10" });
+        overflow(
+          await rejected(
+            { type: "transfer", instrumentId: other, tradeDate: "2026-02-01", quantityE8: big, from: { accountId: broker, portfolioId: growth }, to: { accountId: elsewhere, portfolioId: there } },
+            "invalid_quantity",
+          ),
+          null,
+        );
       });
     });
   });
