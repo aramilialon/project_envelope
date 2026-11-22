@@ -289,6 +289,33 @@ describe("money coming in dated after today (#668)", () => {
     assert.equal(find(onTheDay.paymentCategories, "visa-payment")?.available, 5000);
   });
 
+  it("a receipt with a return on it dated after today: the spending counts at once, the return from its date", () => {
+    // −€100 at the store on the 25th: €150 of groceries, €50 back on a household return.
+    const transactions: BudgetTransaction[] = [
+      ...november,
+      {
+        id: "receipt",
+        accountId: "checking",
+        date: "2026-11-25",
+        amount: -10000,
+        splits: [
+          { categoryId: "groceries", amount: -15000 },
+          { categoryId: "household", amount: 5000 },
+        ],
+      },
+    ];
+
+    const before = budget(transactions, "2026-11-21");
+    assert.equal(find(before.categories, "groceries")?.available, 15000);
+    assert.equal(find(before.categories, "household")?.available, 10000);
+    assert.equal(before.unassigned, 160000);
+
+    const onTheDay = budget(transactions, "2026-11-25");
+    assert.equal(find(onTheDay.categories, "groceries")?.available, 15000);
+    assert.equal(find(onTheDay.categories, "household")?.available, 15000);
+    assert.equal(onTheDay.unassigned, 160000);
+  });
+
   it("a categorized transfer in from an off-budget account dated after today counts nowhere until its date", () => {
     const transactions: BudgetTransaction[] = [
       ...november,

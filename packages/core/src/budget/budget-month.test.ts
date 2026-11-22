@@ -337,6 +337,58 @@ describe("computeBudgetMonth", () => {
     assert.notDeepEqual(onTheDay.paymentCategories, computeBudgetMonth({ ...base, today: "2026-11-28" }, "2026-11").paymentCategories);
   });
 
+  it("a cash refund dated after today changes how the month closes, and the next month, only from its date (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      income: [{ month: "2026-11", date: "2026-11-02", amount: 200000 }],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 5000 }],
+      activity: [
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-10", amount: -10000 },
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 6000 },
+      ],
+      today: "2026-11-21",
+    };
+
+    assert.equal(category(computeBudgetMonth(input, "2026-11").categories, "groceries").available, -5000);
+    const december = computeBudgetMonth(input, "2026-12");
+    assert.equal(december.overspentLastMonth, 5000);
+    assert.equal(december.unassigned, 190000);
+    assert.equal(category(december.categories, "groceries").available, 0);
+
+    const later = { ...input, today: "2026-11-28" };
+    assert.equal(category(computeBudgetMonth(later, "2026-11").categories, "groceries").available, 1000);
+    const decemberLater = computeBudgetMonth(later, "2026-12");
+    assert.equal(decemberLater.overspentLastMonth, 0);
+    assert.equal(decemberLater.unassigned, 195000);
+    assert.equal(category(decemberLater.categories, "groceries").available, 1000);
+  });
+
+  it("a card refund dated after today: the payment category holds more than the debt until its date (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      paymentCategoryIds: ["visa-payment"],
+      income: [{ month: "2026-11", date: "2026-11-02", amount: 200000 }],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 5000 }],
+      activity: [
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-10", amount: -8000, paymentCategoryId: "visa-payment" },
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 3000, paymentCategoryId: "visa-payment" },
+      ],
+      // The card's real debt counts every transaction to the end of the month, the refund included.
+      cardBalances: [{ paymentCategoryId: "visa-payment", owed: 5000 }],
+      today: "2026-11-21",
+    };
+
+    const before = computeBudgetMonth(input, "2026-11");
+    assert.equal(before.creditOverspending, 3000);
+    assert.equal(category(before.paymentCategories, "visa-payment").available, 5000);
+    assert.equal(category(before.paymentCategories, "visa-payment").uncovered, 0);
+
+    const onTheDay = computeBudgetMonth({ ...input, today: "2026-11-28" }, "2026-11");
+    assert.equal(onTheDay.creditOverspending, 0);
+    assert.equal(category(onTheDay.categories, "groceries").available, 0);
+    assert.equal(category(onTheDay.paymentCategories, "visa-payment").available, 5000);
+  });
+
   it("an undated refund counts from the first day of its month (#668)", () => {
     const input: BudgetInput = {
       categoryIds: ["groceries"],
