@@ -478,8 +478,11 @@ export function balancesAtEndOf(model: WorkspaceModel, byAccount: ReadonlyMap<st
  * A budget month against the oracle. Given the on-budget cash accounts' balances at the end of
  * `month` (`balances`, read from the API), also the model-free budget invariant (#650):
  * unassigned + every category's available + assigned in future + credit overspending + reserved
- * = the balance of the on-budget cash accounts (cards excluded) at the end of the month, less the
- * income dated in it or before but after today (not received yet, so it counts nowhere).
+ * = the balance of the on-budget cash accounts (cards excluded) at the end of the month, less
+ * every positive split on them dated in it or before but after today: income, a refund, a
+ * categorized transfer in (not received yet, so it counts nowhere, #668). A card's refund dated
+ * after today moves nothing between its category and the payment category, so it leaves the sum
+ * alone.
  */
 export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel, month: string, balances?: ReadonlyMap<string, number>): Promise<BudgetMonthResponse> {
   const actual = (await get(ctx, model, wsPath(model, `/budget-months/${month}`))) as BudgetMonthResponse;
@@ -491,9 +494,12 @@ export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel,
       actual.creditOverspending +
       actual.reserved;
     const today = walkToday();
-    const notReceived = oracleAggregated(model)
-      .income.filter((i) => compareMonths(i.month, month) <= 0 && i.date !== undefined && i.date > today)
-      .reduce((sum, i) => sum + i.amount, 0);
+    const aggregated = oracleAggregated(model);
+    const notReceived =
+      aggregated.income.filter((i) => compareMonths(i.month, month) <= 0 && i.date !== undefined && i.date > today).reduce((sum, i) => sum + i.amount, 0) +
+      aggregated.activity
+        .filter((a) => a.paymentCategoryId === undefined && a.amount > 0 && compareMonths(a.month, month) <= 0 && a.date !== undefined && a.date > today)
+        .reduce((sum, a) => sum + a.amount, 0);
     const cash = model.budgetCashAccounts().reduce((sum, account) => sum + (balances.get(account.id) ?? fail(`no balance read for ${account.handle}`)), 0) - notReceived;
     if (budgeted !== cash) fail(`budget invariant of ${model.persona} in ${month}: the budget holds ${budgeted}, the on-budget accounts ${cash} at the end of the month`);
   }
