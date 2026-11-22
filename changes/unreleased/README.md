@@ -22,4 +22,4 @@ Within a section, the release lists the entries by issue number. `pnpm --filter 
 
 ## Entries still written under "Unreleased"
 
-A branch started before #738 may still add its entry under `## [Unreleased]` in `CHANGELOG.md`. The release script keeps it: it puts entries found there first in their section, then the files here, and leaves the "Unreleased" heading empty. Moving such an entry into a file here is just as good, and avoids the conflict.
+A branch started before #738 may still add its entry under `## [Unreleased]` in `CHANGELOG.md`. The release script keeps it: it puts entries found there first in their section, then the files here, and leaves the "Unreleased" heading empty. Moving such an entry into a file here is just as good. Until no open branch writes "Unreleased" entries any more, `.gitattributes` merges `CHANGELOG.md` with the union driver so such branches do not conflict; that line is removed then.
