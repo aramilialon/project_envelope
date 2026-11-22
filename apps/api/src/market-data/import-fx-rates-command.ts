@@ -11,6 +11,24 @@ import { isValidationError } from "@envelope/core";
 import { createPool } from "../db/pool.ts";
 import { importFxRatesFile } from "./import-fx-rates.ts";
 
+/** What a file system error says, in one line; null for any other error. */
+function unreadable(error: unknown): string | null {
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+  switch (code) {
+    case "ENOENT":
+      return "there is no such file";
+    case "EACCES":
+    case "EPERM":
+      return "permission denied";
+    case "EISDIR":
+      return "it is a directory";
+    case "ENOTDIR":
+      return "a part of the path is not a directory";
+    default:
+      return null;
+  }
+}
+
 async function main(): Promise<void> {
   const [file, ...rest] = process.argv.slice(2);
   if (file === undefined || rest.length > 0) {
@@ -40,6 +58,12 @@ async function main(): Promise<void> {
   } catch (error) {
     if (isValidationError(error)) {
       console.error(`The file was refused, nothing was stored: ${error.code} ${JSON.stringify(error.details)} (${error.message})`);
+      process.exitCode = 1;
+      return;
+    }
+    const reason = unreadable(error);
+    if (reason !== null) {
+      console.error(`Cannot read ${path}: ${reason}. Nothing was stored.`);
       process.exitCode = 1;
       return;
     }

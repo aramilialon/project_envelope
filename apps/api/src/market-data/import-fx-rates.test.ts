@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { after, afterEach, before, describe, it } from "node:test";
 
 import { ECB_RATES_FILE_MAX_CHARS, isValidationError } from "@envelope/core";
@@ -89,5 +91,22 @@ describe("importFxRatesFile (#85)", () => {
     await writeFile(path, Buffer.alloc(ECB_RATES_FILE_MAX_CHARS + 1, 0x20));
     await assert.rejects(importFxRatesFile(appPool, path), (error) => isValidationError(error, "invalid_rates_file") && error.details.reason === "too_large");
     assert.equal(await count(), 0);
+  });
+});
+
+/** The command itself (`fx-rates:import`), run as the administrator would: what it prints. */
+describe("the fx-rates:import command (#85)", () => {
+  const command = new URL("./import-fx-rates-command.ts", import.meta.url).pathname;
+
+  it("says in one line that a file it cannot read was not found, with no stack trace, and exits 1", { timeout: 15_000 }, async () => {
+    const missing = join(tmpdir(), `envelope-fx-import-missing-${process.pid}.xml`);
+    // A database address nothing listens on: the file is looked at before any connection.
+    const env = { PATH: process.env.PATH ?? "", APP_DATABASE_URL: "postgres://nobody@127.0.0.1:1/none" };
+    await assert.rejects(promisify(execFile)(process.execPath, [command, missing], { env }), (error: unknown) => {
+      const { code, stderr } = error as { code: number; stderr: string };
+      assert.equal(code, 1);
+      assert.equal(stderr.trim(), `Cannot read ${missing}: there is no such file. Nothing was stored.`);
+      return true;
+    });
   });
 });
