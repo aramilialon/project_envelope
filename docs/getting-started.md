@@ -254,7 +254,7 @@ $ cp .env.example .env
 $ pnpm --filter @envelope/web dev
 ```
 
-Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in then lands back on the placeholder screen, which reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
+Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in the first time shows that you belong to no workspace yet: choose "Create a workspace" (name, currency, time zone; the currency cannot be changed later). To see a filled-in budget first instead, load the demo workspace (section 13) and pick "Demo". If the app cannot reach the API, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
 
 Browsing from your laptop rather than the VM itself needs all three services tunneled, not just Keycloak's own admin console from section 8 — the web app's own origin, the API it talks to, and Keycloak for the sign-in redirect:
 
@@ -267,6 +267,15 @@ Keep that session open and browse to `http://localhost:5173` on the laptop, same
 Letting another device sign in directly over the network instead (section 8's own alternative) needs `VITE_API_URL` and `VITE_KEYCLOAK_ISSUER` in this app's own `.env` changed to `https://<that address>:3443` and `https://<that address>:8443/realms/envelope`, then that other device browses straight to `https://<that address>/` — no tunnel, no `localhost`, on any of the devices involved, your own included, and the mkcert CA (section 8) installed there first or the browser refuses the certificate.
 
 See [`apps/web/README.md`](../apps/web/README.md) for the rest.
+
+## Your first budget
+
+Once you are in a workspace of your own:
+
+1. Add the accounts your money is in, with today's balance (Accounts → Add account). A credit card asks how much you owe on it now.
+2. Add groups and categories from the budget itself ("+ Add a group").
+3. Press "Assign" and give the money in "Unassigned" to your categories until it reaches zero.
+4. From then on, import your bank statements from an account's register ("Import") instead of typing each transaction. Transactions from before you added the account are already in its starting balance.
 
 ## 11. Editing the code
 

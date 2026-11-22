@@ -2,11 +2,13 @@
 
 **A self-hosted budget and investment app for households.** Budget the money you already have, keep your portfolios on the targets you chose, and keep your data on your own server.
 
+`envelope` is for a household that wants its everyday budget and its investments in one place, on a server it runs itself. The budget works only with money that has already arrived; the portfolio side records your trades and, once allocation is built, shows how far each part of your portfolio is from the allocation you chose. Your financial data stays on your server: no tracking, no third-party scripts or fonts. It leaves only through features you turn on yourself, such as notifications on your devices.
+
 [![CI](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml)
 
 <img alt="The budget month, half in the light theme and half in the dark one, split along a diagonal: a mariner band with the month and unassigned money, the month as a running line of what has moved day by day next to a to-do list, and every category as a bar of what it was given, spent and reserved, with overspending in red or amber" src="docs/ux/screenshots/budget-month-split.png">
 
-> `envelope` is a code name. The app is being built: the backend comes first (milestone 0.1.x), then the web app. Most screens on this page come from the real running app, in English; the portfolio and the phone screens come from the [interactive mockups](docs/ux/mockups/), in English too. Every screenshot exists in a light and a dark version ([docs/ux/screenshots/](docs/ux/screenshots/)); the gallery below shows the one that matches your browser's theme.
+> `envelope` is a code name, and the app is not ready for everyday use by others yet. What works today: the budget in the browser (accounts, categories, targets, credit cards, scheduled transactions, import and reconciliation) and, through the API only for now, the first part of the portfolio (brokerage accounts, instruments, trades, and positions without prices). Prices, allocation and rebalancing are in progress; the phone app and a production install come later (see [Status and roadmap](#status-and-roadmap)). Most screens on this page come from the real running app, in English; the portfolio and the phone screens come from the [interactive mockups](docs/ux/mockups/), in English too. Every screenshot exists in a light and a dark version ([docs/ux/screenshots/](docs/ux/screenshots/)); the gallery below shows the one that matches your browser's theme.
 
 ## What it does
 
@@ -17,29 +19,29 @@
 - Import of bank statements (CSV, OFX, QIF, CAMT.053) with duplicate detection, and reconciliation with the bank balance.
 - Days of buffer, and instant notifications when a category goes negative.
 
-**Portfolios.** Record your trades; envelope derives positions, value and month-by-month performance.
+**Portfolios.** Record your trades; `envelope` derives your positions. Value and month-by-month performance follow once prices are in (in progress).
 
-- Multi-level target allocation with a threshold for each item, and several portfolios in the same brokerage account.
-- Mechanical rebalancing: contributions only, full, or just back to the edge of the threshold.
+- Multi-level target allocation with a threshold for each item, and several portfolios in the same brokerage account (in progress).
+- Mechanical rebalancing: contributions only, full, or just back to the edge of the threshold (in progress).
 - It never suggests what to buy and never judges your choices: it only computes what your own targets require.
 
 **Your data.**
 
 - Self-hosted, multi-user from day one: a family shares a workspace, each member with a role.
-- Full export at any time. Every balance can be rebuilt from the recorded transactions.
-- Web and mobile, offline first on the phone; optional end-to-end encryption is planned as a future module.
+- Full export at any time (planned). Every balance is computed from what you recorded (transactions, assignments and trades) and can be checked against it.
+- Web today; a phone app, offline first, is planned. Optional end-to-end encryption is planned as a future module.
 
 ## A closer look
 
-| Sign in ([mockup](docs/ux/mockups/sign-in.html)) | Choosing a workspace, first visit with several |
+| Account register ([mockup](docs/ux/mockups/account-register.html)) | Reconciliation ([mockup](docs/ux/mockups/import-reconciliation.html)) |
 | --- | --- |
-| <a href="docs/ux/screenshots/sign-in-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/sign-in-dark.png"><img alt="The sign-in screen: a wordmark, a tagline and a single &quot;Sign in&quot; button — the app owns no credentials of its own, so this is a redirect, not a login form" src="docs/ux/screenshots/sign-in-light.png"></picture></a> | <a href="docs/ux/screenshots/workspace-picker-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/workspace-picker-dark.png"><img alt="Choosing which workspace to work in, shown only on the first visit with more than one — skipped automatically with just one, or once this browser remembers a choice" src="docs/ux/screenshots/workspace-picker-light.png"></picture></a> |
-| **Account register** ([mockup](docs/ux/mockups/account-register.html)) | **Reconciliation** ([mockup](docs/ux/mockups/import-reconciliation.html)) |
 | <a href="docs/ux/screenshots/account-register-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/account-register-dark.png"><img alt="An account register: the balance, the account's month as a running line of what has moved day by day next to a to-do list, and the transactions with their cleared and pending marks" src="docs/ux/screenshots/account-register-light.png"></picture></a> | <a href="docs/ux/screenshots/reconciliation-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/reconciliation-dark.png"><img alt="Reconciliation: the statement balance, the difference and a clue that points to the pending transaction that explains it" src="docs/ux/screenshots/reconciliation-light.png"></picture></a> |
 | **Portfolio** ([mockup](docs/ux/mockups/portfolio.html)) | **On the phone** |
 | <a href="docs/ux/screenshots/portfolio-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/portfolio-dark.png"><img alt="A portfolio with its value against contributions over twelve months, the allocation bars against targets and thresholds, and the positions" src="docs/ux/screenshots/portfolio-light.png"></picture></a> | <a href="docs/ux/screenshots/phones-mixed.png"><img alt="Three phone screens, light, dark and light: the budget month with its small running line and its first things to do, an account register with its transactions grouped by day, and a portfolio with a small chart, its allocation and positions" src="docs/ux/screenshots/phones-mixed.png"></a> |
 | **Accounts panel** ([mockup](docs/ux/mockups/accounts-panel.html)) | |
 | <a href="docs/ux/screenshots/accounts-panel-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/accounts-panel-dark.png"><img alt="The accounts panel open beside an account register: the net worth at its head, then on-budget accounts, credit cards and off-budget accounts with their balances, the account on screen highlighted" src="docs/ux/screenshots/accounts-panel-light.png"></picture></a> | |
+| **Sign in** ([mockup](docs/ux/mockups/sign-in.html)) | **Choosing a workspace, first visit with several** |
+| <a href="docs/ux/screenshots/sign-in-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/sign-in-dark.png"><img alt="The sign-in screen: a wordmark, a tagline and a single &quot;Sign in&quot; button — the app owns no credentials of its own, so this is a redirect, not a login form" src="docs/ux/screenshots/sign-in-light.png"></picture></a> | <a href="docs/ux/screenshots/workspace-picker-light.png"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/ux/screenshots/workspace-picker-dark.png"><img alt="Choosing which workspace to work in, shown only on the first visit with more than one — skipped automatically with just one, or once this browser remembers a choice" src="docs/ux/screenshots/workspace-picker-light.png"></picture></a> |
 
 The portfolio and the phone screens come from the mockups, in English (the portfolio has no screen in the app yet); every other screenshot is from the real running app, in English, over the demo workspace (`scripts/README.md`, "Reference screenshots"). "Choose a workspace" has no dedicated full-page mockup yet (`docs/ux/mockups/settings-first-run.html` only draws the sidebar's own switcher).
 
@@ -78,6 +80,8 @@ Everything from a fresh Debian 13 virtual machine to the first test run is in [d
 pnpm install
 pnpm test
 ```
+
+To look around, load the demo workspace ([docs/getting-started.md](docs/getting-started.md#13-demo-data-optional), section 13).
 
 ## Repository layout
 
