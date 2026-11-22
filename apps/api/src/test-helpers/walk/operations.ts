@@ -300,8 +300,11 @@ const createAccount: OperationSpec<CreateAccountParams> = {
   },
 };
 
-/** At most this many closed accounts per workspace, so that most of what the walk writes still lands. */
-const MAX_CLOSED_ACCOUNTS = 2;
+/**
+ * At most this many closed accounts per workspace: with two, about a third of a household's writes
+ * went to a closed account in long walks, and the rest of the walk thinned out.
+ */
+const MAX_CLOSED_ACCOUNTS = 1;
 
 type CloseAccountParams = { account: string };
 
@@ -318,7 +321,6 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
   generate(model, { random }) {
     const closed = model.closedAccounts();
     if (closed.length > 0 && random.chance(0.05)) return { account: random.pick(closed).handle };
-    if (closed.length >= MAX_CLOSED_ACCOUNTS) return undefined;
     const open = model.openAccounts();
     const cashLike = (account: AccountEntity): boolean => account.onBudget && account.type !== "credit_card";
     const candidates = open.filter(
@@ -326,13 +328,15 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
         (account.type !== "brokerage" || open.some((other) => other !== account && other.type === "brokerage")) &&
         (!cashLike(account) || open.some((other) => other !== account && cashLike(other))),
     );
-    const empty = candidates.filter((account) => {
+    const isEmpty = (account: AccountEntity): boolean => {
       const rule = model.closeRule(account);
       return rule.balanceCents === 0 && !rule.holdsPositions;
-    });
-    if (empty.length > 0) return { account: random.pick(empty).handle };
+    };
+    const empty = candidates.filter(isEmpty);
+    if (empty.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(empty).handle };
     // Now and then an account that is not empty: refused, with the figures.
-    return candidates.length > 0 && random.chance(0.15) ? { account: random.pick(candidates).handle } : undefined;
+    const full = candidates.filter((account) => !isEmpty(account));
+    return full.length > 0 && random.chance(0.15) ? { account: random.pick(full).handle } : undefined;
   },
   request: (model, p) => ({ method: "PATCH", path: ws(model, `/accounts/${model.account(p.account).id}/close`) }),
   predict(model, p) {
@@ -374,9 +378,12 @@ function regimeAccount(model: WorkspaceModel, random: WalkRandom): AccountEntity
   return brokers.length > 0 && random.chance(0.9) ? random.pick(brokers) : random.pick(accounts);
 }
 
-/** A 1 January a change can start on, in the window or the year after it. */
+/**
+ * A 1 January a change can start on, after the start of the window (where the walk's first
+ * periods start): the window's second year, or the year after it.
+ */
 function yearStart(random: WalkRandom): string {
-  return random.pick(["2025-01-01", "2026-01-01", "2027-01-01"]);
+  return random.pick(["2026-01-01", "2027-01-01"]);
 }
 
 /**
