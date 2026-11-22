@@ -229,20 +229,24 @@ it settles on. This is accepted for now; no code works around it.
 **Card debt is asked once, on the card.** Card spending beyond what a category had is credit
 overspending on that category *and* part of the card's uncovered debt, since the card owes it and
 no money moved into the payment category for it. It is the same money, so the budget asks for it
-once, on the payment category: a category's "To do" item, "Move money" and quick assign's "Cover
-overspending" never ask for its credit overspending, and the category's detail just says that its
-card part is now part of the card's debt, with a link to the card.
+once: on the payment category, unless the category's scheduled transactions are missing money
+(below). The category's detail says that its card part is now part of the card's debt, with a link
+to the card.
 
-What a category does ask for depends on whether it has credit overspending:
+What a category asks for (its "To do" item, "Move money" and quick assign's "Cover overspending"):
 
 - **No credit overspending:** its cash overspending *plus* its reservation shortfall, so that it
   ends at zero with its scheduled transactions covered. Before #728 an overspent category asked
   only for its overspending and its reservation shortfall came back as a second item afterwards.
-- **Credit overspending:** only its cash overspending, never its reservation shortfall. Money
-  assigned to such a category covers its card spending first and moves to the card (rule 4 of
-  `budget-month.ts`), so it would not reach the reservation; it would only lower what the card
-  asks. The shortfall is asked once the category has no credit overspending left, for example
-  after money assigned to the category has covered its card spending.
+- **Credit overspending, no reservation shortfall:** only its cash overspending. Its card spending
+  is asked on the card.
+- **Credit overspending and a reservation shortfall** (#731): its cash overspending, its credit
+  overspending *and* its reservation shortfall. Money assigned to such a category covers its card
+  spending first and moves to the card (rule 4 of `budget-month.ts`), so nothing reaches the
+  reservation until the card part is covered. Each card it spent on then asks that much less, and
+  its "To do" line says how much of its debt is asked on which category. Before #731 the category
+  asked only its cash overspending, and its reservation shortfall came back only after its card
+  spending had been covered some other way.
 
 Assigning to a category with credit overspending is still fine: it moves the money into the card,
 and the card's "to cover" goes down by the same amount — but only up to the card's own "to cover".
@@ -258,12 +262,16 @@ reserved. (Before #728 the item asked €5.00, then a second one €30.00.)
 Visa and a €10 scheduled cash transaction not yet recorded. Credit overspending = €30, cash
 overspending = €0, reservation shortfall = €10.
 
-- The list asks "Debt to cover: Visa" **€30.00**, and nothing for Restaurants: its €30 is the
-  Visa's debt, and its €10 reservation is not asked while it has credit overspending.
-- After assigning €30 to the Visa, the list asks nothing more: Restaurants still shows its card
-  part, and its reservation is still short by €10.
-- When the €10 is recorded in cash, Restaurants is overspent by €10 in cash (credit overspending
-  stays €30, attributed to card spending first) and the list asks "Cover Restaurants" **€10.00**.
+- The list asks "Restaurants: not enough for what is scheduled" **€40.00** ("includes €30.00 spent
+  with a card, which money assigned here covers first"), and nothing for the Visa, whose €30 debt is
+  all asked on Restaurants.
+- Assigning €40 to Restaurants moves €30 into the Visa's payment category, which then holds what
+  the Visa owes, and leaves Restaurants at zero with its €10 reserved. The list asks nothing more.
+- Had the Visa owed €50 (€20 from before), it would ask **€20.00**, with the line "€30.00 of the
+  card's debt is asked on Restaurants": €60.00 in all.
+- Before #731 the list asked "Debt to cover: Visa" €30.00 and nothing for Restaurants; its €10
+  came back only when the scheduled transaction was recorded, and the total depended on the order
+  (category first €40, card first €30).
 
 **Example (two cards).** Groceries has nothing assigned. A Mastercard is added owing €500, €45.67
 of groceries go on it, and €300 is paid to it from checking. A Visa gets €45.67 of groceries too,
@@ -277,6 +285,12 @@ and is paid exactly €45.67.
   payment category holding €245.67, exactly what it owes, and the Visa's €0.
 - The other order gives the same total: assigning €91.34 to Groceries first moves €45.67 into each
   card; the Mastercard then asks €500.00 and the Visa nothing, €91.34 + €500.00 = €591.34.
+- Half of it, €45.67 assigned to Groceries, covers €45.67 of its card spending. Both cards still
+  need money, so it goes to the first one, the Mastercard; the Visa's €45.67 is the part still
+  uncovered, and Groceries' card line names the Visa (#731). Before #731 the line named the
+  Mastercard, the card that had just received the money.
+- Covered card spending goes first to a card that still needs money. Had the Mastercard already
+  held what it owes, the €45.67 would have gone to the Visa instead.
 
 Asking for the €91.34 on Groceries as well would have asked €682.68 and left the cards holding
 €91.34 more than they owe.
@@ -299,9 +313,32 @@ added owing €500 with a €45.67 purchase dated the same day reads €500.00 o
 balance, then €545.67 after the purchase — never €45.67 for the purchase, as if the card owed
 nothing yet.
 
-**Paying down one card from another.** A transfer from card A's payment category to card B's moves
-only what A's own payment category actually holds. Whatever is left over stays as A's own uncovered
-debt — it does not quietly move to B, the same rule ordinary card overspending already follows.
+**Paying down one card from another** (#732). When card B pays €T of card A's debt, B is charged
+€T (the transfer's outflow leg, B now owes more) and A is paid €T (its inflow leg, A owes less).
+Money set aside follows the debt: from A's payment category to B's moves what A holds beyond what it
+still owes at the end of the month,
+
+moved = min(T, max(0, A's available before the transfer − A's owed at the end of the month)),
+
+with owed signed, so a card in credit releases its credit too (rule 9). Whatever does not move is
+B's uncovered debt, derived from B's real balance like any other — never cash overspending, since
+no cash moved. A month's transfers apply in date order, then by id, each reading what the earlier
+ones left. Money assigned to B stays on B, so following the "To do" list once settles both cards.
+
+Examples, with B paying €500 of A's debt and B starting with nothing set aside and no debt:
+
+| A owes before | A holds | A owes after | Moves to B | A after | B to cover |
+| --- | --- | --- | --- | --- | --- |
+| €500 | €500 | €0 | €500 | €0 | €0 |
+| €500 | €300 | €0 | €300 | €0 | €200 |
+| €800 | €300 | €300 | €0 | €300, covers its debt | €500 |
+| €800 | €900 | €300 | €500 | €400, €100 beyond its debt | €0 |
+| €500 | €500 | −€100 (B pays €600) | €600 | −€100, its credit | €0 |
+
+In the last row B pays €600: A ends €100 in credit, its payment category at −€100, which is its
+credit and not cash overspending, and B holds the €600 it now owes. Before #732 the money moved the
+other way, from the card that was charged to the card that was paid, capped at what the charged
+card held: in the second row B was asked €500 instead of €200.
 
 ### Scheduled transactions reserve money ahead of time
 
