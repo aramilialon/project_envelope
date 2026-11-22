@@ -446,7 +446,7 @@ that values the instrument ([ADR 0019](adr/0019-market-data-prices-rates-and-ret
 
 | Request | Who | Answer |
 | --- | --- | --- |
-| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to" }`, as on `GET /fx-rates` |
+| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to", "value" }`, as on `GET /fx-rates` |
 | `PUT …/prices/:date` `{ "closeE6" }` | `owner`, `editor` | 201 with the price when the date had no own price; 200 when it replaced another close, or already had this one (then nothing is written) |
 | `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `{ "error": "price not found" }` when the date has no own price, even if it has a shared one, which is never deleted |
 | `POST …/prices/import?locale=` with a `text/csv` body | `owner`, `editor` | 200 `{ "inserted", "replaced", "unchanged", "from", "to" }`: how many dates were new, had another close, or already had this one, and the first and last date of the file |
@@ -494,7 +494,7 @@ line's `reason` is `invalid_date` with `max`.
 
 | Code | When |
 | --- | --- |
-| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` (`{ "field", "value" }`) is not a real date, or `to` is before `from` (`field` is `to`) |
+| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` is not a real date (`{ "field", "value" }`) or is given twice (`{ "field" }`), or `to` is before `from` (`{ "field": "to", "value" }`) |
 | `invalid_price` | `closeE6` is missing, not an integer, negative or beyond the safe range |
 | `unknown_field`, `invalid_body` | a `PUT` body with another field than `closeE6`, or one that is not a JSON object |
 | `invalid_price_file` | a line of the file breaks a rule (above) |
