@@ -707,7 +707,15 @@ button{cursor:pointer}
 
   // ---- Month ----
   function compute() {
-    var byId = {}, covered = {};
+    var byId = {}, covered = {}, need = {};
+    // #731: what each card still needs before card spending moves in — its debt less what its
+    // payment category holds from carried, assigned and paid.
+    GROUPS.forEach(function (g) {
+      g.cats.forEach(function (c) {
+        if (!c.payment) return;
+        need[c.card] = -(c.cardBase - (state.cardD[c.card] || 0)) - (c.carried + c.assigned + delta(c.id, CUR) + c.paid);
+      });
+    });
     GROUPS.forEach(function (g) {
       g.cats.forEach(function (c) {
         if (c.payment) return;
@@ -719,11 +727,18 @@ button{cursor:pointer}
         var real = c.carried + assigned + activity;
         var over = Math.max(0, -real);
         var credit = Math.min(over, outBy.visa + outBy.mc + outBy.tv);
-        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard, then the Travel card.
-        var cv = Math.min(credit, outBy.visa), cm = Math.min(credit - cv, outBy.mc), ct = credit - cv - cm;
-        covered.visa = (covered.visa || 0) + outBy.visa - cv;
-        covered.mc = (covered.mc || 0) + outBy.mc - cm;
-        covered.tv = (covered.tv || 0) + outBy.tv - ct;
+        // Overspending is attributed to card spending first. #731: the covered part goes first to
+        // the cards that still need money, then to the others (Visa, Mastercard, Travel card), and
+        // each card's share of the overspending is its own spending less what was covered on it.
+        var left = outBy.visa + outBy.mc + outBy.tv - credit, cov = { visa: 0, mc: 0, tv: 0 };
+        [true, false].forEach(function (first) {
+          ['visa', 'mc', 'tv'].forEach(function (k) {
+            var room = outBy[k] - cov[k];
+            var n = Math.max(0, Math.min(room, left, first ? Math.max(0, need[k] - (covered[k] || 0)) : room));
+            cov[k] += n; left -= n; covered[k] = (covered[k] || 0) + n;
+          });
+        });
+        var cv = outBy.visa - cov.visa, cm = outBy.mc - cov.mc, ct = outBy.tv - cov.tv;
         var reserved = reservedOf(c.id);
         var short = Math.max(0, Math.min(reserved, reserved - Math.max(0, real)));
         byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, real: real, avail: real - reserved, credit: credit, creditBy: { visa: cv, mc: cm, tv: ct }, cash: over - credit, reserved: reserved, short: short };
@@ -751,14 +766,27 @@ button{cursor:pointer}
     if (left !== cashTotal()) console.error('Invariant broken', left, cashTotal());
   }
   // What a category asks for itself (#728), the same figure in "To do", "Move money" and quick
-  // assign: card debt is asked once, on the card's payment category. An ordinary category asks for
-  // its cash overspending, plus what its scheduled transactions are missing when it has no card
-  // overspending (with card overspending, money assigned here goes to the card first); never its
-  // card overspending, which is already part of its card's debt. A payment category asks for what
-  // was paid beyond what was set aside plus the debt still uncovered.
+  // assign: card debt is asked once. An ordinary category asks for its cash overspending plus what
+  // its scheduled transactions are missing. With card overspending it asks that too only when its
+  // scheduled transactions are missing money (#731): money assigned here goes to the card first,
+  // so the card part must be covered for anything to reach them; its card then asks that much
+  // less (askedOn). Otherwise its card overspending is asked on the card. A payment category asks
+  // for what was paid beyond what was set aside plus the debt still uncovered.
   function needOf(x) {
     if (x.c.payment) return x.cash + x.uncovered;
-    return x.credit > 0 ? x.cash : x.cash + x.short;
+    if (x.credit > 0) return x.short > 0 ? x.cash + x.credit + x.short : x.cash;
+    return x.cash + x.short;
+  }
+  // #731: the line on a card's "To do" item when part of its debt is asked on categories.
+  function askedSub(a) {
+    var total = sum(a, function (p) { return p.amount; });
+    return a.length === 1 ? f(total) + ' of the card\'s debt is asked on ' + a[0].name : f(total) + ' of the card\'s debt is asked on ' + a.length + ' categories';
+  }
+  // #731: the card spending asked on categories instead of on the card `k`.
+  function askedOn(byId, k) {
+    var card = byId[k].c.card;
+    return Object.keys(byId).filter(function (j) { var y = byId[j]; return !y.c.payment && y.credit > 0 && y.short > 0 && y.creditBy[card] > 0; })
+      .map(function (j) { return { name: byId[j].c.name, amount: byId[j].creditBy[card] }; });
   }
   function status(x) {
     if (x.credit > 0) return 'credit';
@@ -1155,7 +1183,7 @@ button{cursor:pointer}
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
       var gap = needOf(y);
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
+      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 && y.short > 0 ? 'The overspending and the scheduled transactions are covered: ' + f(y.credit) + ' of it moves to the card.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
     }
     var warn = from === null && amount > r ? 'Unassigned will go below zero: you are assigning money that has not arrived yet.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1468,20 +1496,28 @@ button{cursor:pointer}
     var list = [];
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
-      // #728: card overspending is no item of its own here; it is already in the card's debt below.
-      if (x.cash > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.credit === 0 && x.short > 0 ? 'overspent in cash and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash: cover it before the month ends', amount: needOf(x), cat: k });
+      // #728: card overspending is no item of its own here; it is already in the card's debt below,
+      // unless the category's scheduled transactions are missing money too (#731).
+      if (x.cash > 0 && !x.c.payment) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.short > 0 ? (x.credit > 0 ? 'overspent in cash and with a card, and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash and not enough for what is scheduled: cover it before the month ends') : 'overspent in cash: cover it before the month ends', amount: needOf(x), cat: k });
+      if (x.cash > 0 && x.c.payment) { var a = askedOn(byId, k), n = Math.max(0, needOf(x) - sum(a, function (p) { return p.amount; })); if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: a.length ? askedSub(a) : 'overspent in cash: cover it before the month ends', amount: n, cat: k }); }
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
       list.push({ dot: '', title: 'Record ' + s.payee, sub: 'scheduled for ' + dLabel(s.due) + ', not yet in the account', amount: s.amount, rec: s.id });
     });
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
-      if (x.short > 0 && x.credit + x.cash === 0) {
+      if (x.short > 0 && x.cash === 0) {
         var s = schedThisMonth(k)[0];
-        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + 'still missing', amount: x.short, cat: k });
+        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + (x.credit > 0 ? 'includes ' + f(x.credit) + ' spent with a card, which money assigned here covers first' : 'still missing'), amount: x.credit + x.short, cat: k });
       }
     });
-    Object.keys(byId).forEach(function (k) { var x = byId[k]; if (x.uncovered > 0 && x.cash === 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: x.uncovered, cat: k }); });
+    Object.keys(byId).forEach(function (k) {
+      var x = byId[k];
+      if (!(x.uncovered > 0 && x.cash === 0)) return;
+      // #731: what a category asks for this card is not asked here again.
+      var a = askedOn(byId, k), n = Math.max(0, x.uncovered - sum(a, function (p) { return p.amount; }));
+      if (n > 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: a.length ? askedSub(a) : x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: n, cat: k });
+    });
     var need = Object.keys(byId).filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
     if (need.length) list.push({ dot: '', title: need.length === 1 ? 'Fund the ' + byId[need[0]].c.name + ' target' : 'Fund ' + need.length + ' targets', sub: 'what is still missing this month', amount: sum(need, function (k) { return target(byId[k]).need; }), fund: need.length === 1 ? need[0] : 'all' });
     if (rta() < 0) list.unshift({ dot: 'r', title: 'You assigned more than you have', sub: 'take money back from a category', amount: -rta(), panel: 'move' });

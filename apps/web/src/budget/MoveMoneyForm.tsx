@@ -1,4 +1,4 @@
-import { amountNeededToCover, formatMoney, parseAmount } from "@envelope/core";
+import { amountNeededToCover, formatMoney, parseAmount, reservationShortfall } from "@envelope/core";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -251,6 +251,15 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
             {amount >= gap
               ? destination.isPaymentCategory
                 ? intl.formatMessage({ id: "moveMoney.cardDebtCovered", defaultMessage: "The card's debt is fully covered." })
+                : destination.creditOverspending > 0 && reservationShortfall(destination) > 0
+                  ? // #731: with a reservation shortfall the gap includes the card spending, which moves to the card first.
+                    intl.formatMessage(
+                      {
+                        id: "moveMoney.overspendingAndReservationCovered",
+                        defaultMessage: "The overspending and the scheduled transactions are covered: {card} of it moves to the card.",
+                      },
+                      { card: money(destination.creditOverspending) },
+                    )
                 : destination.creditOverspending > 0
                   ? // #728: the card part stays in the card's debt, covered on the card's payment category.
                     // Money beyond the cash part covers card spending and moves to the card (rule 4 of

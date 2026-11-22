@@ -168,6 +168,14 @@ describe("MoveMoneyForm (#328)", () => {
     expect(screen.getByText("The part overspent in cash is covered. The other €300.00 covers card spending and moves to the card.")).toBeInTheDocument();
   });
 
+  it("'Move money' on a category overspent with a card and short for what is scheduled preselects all of it, card part included (#731)", () => {
+    // Restaurants: nothing assigned, €30 on the card, €10 scheduled.
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    renderForm({ kind: "moveTo", categoryId: "restaurants" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("40.00");
+    expect(screen.getByText("The overspending and the scheduled transactions are covered: €30.00 of it moves to the card.")).toBeInTheDocument();
+  });
+
   it("'Move money' on a category overspent only with a card preselects no amount (#728)", () => {
     const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -9_134, creditOverspending: 9_134 });
     renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });
