@@ -39,7 +39,7 @@ import {
 
 import type { HttpMethod } from "./driver.ts";
 import { expectEcho, instantEcho } from "./invariants.ts";
-import { localMidnight, type WalkRandom } from "./generator.ts";
+import { addDays, localMidnight, type WalkRandom } from "./generator.ts";
 import {
   amountOf as transactionAmount,
   sortableHandle,
@@ -317,6 +317,23 @@ const MAX_CLOSED_ACCOUNTS = 1;
 
 type CloseAccountParams = { account: string };
 
+/** Where in the walk (`progress`) a brokerage account starts winding down (`windingDown`). */
+const WIND_DOWN_FROM = 0.3;
+/** Where in the walk a brokerage account that never traded may close. */
+const LATE = 0.6;
+
+/**
+ * The brokerage account the walk winds down from `WIND_DOWN_FROM` on, so that it closes one with a
+ * history (#735): the last open one by handle, while another stays open and the workspace has room
+ * for a closed account. Buys mostly go elsewhere, sales mostly sell its holdings whole, and
+ * `sweepAccount` mostly withdraws its cash once it holds nothing.
+ */
+function windingDown(model: WorkspaceModel, progress: number): AccountEntity | undefined {
+  if (progress < WIND_DOWN_FROM || model.closedAccounts().length >= MAX_CLOSED_ACCOUNTS) return undefined;
+  const open = model.openAccounts().filter((account) => account.type === "brokerage");
+  return open.length >= 2 ? open[open.length - 1] : undefined;
+}
+
 /**
  * Closes an account (#703, #729): accepted only when it is empty today, else 409
  * `account_not_empty` with the figures the rule read; an account already closed is not found.
@@ -327,7 +344,7 @@ type CloseAccountParams = { account: string };
  */
 const closeAccount: OperationSpec<CloseAccountParams> = {
   writes: NONE,
-  generate(model, { random }) {
+  generate(model, { random, progress }) {
     const closed = model.closedAccounts();
     if (closed.length > 0 && random.chance(0.05)) return { account: random.pick(closed).handle };
     const open = model.openAccounts();
@@ -342,7 +359,12 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
       return rule.balanceCents === 0 && !rule.holdsPositions;
     };
     const empty = candidates.filter(isEmpty);
-    if (empty.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(empty).handle };
+    // A brokerage account that never traded closes only late in the walk, so the walk mostly closes
+    // one that sold out (`windingDown`), and its trades, legs and reconciliations meet it too.
+    const traded = (account: AccountEntity): boolean => [...model.trades.values()].some((trade) => trade.record.accountId === account.id);
+    const ready = empty.filter((account) => account.type !== "brokerage" || traded(account));
+    const pool = ready.length > 0 ? ready : progress >= LATE ? empty : [];
+    if (pool.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(pool).handle };
     // Now and then an account that is not empty: refused, with the figures.
     const full = candidates.filter((account) => !isEmpty(account));
     return full.length > 0 && random.chance(0.35) ? { account: random.pick(full).handle } : undefined;
@@ -818,7 +840,10 @@ const sweepAccount: OperationSpec<TransferParams> = {
     const cash = model.budgetCashAccounts();
     const candidates = model.openAccounts().filter((account) => model.balanceOf(account) !== 0);
     if (candidates.length === 0) return undefined;
-    const account = random.pick(candidates);
+    // Mostly the brokerage account winding down, once it holds no security (`windingDown`).
+    const winding = windingDown(model, progress);
+    const soldOut = winding !== undefined && candidates.includes(winding) && !model.closeRule(winding).holdsPositions;
+    const account = soldOut && random.chance(0.8) ? winding : random.pick(candidates);
     const balance = model.balanceOf(account);
     const brokers = account.type === "brokerage" ? model.brokerageAccounts() : [];
     const others = [...brokers, ...cash].filter((other) => other !== account);
@@ -1377,8 +1402,11 @@ function priceFor(random: WalkRandom, type: string): { quantityE8: number; price
 }
 
 const buy = singleTradeSpec((model, { random, progress }) => {
-  const where = brokerAndPortfolio(model, random);
-  if (!where) return undefined;
+  const picked = brokerAndPortfolio(model, random);
+  if (!picked) return undefined;
+  const winding = windingDown(model, progress);
+  const elsewhere = model.openAccounts().filter((account) => account.type === "brokerage" && account !== winding);
+  const where = winding?.handle === picked.account && random.chance(0.95) ? { ...picked, account: random.pick(elsewhere).handle } : picked;
   const instrument = random.pick([...model.instruments.byHandle.values()]);
   const tradeDate = random.date(progress);
   const amounts: Record<string, number> = { ...priceFor(random, instrument.type), feesCents: random.int(0, 1_500) };
@@ -1391,11 +1419,20 @@ const buy = singleTradeSpec((model, { random, progress }) => {
 });
 
 function sellFields(model: WorkspaceModel, random: WalkRandom, progress: number, oversell: boolean): TradeFields | undefined {
-  const held = holdings(model);
+  let held = holdings(model);
   if (held.length === 0) return undefined;
+  // Mostly a whole holding of the account winding down, so it sells out and can close (#735).
+  const winding = oversell ? undefined : windingDown(model, progress);
+  const ofWinding = held.filter((h) => h.accountId === winding?.id);
+  const sellOut = ofWinding.length > 0 && random.chance(0.9);
+  if (sellOut) held = ofWinding;
   const holding = random.pick(held);
   const instrument = model.instruments.byId.get(holding.instrumentId)!;
-  const quantityE8 = oversell ? holding.quantity + random.int(1, 100_000_000) : random.chance(0.3) ? holding.quantity : random.int(1, holding.quantity);
+  const quantityE8 = oversell
+    ? holding.quantity + random.int(1, 100_000_000)
+    : sellOut || random.chance(0.3)
+      ? holding.quantity
+      : random.int(1, holding.quantity);
   // Mostly after the holding's last trade, so the sale has the units; sometimes any date.
   const lastDate = model.positionTrades()
     .filter((t) => t.instrumentId === holding.instrumentId && t.portfolioId === holding.portfolioId)
@@ -1474,6 +1511,21 @@ function anyOrClosedHolder(model: WorkspaceModel, instrument: string): Predictio
   return held ? { kind: "any", alsoAllowed: ["account_closed"] } : ANY;
 }
 
+/**
+ * A split's instrument and date that would cover a closed account, now and then: the day after one
+ * of its buys, when the account traded again later that day or after (its sale), so the date is in
+ * the walk's window. Undefined otherwise.
+ */
+function closedAccountBuy(model: WorkspaceModel, random: WalkRandom): { instrument: string; tradeDate: string } | undefined {
+  const closed = new Set(model.closedAccounts().map((account) => account.id));
+  const trades = [...model.trades.values()].map((entity) => entity.record).filter((trade) => closed.has(trade.accountId));
+  const lastDate = trades.reduce((latest, trade) => (trade.tradeDate > latest ? trade.tradeDate : latest), "");
+  const buys = trades.filter((trade) => trade.type === "buy" && trade.instrumentId !== null && addDays(trade.tradeDate, 1) <= lastDate);
+  if (buys.length === 0 || !random.chance(0.4)) return undefined;
+  const bought = random.pick(buys);
+  return { instrument: instrumentHandle(model, bought.instrumentId!), tradeDate: addDays(bought.tradeDate, 1) };
+}
+
 type SplitParams = { instrument: string; tradeDate: string; occurredAt?: string; splitFrom: number; splitTo: number };
 const split: OperationSpec<SplitParams> = {
   trade: true,
@@ -1481,6 +1533,10 @@ const split: OperationSpec<SplitParams> = {
     const held = holdings(model);
     if (held.length === 0) return undefined;
     const [splitFrom, splitTo] = random.pick([[1, 2], [1, 4], [2, 1], [1, 3]] as const);
+    // Now and then the day after a closed account bought an instrument, before it sold out: the
+    // split would give that account a row, so it is refused `account_closed` (#735, ADR 0018).
+    const closedBuy = closedAccountBuy(model, random);
+    if (closedBuy) return { ...closedBuy, splitFrom, splitTo };
     const tradeDate = random.date(progress);
     return { instrument: instrumentHandle(model, random.pick(held).instrumentId), tradeDate, ...maybeTime(random, tradeDate), splitFrom, splitTo };
   },
