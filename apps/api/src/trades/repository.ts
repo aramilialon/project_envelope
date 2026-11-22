@@ -48,10 +48,10 @@ import {
   type TradeType,
 } from "@envelope/core";
 
+import { checkAccountsOpen } from "../accounts/open-accounts.ts";
 import { listTaxRegimes } from "../accounts/tax-regimes.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
-import { AccountClosedError } from "../errors.ts";
 import { createTradeCashLeg, rewriteTradeCashLeg } from "../transactions/repository.ts";
 
 export type { TaxKind, TradeType };
@@ -541,32 +541,6 @@ async function loadInstrument(db: DbClient, instrumentId: string): Promise<Instr
   );
   const row = rows[0];
   return row ? { type: row.type, currency: row.currency, priceFactor: toPriceFactor(Number(row.price_factor_e6)) } : undefined;
-}
-
-/**
- * Refuses the write when any of `accountIds` is a closed account of the workspace (#741), before
- * anything else is checked: a trade on a closed account answers `account_closed`, never
- * "insufficient_quantity" or another code of the replay. The accounts are read `FOR KEY SHARE`, the
- * lock migration 0033's trigger takes, which conflicts with the `FOR UPDATE` of `closeAccount`: an
- * account found open here stays open until the transaction ends. An id that names no account of
- * the workspace is left to `checkReferences` ("unknown_account").
- *
- * @throws AccountClosedError naming the first closed account found.
- */
-async function checkAccountsOpen(db: DbClient, workspaceId: string, accountIds: Iterable<string | undefined>): Promise<void> {
-  const ids = [...new Set([...accountIds].filter((id): id is string => id !== undefined))].sort();
-  if (ids.length === 0) {
-    return;
-  }
-  const { rows } = await db.query<{ id: string; closed: boolean }>(
-    `SELECT id, closed_at IS NOT NULL AS closed FROM accounts
-     WHERE workspace_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR KEY SHARE`,
-    [workspaceId, ids],
-  );
-  const closed = rows.find((row) => row.closed);
-  if (closed) {
-    throw new AccountClosedError(closed.id);
-  }
 }
 
 /**

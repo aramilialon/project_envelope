@@ -1,16 +1,17 @@
-import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+import { assertDate, MAX_FREE_TEXT_LENGTH, ValidationError } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong, sendIfValidationError, type TextFieldCheck } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
   createTransfer,
   deleteTransaction,
   listTransactionsForAccount,
+  UnknownCategoryError,
   updateTransaction,
   type SplitInput,
   type TransactionStatus,
@@ -18,6 +19,37 @@ import {
 import { requireAccountOfWorkspace } from "./account-ownership.ts";
 
 const STATUSES: readonly TransactionStatus[] = ["pending", "cleared", "reconciled"];
+
+/** Every field a `PATCH` of a transaction takes (#655); anything else is a 400 `unknown_field`. */
+const PATCH_KEYS: ReadonlySet<string> = new Set(["payee", "memo", "status", "splits", "amountCents", "occurredAt"]);
+
+/**
+ * A date with a time and an optional offset ("Z" or "+02:00"; without one, the time is in the
+ * workspace's time zone, as `insertTransactionRow` anchors it). Group 1 is the date.
+ */
+const INSTANT_PATTERN = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
+
+/**
+ * A new transaction's `occurredAt` (#655): a real "YYYY-MM-DD" date, or that date with a time
+ * (`INSTANT_PATTERN`), which the create routes have always taken (a client that knows the time;
+ * the random walk sends those). Anything else, "2026-02-30", "2026-1-5" or "not-a-date" included, is a 400 `invalid_date`;
+ * a time that does not exist ("25:00") is left to the error handler's safety net, same code.
+ *
+ * @throws ValidationError "invalid_date".
+ */
+function assertOccurredAt(value: string): void {
+  const date = INSTANT_PATTERN.exec(value)?.[1] ?? value;
+  try {
+    assertDate(date);
+  } catch {
+    throw new ValidationError("invalid_date", `not a valid date: "${value}"`, { value });
+  }
+}
+
+/** A field of the right name but the wrong type or value: a 400 `invalid_field` naming it (#655). */
+function invalidField(field: string): ValidationError {
+  return new ValidationError("invalid_field", `${field} has the wrong type or value`, { field });
+}
 
 function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {
   const raw = body.splits;
@@ -80,7 +112,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
 
   // Creating or listing names the account in its path, which must belong to the workspace (#512);
-  // editing or deleting looks the transaction itself up in the workspace.
+  // editing or deleting looks the transaction itself up in the workspace, and answers 404 when it
+  // is not on the account the path names (#655).
   app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace] }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -90,6 +123,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       await reply.code(400).send({ error: "invalid transaction: occurredAt and a non-empty splits array are required" });
       return;
     }
+    // A real date, or an instant on one (#655): "2026-02-30" or "2026-1-5" is a 400 `invalid_date`.
+    assertOccurredAt(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
@@ -135,9 +170,27 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     return { transactions };
   });
 
+  // A strict body (#655): a field the edit would otherwise drop without a word (an unknown or
+  // misspelt key, `accountId`, an id) is a 400 `unknown_field`; a field of the wrong type, or a
+  // status that is none of the three, a 400 `invalid_field`; a date that does not exist, `invalid_date`.
   app.patch(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
-    const { transactionId } = request.params as { transactionId: string };
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { accountId, transactionId } = request.params as { accountId: string; transactionId: string };
+    const body = strictBody(request.body, PATCH_KEYS);
+    for (const field of ["payee", "memo", "occurredAt"] as const) {
+      if (body[field] !== undefined && typeof body[field] !== "string") {
+        throw invalidField(field);
+      }
+    }
+    if (body.amountCents !== undefined && typeof body.amountCents !== "number") {
+      throw invalidField("amountCents");
+    }
+    if (body.status !== undefined && !STATUSES.includes(body.status as TransactionStatus)) {
+      throw invalidField("status");
+    }
+    const occurredAt = body.occurredAt as string | undefined;
+    if (occurredAt !== undefined) {
+      assertDate(occurredAt);
+    }
     const splits = body.splits === undefined ? undefined : parseSplits(body);
     if (body.splits !== undefined && !splits) {
       await reply.code(400).send({ error: "splits, when given, must be a non-empty array" });
@@ -146,28 +199,24 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
-    const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
-      ? (body.status as TransactionStatus)
-      : undefined;
-
-    if (splits) {
-      const categories = await listCategories(request.db!, request.workspace!.id);
-      const categoryIds = new Set(categories.map((c) => c.id));
-      const unknownCategoryId = findUnknownCategoryId(categoryIds, splits);
-      if (unknownCategoryId) {
-        await reply.code(400).send({ error: `categoryId "${unknownCategoryId}" does not name a category of this workspace` });
-        return;
-      }
-    }
 
     try {
-      const result = await updateTransaction(request.db!, request.workspace!.id, transactionId, {
-        ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
-        ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
-        ...(status ? { status } : {}),
-        ...(splits ? { splits } : {}),
-        ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
-      });
+      // The unknown-category check runs in the repository, after the path-account and
+      // closed-account checks (#655).
+      const result = await updateTransaction(
+        request.db!,
+        request.workspace!.id,
+        transactionId,
+        {
+          ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
+          ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
+          ...(body.status !== undefined ? { status: body.status as TransactionStatus } : {}),
+          ...(splits ? { splits } : {}),
+          ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
+          ...(occurredAt !== undefined ? { occurredAt } : {}),
+        },
+        accountId,
+      );
       if (result === "not_found") {
         await reply.code(404).send({ error: "transaction not found" });
         return;
@@ -177,11 +226,15 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         return;
       }
       if (result === "trade_owned") {
-        await sendTradeOwned(reply, "its amount comes from the trade; edit the trade instead");
+        await sendTradeOwned(reply, "its amount and date come from the trade; edit the trade instead");
         return;
       }
       return result;
     } catch (error) {
+      if (error instanceof UnknownCategoryError) {
+        await reply.code(400).send({ error: error.message });
+        return;
+      }
       if (await sendIfValidationError(reply, error)) {
         return;
       }
@@ -190,8 +243,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   });
 
   app.delete(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
-    const { transactionId } = request.params as { transactionId: string };
-    const result = await deleteTransaction(request.db!, request.workspace!.id, transactionId, request.userId!);
+    const { accountId, transactionId } = request.params as { accountId: string; transactionId: string };
+    const result = await deleteTransaction(request.db!, request.workspace!.id, transactionId, request.userId!, accountId);
     if (result === "not_found") {
       await reply.code(404).send({ error: "transaction not found" });
       return;
@@ -219,6 +272,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       });
       return;
     }
+    assertOccurredAt(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, undefined))) {
       return;
     }
