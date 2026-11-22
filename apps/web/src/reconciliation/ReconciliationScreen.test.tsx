@@ -353,6 +353,16 @@ describe("ReconciliationScreen (#60)", () => {
       expect(getCandidates).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "2026-09-16");
     });
 
+    it("falls back on the browser's today when the workspace list fails, instead of loading forever", async () => {
+      vi.spyOn(workspacesApi, "listMyWorkspaces").mockRejectedValue(new Error("unavailable"));
+      const getCandidates = vi.spyOn(reconciliationApi, "getReconciliationCandidates").mockResolvedValue(candidates());
+      render(ui());
+
+      expect(await screen.findByLabelText("As of")).toHaveValue("2026-09-15");
+      expect(getCandidates).toHaveBeenCalledTimes(1);
+      expect(getCandidates).toHaveBeenCalledWith("t", "ws-1", "acc-checking", "2026-09-15");
+    });
+
     it("keeps a date the user changed when the workspace's time zone arrives again", async () => {
       const listWorkspaces = vi
         .spyOn(workspacesApi, "listMyWorkspaces")
