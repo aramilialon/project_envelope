@@ -133,6 +133,7 @@ describe("ImportScreen (#59)", () => {
     const input = document.querySelector("#import-file-in") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     await screen.findByText("Supermarket");
+    expect(screen.getByText("Still need a category")).toBeInTheDocument();
 
     // The duplicate alone is already enough to import (it needs no category of its own);
     // the new row needs one chosen before it counts too.
@@ -435,6 +436,8 @@ describe("ImportScreen (#59)", () => {
       const options = [...screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }).querySelectorAll("option")].map((o) => o.textContent);
       expect(options).toEqual(["No category", "Transfer to Checking"]);
       expect(screen.queryByText("Needs a category")).not.toBeInTheDocument();
+      // Nothing on an off-budget account still needs a category, so the count is not shown (#710).
+      expect(screen.queryByText("Still need a category")).not.toBeInTheDocument();
       expect(screen.getByText(/This account is off budget, so a new row takes no category/)).toBeInTheDocument();
 
       const confirm = vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([
@@ -461,6 +464,17 @@ describe("ImportScreen (#59)", () => {
       // Money from the off-budget account into a cash account: "Unassigned" first, as in the form (#599).
       expect([...transferCategory.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Unassigned", "Groceries"]);
       expect(screen.queryByText("Needs a category")).not.toBeInTheDocument();
+      expect(screen.queryByText("Still need a category")).not.toBeInTheDocument();
+    });
+
+    it("counts what still needs a category only while a transfer out of the budget lacks one", async () => {
+      renderScreen([CHECKING, BROKERAGE], "acc-brokerage");
+      await screen.findByText(/Brokerage/);
+      await stageTwoRows();
+
+      // Money coming in from Checking leaves the budget, so Checking's leg needs a category (#378).
+      fireEvent.change(screen.getByLabelText("Category", { selector: "select[id='import-cat-in-1']" }), { target: { value: "__transfer__acc-checking" } });
+      expect(screen.getByText("Still need a category")).toBeInTheDocument();
     });
   });
 });

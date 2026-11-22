@@ -542,12 +542,16 @@ export default function ImportScreen() {
                 <small>{intl.formatMessage({ id: "import.check.new", defaultMessage: "New" })}</small>
                 <b className="n">{newRows.length}</b>
               </div>
-              <div>
-                <small>{intl.formatMessage({ id: "import.check.missing", defaultMessage: "Still need a category" })}</small>
-                <b className="n" style={missingCount > 0 ? { color: "var(--warn)" } : undefined}>
-                  {missingCount}
-                </b>
-              </div>
+              {/* An off-budget account's new rows take no category (#710): the count shows there only
+                  while a transfer out of the budget still needs its on-budget leg's category. */}
+              {(!offBudget || missingCount > 0) && (
+                <div>
+                  <small>{intl.formatMessage({ id: "import.check.missing", defaultMessage: "Still need a category" })}</small>
+                  <b className="n" style={missingCount > 0 ? { color: "var(--warn)" } : undefined}>
+                    {missingCount}
+                  </b>
+                </div>
+              )}
             </div>
             <p className="hint">
               {offBudget
