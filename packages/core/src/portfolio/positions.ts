@@ -503,13 +503,29 @@ function portfolioOf(state: AccountState, portfolioId: string): PortfolioState {
 
 /**
  * The label of an "invalid_quantity" raised by a position's running quantity, the portfolio's or
- * the account's, leaving the safe range (#662); the replay adds the trade's id to it.
+ * the account's, leaving the safe range (#662). Its details carry the account and the portfolio of
+ * the position, since a request may add several rows (split rows, transfer legs) whose `tradeId`
+ * is null; the replay adds the trade's id to it.
  */
 const POSITION_QUANTITY = "positionQuantity";
 
-function changeQuantity(state: AccountState, portfolio: PortfolioState, delta: number): void {
-  portfolio.quantity = toQuantity(portfolio.quantity + delta, POSITION_QUANTITY);
-  state.quantity = toQuantity(state.quantity + delta, POSITION_QUANTITY);
+function positionQuantity(state: AccountState, portfolioId: string, value: number): Quantity {
+  try {
+    return toQuantity(value, POSITION_QUANTITY);
+  } catch (error) {
+    if (!isValidationError(error, "invalid_quantity")) throw error;
+    throw new ValidationError(error.code, `portfolio ${portfolioId} of account ${state.accountId}: ${error.message}`, {
+      ...error.details,
+      accountId: state.accountId,
+      portfolioId,
+    });
+  }
+}
+
+function changeQuantity(state: AccountState, portfolioId: string, delta: number): void {
+  const portfolio = portfolioOf(state, portfolioId);
+  portfolio.quantity = positionQuantity(state, portfolioId, portfolio.quantity + delta);
+  state.quantity = positionQuantity(state, portfolioId, state.quantity + delta);
 }
 
 function requireQuantity(state: AccountState, trade: PositionTrade, requested: number): PortfolioState {
@@ -572,7 +588,7 @@ function applySplits(state: AccountState, date: LocalDate, splits: readonly Posi
     // Toward zero, to 8 decimals.
     const scaled = (BigInt(portfolio.quantity) * BigInt(split.splitTo ?? 1)) / BigInt(split.splitFrom ?? 1);
     try {
-      changeQuantity(state, portfolio, toQuantity(Number(scaled), POSITION_QUANTITY) - portfolio.quantity);
+      changeQuantity(state, split.portfolioId, positionQuantity(state, split.portfolioId, Number(scaled)) - portfolio.quantity);
     } catch (error) {
       // The split row of the holding that leaves the safe range, not the date's first one (#662).
       throw namingTrade(error, split);
@@ -672,7 +688,7 @@ function replayInstrument(
         case "buy": {
           const cost = plus(trade.grossCents, trade.feesCents, "cost");
           state.cost = plus(state.cost, cost, "costBasisCents");
-          changeQuantity(state, portfolio, trade.quantity);
+          changeQuantity(state, trade.portfolioId, trade.quantity);
           add(totals, "costInCents", cost);
           add(totals, "tradeFeesCents", trade.feesCents);
           add(totals, "transactionTaxCents", trade.transactionTaxCents);
@@ -684,7 +700,7 @@ function replayInstrument(
         case "sell": {
           requireQuantity(state, trade, trade.quantity);
           const removed = removeCost(state, trade.quantity);
-          changeQuantity(state, portfolio, -trade.quantity);
+          changeQuantity(state, trade.portfolioId, -trade.quantity);
           const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
           add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
           add(totals, "costSoldCents", removed);
@@ -715,13 +731,13 @@ function replayInstrument(
               const moved = -trade.quantity as Quantity;
               requireQuantity(state, trade, moved);
               add(totals, "costTransferredOutCents", removeCost(state, moved));
-              changeQuantity(state, portfolio, trade.quantity);
+              changeQuantity(state, trade.portfolioId, trade.quantity);
             } else {
               // In from outside the app: the units bring the cost they carry.
               const cost = trade.costBasisCents ?? 0;
               state.cost = plus(state.cost, cost, "costBasisCents");
               add(totals, "costInCents", cost);
-              changeQuantity(state, portfolio, trade.quantity);
+              changeQuantity(state, trade.portfolioId, trade.quantity);
             }
             break;
           }
@@ -743,9 +759,9 @@ function replayInstrument(
             target.cost = plus(target.cost, removed, "costBasisCents");
             add(targetPortfolio.totals, "costInCents", removed);
           }
-          changeQuantity(source, sourcePortfolio, outgoing.quantity);
+          changeQuantity(source, outgoing.portfolioId, outgoing.quantity);
           try {
-            changeQuantity(target, targetPortfolio, incoming.quantity);
+            changeQuantity(target, incoming.portfolioId, incoming.quantity);
           } catch (error) {
             // The leg that adds the units, whichever leg sorts first (#662).
             throw namingTrade(error, incoming);

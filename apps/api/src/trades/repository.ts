@@ -29,7 +29,8 @@
  *
  * An error's `details.tradeId` always names a stored trade, or is null for a trade the request
  * itself adds (#662): a new trade, a new leg, a new split row. The id such a row would have been
- * given is never shown, since no trade has it.
+ * given is never shown, since no trade has it. The exception is "id_taken", which echoes the
+ * client id the request sent.
  */
 import { randomUUID } from "node:crypto";
 

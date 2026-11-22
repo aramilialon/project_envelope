@@ -1383,8 +1383,13 @@ describe("positions as of a date (#719)", () => {
 describe("a position's quantity beyond the safe range (#662)", () => {
   // 9 × 10^15 (units × 10^8) is a safe integer; two of them together are not.
   const big = 9e15 as Quantity;
-  const overflowAt = (tradeId: string) => (error: unknown) =>
-    isValidationError(error, "invalid_quantity") && error.details.tradeId === tradeId && error.details.label === "positionQuantity";
+  // The account and the portfolio too: a request adding several rows names each of them null.
+  const overflowAt = (tradeId: string, accountId = ACCOUNT, portfolioId = "A") => (error: unknown) =>
+    isValidationError(error, "invalid_quantity") &&
+    error.details.tradeId === tradeId &&
+    error.details.label === "positionQuantity" &&
+    error.details.accountId === accountId &&
+    error.details.portfolioId === portfolioId;
 
   it("names the buy that pushes the position over", () => {
     const first = trade({ id: "q-1", date: "2026-01-10", type: "buy", quantity: big, price: 1 as Price });
@@ -1417,7 +1422,7 @@ describe("a position's quantity beyond the safe range (#662)", () => {
       occurredAt: out.occurredAt,
       createdAt: out.createdAt,
     });
-    assert.throws(() => computePositions([source, target, out, into]), overflowAt("q-leg-1"));
+    assert.throws(() => computePositions([source, target, out, into]), overflowAt("q-leg-1", OTHER_ACCOUNT, "B"));
   });
 
   it("names no trade for a trade's own quantity beyond the safe range: it is not a running total", () => {

@@ -2279,8 +2279,9 @@ describe("trades routes (#77)", () => {
         const buy = { ...base, type: "buy", tradeDate: "2026-02-01" };
         // A field of another kind with a price missing and a negative quantity: the shape first.
         assert.deepEqual(await rejected({ ...buy, quantityE8: -1, from: { accountId: broker, portfolioId: growth } }, "invalid_trade"), { field: "from" });
-        // A wrong JSON type with a price missing: still the shape.
+        // A wrong JSON type, or a memo too long, with a price missing: still the shape.
         assert.deepEqual(await rejected({ ...buy, quantityE8: "-1" }, "invalid_field"), { field: "quantityE8" });
+        assert.equal((await rejected({ ...buy, quantityE8: units(5), memo: "x".repeat(501) }, "text_too_long")).field, "memo");
         // A price missing with a negative quantity: the required field.
         assert.deepEqual(await rejected({ ...buy, quantityE8: -1 }, "invalid_trade"), { field: "priceE6" });
         // An unknown instrument with a negative quantity: the figure, which needs no lookup.
@@ -2307,6 +2308,12 @@ describe("trades routes (#77)", () => {
         assert.deepEqual(await rejected({ ...transfer, quantityE8: 0, from: leg, to: leg }, "invalid_trade"), { field: "quantityE8" });
         assert.deepEqual(await rejected({ ...transfer, quantityE8: -units(1), from: leg }, "invalid_trade"), { field: "quantityE8" });
         await rejected({ ...transfer, quantityE8: 2 ** 53, from: leg }, "invalid_quantity");
+        // An edit of a stored transfer, through either leg.
+        const legs = await created({ ...transfer, quantityE8: units(1), from: leg, to: { accountId: broker, portfolioId: await portfolio() } });
+        for (const stored of legs) {
+          assert.deepEqual(await editRefused(stored.id, { quantityE8: 0 }, "invalid_trade"), { field: "quantityE8" });
+          assert.deepEqual(await editRefused(stored.id, { quantityE8: -1 }, "invalid_trade"), { field: "quantityE8" });
+        }
       });
     });
 
@@ -2344,9 +2351,12 @@ describe("trades routes (#77)", () => {
       // 9 × 10^15 (units × 10^8) is a safe integer; two of them together are not.
       const big = 9e15;
 
-      function overflow(details: Record<string, unknown>, tradeId: string | null): void {
+      // The account and the portfolio too: a request adding several rows names each of them null.
+      function overflow(details: Record<string, unknown>, tradeId: string | null, accountId: string, portfolioId: string): void {
         assert.equal(details.label, "positionQuantity");
         assert.equal(details.tradeId, tradeId);
+        assert.equal(details.accountId, accountId);
+        assert.equal(details.portfolioId, portfolioId);
       }
 
       it("names a new buy as null, and a stored buy a backdated transfer in pushes over by its id", async () => {
@@ -2355,7 +2365,7 @@ describe("trades routes (#77)", () => {
         const growth = await portfolio();
         const buy = { type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, quantityE8: big, priceE6: 1 };
         const [stored] = await created({ ...buy, tradeDate: "2026-02-01" });
-        overflow(await rejected({ ...buy, tradeDate: "2026-03-01" }, "invalid_quantity"), null);
+        overflow(await rejected({ ...buy, tradeDate: "2026-03-01" }, "invalid_quantity"), null, broker, growth);
         // A transfer in before it: the stored buy is where the total leaves the safe range.
         overflow(
           await rejected(
@@ -2363,6 +2373,8 @@ describe("trades routes (#77)", () => {
             "invalid_quantity",
           ),
           stored!.id,
+          broker,
+          growth,
         );
       });
 
@@ -2371,8 +2383,9 @@ describe("trades routes (#77)", () => {
         const broker = await account();
         const buy = { type: "buy", accountId: broker, instrumentId: etf, priceE6: 1, tradeDate: "2026-02-01" };
         await created({ ...buy, portfolioId: await portfolio(), quantityE8: 5e15 });
-        const [second] = await created({ ...buy, portfolioId: await portfolio(), tradeDate: "2026-02-02", quantityE8: 4e15 });
-        overflow(await editRefused(second!.id, { quantityE8: 5e15 }, "invalid_quantity"), second!.id);
+        const income = await portfolio();
+        const [second] = await created({ ...buy, portfolioId: income, tradeDate: "2026-02-02", quantityE8: 4e15 });
+        overflow(await editRefused(second!.id, { quantityE8: 5e15 }, "invalid_quantity"), second!.id, broker, income);
       });
 
       it("names a new split row and a new incoming leg as null", async () => {
@@ -2380,7 +2393,7 @@ describe("trades routes (#77)", () => {
         const broker = await account();
         const growth = await portfolio();
         await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: etf, quantityE8: 1e15, priceE6: 1, tradeDate: "2026-01-10" });
-        overflow(await rejected({ type: "split", instrumentId: etf, tradeDate: "2026-02-01", splitFrom: 1, splitTo: 10 }, "invalid_quantity"), null);
+        overflow(await rejected({ type: "split", instrumentId: etf, tradeDate: "2026-02-01", splitFrom: 1, splitTo: 10 }, "invalid_quantity"), null, broker, growth);
 
         const other = await instrument();
         await created({ type: "buy", accountId: broker, portfolioId: growth, instrumentId: other, quantityE8: big, priceE6: 1, tradeDate: "2026-01-10" });
@@ -2393,6 +2406,8 @@ describe("trades routes (#77)", () => {
             "invalid_quantity",
           ),
           null,
+          elsewhere,
+          there,
         );
       });
     });

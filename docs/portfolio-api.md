@@ -672,7 +672,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `split_leaves_no_quantity` | `{ "accountId", "instrumentId", "date" }` | the split rounds a whole position with a cost down to zero units |
 | `invalid_date` | `{ "value" }` | `tradeDate` is not a real date |
 | `invalid_amount`, `invalid_quantity`, `invalid_price` | `{ "label", "value" }` | not a safe integer (a decimal number, or too large); a negative price |
-| `invalid_quantity` | `{ "label": "positionQuantity", "value", "tradeId" }` | a position's quantity, a portfolio's or an account's, would leave the safe range (about 90 million units) at `tradeId`: the buy, the split row of that holding or the incoming leg of a transfer that pushes it over (#662) |
+| `invalid_quantity` | `{ "label": "positionQuantity", "value", "tradeId", "accountId", "portfolioId" }` | a position's quantity, a portfolio's or an account's, would leave the safe range (about 90 million units) at `tradeId`: the buy, the split row of that holding or the incoming leg of a transfer that pushes it over (#662). `accountId` and `portfolioId` name the position, since a request that adds several rows (a split's rows, a transfer's legs) names each of them `null` |
 | `amount_too_large` | `{ "label", "max", "value" }` | an amount, a cost or the cash leg they add up to above 10^12 minor units (€10,000,000,000.00; ADR 0002, #651); `label` is the field, or `cash`. An edit checks the whole trade, so a memo-only edit of a trade stored above the cap before #651 is refused too |
 | 422 `amount_total_overflow` | `{ "label", "tradeId" }` | a running total of a position (`label`: `costBasisCents`, or the total, such as `standaloneFeesCents`) would leave the safe range of minor units while replaying `tradeId`; only trades stored before the cap can do it (ADR 0002, #651). The positions of the account or portfolio answer it too |
 | 409 `id_taken` | `{ "tradeId" }` | the client-generated id is already used, in this workspace or any other |
@@ -694,6 +694,8 @@ at fault is one the request itself adds: the trade being recorded (with or witho
 client-generated `id`), either leg of a new transfer, a split's new row. The id the server would
 have given it names no trade, so it is never shown. An edit names the trade being edited by its own
 id, since it is stored; a split edit that adds a row for a new holding names that row `null`.
+The one exception is 409 `id_taken`, whose `details.tradeId` echoes the client id the request
+itself sent, so the client can find the trade an earlier attempt recorded.
 
 ```json
 {
@@ -823,7 +825,7 @@ trade never changes: delete it and record another.
 | Error | When |
 | --- | --- |
 | 400 `invalid_body` | not a JSON object; or an edit that changes nothing: `{}`, only `null` legs, or the trade's own `type` alone (checked after the 409s below, #596) |
-| 400 `unknown_field`, `invalid_field` `{ "field" }` | as on create; `id` is `unknown_field` |
+| 400 `unknown_field`, `invalid_field` `{ "field" }` | as on create; `id` is `unknown_field`. Unlike create, a field of another kind with the wrong JSON type (`gainTaxCents: "5"` on a buy) is `invalid_field`, not `invalid_trade`: the body is read before the trade's type is known (to be made uniform in #663) |
 | 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it: `from` on a buy, `accountId` on a transfer, `instrumentId` on a split, `grossCents` on a fee), a different `type`, alone or with other fields (`field: "type"`, #596), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
 | 400, the create codes | the edited trade breaks a rule, or the history no longer replays |
 | 404 | no trade of this workspace has this id |
