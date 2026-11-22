@@ -1,7 +1,7 @@
 /**
  * Converting amounts between currencies (#86, ADR 0019).
  *
- * Rates are stored as the ECB publishes them: `rateE10`, the units of the
+ * Rates are stored as published: `rateE10`, the units of the
  * quote currency for one euro, × 10^10 (USD 1.0812 is 10812000000). A rate is
  * never inverted and never stored for another pair: every other pair is
  * computed through the euro, here, and never rounded or kept.
@@ -18,9 +18,12 @@
  * - the result is computed in BigInt and rounded once, half away from zero, to
  *   the target currency's minor unit (ISO 4217 decimals):
  *   to = from × 10^decimals(to) × rate(to) ÷ (rate(from) × 10^decimals(from));
- * - a value (quantity × price × price factor) is converted with one rounding
- *   over the whole product, and a sum is added up in each source currency
- *   first, then converted once per currency.
+ * - a security's value is first its amount in its own currency (`amountOf`,
+ *   rounded once to that currency's minor unit, ADR 0011), then converted
+ *   like any other amount, so a line and a total built from the same amounts
+ *   agree;
+ * - a sum is added up in each source currency first, then converted once per
+ *   currency.
  *
  * Pure: the caller loads the rates and passes them in.
  */
@@ -31,16 +34,7 @@ import { assertCents, currencyDecimals } from "../money.ts";
 import type { LocalDate } from "../month.ts";
 import { assertDate } from "../month.ts";
 import type { Price, PriceFactor, Quantity } from "../portfolio/quantity.ts";
-import {
-  assertPrice,
-  assertPriceFactor,
-  assertQuantity,
-  divideHalfAwayFromZero,
-  PRICE_DECIMALS,
-  PRICE_FACTOR_DECIMALS,
-  QUANTITY_DECIMALS,
-  safeNumber,
-} from "../portfolio/quantity.ts";
+import { amountOf, divideHalfAwayFromZero, safeNumber } from "../portfolio/quantity.ts";
 
 /** The currency every stored rate is quoted against. */
 export const FX_BASE_CURRENCY = "EUR";
@@ -207,14 +201,14 @@ function toCents(value: bigint, label: string): Cents {
 }
 
 /**
- * `numerator` (an amount in `from`'s minor unit × `extraScale`) converted to
- * `to`'s minor unit with one rounding, half away from zero:
- * numerator × 10^decimals(to) × rate(to) ÷ (rate(from) × 10^decimals(from) × extraScale).
+ * `amount` (in `from`'s minor unit) converted to `to`'s minor unit with one
+ * rounding, half away from zero:
+ * amount × 10^decimals(to) × rate(to) ÷ (rate(from) × 10^decimals(from)).
  */
-function convertScaled(numerator: bigint, extraScale: bigint, from: CurrencyCode, to: CurrencyCode, leg: { from: RateOnDate; to: RateOnDate }): bigint {
+function convertMinor(amount: bigint, from: CurrencyCode, to: CurrencyCode, leg: { from: RateOnDate; to: RateOnDate }): bigint {
   const toScale = 10n ** BigInt(currencyDecimals(to));
   const fromScale = 10n ** BigInt(currencyDecimals(from));
-  return divideHalfAwayFromZero(numerator * toScale * BigInt(leg.to.rateE10), BigInt(leg.from.rateE10) * fromScale * extraScale);
+  return divideHalfAwayFromZero(amount * toScale * BigInt(leg.to.rateE10), BigInt(leg.from.rateE10) * fromScale);
 }
 
 /**
@@ -230,21 +224,21 @@ export function convertAmount(cents: Cents, from: CurrencyCode, to: CurrencyCode
   if (from === to) return { status: "known", cents, rateDate: null };
   const leg = legs(rates, from, to, date);
   if ("missing" in leg) return { status: "unknown", reason: "no_rate", currencies: leg.missing };
-  const converted = convertScaled(BigInt(cents), 1n, from, to, leg);
+  const converted = convertMinor(BigInt(cents), from, to, leg);
   return { status: "known", cents: toCents(converted, "converted amount"), rateDate: olderRateDate(leg.from.rateDate, leg.to.rateDate) };
 }
 
-const PRODUCT_SCALE = 10n ** BigInt(QUANTITY_DECIMALS + PRICE_DECIMALS + PRICE_FACTOR_DECIMALS);
-
 /**
  * The value of `quantity` units at `price` × `priceFactor`, quoted in
- * `instrumentCurrency`, in `target`'s minor unit on `date`, rounded once over
- * the whole product: never the amount in the instrument's currency rounded
- * first. In the instrument's own currency it equals `amountOf`.
+ * `instrumentCurrency`, in `target`'s minor unit on `date`: exactly
+ * `convertAmount(amountOf(quantity, price, priceFactor, instrumentCurrency), …)`.
+ * The value is rounded to the instrument's currency first (ADR 0011), so a
+ * position's converted line equals what `convertSum` gives for the same
+ * amount; it is never recomputed from the unrounded product.
  *
  * @throws ValidationError "invalid_quantity", "invalid_price",
- *   "invalid_price_factor" for invalid inputs; "invalid_amount" for a result
- *   beyond the safe range; "invalid_date" for a date that is not YYYY-MM-DD.
+ *   "invalid_price_factor" for invalid inputs; "invalid_amount" for an amount
+ *   or a result beyond the safe range; "invalid_date" for a date that is not YYYY-MM-DD.
  */
 export function valueIn(
   quantity: Quantity,
@@ -255,22 +249,7 @@ export function valueIn(
   date: LocalDate,
   rates: FxRateTable,
 ): Conversion {
-  assertQuantity(quantity);
-  assertPrice(price);
-  assertPriceFactor(priceFactor);
-  assertDate(date);
-  const product = BigInt(quantity) * BigInt(price) * BigInt(priceFactor);
-  if (instrumentCurrency === target) {
-    const scale = 10n ** BigInt(currencyDecimals(target));
-    return { status: "known", cents: toCents(divideHalfAwayFromZero(product * scale, PRODUCT_SCALE), "value"), rateDate: null };
-  }
-  const leg = legs(rates, instrumentCurrency, target, date);
-  if ("missing" in leg) return { status: "unknown", reason: "no_rate", currencies: leg.missing };
-  // The product in the instrument's minor unit is product × 10^decimals(instrument) ÷ PRODUCT_SCALE;
-  // passing it unrounded, with PRODUCT_SCALE as the extra divisor, keeps a single rounding.
-  const fromScale = 10n ** BigInt(currencyDecimals(instrumentCurrency));
-  const converted = convertScaled(product * fromScale, PRODUCT_SCALE, instrumentCurrency, target, leg);
-  return { status: "known", cents: toCents(converted, "value"), rateDate: olderRateDate(leg.from.rateDate, leg.to.rateDate) };
+  return convertAmount(amountOf(quantity, price, priceFactor, instrumentCurrency), instrumentCurrency, target, date, rates);
 }
 
 /**
@@ -279,6 +258,8 @@ export function valueIn(
  * currency's total is converted once, so the result does not depend on how
  * the amounts are split. Unknown, never a partial sum, when any currency has
  * no rate; `currencies` lists every such currency, in alphabetical order.
+ * When it lists `target` itself (no rate for the target on or before the
+ * date), no amount outside the target currency can be converted.
  * `rateDate` is the oldest rate date used.
  *
  * @throws ValidationError "invalid_amount" for an amount that is not a safe
@@ -305,7 +286,7 @@ export function convertSum(amounts: readonly AmountInCurrency[], target: Currenc
       for (const code of leg.missing) missing.add(code);
       continue;
     }
-    total += convertScaled(sum, 1n, currency, target, leg);
+    total += convertMinor(sum, currency, target, leg);
     rateDate = olderRateDate(rateDate, olderRateDate(leg.from.rateDate, leg.to.rateDate));
   }
   if (missing.size > 0) return { status: "unknown", reason: "no_rate", currencies: [...missing].sort() };

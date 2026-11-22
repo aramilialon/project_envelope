@@ -206,11 +206,24 @@ describe("fxRateTable refuses a malformed rate", () => {
 });
 
 describe("valueIn", () => {
-  it("rounds once over quantity × price × price factor × rates", () => {
-    // 0.5 units at $0.01 is half a cent: rounded first it would be $0.01, then €0.01;
-    // rounded once it is €0.0046…, so €0.00.
-    const value = valueIn(toQuantity(50_000_000), toPrice(10_000), PRICE_FACTOR_ONE, "USD", "EUR", FRIDAY, RATES);
-    assert.equal(known(value).cents, 0);
+  it("converts the amount rounded in the instrument's currency, so a line and its total agree", () => {
+    // 3 shares at $33.335 are $100.005, rounded to $100.01 (amountOf); at USD 2 that is €50.005, so €50.01.
+    // Recomputed from the unrounded product it would be €50.0025, so €50.00, and the line would differ from the total.
+    const two = fxRateTable([rate("USD", FRIDAY, "2")]);
+    const quantity = toQuantity(300_000_000);
+    const price = toPrice(33_335_000);
+    const amount = amountOf(quantity, price, PRICE_FACTOR_ONE, "USD");
+    assert.equal(amount, 10_001);
+    const line = valueIn(quantity, price, PRICE_FACTOR_ONE, "USD", "EUR", FRIDAY, two);
+    const total = convertSum([{ cents: amount, currency: "USD" }], "EUR", FRIDAY, two);
+    assert.deepEqual(known(line), { cents: 5001, rateDate: FRIDAY });
+    assert.deepEqual(known(total), { cents: 5001, rateDate: FRIDAY });
+  });
+
+  it("rounds an exact half away from zero in the instrument's own currency", () => {
+    // 0.5 units at $0.01 is half a cent: $0.01.
+    const value = valueIn(toQuantity(50_000_000), toPrice(10_000), PRICE_FACTOR_ONE, "USD", "USD", FRIDAY, fxRateTable([]));
+    assert.deepEqual(known(value), { cents: 1, rateDate: null });
   });
 
   it("values 10 shares at $100.50 in euros", () => {
@@ -220,9 +233,9 @@ describe("valueIn", () => {
   });
 
   it("applies a price factor", () => {
-    // $10,000 nominal at 98.765432% is $9,876.54320; ÷ 1.0812 = €9,134.7976…
+    // $10,000 nominal at 98.765432% is $9,876.5432, so $9,876.54; ÷ 1.0812 = €9,134.79…
     const value = valueIn(toQuantity(1_000_000_000_000), toPrice(98_765_432), PRICE_FACTOR_HUNDREDTH, "USD", "EUR", FRIDAY, RATES);
-    assert.equal(known(value).cents, 913_480);
+    assert.equal(known(value).cents, 913_479);
   });
 
   it("equals amountOf in the instrument's own currency, with no rate", () => {
@@ -258,13 +271,14 @@ describe("convertSum", () => {
   });
 
   it("adds amounts in several currencies, the target's as they are", () => {
+    // The GBP amount, with the oldest rate, comes first, so keeping the last rate date would not pass.
     const amounts = [
+      { cents: 100_000, currency: "GBP" },
       { cents: 10_000, currency: "EUR" },
       { cents: 108_000, currency: "USD" },
       { cents: 10_000, currency: "JPY" },
-      { cents: 100_000, currency: "GBP" },
     ];
-    // €100.00 + €998.89 + €61.53 + £1,000.00 ÷ 0.8450 (€1,183.43), oldest rate the GBP one.
+    // £1,000.00 ÷ 0.8450 (€1,183.43) + €100.00 + €998.89 + €61.53, oldest rate the GBP one.
     assert.deepEqual(known(convertSum(amounts, "EUR", "2026-11-22", RATES)), { cents: 10_000 + 99_889 + 6153 + 118_343, rateDate: "2026-11-19" });
   });
 
@@ -280,6 +294,14 @@ describe("convertSum", () => {
       { cents: 100, currency: "CHF" },
     ];
     assert.deepEqual(convertSum(amounts, "EUR", FRIDAY, RATES), { status: "unknown", reason: "no_rate", currencies: ["CHF", "SEK"] });
+  });
+
+  it("lists the target itself when the target has no rate, and every other currency is then unconvertible", () => {
+    const amounts = [
+      { cents: 500, currency: "CHF" },
+      { cents: 108_000, currency: "USD" },
+    ];
+    assert.deepEqual(convertSum(amounts, "CHF", FRIDAY, RATES), { status: "unknown", reason: "no_rate", currencies: ["CHF"] });
   });
 
   it("adds up beyond the safe range in the source currency when the converted total fits", () => {
