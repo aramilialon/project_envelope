@@ -447,7 +447,9 @@ It drops what the sandbox, and every container inside it, sends from its bridge 
 `172.16.0.0/12`, `192.168.0.0/16` and `169.254.0.0/16` (through the `DOCKER-USER` chain), and every
 packet it sends to the host itself (`INPUT`, which `DOCKER-USER` never sees: the host's LAN address
 and the bridge gateway would otherwise reach every service the host listens on); IPv6 from the
-bridge is dropped altogether. The internet stays reachable. Running it again changes nothing;
+bridge is dropped altogether, forwarded or to the host (the network is IPv4-only, and a privileged
+sandbox could turn IPv6 back on). The `INPUT` and IPv6 rules go beyond the `DOCKER-USER` rules
+first planned; the maintainer confirmed them (2026-11-22). The internet stays reachable. Running it again changes nothing;
 `firewall-off` removes the rules, the unit and its script, and is refused while a sandbox exists.
 `install:up` is refused while the firewall is not active.
 
@@ -468,10 +470,14 @@ exist only inside the sandbox and go into the installer's brief.
 `.mcp.json`, speaking MCP over stdio with no dependency, and its one tool, `run({ command, user,
 timeout_s })`, is the installer's only tool (`mcp__installer-sandbox__run`, allowed in
 `.claude/settings.json`). Each call runs
-`docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <timeout_s> bash -lc <command>`,
+`docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <timeout_s> bash -lic <command>`,
 after checking that the container exists, runs and carries the label; the Docker client gets a
 minimal environment, never the host's; `timeout_s` defaults to 600 and is capped at 1800; the
-output returned is the last 20,000 characters. Every call is appended to a transcript, by default
+output returned is the last 20,000 characters. The shell is an interactive login shell, as a
+real user's terminal is, so the lines a manual adds to `~/.bashrc` take effect in the next call
+(Debian's `.bashrc` stops early in a non-interactive shell); the two lines such a shell prints on
+stderr without a terminal ("cannot set terminal process group", "no job control in this shell")
+are dropped, and nothing else is. Every call is appended to a transcript, by default
 `$TMPDIR/envelope-installer/transcript-<date>.log`, or the file `ENVELOPE_INSTALLER_TRANSCRIPT`
 names; a path inside the repository is refused. `install-env/installer-agent.test.ts` fails when
 the definition's tools, `.mcp.json`, the allow rule or the container's isolation drift.

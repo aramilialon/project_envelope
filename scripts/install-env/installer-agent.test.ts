@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { type Exec, type ExecResult, handleMessage, MAX_TIMEOUT_S, OUTPUT_LIMIT, runArgs, runTool, type Sandbox } from "./sandbox-mcp.ts";
+import { type Exec, type ExecResult, handleMessage, isStartupNoise, MAX_TIMEOUT_S, OUTPUT_LIMIT, runArgs, runTool, type Sandbox, stderrFilter } from "./sandbox-mcp.ts";
 import { BLOCKED_RANGES, BRIDGE, CONTAINER, firewallScript, LABEL, networkCreateArgs, REPO_ROOT, sandboxRunArgs, transcriptPath } from "./sandbox.ts";
 
 const SERVER = "installer-sandbox";
@@ -120,9 +120,23 @@ describe("installer sandbox MCP server", () => {
     const docker = fakeDocker(RUNNING_LABELLED);
     const result = await runTool(docker.sandbox, { command: "uname -a; id", user: "dev", timeout_s: 60 });
     assert.equal(result.isError, false);
-    assert.deepEqual(docker.calls[1], ["exec", "-i", "-u", "dev", "-w", "/home/dev", CONTAINER, "timeout", "-k", "10", "60", "bash", "-lc", "uname -a; id"]);
+    assert.deepEqual(docker.calls[1], ["exec", "-i", "-u", "dev", "-w", "/home/dev", CONTAINER, "timeout", "-k", "10", "60", "bash", "-lic", "uname -a; id"]);
     assert.deepEqual(runArgs({ command: "x", user: "root", timeout_s: 5 }).slice(0, 7), ["exec", "-i", "-u", "root", "-w", "/root", CONTAINER]);
     assert.match(docker.records[0] ?? "", /\$ uname -a; id/);
+  });
+
+  it("drops only the interactive shell's startup noise from stderr, even split across chunks", () => {
+    assert.ok(isStartupNoise("bash: cannot set terminal process group (-1): Inappropriate ioctl for device"));
+    assert.ok(isStartupNoise("bash: no job control in this shell"));
+    assert.ok(!isStartupNoise("bash: no job control in this shell, really"));
+    assert.ok(!isStartupNoise("bash: fnm: command not found"));
+    const filter = stderrFilter();
+    const kept =
+      filter.push("bash: cannot set terminal process group (-1): Inappro") +
+      filter.push("priate ioctl for device\nbash: no job control in this shell\nE: Unable to locate package x\n") +
+      filter.push("warning without newline") +
+      filter.flush();
+    assert.equal(kept, "E: Unable to locate package x\nwarning without newline");
   });
 
   it("rejects another user, an empty command and a timeout above the cap", async () => {

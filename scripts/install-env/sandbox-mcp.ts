@@ -2,10 +2,13 @@
  * The installer's only tool (#777): a stdio MCP server (`installer-sandbox` in .mcp.json) with one
  * tool, `run`, that runs a shell command inside the sandbox container and nowhere else:
  *
- *   docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <s> bash -lc <command>
+ *   docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <s> bash -lic <command>
  *
- * starting in the user's home directory, as a login would; `timeout` runs inside the sandbox, so a
- * stopped command does not keep running there after the client gives up.
+ * starting in the user's home directory, in an interactive login shell, as a real user's terminal
+ * would: the lines a manual adds to `~/.bashrc` take effect in the next call (Debian's `.bashrc`
+ * returns early in a non-interactive shell). Without a terminal, that shell prints two harmless
+ * lines on stderr at startup; they are dropped (`isStartupNoise`). `timeout` runs inside the
+ * sandbox, so a stopped command does not keep running there after the client gives up.
  *
  * It refuses unless that container exists, runs and carries the label envelope.installer=1; the
  * Docker client gets a minimal environment, never the host's; a command is stopped after at most
@@ -38,16 +41,45 @@ export const CLIENT_ENV = {
   DOCKER_CONFIG: "/nonexistent/.docker",
 } as const;
 
+/**
+ * The lines an interactive bash prints on stderr when it has no terminal: harmless, and the same
+ * on every call. Only these exact lines are dropped; anything else on stderr is kept.
+ */
+const STARTUP_NOISE = [/^bash: cannot set terminal process group \(-?\d+\): Inappropriate ioctl for device$/, /^bash: no job control in this shell$/];
+
+export function isStartupNoise(line: string): boolean {
+  return STARTUP_NOISE.some((pattern) => pattern.test(line));
+}
+
+/** Keeps stderr's complete lines, without the startup noise; `flush` returns what is left at the end. */
+export function stderrFilter(): { push: (text: string) => string; flush: () => string } {
+  let pending = "";
+  return {
+    push(text) {
+      pending += text;
+      const lines = pending.split("\n");
+      pending = lines.pop() ?? "";
+      return lines.filter((line) => !isStartupNoise(line)).map((line) => `${line}\n`).join("");
+    },
+    flush() {
+      const rest = isStartupNoise(pending) ? "" : pending;
+      pending = "";
+      return rest;
+    },
+  };
+}
+
 export const dockerExec: Exec = (args, timeoutMs) =>
   new Promise((resolve) => {
     const child = spawn("docker", args, { env: { ...CLIENT_ENV }, stdio: ["pipe", "pipe", "pipe"] });
     let output = "";
-    const keep = (chunk: Buffer) => {
-      output += chunk.toString("utf8");
+    const append = (text: string) => {
+      output += text;
       if (output.length > OUTPUT_LIMIT * 4) output = output.slice(-OUTPUT_LIMIT * 2);
     };
-    child.stdout.on("data", keep);
-    child.stderr.on("data", keep);
+    const stderr = stderrFilter();
+    child.stdout.on("data", (chunk: Buffer) => append(chunk.toString("utf8")));
+    child.stderr.on("data", (chunk: Buffer) => append(stderr.push(chunk.toString("utf8"))));
     child.stdin.end();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -56,10 +88,12 @@ export const dockerExec: Exec = (args, timeoutMs) =>
     }, timeoutMs);
     child.on("error", (error) => {
       clearTimeout(timer);
+      append(stderr.flush());
       resolve({ code: null, output: `${output}${error.message}`, timedOut });
     });
     child.on("close", (code) => {
       clearTimeout(timer);
+      append(stderr.flush());
       resolve({ code, output, timedOut });
     });
   });
@@ -82,7 +116,7 @@ export function parseRunInput(raw: unknown): RunInput | string {
 export const HOMES: Record<SandboxUser, string> = { root: "/root", dev: "/home/dev" };
 
 export function runArgs(input: RunInput): string[] {
-  return ["exec", "-i", "-u", input.user, "-w", HOMES[input.user], CONTAINER, "timeout", "-k", String(KILL_GRACE_S), String(input.timeout_s), "bash", "-lc", input.command];
+  return ["exec", "-i", "-u", input.user, "-w", HOMES[input.user], CONTAINER, "timeout", "-k", String(KILL_GRACE_S), String(input.timeout_s), "bash", "-lic", input.command];
 }
 
 /** Refuses unless the sandbox container exists, runs and carries the installer label. */
@@ -125,11 +159,11 @@ export async function runTool(sandbox: Sandbox, raw: unknown): Promise<ToolResul
 export const TOOL = {
   name: TOOL_NAME,
   description:
-    "Runs one shell command inside the installer's sandbox, a Debian 13 machine, in a fresh `bash -lc` as root or as the user dev, and returns its exit status and the last 20,000 characters of its output. Nothing runs outside the sandbox.",
+    "Runs one shell command inside the installer's sandbox, a Debian 13 machine, in a fresh interactive login shell (`bash -lic`, so ~/.bashrc is read) as root or as the user dev, and returns its exit status and the last 20,000 characters of its output. Nothing runs outside the sandbox.",
   inputSchema: {
     type: "object",
     properties: {
-      command: { type: "string", description: "The shell command, run with bash -lc." },
+      command: { type: "string", description: "The shell command, run with bash -lic." },
       user: { type: "string", enum: [...USERS], description: "root for the manual's `#` commands, dev for its `$` commands." },
       timeout_s: { type: "integer", minimum: 1, maximum: MAX_TIMEOUT_S, description: `Seconds before the command is stopped (default ${DEFAULT_TIMEOUT_S}).` },
     },

@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Verifies a branch before its pull request is merged: runs the checks, judges whether the tests really cover the issue's acceptance criteria and edge cases, looks for fragile tests, and checks that documentation and changelog moved with the code. Also reproduces the explorers' findings on a disposable environment of its own, through the API or with a throwaway end-to-end spec, and reports each as reproduced or not. Never changes the repository's files; runs commands only.
+description: Verifies a branch before its pull request is merged: runs the checks, judges whether the tests really cover the issue's acceptance criteria and edge cases, looks for fragile tests, and checks that documentation and changelog moved with the code. Also reproduces the explorers' and the installer's findings on a disposable environment of its own, through the API or with a throwaway end-to-end spec, and reports each as reproduced or not. Never changes the repository's files; runs commands only.
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -33,6 +33,15 @@ The coordinator may instead give you the findings of an explorer run (`explorer-
 3. **For a finding only a screen shows**, write a throwaway Playwright spec in a copy of the repository of your own, never in the working tree you were given: a detached Git worktree under your scratch directory (`git worktree add --detach <dir> main`, then `pnpm install` in it). Put the spec in its `apps/web/e2e/` (the suite's `testDir`), and run only that spec against your environment: `E2E_MANIFEST=<manifest> KEYCLOAK_ADMIN_PASSWORD=<password> pnpm test:e2e e2e/<name>.spec.ts` from its `apps/web` (`apps/web/e2e/README.md`, "Against a disposable environment"). The spec is never committed; remove the worktree afterwards with `git worktree remove --force <dir>`.
 4. **Tear the environment down** with `pnpm --filter @envelope/scripts explore:down <run>`, whatever the outcome.
 5. **Report each finding as reproduced or not reproduced**, with the exact steps you took (the requests with their bodies and the answers, or the spec's code and its output), the persona and role used, and, when it did not reproduce, what you saw instead. Say which findings are spec gaps or product questions rather than bugs, for the maintainer.
+
+## Reproducing an installer finding
+
+The coordinator may give you the findings of an `installer` run instead ("fails as written" and "stale" ones), with the path of its transcript. Reproduce each one in a fresh sandbox of your own.
+
+1. **Ask the coordinator first**: only one installer sandbox may exist at a time, so you run only once the installer's is down. Then bring yours up with `pnpm --filter @envelope/scripts install:up` (`scripts/README.md`, "Installer sandbox"); it prints the `root` and `dev` passwords, which stay out of your report.
+2. **Replay the finding's steps** from the installer's report and transcript, in order, as the same user, with `docker exec -u root|dev envelope-installer-sandbox bash -lic '<command>'` (these calls ask for permission; that is expected). Run each command exactly as the transcript shows it.
+3. **Report each finding as reproduced or not reproduced**, with the exact commands, the user each ran as, and the relevant lines of output; when it did not reproduce, what you saw instead.
+4. **Tear the sandbox down** with `pnpm --filter @envelope/scripts install:down`, whatever the outcome.
 
 ## Before you return
 
