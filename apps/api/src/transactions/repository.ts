@@ -6,6 +6,7 @@ import type { DbClient, DbPool } from "../db/pool.ts";
 import { isUuid } from "../ids.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
+import type { TransactionKey, TransactionOrder } from "./cursor.ts";
 import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "./splits.ts";
 
 /**
@@ -529,11 +530,83 @@ export async function listTransactionsForAccount(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
      WHERE t.workspace_id = $1 AND t.account_id = $2
-     ORDER BY t.occurred_at, t.created_at`,
+     ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId, accountId],
   );
   const splitsByTransaction = await loadSplits(db, rows.map((r) => r.id));
   return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
+}
+
+/** The largest page `listTransactionPage` returns, and what it returns when not told (#560). */
+export const MAX_TRANSACTION_PAGE_SIZE = 500;
+export const DEFAULT_TRANSACTION_PAGE_SIZE = 100;
+
+export interface TransactionPageInput {
+  /** 1 to `MAX_TRANSACTION_PAGE_SIZE`; the route checks it. */
+  readonly limit: number;
+  readonly order: TransactionOrder;
+  /** The last row of the previous page (`decodeTransactionCursor`), none for the first page. */
+  readonly after?: TransactionKey;
+}
+
+export interface TransactionPage {
+  readonly transactions: TransactionRecord[];
+  /** The last row returned, when more rows follow it; `undefined` on the last page. */
+  readonly nextKey: TransactionKey | undefined;
+}
+
+interface TransactionPageRow extends TransactionRow {
+  readonly occurred_at_key: string;
+  readonly created_at_key: string;
+}
+
+/** An instant as the cursor keeps it: UTC, with microseconds, whatever the session's time zone (cursor.ts). */
+const KEY_TEXT = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`;
+
+/**
+ * One page of an account's transactions (#560), in register order (occurred_at, created_at, id),
+ * ascending or descending, starting after the row `after` names. Keyset paging, not an offset: a
+ * row added or deleted between two requests moves no other row across a page boundary, so none is
+ * skipped or repeated, and a row added after the cursor's place shows on a later page. The row
+ * comparison against the cursor's own microsecond text, cast back to `timestamptz`, compares
+ * exactly what the order sorts on; `transactions_account_order_idx` (migration 0040) serves it.
+ * Reads `limit + 1` rows to know whether another page follows without a second query.
+ */
+export async function listTransactionPage(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  input: TransactionPageInput,
+): Promise<TransactionPage> {
+  const direction = input.order === "desc" ? "DESC" : "ASC";
+  const comparison = input.order === "desc" ? "<" : ">";
+  const params: unknown[] = [workspaceId, accountId, input.limit + 1];
+  let afterClause = "";
+  if (input.after) {
+    params.push(input.after.occurredAt, input.after.createdAt, input.after.id);
+    afterClause = `AND (t.occurred_at, t.created_at, t.id) ${comparison} ($4::timestamptz, $5::timestamptz, $6::uuid)`;
+  }
+  const { rows } = await db.query<TransactionPageRow>(
+    `SELECT ${TRANSACTION_COLUMNS},
+       to_char(t.occurred_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS occurred_at_key,
+       to_char(t.created_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS created_at_key
+     FROM transactions t
+     JOIN workspaces w ON w.id = t.workspace_id
+     WHERE t.workspace_id = $1 AND t.account_id = $2 ${afterClause}
+     ORDER BY t.occurred_at ${direction}, t.created_at ${direction}, t.id ${direction}
+     LIMIT $3`,
+    params,
+  );
+  const pageRows = rows.slice(0, input.limit);
+  const last = pageRows.at(-1);
+  const nextKey = rows.length > input.limit && last
+    ? { occurredAt: last.occurred_at_key, createdAt: last.created_at_key, id: last.id }
+    : undefined;
+  const splitsByTransaction = await loadSplits(db, pageRows.map((r) => r.id));
+  return {
+    transactions: pageRows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? [])),
+    nextKey,
+  };
 }
 
 /** Every transaction of the workspace, across every account — what the budget month endpoint (#16) aggregates. */
@@ -542,7 +615,7 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
      WHERE t.workspace_id = $1
-     ORDER BY t.occurred_at, t.created_at`,
+     ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId],
   );
   const splitsByTransaction = await loadSplits(db, rows.map((r) => r.id));
@@ -646,7 +719,7 @@ export async function listTransactionEventsForMonth(
               AND NOT (t.transfer_id IS NOT NULL AND partner_account.on_budget = true AND partner_account.type <> 'credit_card')`
            : "AND t.account_id = $3"
        }
-     ORDER BY t.occurred_at, t.created_at`,
+     ORDER BY t.occurred_at, t.created_at, t.id, s.id`,
     params,
   );
   return rows
