@@ -13,7 +13,8 @@ single amount before the API refused them (#651, ADR 0002; how to fix one by han
 base currency, a transfer between accounts in different currencies, and a workspace or account
 whose currency is not three upper-case letters, stored before the API refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").
 `@envelope/scripts` (this package) is the one part with real
-dependencies — the demo data seed and the disposable environments.
+dependencies — the demo data seed and the disposable environments — and it also holds the
+installer's sandbox (`install-env/`, "Installer sandbox" below).
 
 ## Demo data seed
 
@@ -419,6 +420,62 @@ $ pnpm explore:agents
 longer matches. Claude Code asks the maintainer to approve each new project MCP server before its
 first use.
 
+## Installer sandbox
+
+The `installer` agent (`docs/how-to/work-with-the-agent-team.md`, "Install runs") follows the
+install manuals on a machine of its own: a privileged Debian 13 container, `envelope-installer-sandbox`,
+with systemd as PID 1 and room for the Docker Engine the manuals install. Its image
+(`install-env/image/Dockerfile`) is what a netinst install with the "SSH server" and "standard
+system utilities" tasks leaves: a user `dev`, no sudo, curl, git or Docker, and none of the base
+image's container tweaks (services start when their package is installed).
+
+The container runs with `--cgroupns=private`, 2 CPUs, 4 GB of memory, at most 4096 processes, the
+label `envelope.installer=1` and the hostname `envelope-dev`, on its own network
+`envelope-installer-net` (bridge `br-envinstaller`), with two named volumes for the inner Docker
+Engine's data (`/var/lib/docker`, `/var/lib/containerd`). It has no bind mount, no Docker socket, no
+published port and no host network or PID namespace. It is privileged so that its own Docker Engine
+runs: treat it as able to do anything the host's Docker could, and keep it down when no run needs it.
+
+**The host firewall**, set up once per host, as root, and kept across reboots by the systemd unit
+`envelope-installer-firewall.service` (it re-applies the rules whenever Docker starts):
+
+```bash
+# node scripts/install-env/cli.ts firewall-on
+```
+
+It drops what the sandbox, and every container inside it, sends from its bridge to `10.0.0.0/8`,
+`172.16.0.0/12`, `192.168.0.0/16` and `169.254.0.0/16` (through the `DOCKER-USER` chain), and every
+packet it sends to the host itself (`INPUT`, which `DOCKER-USER` never sees: the host's LAN address
+and the bridge gateway would otherwise reach every service the host listens on); IPv6 from the
+bridge is dropped altogether. The internet stays reachable. Running it again changes nothing;
+`firewall-off` removes the rules, the unit and its script, and is refused while a sandbox exists.
+`install:up` is refused while the firewall is not active.
+
+**Up, status and down** (as a user who may run Docker):
+
+```bash
+$ cd scripts
+$ pnpm install:up       # builds the image, starts the sandbox, prints the root and dev passwords
+$ pnpm install:status
+$ pnpm install:down     # removes the container, its volumes, its network and the image
+```
+
+`up` is refused when the sandbox already exists or when less than 12 GB is free under Docker's
+data directory; it waits for systemd and sets fresh random passwords for `root` and `dev`, which
+exist only inside the sandbox and go into the installer's brief.
+
+**The agent's tool.** `install-env/sandbox-mcp.ts` is the `installer-sandbox` MCP server in
+`.mcp.json`, speaking MCP over stdio with no dependency, and its one tool, `run({ command, user,
+timeout_s })`, is the installer's only tool (`mcp__installer-sandbox__run`, allowed in
+`.claude/settings.json`). Each call runs
+`docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <timeout_s> bash -lc <command>`,
+after checking that the container exists, runs and carries the label; the Docker client gets a
+minimal environment, never the host's; `timeout_s` defaults to 600 and is capped at 1800; the
+output returned is the last 20,000 characters. Every call is appended to a transcript, by default
+`$TMPDIR/envelope-installer/transcript-<date>.log`, or the file `ENVELOPE_INSTALLER_TRANSCRIPT`
+names; a path inside the repository is refused. `install-env/installer-agent.test.ts` fails when
+the definition's tools, `.mcp.json`, the allow rule or the container's isolation drift.
+
 ## Contents
 
 | File | What it does |
@@ -448,3 +505,8 @@ first use.
 | `explore-env/playwright-mcp.sh` | Starts one explorer's confined Playwright MCP server (above) |
 | `explore-env/explorer-instructions.md` | The explorers' shared instructions |
 | `explore-env/explorer-agents.ts` | Writes `.claude/agents/explorer-<persona>.md` from them; the server and tool names (`explore-env/explorer-agents.test.ts`) |
+| `install-env/cli.ts` | `up`, `down`, `status`, `firewall-on` and `firewall-off` for the installer sandbox (above) |
+| `install-env/sandbox.ts` | The sandbox's names, its `docker run` arguments, the host firewall script and unit, the transcript path |
+| `install-env/sandbox-mcp.ts` | The installer's single-tool MCP server (above) |
+| `install-env/image/Dockerfile` | The sandbox image |
+| `install-env/installer-agent.test.ts` | Guards the installer's tools, `.mcp.json`, the allow rule, the container's isolation and the MCP server's refusals |
