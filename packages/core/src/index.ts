@@ -75,7 +75,7 @@ export type {
   UnknownReturnReason,
   Valuation,
 } from "./portfolio/returns.ts";
-export { DAYS_PER_YEAR, moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn } from "./portfolio/returns.ts";
+export { moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn, yearFraction } from "./portfolio/returns.ts";
 export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/external-flows.ts";
 export { externalFlows } from "./portfolio/external-flows.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";

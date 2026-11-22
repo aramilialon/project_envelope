@@ -19,21 +19,33 @@
  *   return is r = (V_b − F_b) ÷ V_a − 1 (V_a the value at its start, V_b at its
  *   end, F_b the flows of its last day), or V_b ÷ F_b − 1 when it starts from
  *   nothing (V_a = 0, a first buy), and the sub-periods are linked:
- *   Π(1 + r) − 1. A sub-period with no value and no flow contributes 0.
+ *   Π(1 + r) − 1. A sub-period with nothing held at either end (V_a = 0 and
+ *   V_b = 0) contributes 0 whatever its flows: money that moves while the
+ *   portfolio holds nothing (a dividend after the last sale, a fee before
+ *   the first buy) is left out of the TWR, which measures the holdings.
  * - **Money-weighted return** (`moneyWeightedReturn`, XIRR): the rate that
  *   brings the household's own flows to zero (the opposite of the
  *   portfolio's, the start value paid in on the start date and the end value
- *   received on the end date), Actual/365, found by bisection between −99%
- *   and +1000% a year.
+ *   received on the end date), each flow timed by `yearFraction` from the
+ *   first one, found by bisection. The bounds apply to the figure shown:
+ *   the yearly rate for a period of a year or more, the period's own rate
+ *   for a shorter one, from just above −100% to +1000%. With several sign
+ *   changes there can be several rates; the figure is the one bisection
+ *   finds from those bounds, deterministically. Nothing ever received back
+ *   is exactly −100%. When the end value is 0 the period ends at the last
+ *   money received, since XIRR assumes money stays invested at its rate.
  *
- * A period of 365 days or more gives a yearly figure (`annualized: true`);
- * a shorter one gives the return over the period itself. The length runs
- * from the first date with money in the portfolio (the start value, or the
- * first flow when the start value is 0) to the end.
+ * A period that reaches its first anniversary (`yearFraction` ≥ 1) gives a
+ * yearly figure (`annualized: true`); a shorter one gives the return over
+ * the period itself. For the TWR the period starts on the start date when
+ * the start value is above 0, otherwise on the first valuation above 0; for
+ * the MWR on the household's first flow.
  *
  * Computed in double precision from integer minor units, in a fixed order,
  * and rounded once to millionths (`returnE6`, half away from zero): 26694 is
- * 2.6694%. A return is never stored.
+ * 2.6694%. `returnE6` is the figure: a screen rounds `returnE6` itself to
+ * 0.01 percentage points, half to even, never the double. A return is never
+ * stored; link unrounded `…Rate`s (or make one call), never rounded figures.
  *
  * Pure: no database and no user-facing text (ADR 0004).
  */
@@ -62,7 +74,7 @@ export interface Valuation {
  * - "no_capital": there was never money in the portfolio, or a sub-period
  *   ends with more taken out than it holds (V_b − F_b < 0), or a value
  *   appears from no money at all;
- * - "no_solution": no rate between −99% and +1000% a year balances the
+ * - "no_solution": no rate from just above −100% to +1000% (of the figure shown) balances the
  *   flows (money-weighted only).
  */
 export type UnknownReturnReason = "missing_value" | "no_capital" | "no_solution";
@@ -81,12 +93,37 @@ export type RateOutcome =
   | { readonly status: "known"; readonly rate: number; readonly annualized: boolean }
   | { readonly status: "unknown"; readonly reason: UnknownReturnReason };
 
-/** A period of this many days or more gives a yearly figure. */
-export const DAYS_PER_YEAR = 365;
-
-/** The bisection bounds of the money-weighted return, as yearly rates. */
-const MWR_LOW = -0.99;
+/** The bisection bounds of the money-weighted return, on the figure shown: just above −100% to +1000%. */
+const MWR_LOW = -1 + 1e-12;
 const MWR_HIGH = 10;
+
+/**
+ * Years from `from` to `to` by calendar anniversaries: the whole
+ * anniversaries n, plus the days since the n-th ÷ the days from the n-th to
+ * the (n+1)-th. A 29 February anniversary falls on 28 February in a year
+ * that is not a leap year. 1 January → 1 July 2025 is 181/365, 1 January →
+ * 1 July 2024 182/366, 31 December 2022 → 31 December 2024 exactly 2.
+ *
+ * @throws ValidationError "invalid_date" (details: value) for a malformed
+ *   date or `to` before `from`.
+ */
+export function yearFraction(from: LocalDate, to: LocalDate): number {
+  assertDate(from);
+  assertDate(to);
+  if (to < from) invalidDate(to, "the end must not come before the start");
+  let whole = Number(to.slice(0, 4)) - Number(from.slice(0, 4));
+  if (anniversary(from, whole) > to) whole -= 1;
+  const last = anniversary(from, whole);
+  return whole + daysBetween(last, to) / daysBetween(last, anniversary(from, whole + 1));
+}
+
+/** `date` moved `years` years on, 29 February becoming 28 February outside a leap year. */
+function anniversary(date: LocalDate, years: number): LocalDate {
+  const year = Number(date.slice(0, 4)) + years;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const monthDay = date.slice(5) === "02-29" && !leap ? "02-28" : date.slice(5);
+  return `${String(year).padStart(4, "0")}-${monthDay}`;
+}
 
 export interface TimeWeightedInput {
   /** The value at the end of the day before the period: 0 when the portfolio starts within it. */
@@ -139,27 +176,28 @@ export function timeWeightedRate(input: TimeWeightedInput): RateOutcome {
   let valueBefore: Cents = input.start.valueCents;
   for (const valuation of input.valuations) {
     const valueAfter = valuation.valueCents as Cents;
+    // Never null here: unknown flows were turned away above.
     const flow = daily.get(valuation.date) ?? 0;
-    if (flow === null) return unknown("missing_value");
     let factor: number;
     if (valueBefore > 0) {
       if (valueAfter - flow < 0) return unknown("no_capital");
       factor = (valueAfter - flow) / valueBefore;
+    } else if (valueAfter === 0) {
+      // Nothing held at either end: the flows are left out of the TWR.
+      factor = 1;
     } else if (flow > 0) {
       factor = valueAfter / flow;
-    } else if (flow === 0 && valueAfter === 0) {
-      factor = 1;
     } else {
       return unknown("no_capital");
     }
-    if (valueBefore > 0 || flow > 0) invested = true;
+    if (valueBefore > 0 || valueAfter > 0) invested = true;
     growth *= factor;
     valueBefore = valueAfter;
   }
   if (!invested) return unknown("no_capital");
 
-  const days = daysBetween(firstInvestedDate(input.start, daily), end.date);
-  if (days >= DAYS_PER_YEAR) return known(Math.pow(growth, DAYS_PER_YEAR / days) - 1, true);
+  const years = yearFraction(firstHeldDate(input.start, input.valuations), end.date);
+  if (years >= 1) return known(Math.pow(growth, 1 / years) - 1, true);
   return known(growth - 1, false);
 }
 
@@ -174,7 +212,9 @@ export interface MoneyWeightedInput {
 
 /**
  * The money-weighted return (XIRR) over a period (see the module comment):
- * a yearly rate for 365 days or more, otherwise (1 + r)^(days ÷ 365) − 1.
+ * a yearly rate for a period of a year or more, otherwise the period's own
+ * rate R, each flow discounted by (1 + R)^(−t ÷ T), t its time from the first
+ * flow and T the period's, both in years.
  *
  * @throws ValidationError "invalid_date" (details: value) for a malformed
  *   date, an end not after the start, or a flow outside the period;
@@ -208,17 +248,25 @@ export function moneyWeightedRate(input: MoneyWeightedInput): RateOutcome {
 
   const cashFlows = [...household].filter(([, amount]) => amount !== 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   const first = cashFlows[0];
-  if (first === undefined || !cashFlows.some(([, amount]) => amount < 0)) return unknown("no_capital");
-  const timed = cashFlows.map(([date, amount]) => ({ years: daysBetween(first[0], date) / DAYS_PER_YEAR, amount }));
-  const days = daysBetween(first[0], input.end.date);
+  const last = cashFlows.at(-1);
+  if (first === undefined || last === undefined || !cashFlows.some(([, amount]) => amount < 0)) return unknown("no_capital");
+  const origin = first[0];
+  // Nothing ever received back: a total loss, outside any bounds.
+  if (!cashFlows.some(([, amount]) => amount > 0)) return known(-1, yearFraction(origin, input.end.date) >= 1);
 
-  const rate = bisect((r) => timed.reduce((total, flow) => total + flow.amount * Math.pow(1 + r, -flow.years), 0));
+  // The period ends on the end date, or at the last money received when the end value is 0.
+  const period = yearFraction(origin, last[0]);
+  const annualized = period >= 1;
+  // Each flow's exponent in the unit of the figure shown: years, or fractions of the period.
+  const unit = annualized ? 1 : period;
+  // Future values at the period's end, so every exponent is ≥ 0 and nothing overflows near −100%.
+  const timed = cashFlows.map(([date, amount]) => ({ exponent: (period - yearFraction(origin, date)) / unit, amount }));
+  const rate = bisect((r) => timed.reduce((total, flow) => total + flow.amount * Math.pow(1 + r, flow.exponent), 0));
   if (rate === null) return unknown("no_solution");
-  if (days >= DAYS_PER_YEAR) return known(rate, true);
-  return known(Math.pow(1 + rate, days / DAYS_PER_YEAR) - 1, false);
+  return known(rate, annualized);
 }
 
-/** A root of `f` between `MWR_LOW` and `MWR_HIGH`, or null if `f` does not change sign there. */
+/** A root of `f` between `MWR_LOW` and `MWR_HIGH` (the one bisection finds from them), or null if `f` does not change sign there. */
 function bisect(f: (rate: number) => number): number | null {
   let low = MWR_LOW;
   let high = MWR_HIGH;
@@ -264,11 +312,10 @@ function flowsByDate(flows: readonly ExternalFlow[], start: LocalDate, end: Loca
   return daily;
 }
 
-/** The first date with money in the portfolio: the start, or the first non-zero flow when the start value is 0. */
-function firstInvestedDate(start: Valuation, daily: ReadonlyMap<LocalDate, Cents | null>): LocalDate {
-  if (start.valueCents !== 0) return start.date;
-  const dates = [...daily].filter(([, amount]) => amount !== 0).map(([date]) => date).sort();
-  return dates[0] ?? start.date;
+/** Where the TWR's clock starts: the start when it holds something, else the first valuation above 0. */
+function firstHeldDate(start: Valuation, valuations: readonly Valuation[]): LocalDate {
+  if (start.valueCents !== null && start.valueCents > 0) return start.date;
+  return valuations.find((valuation) => valuation.valueCents !== null && valuation.valueCents > 0)?.date ?? start.date;
 }
 
 function checkValuation(valuation: Valuation): void {

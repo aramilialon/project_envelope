@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
 import type { ExternalFlow, RateOutcome, Valuation } from "./returns.ts";
-import { DAYS_PER_YEAR, moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn } from "./returns.ts";
+import { moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn, yearFraction } from "./returns.ts";
 
 const TOLERANCE = 1e-9;
 
@@ -117,7 +117,7 @@ describe("timeWeightedReturn is not Modified Dietz", () => {
 });
 
 describe("timeWeightedReturn: periods and edge cases", () => {
-  it("a period that starts from nothing measures its length from the first flow, and empty sub-periods add 0", () => {
+  it("a period that starts from nothing measures its length from the first value above 0, and empty sub-periods add 0", () => {
     // Opened on 1 January 2025, first buy on 1 March 2025, valued on 31 December 2025: 305 days invested.
     const outcome = timeWeightedRate({
       start: value("2024-12-31", 0),
@@ -127,12 +127,43 @@ describe("timeWeightedReturn: periods and edge cases", () => {
     assertRate(outcome, 0.1, false);
   });
 
-  it("a period of 365 days or more is a yearly rate: (1 + R)^(365 ÷ days) − 1", () => {
-    assertRate(timeWeightedRate({ start: value("2025-01-01", 10_000), valuations: [value("2026-01-01", 11_000)], flows: [] }), 0.1, true);
-    const twoYears = timeWeightedRate({ start: value("2024-01-01", 10_000), valuations: [value("2026-01-01", 12_100)], flows: [] });
-    assertRate(twoYears, Math.pow(1.21, DAYS_PER_YEAR / 731) - 1, true);
-    // 364 days is still the period's own figure.
-    assertRate(timeWeightedRate({ start: value("2025-01-01", 10_000), valuations: [value("2025-12-31", 11_000)], flows: [] }), 0.1, false);
+  it("a period that reaches its first anniversary is a yearly rate: (1 + R)^(1 ÷ years) − 1, by calendar years", () => {
+    const period = (from: string, to: string, end: number) => ({ start: value(from, 10_000), valuations: [value(to, end)], flows: [] });
+    // Calendar 2024, a leap year: +10% is 10.00% a year.
+    assertRate(timeWeightedRate(period("2023-12-31", "2024-12-31", 11_000)), 0.1, true);
+    assertRate(timeWeightedRate(period("2025-01-01", "2026-01-01", 11_000)), 0.1, true);
+    // Two calendar years, one of them leap: +21% is 10.00% a year.
+    assertRate(timeWeightedRate(period("2022-12-31", "2024-12-31", 12_100)), 0.1, true);
+    assertRate(timeWeightedRate(period("2024-01-01", "2026-01-01", 12_100)), 0.1, true);
+    // 1 January to 31 December 2024 is 365 days but short of the anniversary: the period's own figure.
+    assertRate(timeWeightedRate(period("2024-01-01", "2024-12-31", 11_000)), 0.1, false);
+    assertRate(timeWeightedRate(period("2025-01-01", "2025-12-31", 11_000)), 0.1, false);
+  });
+
+  it("a fee before the first buy does not start the clock", () => {
+    // Fee on 1 January 2025 while nothing is held; first buy on 1 March 2025; 15 January 2026 is not a year after it.
+    const outcome = timeWeightedRate({
+      start: value("2024-12-31", 0),
+      valuations: [value("2025-01-01", 0), value("2025-03-01", 1_000), value("2026-01-15", 1_100)],
+      flows: [flow("2025-01-01", 10), flow("2025-03-01", 1_000)],
+    });
+    assertRate(outcome, 0.1, false);
+  });
+
+  it("money that moves while nothing is held is left out: sold on 10 October, a dividend on 20 October, October is 1.00%", () => {
+    const october = {
+      start: value("2025-09-30", 10_000),
+      valuations: [value("2025-10-10", 0), value("2025-10-20", 0), value("2025-10-31", 0)],
+      flows: [flow("2025-10-10", -10_100), flow("2025-10-20", -50)],
+    };
+    assertRate(timeWeightedRate(october), 0.01, false);
+    // A buy and a transfer out on the same day with nothing held at either end.
+    const sameDay = {
+      start: value("2025-08-31", 0),
+      valuations: [value("2025-09-05", 0), value("2025-09-10", 1_000), value("2025-09-30", 1_050)],
+      flows: [flow("2025-09-05", 500), flow("2025-09-10", 1_000)],
+    };
+    assertRate(timeWeightedRate(sameDay), 0.05, false);
   });
 
   it("several flows on one date add up, and a value-only cut changes nothing", () => {
@@ -163,8 +194,13 @@ describe("timeWeightedReturn: periods and edge cases", () => {
       timeWeightedReturn({ ...SEPTEMBER, valuations: [value("2025-09-10", null), value("2025-09-30", 12_300)] }),
       { status: "unknown", reason: "missing_value" },
     );
+    // The unknown flow last and first on its date: null + n is n in JavaScript.
     assert.deepEqual(
       timeWeightedReturn({ ...SEPTEMBER, flows: [flow("2025-09-10", 1_500), flow("2025-09-10", null)] }),
+      { status: "unknown", reason: "missing_value" },
+    );
+    assert.deepEqual(
+      timeWeightedReturn({ ...SEPTEMBER, flows: [flow("2025-09-10", null), flow("2025-09-10", 1_500)] }),
       { status: "unknown", reason: "missing_value" },
     );
   });
@@ -178,6 +214,13 @@ describe("timeWeightedReturn: periods and edge cases", () => {
     assert.deepEqual(timeWeightedReturn(fromNothing), { status: "unknown", reason: "no_capital" });
     const outFromNothing = { start: value("2025-08-31", 0), valuations: [value("2025-09-30", 0)], flows: [flow("2025-09-30", -100)] };
     assert.deepEqual(timeWeightedReturn(outFromNothing), { status: "unknown", reason: "no_capital" });
+    // Everything sold, then a value with no flow.
+    const reappears = {
+      start: value("2025-08-31", 1_000),
+      valuations: [value("2025-09-10", 0), value("2025-09-30", 100)],
+      flows: [flow("2025-09-10", -1_000)],
+    };
+    assert.deepEqual(timeWeightedReturn(reappears), { status: "unknown", reason: "no_capital" });
   });
 
   it("refuses valuations out of order, a period with no valuation and a flow with no valuation on its date", () => {
@@ -210,6 +253,10 @@ describe("timeWeightedReturn: periods and edge cases", () => {
     const period = (end: number) => ({ start: { date: "2025-08-31", valueCents: 1_000_000 }, valuations: [{ date: "2025-09-30", valueCents: end }], flows: [] });
     assert.deepEqual(timeWeightedReturn(period(1_000_015)), { status: "known", returnE6: 15, annualized: false });
     assert.deepEqual(timeWeightedReturn(period(999_985)), { status: "known", returnE6: -15, annualized: false });
+    // Exactly ∓7,812.5 millionths (8,192 ÷ 2^20): half away from zero, not half to even.
+    const exact = (end: number) => ({ start: { date: "2025-08-31", valueCents: 1_048_576 }, valuations: [{ date: "2025-09-30", valueCents: end }], flows: [] });
+    assert.deepEqual(timeWeightedReturn(exact(1_040_384)), { status: "known", returnE6: -7813, annualized: false });
+    assert.deepEqual(timeWeightedReturn(exact(1_056_768)), { status: "known", returnE6: 7813, annualized: false });
     // −0.1 millionths rounds to 0, not −0.
     const tiny = timeWeightedReturn({ start: { date: "2025-08-31", valueCents: 10_000_000 }, valuations: [{ date: "2025-09-30", valueCents: 9_999_999 }], flows: [] });
     assert.ok(tiny.status === "known" && Object.is(tiny.returnE6, 0));
@@ -235,7 +282,7 @@ describe("moneyWeightedReturn (XIRR)", () => {
     });
   });
 
-  it("over 30 days, €10,000 growing to €10,100 is 1.00%: (1 + r)^(days ÷ 365) − 1", () => {
+  it("over 30 days, €10,000 growing to €10,100 is 1.00%, the period's own rate", () => {
     const outcome = moneyWeightedRate({ start: value("2026-09-01", 10_000), end: value("2026-10-01", 10_100), flows: [] });
     assertRate(outcome, 0.01, false);
     assert.deepEqual(moneyWeightedReturn({ start: value("2026-09-01", 10_000), end: value("2026-10-01", 10_100), flows: [] }), {
@@ -260,17 +307,44 @@ describe("moneyWeightedReturn (XIRR)", () => {
     assertRate(outcome, 0.05, true);
   });
 
-  it("no rate between −99% and +1000% a year: no_solution", () => {
-    // Doubling in one day is far beyond +1000% a year.
-    assert.deepEqual(moneyWeightedReturn({ start: value("2025-01-01", 10_000), end: value("2025-01-02", 20_000), flows: [] }), {
-      status: "unknown",
-      reason: "no_solution",
-    });
-    // A total loss is −100%, outside the bounds.
+  it("the bounds apply to the figure shown: the period's rate under a year, the yearly rate from a year", () => {
+    const period = (from: string, to: string, end: number) => ({ start: value(from, 10_000), end: value(to, end), flows: [] });
+    assertRate(moneyWeightedRate(period("2026-09-01", "2026-10-01", 12_500)), 0.25, false);
+    assertRate(moneyWeightedRate(period("2026-09-01", "2026-10-01", 6_500)), -0.35, false);
+    // Doubling in one day is +100% over the day.
+    assertRate(moneyWeightedRate(period("2025-01-01", "2025-01-02", 20_000)), 1, false);
+    assertRate(moneyWeightedRate(period("2025-01-01", "2026-01-01", 50)), -0.995, true);
+    // Just inside and just outside +1000%.
+    assertRate(moneyWeightedRate(period("2026-09-01", "2026-10-01", 109_900)), 9.99, false);
+    assert.deepEqual(moneyWeightedReturn(period("2026-09-01", "2026-10-01", 110_100)), { status: "unknown", reason: "no_solution" });
+    assertRate(moneyWeightedRate(period("2025-01-01", "2026-01-01", 109_900)), 9.99, true);
+    assert.deepEqual(moneyWeightedReturn(period("2025-01-01", "2026-01-01", 110_100)), { status: "unknown", reason: "no_solution" });
+  });
+
+  it("nothing ever received back is exactly −100%", () => {
     assert.deepEqual(moneyWeightedReturn({ start: value("2025-01-01", 10_000), end: value("2026-01-01", 0), flows: [] }), {
-      status: "unknown",
-      reason: "no_solution",
+      status: "known",
+      returnE6: -1_000_000,
+      annualized: true,
     });
+    assert.deepEqual(moneyWeightedReturn({ start: value("2025-01-01", 10_000), end: value("2025-02-01", 0), flows: [flow("2025-01-15", 500)] }), {
+      status: "known",
+      returnE6: -1_000_000,
+      annualized: false,
+    });
+  });
+
+  it("with an end value of 0 the period ends at the last money received: 3.01%, not 4.70%", () => {
+    // −10,000 on 30 September, +10,100 on 10 October, +50 on 20 October, nothing held on 31 October.
+    const outcome = moneyWeightedRate({
+      start: value("2025-09-30", 10_000),
+      end: value("2025-10-31", 0),
+      flows: [flow("2025-10-10", -10_100), flow("2025-10-20", -50)],
+    });
+    // −10,000 (1 + R) + 10,100 (1 + R)^(1/2) + 50 = 0, a quadratic in (1 + R)^(1/2).
+    const root = (10_100 + Math.sqrt(10_100 * 10_100 + 4 * 10_000 * 50)) / 20_000;
+    assertRate(outcome, root * root - 1, false);
+    assert.ok(outcome.status === "known" && Math.round(outcome.rate * 10_000) === 301);
   });
 
   it("the household never paid anything in: no_capital", () => {
@@ -303,5 +377,26 @@ describe("moneyWeightedReturn (XIRR)", () => {
     ]) {
       assert.throws(() => moneyWeightedReturn(input), (error) => isValidationError(error) && error.code === "invalid_date", JSON.stringify(input));
     }
+  });
+});
+
+describe("yearFraction", () => {
+  it("counts whole anniversaries, then the days since the last over the days to the next", () => {
+    assert.equal(yearFraction("2025-01-01", "2025-07-01"), 181 / 365);
+    assert.equal(yearFraction("2024-01-01", "2024-07-01"), 182 / 366);
+    assert.equal(yearFraction("2024-01-01", "2024-12-31"), 365 / 366);
+    assert.equal(yearFraction("2022-12-31", "2024-12-31"), 2);
+    assert.equal(yearFraction("2025-01-01", "2026-07-01"), 1 + 181 / 365);
+    assert.equal(yearFraction("2025-03-01", "2025-03-01"), 0);
+  });
+
+  it("puts a 29 February anniversary on 28 February outside a leap year", () => {
+    assert.equal(yearFraction("2024-02-29", "2025-02-28"), 1);
+    assert.equal(yearFraction("2024-02-29", "2025-02-27"), 364 / 365);
+    assert.equal(yearFraction("2024-02-29", "2028-02-29"), 4);
+  });
+
+  it("refuses an end before the start", () => {
+    assert.throws(() => yearFraction("2025-01-02", "2025-01-01"), (error) => isValidationError(error) && error.code === "invalid_date");
   });
 });
