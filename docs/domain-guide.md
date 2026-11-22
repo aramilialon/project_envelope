@@ -920,6 +920,14 @@ date when the portfolio holds something then, otherwise on the first date it hol
 MWR's on the household's first flow. The figure is `returnE6`, in millionths; the screen rounds
 `returnE6` to 0.01 percentage points, half to even.
 
+**Month by month** (#89). Each month is valued at the end of its last day, the current month at
+the end of today in the workspace's time zone, and shows its value, its net contributions (every
+flow except dividends and coupons), its income (the net dividends and coupons), its gain (value −
+the previous month's value − net contributions + income, exact to the cent) and its two returns.
+The figures over several months come from one calculation over the whole range, never from the
+rounded monthly figures linked together. In the example above, September's gain is 12,300 −
+10,000 − 2,000 = 300 and October's 12,100 − 12,300 − 0 + 50 = −150.
+
 ### Target allocation and thresholds
 
 A target allocation is a tree of percentages that must add up to 100% at each level — for example
