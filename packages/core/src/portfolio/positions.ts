@@ -70,7 +70,10 @@ export interface PositionTrade {
   readonly date: LocalDate;
   /**
    * When the trade happened, as a strict ISO 8601 timestamp with `Z` or an
-   * offset: orders trades within the same date, to the millisecond.
+   * offset: orders trades within the same date, to the millisecond. A trade
+   * with no known time takes the first instant of its date in the workspace's
+   * time zone (`startOfLocalDay`), so it comes before every timed trade of
+   * that date (#596).
    */
   readonly occurredAt: string;
   /** When the trade was recorded, same format: breaks ties of `occurredAt`. */
@@ -197,6 +200,15 @@ export interface AccountCharge {
   readonly gainTaxAdjustmentsCents: Cents;
   /** Managed result tax without an instrument. */
   readonly managedResultTaxCents: Cents;
+}
+
+/** How `computePositions` replays the trades. */
+export interface PositionOptions {
+  /**
+   * The date, in the workspace's time zone, the positions are as of: trades
+   * dated after it are left out. Absent: every trade.
+   */
+  readonly asOf?: LocalDate;
 }
 
 export interface Positions {
@@ -768,6 +780,11 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
  * workspace: a transfer between two accounts needs both legs, and a partial
  * history gives a wrong position.
  *
+ * With `asOf`, the positions as of the end of that date: only the trades
+ * dated on or before it are replayed (#719), as an account's balance as of
+ * today counts only the rows dated up to today. Every trade passed is still
+ * checked for its shape. Without it, every trade is replayed.
+ *
  * @throws ValidationError "insufficient_quantity" if a portfolio's quantity
  *   would go negative at any point (details: tradeId, accountId, portfolioId,
  *   instrumentId, date, available, requested, quantities in units × 10^8);
@@ -782,7 +799,9 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
  *   "invalid_date", "invalid_amount", "invalid_quantity", "invalid_price",
  *   "invalid_price_factor" for malformed values.
  */
-export function computePositions(trades: readonly PositionTrade[]): Positions {
+export function computePositions(trades: readonly PositionTrade[], options: PositionOptions = {}): Positions {
+  const { asOf } = options;
+  if (asOf !== undefined) assertDate(asOf);
   const byId = new Map<string, PositionTrade>();
   const instruments = new Map<string, SortableTrade[]>();
   const charges = new Map<string, { accountId: string; portfolioId: string; currency: CurrencyCode; totals: MutableTotals }>();
@@ -791,6 +810,7 @@ export function computePositions(trades: readonly PositionTrade[]): Positions {
     checkTrade(trade);
     if (byId.has(trade.id)) throw invalidTrade(trade, "id", "appears twice");
     byId.set(trade.id, trade);
+    if (asOf !== undefined && trade.date > asOf) continue;
     const sortable: SortableTrade = {
       trade,
       occurredMs: timestampOf(trade, "occurredAt"),

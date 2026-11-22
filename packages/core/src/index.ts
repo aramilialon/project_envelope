@@ -45,6 +45,7 @@ export type {
   DerivedResults,
   PortfolioPosition,
   PortfolioSummary,
+  PositionOptions,
   Positions,
   PositionSummary,
   PositionTotals,
@@ -82,7 +83,7 @@ export type { AmountInCurrency, Conversion, FxRate, FxRateTable, RateOnDate } fr
 export { convertAmount, convertSum, FX_BASE_CURRENCY, FX_RATE_DECIMALS, fxRateTable, rateOn, valueIn } from "./market-data/fx.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
-export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
+export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth, startOfLocalDay } from "./month.ts";
 export type {
   Activity,
   Assignment,
