@@ -1,4 +1,4 @@
-import { assertAmount, assertDate, monthOf, ValidationError } from "@envelope/core";
+import { assertAmount, assertDate, monthOf, ValidationError, type TradeType } from "@envelope/core";
 
 import { checkAccountsOpen } from "../accounts/open-accounts.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
@@ -78,8 +78,24 @@ export interface TransactionRecord {
    * deleted through this module (`trade_owned`); its payee, memo and status stay its own.
    */
   readonly tradeId: string | null;
+  /**
+   * What a client needs to show a cash leg as its trade (#657): the trade's type, quantity and
+   * instrument, read with the transaction; null when `tradeId` is null. Read, never written.
+   */
+  readonly trade: TransactionTrade | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
+}
+
+/** The trade behind a cash leg (#657), as a register or a reconciliation shows it. */
+export interface TransactionTrade {
+  readonly type: TradeType;
+  /** The trade's quantity in units × 10^8 (ADR 0011); 0 for a type that has none (a dividend, a fee, a tax). */
+  readonly quantityE8: number;
+  /** Null for an account-wide fee or tax. */
+  readonly instrumentId: string | null;
+  readonly instrumentName: string | null;
+  readonly instrumentTicker: string | null;
 }
 
 export interface CreateTransactionInput {
@@ -118,7 +134,15 @@ const TRANSACTION_COLUMNS = `
   to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS budget_date,
   t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.trade_id, t.created_at,
   (SELECT partner.account_id FROM transactions partner
-    WHERE partner.id = t.transfer_id AND partner.workspace_id = t.workspace_id) AS transfer_account_id
+    WHERE partner.id = t.transfer_id AND partner.workspace_id = t.workspace_id) AS transfer_account_id,
+  tr.type AS trade_type, tr.quantity_e8 AS trade_quantity_e8, tr.instrument_id AS trade_instrument_id,
+  i.name AS trade_instrument_name, i.ticker AS trade_instrument_ticker
+`;
+
+/** The trade behind a cash leg and its instrument (#657), joined after `transactions t`. */
+const TRADE_JOINS = `
+  LEFT JOIN trades tr ON tr.id = t.trade_id AND tr.workspace_id = t.workspace_id
+  LEFT JOIN instruments i ON i.id = tr.instrument_id
 `;
 
 interface TransactionRow {
@@ -135,6 +159,12 @@ interface TransactionRow {
   readonly transfer_account_id: string | null;
   readonly external_id: string | null;
   readonly trade_id: string | null;
+  readonly trade_type: TradeType | null;
+  /** `bigint`, which node-postgres reads as a string. */
+  readonly trade_quantity_e8: string | null;
+  readonly trade_instrument_id: string | null;
+  readonly trade_instrument_name: string | null;
+  readonly trade_instrument_ticker: string | null;
   readonly created_at: Date;
 }
 
@@ -539,6 +569,7 @@ export async function getTransaction(
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.id = $1 AND t.workspace_id = $2`,
     [transactionId, workspaceId],
   );
@@ -558,6 +589,7 @@ export async function listTransactionsForAccount(
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1 AND t.account_id = $2
      ORDER BY t.occurred_at, t.created_at`,
     [workspaceId, accountId],
@@ -571,6 +603,7 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1
      ORDER BY t.occurred_at, t.created_at`,
     [workspaceId],
@@ -1160,6 +1193,16 @@ function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]
     transferAccountId: row.transfer_account_id,
     externalId: row.external_id,
     tradeId: row.trade_id,
+    trade:
+      row.trade_id === null || row.trade_type === null
+        ? null
+        : {
+            type: row.trade_type,
+            quantityE8: Number(row.trade_quantity_e8 ?? 0),
+            instrumentId: row.trade_instrument_id,
+            instrumentName: row.trade_instrument_name,
+            instrumentTicker: row.trade_instrument_ticker,
+          },
     createdAt: row.created_at.toISOString(),
     splits,
   };

@@ -861,6 +861,73 @@ describe("trades routes (#77)", () => {
     assert.equal(locked!.locked, true);
   });
 
+  it("names each cash leg's trade in the register and in the reconciliation candidates (#657)", async () => {
+    const etf = await instrument();
+    const { rows: tickerRows } = await superuserPool.query<{ ticker: string }>("SELECT ticker FROM instruments WHERE id = $1", [etf]);
+    const flat = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/instruments`,
+      headers: await auth(),
+      payload: { name: "Flat for rent", type: "other", currency: "EUR", assetClass: "Real estate" },
+    });
+    assert.equal(flat.statusCode, 201, flat.body);
+    const broker = await account();
+    const growth = await portfolio();
+    const base = { accountId: broker, portfolioId: growth };
+    const [buy] = await created({ ...base, type: "buy", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(2.5), priceE6: price(100) });
+    const [dividend] = await created({ ...base, type: "dividend", instrumentId: flat.json().id, tradeDate: "2026-01-11", grossCents: 900 });
+    const [custody] = await created({ ...base, type: "fee", instrumentId: null, tradeDate: "2026-01-12", feesCents: 300 });
+
+    const listed = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/accounts/${broker}/transactions`, headers: await auth() });
+    assert.equal(listed.statusCode, 200);
+    const byTrade = new Map(
+      (listed.json().transactions as { tradeId: string | null; trade: unknown }[]).map((t) => [t.tradeId, t.trade] as const),
+    );
+    assert.deepEqual(byTrade.get(buy!.id), {
+      type: "buy",
+      quantityE8: units(2.5),
+      instrumentId: etf,
+      instrumentName: "Test instrument",
+      instrumentTicker: tickerRows[0]!.ticker,
+    });
+    assert.deepEqual(byTrade.get(dividend!.id), {
+      type: "dividend",
+      quantityE8: 0,
+      instrumentId: flat.json().id,
+      instrumentName: "Flat for rent",
+      instrumentTicker: null,
+    });
+    assert.deepEqual(byTrade.get(custody!.id), { type: "fee", quantityE8: 0, instrumentId: null, instrumentName: null, instrumentTicker: null });
+
+    // A transaction that is no trade's cash leg carries none.
+    const deposit = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${broker}/transactions`,
+      headers: await auth(),
+      payload: { occurredAt: "2026-01-09", splits: [{ categoryId: null, amountCents: 10_000 }] },
+    });
+    assert.equal(deposit.statusCode, 201, deposit.body);
+    assert.equal(deposit.json().trade, null);
+
+    // The reconciliation candidates carry the same, every one still pending.
+    const candidates = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${broker}/reconciliation-candidates?date=2026-01-31`,
+      headers: await auth(),
+    });
+    assert.equal(candidates.statusCode, 200, candidates.body);
+    const pending = candidates.json().pendingTransactions as { id: string; tradeId: string | null; trade: { type: string } | null }[];
+    assert.deepEqual(
+      pending.map((c) => [c.tradeId, c.trade?.type ?? null]),
+      [
+        [null, null],
+        [buy!.id, "buy"],
+        [dividend!.id, "dividend"],
+        [custody!.id, "fee"],
+      ],
+    );
+  });
+
   it("refuses a synced change to a cash leg's account, date or amount, but applies its memo", async () => {
     const broker = await account();
     const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), tradeDate: "2026-01-10", feesCents: 700 });
