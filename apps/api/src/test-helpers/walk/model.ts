@@ -145,9 +145,9 @@ export class InstrumentCatalog {
   }
 }
 
-/** Midnight UTC of a date: how the API sorts a trade recorded without a time. */
+/** Midnight of its date in `Europe/Rome`: how the API sorts a trade recorded without a time (#596). */
 function occurredAtOrMidnight(trade: TradeJson): string {
-  return trade.occurredAt ?? `${trade.tradeDate}T00:00:00.000Z`;
+  return trade.occurredAt ?? localMidnight(trade.tradeDate);
 }
 
 export class WorkspaceModel {

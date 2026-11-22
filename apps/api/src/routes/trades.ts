@@ -270,9 +270,10 @@ function parsePatch(body: Record<string, unknown>): TradePatchInput {
     ...(from === undefined ? {} : { from }),
     ...(to === undefined ? {} : { to }),
   };
-  // An edit that changes nothing (`{}`, `type` alone, or only `null` legs) is refused, so it
-  // writes no audit log entry.
-  if (Object.keys(patch).every((key) => key === "type")) {
+  // An edit that changes nothing (`{}`, or only `null` legs) is refused, so it writes no audit log
+  // entry. `type` alone is checked against the trade's own (#596): `invalid_trade` when it differs,
+  // "nothing to change" when it is the same (`updateTrade`).
+  if (Object.keys(patch).length === 0) {
     throw new BadRequest("nothing to change");
   }
   return patch;
@@ -393,6 +394,10 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
       }
       if (result === "reconciled") {
         await sendReconciled(reply, "edited");
+        return;
+      }
+      if (result === "nothing_to_change") {
+        await sendBadRequest(reply, new BadRequest("nothing to change"));
         return;
       }
       return { trades: result };

@@ -33,6 +33,7 @@ import {
   checkTradeRegime,
   computePositions,
   PRICE_FACTOR_ONE,
+  startOfLocalDay,
   TAX_REGIME_COUNTRY,
   toPriceFactor,
   tradeCashCents,
@@ -221,11 +222,12 @@ const TRADE_COLUMNS = `
 
 /**
  * The replay order of `@envelope/core` (ADR 0011): trade date, a split first on its date, time,
- * creation time, id. A trade with no time sorts as midnight UTC of its date, as `toPositionTrade`
- * maps it.
+ * creation time, id. A trade with no time sorts at the first instant of its date in the
+ * workspace's time zone (#596), as `toPositionTrade` maps it (`startOfLocalDay`, which agrees with
+ * PostgreSQL's `AT TIME ZONE` where midnight does not exist). The query joins `workspaces w`.
  */
 const REPLAY_ORDER = `
-  t.trade_date, (t.type <> 'split'), COALESCE(t.occurred_at, t.trade_date::timestamp AT TIME ZONE 'UTC'), t.created_at, t.id
+  t.trade_date, (t.type <> 'split'), COALESCE(t.occurred_at, t.trade_date::timestamp AT TIME ZONE w.time_zone), t.created_at, t.id
 `;
 
 interface TradeRow {
@@ -264,6 +266,8 @@ interface ListedTradeRow extends TradeRow {
 interface ReplayRow extends TradeRow {
   readonly currency: string;
   readonly price_factor_e6: string | null;
+  /** The workspace's time zone, where a trade with no time sorts. */
+  readonly time_zone: string;
 }
 
 /** A `bigint` column as an exact number; the CHECKs and the API keep every value in range. */
@@ -322,6 +326,7 @@ export async function listTrades(db: DbClient, workspaceId: string, filter: Trad
   const { rows } = await db.query<ListedTradeRow>(
     `SELECT ${TRADE_COLUMNS}, c.id AS cash_transaction_id, c.status AS cash_status
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      LEFT JOIN transactions c ON c.workspace_id = t.workspace_id AND c.trade_id = t.id
      WHERE t.workspace_id = $1
        AND ($2::uuid IS NULL OR t.portfolio_id = $2)
@@ -337,6 +342,7 @@ async function listTradesByIds(db: DbClient, workspaceId: string, ids: readonly 
   const { rows } = await db.query<ListedTradeRow>(
     `SELECT ${TRADE_COLUMNS}, c.id AS cash_transaction_id, c.status AS cash_status
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      LEFT JOIN transactions c ON c.workspace_id = t.workspace_id AND c.trade_id = t.id
      WHERE t.workspace_id = $1 AND t.id = ANY($2)
      ORDER BY ${REPLAY_ORDER}`,
@@ -354,9 +360,12 @@ export async function portfolioHasTrades(db: DbClient, workspaceId: string, port
   return rows.length > 0;
 }
 
-/** A trade with no time sorts as midnight UTC of its date, before every trade of that date with one. */
-function occurredAtOrMidnight(occurredAt: string | null, tradeDate: string): string {
-  return occurredAt ?? `${tradeDate}T00:00:00.000Z`;
+/**
+ * A trade with no time sorts at the first instant of its date in the workspace's time zone (#596):
+ * before every trade of that date with a time, since a time must fall on the trade date there.
+ */
+function occurredAtOrMidnight(occurredAt: string | null, tradeDate: string, timeZone: string): string {
+  return occurredAt ?? startOfLocalDay(tradeDate, timeZone);
 }
 
 function toPositionTrade(row: ReplayRow): PositionTrade {
@@ -367,7 +376,7 @@ function toPositionTrade(row: ReplayRow): PositionTrade {
     instrumentId: row.instrument_id,
     type: row.type,
     date: row.trade_date,
-    occurredAt: occurredAtOrMidnight(row.occurred_at ? row.occurred_at.toISOString() : null, row.trade_date),
+    occurredAt: occurredAtOrMidnight(row.occurred_at ? row.occurred_at.toISOString() : null, row.trade_date, row.time_zone),
     createdAt: row.created_at.toISOString(),
     currency: row.currency,
     quantity: toNumber(row.quantity_e8, "quantity_e8") as Quantity,
@@ -394,8 +403,9 @@ function toPositionTrade(row: ReplayRow): PositionTrade {
  */
 export async function loadInstrumentHistory(db: DbClient, workspaceId: string, instrumentId: string): Promise<PositionTrade[]> {
   const { rows } = await db.query<ReplayRow>(
-    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6
+    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6, w.time_zone
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
      JOIN instruments i ON i.id = t.instrument_id
      WHERE t.workspace_id = $1 AND t.instrument_id = $2
@@ -421,8 +431,9 @@ export async function loadPositionTrades(db: DbClient, workspaceId: string, scop
   const portfolioId = "portfolioId" in scope ? scope.portfolioId : null;
   const accountId = "accountId" in scope ? scope.accountId : null;
   const { rows } = await db.query<ReplayRow>(
-    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6
+    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6, w.time_zone
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
      JOIN instruments i ON i.id = t.instrument_id
      WHERE t.workspace_id = $1
@@ -433,8 +444,9 @@ export async function loadPositionTrades(db: DbClient, workspaceId: string, scop
            AND ($3::uuid IS NULL OR s.account_id = $3)
        ))
      UNION ALL
-     SELECT ${TRADE_COLUMNS}, a.currency, NULL::bigint AS price_factor_e6
+     SELECT ${TRADE_COLUMNS}, a.currency, NULL::bigint AS price_factor_e6, w.time_zone
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
      WHERE t.workspace_id = $1 AND t.instrument_id IS NULL
        AND ($2::uuid IS NULL OR t.portfolio_id = $2)
@@ -847,12 +859,16 @@ async function transactionTimestamp(db: DbClient): Promise<string> {
   return rows[0]!.now.toISOString();
 }
 
-/** A row to write as `@envelope/core`'s replay will see it once written, in its account's currency. */
+/**
+ * A row to write as `@envelope/core`'s replay will see it once written, in its account's currency;
+ * with no time, at the start of its date in the workspace's time zone `timeZone`.
+ */
 function replayTrade(
   row: NewTradeRow,
   createdAt: string,
   accounts: ReadonlyMap<string, AccountRef>,
   instrument: InstrumentRef | undefined,
+  timeZone: string,
 ): PositionTrade {
   return {
     id: row.id,
@@ -861,7 +877,7 @@ function replayTrade(
     instrumentId: row.instrumentId,
     type: row.type,
     date: row.tradeDate,
-    occurredAt: occurredAtOrMidnight(row.occurredAt, row.tradeDate),
+    occurredAt: occurredAtOrMidnight(row.occurredAt, row.tradeDate, timeZone),
     createdAt,
     currency: accounts.get(row.accountId)!.currency,
     quantity: row.quantityE8 as Quantity,
@@ -885,7 +901,8 @@ function replayTrade(
 /**
  * Every check of the rows to write that does not need the history: their references, then
  * `checkTradeEntry`, the time on the trade date and, in an `IT` workspace, the tax regime.
- * `previous` is an edit's group as stored, empty for a create.
+ * `previous` is an edit's group as stored, empty for a create. Returns the rows' accounts and the
+ * workspace's time zone.
  */
 async function checkRows(
   db: DbClient,
@@ -894,7 +911,7 @@ async function checkRows(
   instrument: InstrumentRef | undefined,
   request: "create" | "edit",
   previous: readonly TradeRecord[] = [],
-): Promise<Map<string, AccountRef>> {
+): Promise<{ accounts: Map<string, AccountRef>; timeZone: string }> {
   const stored: StoredPortfolios = new Map(previous.map((record) => [record.id, record.portfolioId]));
   const accounts = await checkReferences(db, workspaceId, rows, instrument, stored);
   for (const row of rows) {
@@ -909,7 +926,7 @@ async function checkRows(
     checkOccurredOnTradeDate(row, workspace.time_zone);
   }
   await checkRegimes(db, workspaceId, workspace.tax_country, rows, accounts, instrument, previous, request);
-  return accounts;
+  return { accounts, timeZone: workspace.time_zone };
 }
 
 async function insertTradeRow(db: DbClient, workspaceId: string, row: NewTradeRow): Promise<void> {
@@ -1000,12 +1017,12 @@ export async function createTrades(
   // A split's accounts come from the history: every account holding the instrument.
   await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
   await checkIdsFree(db, workspaceId, rows.map((row) => row.id));
-  const accounts = await checkRows(db, workspaceId, rows, instrument, "create");
+  const { accounts, timeZone } = await checkRows(db, workspaceId, rows, instrument, "create");
 
   // The rows as the replay sees them once written: created now (the transaction's timestamp, the
   // same `now()` the created_at column defaults to), in the account's currency.
   const createdAt = await transactionTimestamp(db);
-  const inserts = rows.map((row) => replayTrade(row, createdAt, accounts, instrument));
+  const inserts = rows.map((row) => replayTrade(row, createdAt, accounts, instrument, timeZone));
   validatePositionHistory(applyTradeChanges(history, inserts.map((trade) => ({ kind: "insert", trade }))));
 
   // The two legs of a transfer point at each other: the link is checked once both exist.
@@ -1335,8 +1352,9 @@ async function anyCashLegReconciled(db: DbClient, workspaceId: string, tradeIds:
 /** Stored trades as the replay sees them, for a group with no instrument (a fee or a tax on the whole account). */
 async function loadReplayRowsByIds(db: DbClient, workspaceId: string, ids: readonly string[]): Promise<PositionTrade[]> {
   const { rows } = await db.query<ReplayRow>(
-    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6
+    `SELECT ${TRADE_COLUMNS}, a.currency, i.price_factor_e6, w.time_zone
      FROM trades t
+     JOIN workspaces w ON w.id = t.workspace_id
      JOIN accounts a ON a.workspace_id = t.workspace_id AND a.id = t.account_id
      LEFT JOIN instruments i ON i.id = t.instrument_id
      WHERE t.workspace_id = $1 AND t.id = ANY($2)
@@ -1392,7 +1410,8 @@ async function updateTradeRow(db: DbClient, workspaceId: string, row: NewTradeRo
  * "portfolio_archived" (#597).
  *
  * @returns the rows as written; "not_found" when the workspace has no trade with this id;
- *   "reconciled" when a cash leg of the group is reconciled (ADR 0012), and nothing is written.
+ *   "reconciled" when a cash leg of the group is reconciled (ADR 0012); "nothing_to_change" when
+ *   the edit carries only the trade's own `type` (#596); nothing is written in those three cases.
  * @throws ValidationError with `createTrades`'s codes, and "invalid_trade" (details: field) for a
  *   field the trade's type does not take in an edit; nothing is written then.
  * @throws ConcurrentTradeChangeError when another request moved the trade to another instrument
@@ -1404,7 +1423,7 @@ export async function updateTrade(
   userId: string | null,
   tradeId: string,
   patch: TradePatchInput,
-): Promise<TradeRecord[] | "not_found" | "reconciled"> {
+): Promise<TradeRecord[] | "not_found" | "reconciled" | "nothing_to_change"> {
   const group = await lockTradeGroup(db, workspaceId, tradeId, patch.instrumentId);
   if (!group) {
     return "not_found";
@@ -1422,6 +1441,10 @@ export async function updateTrade(
     return "reconciled";
   }
   checkPatchFields(first.type, patch);
+  // `type` alone, and the trade's own: nothing to write, and no audit log entry.
+  if (Object.keys(patch).every((key) => key === "type")) {
+    return "nothing_to_change";
+  }
 
   const instrumentId = patched(patch.instrumentId, first.instrumentId);
   const instrument = instrumentId === null ? undefined : await loadInstrument(db, instrumentId);
@@ -1453,7 +1476,7 @@ export async function updateTrade(
         : editedSplitRows(group, patch, histories.get(instrumentId)!.filter((trade) => !oldIds.has(trade.id)));
   // A split moved to another date may cover an account it did not before.
   await checkAccountsOpen(db, workspaceId, rows.map((row) => row.accountId));
-  const accounts = await checkRows(db, workspaceId, rows, instrument, "edit", group);
+  const { accounts, timeZone } = await checkRows(db, workspaceId, rows, instrument, "edit", group);
 
   // Each instrument's history as it would be after the edit: a row that stays on its instrument
   // is an update (keeping its creation time, so its place in the replay order), a row that leaves
@@ -1466,7 +1489,7 @@ export async function updateTrade(
       const row = rows.find((candidate) => candidate.id === record.id);
       changes.push(
         row && row.instrumentId === key
-          ? { kind: "update", trade: replayTrade(row, record.createdAt, accounts, instrument) }
+          ? { kind: "update", trade: replayTrade(row, record.createdAt, accounts, instrument, timeZone) }
           : { kind: "delete", tradeId: record.id },
       );
     }
@@ -1474,7 +1497,7 @@ export async function updateTrade(
       if (row.instrumentId !== key) continue;
       const stored = group.find((record) => record.id === row.id);
       if (!stored || stored.instrumentId !== key) {
-        changes.push({ kind: "insert", trade: replayTrade(row, stored?.createdAt ?? now, accounts, instrument) });
+        changes.push({ kind: "insert", trade: replayTrade(row, stored?.createdAt ?? now, accounts, instrument, timeZone) });
       }
     }
     validatePositionHistory(applyTradeChanges(history, changes));
@@ -1524,7 +1547,7 @@ export async function deleteTrade(
   workspaceId: string,
   userId: string | null,
   tradeId: string,
-): Promise<TradeRecord[] | "not_found" | "reconciled"> {
+): Promise<TradeRecord[] | "not_found" | "reconciled" | "nothing_to_change"> {
   const group = await lockTradeGroup(db, workspaceId, tradeId, undefined);
   if (!group) {
     return "not_found";

@@ -28,7 +28,7 @@ import {
 
 import type { HttpMethod } from "./driver.ts";
 import { expectEcho, instantEcho } from "./invariants.ts";
-import type { WalkRandom } from "./generator.ts";
+import { localMidnight, type WalkRandom } from "./generator.ts";
 import {
   amountOf as transactionAmount,
   sortableHandle,
@@ -854,7 +854,7 @@ function candidateRow(model: WorkspaceModel, id: string, row: { type: PositionTr
     instrumentId: instrument?.id ?? null,
     type: row.type,
     date: row.tradeDate,
-    occurredAt: row.occurredAt ?? `${row.tradeDate}T00:00:00.000Z`,
+    occurredAt: row.occurredAt ?? localMidnight(row.tradeDate),
     createdAt: CANDIDATE_CREATED_AT,
     currency: model.account(row.account).currency,
     quantity,

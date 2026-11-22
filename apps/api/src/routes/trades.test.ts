@@ -277,13 +277,39 @@ describe("trades routes (#77)", () => {
     assert.equal(Number(rows[0]!.held), units(4));
   });
 
-  it("orders a trade with no time as midnight UTC of its date, before a timed one", async () => {
+  it("orders a trade with no time at the start of its date, before a timed one", async () => {
     const etf = await instrument();
     const base = { accountId: await account(), portfolioId: await portfolio(), instrumentId: etf, priceE6: price(10), quantityE8: units(1) };
     await created({ ...base, type: "buy", tradeDate: "2026-01-10", occurredAt: "2026-01-10T10:00:00+01:00" });
     // Untimed, the sale replays before the 10:00 buy of the same day: nothing is held yet.
     await rejected({ ...base, type: "sell", tradeDate: "2026-01-10" }, "insufficient_quantity");
   });
+
+  // Untimed trades sorted at midnight UTC, 01:00 or 02:00 in Rome, so a trade timed between local
+  // midnight and then came first (#596).
+  for (const [season, date, justAfterMidnight] of [
+    ["winter", "2026-01-12", "2026-01-12T00:30:00+01:00"],
+    ["summer", "2026-08-03", "2026-08-03T00:30:00+02:00"],
+    ["summer, an hour later", "2026-08-04", "2026-08-04T01:30:00+02:00"],
+  ] as const) {
+    it(`orders a trade with no time at local midnight in Europe/Rome, before one at 00:30 or 01:30 (${season}, #596)`, async () => {
+      const etf = await instrument();
+      const broker = await account();
+      const base = { accountId: broker, portfolioId: await portfolio(), instrumentId: etf, priceE6: price(10), quantityE8: units(1) };
+      const [buy] = await created({ ...base, type: "buy", tradeDate: date });
+      const [sell] = await created({ ...base, type: "sell", tradeDate: date, occurredAt: justAfterMidnight });
+      const listed = await list(`?accountId=${broker}`);
+      assert.deepEqual(
+        (listed.json().trades as TradeBody[]).map((trade) => trade.id),
+        [buy!.id, sell!.id],
+      );
+
+      // The other way round, an untimed sale comes before a buy just after midnight.
+      const other = { ...base, accountId: await account(), instrumentId: await instrument() };
+      await created({ ...other, type: "buy", tradeDate: date, occurredAt: justAfterMidnight });
+      await rejected({ ...other, type: "sell", tradeDate: date }, "insufficient_quantity");
+    });
+  }
 
   it("refuses a time that is not on the trade date in the workspace's time zone", async () => {
     const base = { type: "fee", accountId: await account(), portfolioId: await portfolio(), feesCents: 100, tradeDate: "2026-01-10" };
@@ -1811,6 +1837,15 @@ describe("trades routes (#77)", () => {
         assert.equal(response.statusCode, 400, JSON.stringify(payload));
         assert.equal(response.json().error, "invalid trade: nothing to change");
       }
+      // Another type alone names the field, as it does when other fields come with it (#596).
+      for (const payload of [{ type: "tax" }, { type: "tax", memo: "x" }, { type: "buy" }]) {
+        const response = await patch(fee!.id, payload);
+        assert.equal(response.statusCode, 400, JSON.stringify(payload));
+        assert.equal(response.json().error, "invalid_trade", response.body);
+        assert.deepEqual(response.json().details, { field: "type" });
+      }
+      // An unknown trade is still a 404, whatever the type.
+      assert.equal((await patch(randomUUID(), { type: "tax" })).statusCode, 404);
       assert.equal(await audits(), before);
     });
 
