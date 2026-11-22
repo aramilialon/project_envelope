@@ -44,8 +44,8 @@ export interface PriceCsvRow {
  * `invalid_price_file` error:
  *
  * - `missing_column`, `extra_column`: the line does not have exactly two fields;
- * - `invalid_date`: not a real `YYYY-MM-DD` date;
- * - `price_date_in_future`: a date after `today`;
+ * - `invalid_date`: not a real `YYYY-MM-DD` date, or a date after `today`
+ *   (then `details.max` is `today`);
  * - `duplicate_date`: a date an earlier line already gave;
  * - `invalid_price_format`: not a price in the locale's format;
  * - `invalid_price`: a negative price, or one beyond the safe range;
@@ -55,7 +55,6 @@ export type PriceFileProblem =
   | "missing_column"
   | "extra_column"
   | "invalid_date"
-  | "price_date_in_future"
   | "duplicate_date"
   | "invalid_price_format"
   | "invalid_price"
@@ -63,29 +62,45 @@ export type PriceFileProblem =
 
 /**
  * Checks the date of a workspace's own price: a real date, no later than
- * `today` (the date in the workspace's time zone, #715).
+ * `today` (the date in the workspace's time zone), with no lower limit (#715).
  *
- * @throws ValidationError `invalid_date` for a malformed date,
- *   `price_date_in_future` with `{ max: today }` for a later one.
+ * @throws ValidationError `invalid_date` with `{ field: "date" }` for a
+ *   malformed date, and with `{ field: "date", max: today }` for a later one.
  */
 export function assertPriceDate(date: string, today: LocalDate): asserts date is LocalDate {
-  assertDate(date);
   assertDate(today);
+  try {
+    assertDate(date);
+  } catch {
+    throw new ValidationError("invalid_date", `not a valid YYYY-MM-DD date: "${date}"`, { field: "date" });
+  }
   if (date > today) {
-    throw new ValidationError("price_date_in_future", `a price cannot be dated after ${today}: "${date}"`, { max: today });
+    throw new ValidationError("invalid_date", `a price cannot be dated after ${today}: "${date}"`, { field: "date", max: today });
   }
 }
 
 /**
- * Checks a locale tag before it is used to read numbers.
+ * The longest locale tag `assertLocale` accepts: a language, a script, a
+ * region and a few variants fit well within it.
+ */
+export const MAX_LOCALE_LENGTH = 35;
+
+/**
+ * Checks a locale tag before it is used to read numbers: a well-formed tag of
+ * at most `MAX_LOCALE_LENGTH` characters, with no extension (`-u-`, `-t-`…)
+ * and no private-use (`-x-`) subtags. Those bounds keep the set of tags a
+ * client can choose small, so that the separators cached per locale
+ * (`money.ts`) cannot grow without limit.
  *
  * @throws ValidationError `invalid_locale` with `{ value }`.
  */
 export function assertLocale(locale: string): asserts locale is Locale {
-  let valid = locale.trim().length > 0;
+  let valid = locale.trim().length > 0 && locale.length <= MAX_LOCALE_LENGTH;
   if (valid) {
     try {
-      Intl.getCanonicalLocales(locale);
+      const [canonical = ""] = Intl.getCanonicalLocales(locale);
+      // A one-character subtag is a singleton: it opens an extension or a private-use sequence.
+      valid = !canonical.split("-").some((subtag) => subtag.length === 1);
     } catch {
       valid = false;
     }
@@ -95,8 +110,8 @@ export function assertLocale(locale: string): asserts locale is Locale {
   }
 }
 
-function refuse(line: number, column: number, reason: PriceFileProblem): ValidationError {
-  return new ValidationError("invalid_price_file", `line ${line}, column ${column}: ${reason}`, { line, column, reason });
+function refuse(line: number, column: number, reason: PriceFileProblem, extra: Readonly<Record<string, string>> = {}): ValidationError {
+  return new ValidationError("invalid_price_file", `line ${line}, column ${column}: ${reason}`, { line, column, reason, ...extra });
 }
 
 function isHeader(fields: readonly string[]): boolean {
@@ -113,7 +128,8 @@ function isHeader(fields: readonly string[]): boolean {
  *   `too_many_rows` with `{ max }` for a file of more than `MAX_PRICE_CSV_ROWS`
  *   data rows, before any row is read; `invalid_price_file` with
  *   `{ line, column, reason }` (1-based, counting every line of the file, the
- *   header and blank lines included) for the first line that breaks a rule.
+ *   header and blank lines included) for the first line that breaks a rule,
+ *   plus `max` (`today`) for a line dated after today.
  */
 export function parsePriceCsv(text: string, options: { readonly locale: Locale; readonly today: LocalDate }): PriceCsvRow[] {
   assertLocale(options.locale);
@@ -143,8 +159,9 @@ export function parsePriceCsv(text: string, options: { readonly locale: Locale; 
     try {
       assertPriceDate(priceDate, options.today);
     } catch (error) {
-      if (error instanceof ValidationError && (error.code === "invalid_date" || error.code === "price_date_in_future")) {
-        throw refuse(line, 1, error.code);
+      if (error instanceof ValidationError && error.code === "invalid_date") {
+        const { max } = error.details;
+        throw refuse(line, 1, "invalid_date", typeof max === "string" ? { max } : {});
       }
       throw error;
     }

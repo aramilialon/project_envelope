@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
-import { assertLocale, assertPriceDate, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./price-csv.ts";
+import { assertLocale, assertPriceDate, MAX_LOCALE_LENGTH, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./price-csv.ts";
 
 const TODAY = "2026-04-01";
 
 /** Asserts that `run` refuses the file with `invalid_price_file` at the given line, column and reason. */
-function assertRefused(run: () => unknown, line: number, column: number, reason: string): void {
+function assertRefused(run: () => unknown, line: number, column: number, reason: string, extra: Record<string, string> = {}): void {
   assert.throws(run, (error: unknown) => {
     assert.ok(isValidationError(error, "invalid_price_file"), `expected invalid_price_file, got ${String(error)}`);
-    assert.deepEqual(error.details, { line, column, reason });
+    assert.deepEqual(error.details, { line, column, reason, ...extra });
     return true;
   });
 }
@@ -21,13 +21,19 @@ describe("assertPriceDate", () => {
     assertPriceDate("1900-01-01", TODAY);
   });
 
-  it("refuses a date after today with the limit, and a malformed date as invalid_date", () => {
-    assert.throws(
-      () => assertPriceDate("2026-04-02", TODAY),
-      (error: unknown) => isValidationError(error, "price_date_in_future") && error.details.max === TODAY,
-    );
-    assert.throws(() => assertPriceDate("2026-02-30", TODAY), (error: unknown) => isValidationError(error, "invalid_date"));
-    assert.throws(() => assertPriceDate("01/04/2026", TODAY), (error: unknown) => isValidationError(error, "invalid_date"));
+  it("has no lower limit: a price dated 1850 is accepted", () => {
+    assertPriceDate("1850-01-01", TODAY);
+  });
+
+  it("refuses a date after today as invalid_date with the limit, and a malformed date as invalid_date naming the field", () => {
+    const refused = (date: string, details: Record<string, string>) =>
+      assert.throws(
+        () => assertPriceDate(date, TODAY),
+        (error: unknown) => isValidationError(error, "invalid_date") && assert.deepEqual(error.details, details) === undefined,
+      );
+    refused("2026-04-02", { field: "date", max: TODAY });
+    refused("2026-02-30", { field: "date" });
+    refused("01/04/2026", { field: "date" });
   });
 });
 
@@ -37,6 +43,23 @@ describe("assertLocale", () => {
     assertLocale("en");
     for (const value of ["", "  ", "not a locale", "it_IT!"]) {
       assert.throws(() => assertLocale(value), (error: unknown) => isValidationError(error, "invalid_locale") && error.details.value === value);
+    }
+  });
+
+  it("accepts a tag of MAX_LOCALE_LENGTH characters and refuses a longer one", () => {
+    // A language, a region and variants of five to eight letters: well-formed at any length.
+    const longest = "en-US-abcdefgh-bcdefghi-cdefg-defgh";
+    assert.equal(longest.length, MAX_LOCALE_LENGTH);
+    assertLocale(longest);
+    const tooLong = `${longest}i`;
+    assert.doesNotThrow(() => Intl.getCanonicalLocales(tooLong), "the tag itself is well-formed: only its length is refused");
+    assert.throws(() => assertLocale(tooLong), (error: unknown) => isValidationError(error, "invalid_locale") && error.details.value === tooLong);
+  });
+
+  it("refuses private-use and extension subtags, which would let a client choose without limit", () => {
+    for (const value of ["en-x-a1b2c3", "it-x-private", "it-IT-u-nu-arab", "en-t-it", "de-a-bcd"]) {
+      assert.doesNotThrow(() => Intl.getCanonicalLocales(value), value);
+      assert.throws(() => assertLocale(value), (error: unknown) => isValidationError(error, "invalid_locale") && error.details.value === value, value);
     }
   });
 });
@@ -66,6 +89,10 @@ describe("parsePriceCsv", () => {
     ]);
   });
 
+  it("accepts a price dated 1850: there is no lower limit", () => {
+    assert.deepEqual(parsePriceCsv("1850-01-01,1.5", { locale: "en", today: TODAY }), [{ priceDate: "1850-01-01", closeE6: 1_500000 }]);
+  });
+
   it("accepts a price dated today, in the time zone the caller computed it in", () => {
     assert.deepEqual(parsePriceCsv("2026-04-01,10", { locale: "en", today: TODAY }), [{ priceDate: "2026-04-01", closeE6: 10_000000 }]);
   });
@@ -73,7 +100,7 @@ describe("parsePriceCsv", () => {
   it("refuses the whole file at the first bad line, naming the line (blank lines counted) and the column", () => {
     const options = { locale: "en", today: TODAY };
     assertRefused(() => parsePriceCsv("date,close\n2026-03-30,100\n\n2026-02-30,100\n2026-13-01,x", options), 4, 1, "invalid_date");
-    assertRefused(() => parsePriceCsv("date,close\n2026-04-02,100", options), 2, 1, "price_date_in_future");
+    assertRefused(() => parsePriceCsv("date,close\n2026-04-02,100", options), 2, 1, "invalid_date", { max: TODAY });
     assertRefused(() => parsePriceCsv("2026-03-30,100\n2026-03-30,101", options), 2, 1, "duplicate_date");
     assertRefused(() => parsePriceCsv("2026-03-30,abc", options), 1, 2, "invalid_price_format");
     assertRefused(() => parsePriceCsv("2026-03-30,1.1234567", options), 1, 2, "invalid_price_format");

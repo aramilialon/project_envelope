@@ -67,7 +67,7 @@ export {
 export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
 export type { PriceCsvRow, PriceFileProblem } from "./portfolio/price-csv.ts";
-export { assertLocale, assertPriceDate, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./portfolio/price-csv.ts";
+export { assertLocale, assertPriceDate, MAX_LOCALE_LENGTH, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./portfolio/price-csv.ts";
 export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeFigures, TradeRegimeContext } from "./portfolio/trades.ts";
 export {
   checkAccountTradesAgainstRegime,

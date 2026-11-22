@@ -83,7 +83,6 @@ export type ValidationErrorCode =
   | "tax_regime_conflicts_with_trade"
   | "withholding_agent_already_set"
   | "duplicate_price"
-  | "price_date_in_future"
   | "invalid_price_file"
   | "too_many_rows"
   | "invalid_locale"
