@@ -490,6 +490,7 @@
   "transactions.form.editTitle": "Modifica transazione",
   "transactions.form.error": "Non siamo riusciti a salvare questa transazione.",
   "transactions.form.inflowHint.category": "I soldi entrano nel budget: {category} passa da {from} a {to}.",
+  "transactions.form.inflowHint.categoryLater": "I soldi entrano in {category} il {date}.",
   "transactions.form.inflowHint.unassigned": "I soldi entrano nel budget: «Da assegnare» passa da {from} a {to}.",
   "transactions.form.inflowHint.unassignedLater": "I soldi entrano in «Da assegnare» il {date}.",
   "transactions.form.invalidAmount": "Scrivi un importo maggiore di zero.",
