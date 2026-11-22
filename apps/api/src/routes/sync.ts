@@ -5,7 +5,7 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, type TextFieldCheck } from "../errors.ts";
 import { isUuid } from "../ids.ts";
-import { applyIncomingChange, SYNC_TEXT_FIELD_LIMITS, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
+import { applyIncomingChange, lockUploadTransactions, SYNC_TEXT_FIELD_LIMITS, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
 import { listChangesSince } from "../sync/repository.ts";
 
 /** The most changes one upload may carry (#513); a device with more queued sends them in several. */
@@ -138,6 +138,12 @@ export function registerSyncRoutes(app: FastifyInstance, pool: DbPool): void {
     }
 
     const results: { id: string; outcome: ApplyOutcome }[] = [];
+    // Every transaction the upload touches is locked first, in id order (#554), so it cannot deadlock with a reconciliation.
+    await lockUploadTransactions(
+      request.db!,
+      request.workspace!.id,
+      parsed.filter((item) => item.wellFormed).map((item) => item.change),
+    );
     for (const { change, wellFormed } of parsed) {
       const outcome = wellFormed ? await applyIncomingChange(request.db!, request.workspace!.id, change) : "invalid";
       results.push({ id: change.id, outcome });

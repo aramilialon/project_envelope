@@ -92,6 +92,15 @@ describe("normalizeInstrument", () => {
     );
   });
 
+  it("reads a known currency in any case, and names the one it refuses as typed (#595)", () => {
+    const base = { isin: "US0378331005", name: "A", type: "stock" };
+    assert.equal(normalizeInstrument({ ...base, currency: " jpy " }).currency, "JPY");
+    assert.throws(
+      () => normalizeInstrument({ ...base, currency: "xyz" }),
+      (error) => isValidationError(error, "invalid_currency") && error.details["currency"] === "xyz",
+    );
+  });
+
   it("accepts an ISIN alone, or a ticker on an exchange alone", () => {
     const byIsin = normalizeInstrument({ isin: "US0378331005", name: "A", type: "stock", currency: "USD" });
     assert.equal(byIsin.ticker, null);
@@ -168,6 +177,9 @@ describe("normalizeInstrument", () => {
       [{ ...base, type: "etf" }, "invalid_instrument_type"], // an ETF is a `fund`
       [{ ...base, currency: "EURO" }, "invalid_currency"],
       [{ ...base, currency: "E1R" }, "invalid_currency"],
+      [{ ...base, currency: "XYZ" }, "invalid_currency"], // three letters, but no ISO 4217 code (#595)
+      [{ ...base, currency: "VEF" }, "invalid_currency"], // withdrawn
+      [{ ...base, currency: "" }, "invalid_currency"],
       [{ ...base, priceFactorE6: 0 }, "invalid_price_factor"],
       [{ ...base, priceFactorE6: -10_000 }, "invalid_price_factor"],
       [{ ...base, priceFactorE6: 0.01 }, "invalid_price_factor"],
@@ -224,6 +236,8 @@ describe("normalizePrivateInstrument", () => {
       [{ name: "x".repeat(201), type: "other", currency: "EUR" }, "invalid_instrument_field"],
       [{ name: "House", type: "property", currency: "EUR" }, "invalid_instrument_type"],
       [{ name: "House", type: "other", currency: "EURO" }, "invalid_currency"],
+      [{ name: "House", type: "other", currency: "XYZ" }, "invalid_currency"], // no ISO 4217 code (#595)
+      [{ name: "House", type: "other", currency: "VEF" }, "invalid_currency"], // withdrawn
       [{ name: "House", type: "other", currency: "EUR", assetClass: "x".repeat(65) }, "invalid_instrument_field"],
       [{ name: "House", type: "other", currency: "EUR", priceFactorE6: 0 }, "invalid_price_factor"],
       [{ name: "House", type: "other", currency: "EUR", priceFactorE6: "1000000" }, "invalid_price_factor"],

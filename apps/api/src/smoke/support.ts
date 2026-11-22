@@ -61,7 +61,9 @@ export async function startServer(env: Record<string, string>): Promise<RunningS
   const port = env.NODE_ENV === "production" ? String(await freePort()) : "0";
   const child = spawn(process.execPath, [MAIN_TS], {
     cwd: APPS_API_DIR,
-    env: { ...process.env, PORT: port, ...env },
+    // Tests never reach the network (#85): the exchange rates fetch is off unless a test turns it
+    // on, pointing MARKET_DATA_ECB_URL at a local server of its own.
+    env: { ...process.env, PORT: port, MARKET_DATA_FETCH_ENABLED: "false", ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
 

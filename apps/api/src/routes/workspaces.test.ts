@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 
-import { MAX_NAME_LENGTH } from "@envelope/core";
+import { ISO_3166_1_ALPHA2_CODES, MAX_NAME_LENGTH } from "@envelope/core";
 
 import { decodeJwt } from "jose";
 
@@ -22,6 +23,8 @@ if (!databaseUrl) {
 if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
   throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
 }
+
+const FIND_UNASSIGNED_TAX_COUNTRIES = new URL("../../../../scripts/dev/find-unassigned-tax-countries.sql", import.meta.url);
 
 describe("workspaces routes (#394)", () => {
   let superuserPool: DbPool;
@@ -236,6 +239,69 @@ describe("workspaces routes (#394)", () => {
 
     // Leave the next test a fresh token, whatever this one used up.
     token = await realm.getUserToken();
+  });
+
+  it("takes only an assigned ISO 3166-1 code as the tax country, and still reads back one stored before (#711)", async () => {
+    let ownerToken = await realm.getUserToken();
+    const auth = () => ({ authorization: `Bearer ${ownerToken}` });
+    const created = await app.fastify.inject({
+      method: "POST",
+      url: "/workspaces",
+      headers: auth(),
+      payload: { name: "Taxed elsewhere", baseCurrency: "EUR", timeZone: "Europe/Rome" },
+    });
+    const workspace = created.json();
+    createdWorkspaceIds.push(workspace.id);
+    const patch = (payload: object) =>
+      app.fastify.inject({ method: "PATCH", url: `/workspaces/${workspace.id}`, headers: auth(), payload });
+    const listedTaxCountry = async () => {
+      const listed = await app.fastify.inject({ method: "GET", url: "/me/workspaces", headers: auth() });
+      return listed.json().workspaces.find((w: { id: string }) => w.id === workspace.id).taxCountry;
+    };
+
+    // Codes Intl names as regions, but ISO 3166-1 assigns to no country.
+    for (const taxCountry of ["ZZ", "EU", "UN", "XA", "XK", "UK"]) {
+      const refused = await patch({ taxCountry });
+      assert.equal(refused.statusCode, 400, taxCountry);
+      assert.deepEqual(refused.json(), { error: "invalid_tax_country", details: { taxCountry } });
+    }
+    assert.equal(await listedTaxCountry(), null);
+
+    const germany = await patch({ taxCountry: "DE" });
+    assert.equal(germany.statusCode, 200);
+    assert.equal(germany.json().taxCountry, "DE");
+    assert.deepEqual(germany.json().accountsWithoutTaxRegime, []);
+
+    // A code stored before the check: listed by the administrator's query, read back as it is,
+    // and replaced or cleared normally.
+    const findUnassigned = await readFile(FIND_UNASSIGNED_TAX_COUNTRIES, "utf8");
+    const listedByQuery = async () =>
+      (await superuserPool.query<{ workspace_id: string; tax_country: string }>(findUnassigned)).rows
+        .filter((row) => row.workspace_id === workspace.id)
+        .map((row) => row.tax_country);
+    assert.deepEqual(await listedByQuery(), []);
+    await superuserPool.query("UPDATE workspaces SET tax_country = 'ZZ' WHERE id = $1", [workspace.id]);
+    assert.deepEqual(await listedByQuery(), ["ZZ"]);
+    ownerToken = await realm.getUserToken();
+    assert.equal(await listedTaxCountry(), "ZZ");
+    assert.equal((await patch({ taxCountry: "ZZ" })).statusCode, 400);
+    assert.equal((await patch({ taxCountry: "IT" })).statusCode, 200);
+    assert.equal(await listedTaxCountry(), "IT");
+    assert.deepEqual(await listedByQuery(), []);
+    assert.equal((await patch({ taxCountry: null })).statusCode, 200);
+    assert.equal(await listedTaxCountry(), null);
+
+    token = await realm.getUserToken();
+  });
+
+  it("the administrator's query for unassigned tax countries holds the same list as @envelope/core (#711)", async () => {
+    const sql = await readFile(FIND_UNASSIGNED_TAX_COUNTRIES, "utf8");
+    const literal = /ANY \('\{([^}]*)\}'::text\[\]\)/.exec(sql);
+    assert.ok(literal, "the query lists the codes as ANY ('{...}'::text[])");
+    assert.deepEqual(
+      literal[1]!.split(",").map((code) => code.trim()),
+      ISO_3166_1_ALPHA2_CODES,
+    );
   });
 
   it("deleting a workspace the caller does not belong to is a 403, the same as any other unknown one", async () => {

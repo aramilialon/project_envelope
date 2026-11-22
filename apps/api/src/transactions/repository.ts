@@ -736,8 +736,12 @@ async function classifyTransferLeg(
  * the other leg the opposite amount, in the same database transaction. The other leg keeps its
  * own split — its id, memo and category, if it has one (the on-budget leg of a transfer to or
  * from an off-budget account) — and its payee and memo; a `cleared` other leg goes back to
- * `pending`, since it no longer matches what was ticked against the statement. Both legs are
- * locked first, so the reconciliation flow cannot reconcile the other one in between.
+ * `pending`, since it no longer matches what was ticked against the statement.
+ *
+ * The transaction and, for a transfer, its other leg are locked first (`lockTransaction`, #554)
+ * and every check reads them after the lock, so a reconciliation running at the same time either
+ * reconciles them before this edit reads them (the edit answers `"reconciled"`) or waits for it to
+ * commit and then sees the edited row (a date moved past its statement date, a new amount).
  *
  * A transfer leg holds exactly one split: new splits for it are refused with a `ValidationError`
  * (`unsupported_transaction`) unless there is one, and (`invalid_amount`) when it would make the
@@ -777,16 +781,7 @@ export async function updateTransaction(
   if (patch.occurredAt !== undefined) {
     assertDate(patch.occurredAt);
   }
-  const changesAmountOrDate = patch.splits !== undefined || patch.amountCents !== undefined || patch.occurredAt !== undefined;
-  let existing = await getTransaction(db, workspaceId, transactionId);
-  if (existing !== undefined && existing.transferId !== null && changesAmountOrDate) {
-    // Always in id order, so two edits of the same pair, from either leg, never deadlock.
-    await db.query("SELECT id FROM transactions WHERE workspace_id = $1 AND id = ANY($2) ORDER BY id FOR UPDATE", [
-      workspaceId,
-      [existing.id, existing.transferId],
-    ]);
-    existing = await getTransaction(db, workspaceId, transactionId);
-  }
+  const existing = await lockTransaction(db, workspaceId, transactionId);
   if (!existing || (accountId !== undefined && existing.accountId !== accountId)) {
     return "not_found";
   }
@@ -919,13 +914,25 @@ export async function updateTransaction(
   const payee = patch.payee ?? existing.payee ?? undefined;
   const memo = patch.memo ?? existing.memo ?? undefined;
   const status = patch.status ?? existing.status;
-  await db.query("UPDATE transactions SET payee = $1, memo = $2, status = $3 WHERE id = $4 AND workspace_id = $5", [
-    payee ?? null,
-    memo ?? null,
-    status,
-    transactionId,
-    workspaceId,
-  ]);
+  // Both rows are locked and were read after the lock, so neither can be reconciled here; the
+  // `status <> 'reconciled'` is a backstop (#554), and both rows are written before anything else,
+  // so a refusal there comes before any split or date is touched.
+  const { rowCount: updated } = await db.query(
+    "UPDATE transactions SET payee = $1, memo = $2, status = $3 WHERE id = $4 AND workspace_id = $5 AND status <> 'reconciled'",
+    [payee ?? null, memo ?? null, status, transactionId, workspaceId],
+  );
+  if (updated !== 1) {
+    return "reconciled";
+  }
+  if (partnerStatus !== undefined && existing.transferId !== null) {
+    const { rowCount: partnerUpdated } = await db.query(
+      "UPDATE transactions SET status = $1 WHERE id = $2 AND workspace_id = $3 AND status <> 'reconciled'",
+      [partnerStatus, existing.transferId, workspaceId],
+    );
+    if (partnerUpdated !== 1) {
+      return "reconciled";
+    }
+  }
   if (movesDate) {
     await setDate(db, workspaceId, transactionId, patch.occurredAt!);
   }
@@ -944,7 +951,6 @@ export async function updateTransaction(
     if (movesPartnerDate) {
       await setDate(db, workspaceId, existing.transferId, patch.occurredAt!);
     }
-    await db.query("UPDATE transactions SET status = $1 WHERE id = $2 AND workspace_id = $3", [partnerStatus, existing.transferId, workspaceId]);
   }
 
   const record = await getTransaction(db, workspaceId, transactionId);
@@ -952,6 +958,25 @@ export async function updateTransaction(
     throw new Error("updateTransaction: the transaction just updated was not found");
   }
   return record;
+}
+
+/**
+ * Locks a transaction and, for a transfer, its other leg (`FOR UPDATE`, in id order, so two
+ * writers of the same pair, or of the ticked rows of a reconciliation, never deadlock) until the
+ * end of the database transaction, then reads it again (#554). Every check of an edit or a delete
+ * reads the row after this, so a reconciliation cannot mark it reconciled in between, and an edit
+ * that waited for a reconciliation sees what it committed. Undefined when it is not found, or was
+ * deleted while this waited.
+ */
+async function lockTransaction(db: DbPool | DbClient, workspaceId: string, transactionId: string): Promise<TransactionRecord | undefined> {
+  await db.query(
+    `SELECT id FROM transactions
+     WHERE workspace_id = $1
+       AND (id = $2 OR id = (SELECT transfer_id FROM transactions WHERE workspace_id = $1 AND id = $2))
+     ORDER BY id FOR UPDATE`,
+    [workspaceId, transactionId],
+  );
+  return getTransaction(db, workspaceId, transactionId);
 }
 
 /** An edit refused, before anything is written, because a split names `categoryId`, which is no category of the workspace. */
@@ -998,7 +1023,12 @@ async function setDate(db: DbPool | DbClient, workspaceId: string, transactionId
  * side being reconciled must block deleting the pair even if the other side is not. Recorded in
  * the audit log, the same way unlocking a reconciliation is. Refuses a trade's cash leg
  * (`trade_owned`, ADR 0012): it is deleted with its trade. `accountId`, when given, is the account
- * the request names: a transaction on another account is `not_found` (#655).
+ * the request names: a transaction on another account is `not_found` (#655). Both legs are
+ * locked first (`lockTransaction`, #554), so a reconciliation cannot reconcile either of them
+ * between the check and the delete.
+ *
+ * A refusal can come after a leg is deleted only if the backstop fires, which the lock rules out;
+ * the route's database transaction rolls back on any refusal.
  */
 export async function deleteTransaction(
   db: DbPool | DbClient,
@@ -1007,7 +1037,7 @@ export async function deleteTransaction(
   userId: string | null,
   accountId?: string,
 ): Promise<"deleted" | "not_found" | "reconciled" | "trade_owned"> {
-  const existing = await getTransaction(db, workspaceId, transactionId);
+  const existing = await lockTransaction(db, workspaceId, transactionId);
   if (!existing || (accountId !== undefined && existing.accountId !== accountId)) {
     return "not_found";
   }
@@ -1025,7 +1055,14 @@ export async function deleteTransaction(
   }
 
   const ids = other ? [existing.id, other.id] : [existing.id];
-  await db.query("DELETE FROM transactions WHERE id = ANY($1) AND workspace_id = $2", [ids, workspaceId]);
+  // A backstop (#554): both rows are locked and were read after the lock, so neither is reconciled.
+  const { rowCount: deleted } = await db.query(
+    "DELETE FROM transactions WHERE id = ANY($1) AND workspace_id = $2 AND status <> 'reconciled'",
+    [ids, workspaceId],
+  );
+  if (deleted !== ids.length) {
+    return "reconciled";
+  }
 
   await recordAuditLog(db, {
     workspaceId,
