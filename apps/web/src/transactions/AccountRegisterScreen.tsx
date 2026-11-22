@@ -88,7 +88,7 @@ function transferRowLabel(
 }
 
 /**
- * A row's category cell. A trade's cash leg reads as its trade ("Buy · 10 × VWCE", #657). In an
+ * A row's category cell. A trade's cash leg reads as its trade ("Buy · 10 × WEQ", #657). In an
  * off-budget account's register the cell is empty for every other row that is not a transfer:
  * money outside the budget has no category, so it is never "Unassigned" either (#652, the domain
  * guide: "the off-budget leg never has a category").

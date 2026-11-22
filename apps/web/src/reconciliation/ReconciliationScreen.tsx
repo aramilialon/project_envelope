@@ -37,7 +37,7 @@ import "./ReconciliationScreen.css";
  *   opens a small inline category picker before the call. On an off-budget account the
  *   adjustment has no category (#710): only its memo is asked for.
  * - The heading is "Reconcile with your statement" for every account (#657), a brokerage
- *   account's included, and a trade's cash leg is named after its trade ("Buy · 10 × VWCE").
+ *   account's included, and a trade's cash leg is named after its trade ("Buy · 10 × WEQ").
  *
  * The tally and difference are computed client-side (`reconciliationTally.ts`) from the already
  * fetched candidates, so ticking, unticking and typing the statement balance feel instant; only

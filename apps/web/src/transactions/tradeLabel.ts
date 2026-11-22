@@ -9,7 +9,7 @@ function instrumentOf(trade: TransactionTrade): string | null {
 }
 
 /**
- * A trade's cash leg as its trade (#657, ADR 0012): "Buy · 10 × VWCE", "Dividend · VWCE", or
+ * A trade's cash leg as its trade (#657, ADR 0012): "Buy · 10 × WEQ", "Dividend · WEQ", or
  * "Fee" for an account-wide fee. One whole message per type, so each language orders its own
  * words. Shown in the account register's category cell and in reconciliation, where an
  * off-budget account's rows otherwise have nothing to say what they are.
