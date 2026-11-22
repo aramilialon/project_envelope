@@ -1,5 +1,6 @@
-import { assertAmount, monthOf, ValidationError } from "@envelope/core";
+import { assertAmount, assertDate, monthOf, ValidationError } from "@envelope/core";
 
+import { checkAccountsOpen } from "../accounts/open-accounts.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { isUuid } from "../ids.ts";
@@ -100,7 +101,16 @@ export interface UpdateTransactionInput {
   readonly memo?: string;
   readonly status?: TransactionStatus;
   readonly splits?: readonly SplitInput[];
+  /**
+   * With `splits`, a cross-check of their total. Alone, the new amount of a transaction that has
+   * one split (#655): that split is rewritten in place, keeping its category and memo.
+   */
   readonly amountCents?: number;
+  /**
+   * A new date, "YYYY-MM-DD" (#655): midnight of it in the workspace's time zone, as on create.
+   * Both legs of a transfer move together.
+   */
+  readonly occurredAt?: string;
 }
 
 const TRANSACTION_COLUMNS = `
@@ -702,10 +712,25 @@ async function classifyTransferLeg(
 }
 
 /**
- * Updates payee/memo/status and, if given, replaces every split. Refuses to replace the splits of
- * a trade's cash leg (`trade_owned`, ADR 0012). Refuses a
- * reconciled transaction (design.md: "Reconciled transactions cannot be
- * edited or deleted" — unlocking one is #32's own explicit, audited action).
+ * Updates payee/memo/status and, if given, the date (#655) and the splits: `splits` replaces every
+ * split, `amountCents` alone rewrites the one split of a transaction that has one (#655; with
+ * several, `amount_needs_splits` and `details.splitCount`: nothing says which split the new amount
+ * belongs to). Refuses a reconciled transaction (design.md: "Reconciled transactions cannot be
+ * edited or deleted" — unlocking one is #32's own explicit, audited action), and a trade's cash leg
+ * whose splits, amount or date the edit would change (`trade_owned`, ADR 0012).
+ *
+ * `accountId`, when given, is the account the request names: a transaction on another account is
+ * `not_found`, as one of another workspace is (#655).
+ *
+ * A write to a closed account is refused with `AccountClosedError` (409 `account_closed`, #741)
+ * before any other check that could fail for another reason: the transaction's own account always
+ * (every edit writes its row), and the other leg's account of a transfer when the edit moves that
+ * leg's amount or date.
+ *
+ * A new date is midnight of it in the workspace's time zone, as on create; the budget month the
+ * transaction counts in follows from it at read time (`budgetDate`). A transfer's two legs share
+ * their date: moving one moves the other, in the same database transaction, and a `cleared` other
+ * leg goes back to `pending`, since it no longer matches what was ticked against the statement.
  *
  * A transfer's two legs always cancel out (#547): new splits that change one leg's amount give
  * the other leg the opposite amount, in the same database transaction. The other leg keeps its
@@ -719,10 +744,11 @@ async function classifyTransferLeg(
  * leg's amount zero or flip its sign — changing a transfer's direction means deleting and
  * recreating it. The edit is refused as `reconciled` when the other leg is reconciled, as
  * `trade_owned` when it is a trade's cash leg, as for the leg itself, and with
- * `unsupported_transaction` when the other leg has several splits (written before #547), since
- * nothing says which of them the difference belongs to. Every refusal comes before anything is
- * written. A new split with the same amount (a different category on the leg) leaves the other leg
- * alone. The payee, memo and status the request gives stay the edited leg's own.
+ * `unsupported_transaction` when the other leg has several splits (written before #547) and its
+ * amount would change, since nothing says which of them the difference belongs to. Every refusal
+ * comes before anything is written. A new split with the same amount (a different category on the
+ * leg) leaves the other leg alone. The payee, memo and status the request gives stay the edited
+ * leg's own.
  *
  * A leg's category follows `createTransfer` (#552, #598; `classifyTransferLeg`), so no stored leg
  * can make every budget-month read of the workspace fail:
@@ -736,15 +762,24 @@ async function classifyTransferLeg(
  *   in the new split is ignored and the leg stays categoryless, as creating the transfer ignores
  *   it.
  * A new category with the same amount leaves the other leg, and its status, alone.
+ *
+ * @throws ValidationError `invalid_date` for an `occurredAt` that is not a real "YYYY-MM-DD" date.
+ * @throws UnknownCategoryError when `splits` name a category the workspace does not have, after the
+ *   path-account and closed-account checks (#655).
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
   workspaceId: string,
   transactionId: string,
   patch: UpdateTransactionInput,
+  accountId?: string,
 ): Promise<TransactionRecord | "not_found" | "reconciled" | "trade_owned"> {
+  if (patch.occurredAt !== undefined) {
+    assertDate(patch.occurredAt);
+  }
+  const changesAmountOrDate = patch.splits !== undefined || patch.amountCents !== undefined || patch.occurredAt !== undefined;
   let existing = await getTransaction(db, workspaceId, transactionId);
-  if (existing !== undefined && existing.transferId !== null && patch.splits !== undefined) {
+  if (existing !== undefined && existing.transferId !== null && changesAmountOrDate) {
     // Always in id order, so two edits of the same pair, from either leg, never deadlock.
     await db.query("SELECT id FROM transactions WHERE workspace_id = $1 AND id = ANY($2) ORDER BY id FOR UPDATE", [
       workspaceId,
@@ -752,14 +787,47 @@ export async function updateTransaction(
     ]);
     existing = await getTransaction(db, workspaceId, transactionId);
   }
-  if (!existing) {
+  if (!existing || (accountId !== undefined && existing.accountId !== accountId)) {
     return "not_found";
   }
+
+  // `amountCents` alone (#655): the new amount of the transaction's one split.
+  const onlySplit = existing.splits.length === 1 ? existing.splits[0] : undefined;
+  const amountOnly = patch.splits === undefined && patch.amountCents !== undefined;
+  const requestedSplits: readonly SplitInput[] | undefined =
+    patch.splits ??
+    (amountOnly && onlySplit !== undefined
+      ? [{ categoryId: onlySplit.categoryId, amountCents: patch.amountCents!, ...(onlySplit.memo === null ? {} : { memo: onlySplit.memo }) }]
+      : undefined);
+
+  // Which rows of the other leg of a transfer this edit writes: its date when it moves, its amount
+  // when this leg's total changes. Known before any other check, so that a closed account is
+  // refused first (#741).
+  const oldTotal = sumOfSplits(existing.splits);
+  const newTotal = requestedSplits === undefined ? oldTotal : sumOfSplits(requestedSplits);
+  let movesDate = false;
+  let movesPartnerDate = false;
+  if (patch.occurredAt !== undefined) {
+    const { rows } = await db.query<{ id: string; unchanged: boolean }>(
+      // The budget date, not the stored instant: a transaction created at a time (create takes an
+      // instant) whose own date is sent back has not moved, and keeps its time and its other leg's status.
+      `SELECT t.id, to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') = $3 AS unchanged
+       FROM transactions t JOIN workspaces w ON w.id = t.workspace_id
+       WHERE t.workspace_id = $1 AND t.id = ANY($2)`,
+      [workspaceId, [existing.id, ...(existing.transferId === null ? [] : [existing.transferId])], patch.occurredAt],
+    );
+    movesDate = rows.some((row) => row.id === existing.id && !row.unchanged);
+    movesPartnerDate = rows.some((row) => row.id === existing.transferId && !row.unchanged);
+  }
+  const movesPartnerAmount = existing.transferId !== null && requestedSplits !== undefined && newTotal !== oldTotal;
+  const writesPartner = existing.transferId !== null && (movesPartnerAmount || movesPartnerDate);
+  await checkAccountsOpen(db, workspaceId, [existing.accountId, writesPartner ? (existing.transferAccountId ?? undefined) : undefined]);
+
   if (existing.status === "reconciled") {
     return "reconciled";
   }
-  // A trade's cash leg (ADR 0012): its amount comes from the trade, so its splits stay as written.
-  if (existing.tradeId !== null && (patch.splits !== undefined || patch.amountCents !== undefined)) {
+  // A trade's cash leg (ADR 0012): its amount and date come from the trade, so they stay as written.
+  if (existing.tradeId !== null && (patch.splits !== undefined || patch.amountCents !== undefined || movesDate)) {
     return "trade_owned";
   }
   if (patch.status === "reconciled") {
@@ -767,19 +835,30 @@ export async function updateTransaction(
     // which ties the transaction to the reconciliations row that reconciled it.
     throw new ValidationError("direct_reconciliation_not_allowed", "a transaction becomes reconciled only through the reconciliation endpoint");
   }
+  if (amountOnly && onlySplit === undefined) {
+    throw new ValidationError("amount_needs_splits", "a transaction with several splits takes a new amount only with its splits", {
+      splitCount: existing.splits.length,
+    });
+  }
   if (patch.splits !== undefined) {
-    validateSplits(patch.splits, patch.amountCents);
+    // After the path-account and closed-account checks (#655), so an unknown category never hides
+    // a 404 or an `account_closed`.
+    const unknownCategoryId = await findUnknownCategoryId(db, workspaceId, patch.splits);
+    if (unknownCategoryId !== undefined) {
+      throw new UnknownCategoryError(unknownCategoryId);
+    }
+  }
+  if (requestedSplits !== undefined) {
+    validateSplits(requestedSplits, patch.amountCents);
     // A transfer leg's own split has no category by design: it is not income.
     if (existing.transferId === null) {
-      await assertNotCardIncome(db, workspaceId, existing.accountId, patch.splits);
+      await assertNotCardIncome(db, workspaceId, existing.accountId, requestedSplits);
     }
   }
 
-  // The other leg of a transfer, and its one split, when this edit changes the leg's amount (#547).
-  let partnerSplit: { readonly id: string; readonly amountCents: number; readonly status: TransactionStatus } | undefined;
-  let newSplits = patch.splits;
-  if (patch.splits !== undefined && existing.transferId !== null) {
-    const [legSplit, ...extraSplits] = patch.splits;
+  let newSplits = requestedSplits;
+  if (requestedSplits !== undefined && existing.transferId !== null) {
+    const [legSplit, ...extraSplits] = requestedSplits;
     if (legSplit === undefined || extraSplits.length > 0) {
       throw new ValidationError("unsupported_transaction", "a transfer leg holds exactly one split", {
         transactionId: existing.id,
@@ -788,7 +867,7 @@ export async function updateTransaction(
     // The category rule `createTransfer` applies (#552, #598): only the on-budget leg of a transfer
     // to or from an off-budget account carries a category; going out it needs one, coming in it may
     // be left as income to assign, except on a card. Any other leg has none.
-    const kind = await classifyTransferLeg(db, workspaceId, existing.id, existing.transferId, sumOfSplits(existing.splits));
+    const kind = await classifyTransferLeg(db, workspaceId, existing.id, existing.transferId, oldTotal);
     if (kind === "uncategorized") {
       newSplits = [{ ...legSplit, categoryId: null }];
     } else if (legSplit.categoryId === null && kind === "outgoing") {
@@ -802,15 +881,19 @@ export async function updateTransaction(
         accountId: existing.accountId,
       });
     }
-    const newTotal = sumOfSplits(patch.splits);
-    const oldTotal = sumOfSplits(existing.splits);
     // A transfer's direction is set when it is created: changing it means deleting and recreating it.
     if (newTotal === 0 || Math.sign(newTotal) !== Math.sign(oldTotal)) {
       throw new ValidationError("invalid_amount", "a transfer leg keeps its direction and a non-zero amount", {
         amount: newTotal,
       });
     }
-    const partner = newTotal === oldTotal ? undefined : await getTransaction(db, workspaceId, existing.transferId);
+  }
+
+  // The other leg of a transfer, when this edit moves its amount (#547) or its date (#655).
+  let partnerSplitId: string | undefined;
+  let partnerStatus: TransactionStatus | undefined;
+  if (writesPartner && existing.transferId !== null) {
+    const partner = await getTransaction(db, workspaceId, existing.transferId);
     if (partner) {
       if (partner.status === "reconciled") {
         return "reconciled";
@@ -818,15 +901,18 @@ export async function updateTransaction(
       if (partner.tradeId !== null) {
         return "trade_owned";
       }
-      const [onlySplit, ...others] = partner.splits;
-      if (onlySplit === undefined || others.length > 0) {
-        throw new ValidationError("unsupported_transaction", "the other leg of this transfer has several splits; its amount cannot follow", {
-          transactionId: partner.id,
-        });
+      if (movesPartnerAmount) {
+        const [partnerOnlySplit, ...others] = partner.splits;
+        if (partnerOnlySplit === undefined || others.length > 0) {
+          throw new ValidationError("unsupported_transaction", "the other leg of this transfer has several splits; its amount cannot follow", {
+            transactionId: partner.id,
+          });
+        }
+        partnerSplitId = partnerOnlySplit.id;
       }
-      // A cleared leg whose amount moves no longer matches what was ticked against the statement,
-      // as with a trade's cash leg (`rewriteTradeCashLeg`): it goes back to pending.
-      partnerSplit = { id: onlySplit.id, amountCents: -newTotal, status: partner.status === "cleared" ? "pending" : partner.status };
+      // A cleared leg whose amount or date moves no longer matches what was ticked against the
+      // statement, as with a trade's cash leg (`rewriteTradeCashLeg`): it goes back to pending.
+      partnerStatus = partner.status === "cleared" ? "pending" : partner.status;
     }
   }
 
@@ -840,22 +926,25 @@ export async function updateTransaction(
     transactionId,
     workspaceId,
   ]);
+  if (movesDate) {
+    await setDate(db, workspaceId, transactionId, patch.occurredAt!);
+  }
 
-  if (newSplits !== undefined) {
+  if (amountOnly && onlySplit !== undefined) {
+    // The one split is rewritten in place: it keeps its id, category and memo.
+    await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [patch.amountCents, onlySplit.id, workspaceId]);
+  } else if (newSplits !== undefined) {
     await db.query("DELETE FROM splits WHERE transaction_id = $1 AND workspace_id = $2", [transactionId, workspaceId]);
     await insertSplits(db, workspaceId, transactionId, newSplits);
   }
-  if (partnerSplit !== undefined) {
-    await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [
-      partnerSplit.amountCents,
-      partnerSplit.id,
-      workspaceId,
-    ]);
-    await db.query("UPDATE transactions SET status = $1 WHERE id = $2 AND workspace_id = $3", [
-      partnerSplit.status,
-      existing.transferId,
-      workspaceId,
-    ]);
+  if (partnerStatus !== undefined && existing.transferId !== null) {
+    if (partnerSplitId !== undefined) {
+      await db.query("UPDATE splits SET amount_cents = $1 WHERE id = $2 AND workspace_id = $3", [-newTotal, partnerSplitId, workspaceId]);
+    }
+    if (movesPartnerDate) {
+      await setDate(db, workspaceId, existing.transferId, patch.occurredAt!);
+    }
+    await db.query("UPDATE transactions SET status = $1 WHERE id = $2 AND workspace_id = $3", [partnerStatus, existing.transferId, workspaceId]);
   }
 
   const record = await getTransaction(db, workspaceId, transactionId);
@@ -863,6 +952,41 @@ export async function updateTransaction(
     throw new Error("updateTransaction: the transaction just updated was not found");
   }
   return record;
+}
+
+/** An edit refused, before anything is written, because a split names `categoryId`, which is no category of the workspace. */
+export class UnknownCategoryError extends Error {
+  readonly categoryId: string;
+
+  constructor(categoryId: string) {
+    super(`categoryId "${categoryId}" does not name a category of this workspace`);
+    this.name = "UnknownCategoryError";
+    this.categoryId = categoryId;
+  }
+}
+
+/** The first split's `categoryId` that names no category of this workspace (archived ones count as known), if any. */
+async function findUnknownCategoryId(db: DbPool | DbClient, workspaceId: string, splits: readonly SplitInput[]): Promise<string | undefined> {
+  const named = splits.map((split) => split.categoryId).filter((id): id is string => id !== null);
+  if (named.length === 0) {
+    return undefined;
+  }
+  const { rows } = await db.query<{ id: string }>("SELECT id FROM categories WHERE workspace_id = $1 AND id = ANY($2::uuid[])", [
+    workspaceId,
+    named.filter(isUuid),
+  ]);
+  const known = new Set(rows.map((row) => row.id));
+  return named.find((id) => !known.has(id));
+}
+
+/** Dates a transaction at midnight of `date` ("YYYY-MM-DD") in the workspace's time zone, as `insertTransactionRow` does. */
+async function setDate(db: DbPool | DbClient, workspaceId: string, transactionId: string, date: string): Promise<void> {
+  await db.query(
+    `UPDATE transactions
+     SET occurred_at = $3::date::timestamp AT TIME ZONE (SELECT time_zone FROM workspaces WHERE id = $2)
+     WHERE id = $1 AND workspace_id = $2`,
+    [transactionId, workspaceId, date],
+  );
 }
 
 /**
@@ -873,16 +997,18 @@ export async function updateTransaction(
  * one is #32's own explicit, audited action) — checked on both legs of a transfer, since one
  * side being reconciled must block deleting the pair even if the other side is not. Recorded in
  * the audit log, the same way unlocking a reconciliation is. Refuses a trade's cash leg
- * (`trade_owned`, ADR 0012): it is deleted with its trade.
+ * (`trade_owned`, ADR 0012): it is deleted with its trade. `accountId`, when given, is the account
+ * the request names: a transaction on another account is `not_found` (#655).
  */
 export async function deleteTransaction(
   db: DbPool | DbClient,
   workspaceId: string,
   transactionId: string,
   userId: string | null,
+  accountId?: string,
 ): Promise<"deleted" | "not_found" | "reconciled" | "trade_owned"> {
   const existing = await getTransaction(db, workspaceId, transactionId);
-  if (!existing) {
+  if (!existing || (accountId !== undefined && existing.accountId !== accountId)) {
     return "not_found";
   }
   if (existing.status === "reconciled") {

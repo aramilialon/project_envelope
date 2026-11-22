@@ -77,9 +77,9 @@ function centsToInput(cents: number, locale: string, currency: string): string {
 
 /**
  * The register's "+ New transaction" / "edit a row" side panel (#54): outflow, inflow or
- * transfer, splitting an outflow across categories. `apps/api`'s `updateTransaction` has no
- * `occurredAt` field, so an existing transaction's date cannot be changed here, only at
- * creation. A transfer goes "To another account" or comes "From another account" (#599; credit
+ * transfer, splitting an outflow across categories. An existing transaction's date cannot be
+ * changed here yet, only at creation: the API takes a new `occurredAt` since #655, and this form
+ * gains it with #656. A transfer goes "To another account" or comes "From another account" (#599; credit
  * cards are not offered as a source). When exactly one of the two accounts is off budget, the
  * on-budget leg's category follows `@envelope/core`'s `transferCategoryRule`: required when the
  * money leaves the budget or comes into an on-budget card, optional from an off-budget account

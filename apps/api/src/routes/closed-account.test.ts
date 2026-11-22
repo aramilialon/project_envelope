@@ -126,6 +126,16 @@ describe("writes to a closed account (#729)", () => {
       await assertRefused(() => inject("PATCH", path, { splits: [{ categoryId, amountCents: 1_500 }, { categoryId, amountCents: 500 }] }));
     });
 
+    it("refuses a new date or a new amount alone as account_closed, before any check that would refuse it for another reason (#655)", async () => {
+      const path = `/accounts/${closedId}/transactions/${rowId}`;
+      await assertRefused(() => inject("PATCH", path, { occurredAt: "2026-09-04" }));
+      await assertRefused(() => inject("PATCH", path, { amountCents: 1_800 }));
+      // Would be invalid_amount, split_mismatch, direct_reconciliation_not_allowed on an open account.
+      await assertRefused(() => inject("PATCH", path, { amountCents: 10.5 }));
+      await assertRefused(() => inject("PATCH", path, { amountCents: 1, splits: [{ categoryId, amountCents: 2 }] }));
+      await assertRefused(() => inject("PATCH", path, { status: "reconciled" }));
+    });
+
     it("refuses deleting a transaction", async () => {
       await assertRefused(() => inject("DELETE", `/accounts/${closedId}/transactions/${rowId}`));
     });
@@ -170,6 +180,21 @@ describe("writes to a closed account (#729)", () => {
 
     it("refuses changing the amount of an open account's leg, which would change the closed account's leg too", async () => {
       await assertRefused(() => inject("PATCH", `/accounts/${openA}/transactions/${openLegId}`, { splits: [{ categoryId: null, amountCents: 2_000 }] }));
+    });
+
+    it("refuses moving the open leg to a new date, which would move the closed account's leg too, before any other check (#655)", async () => {
+      const path = `/accounts/${openA}/transactions/${openLegId}`;
+      await assertRefused(() => inject("PATCH", path, { occurredAt: "2026-09-08" }));
+      await assertRefused(() => inject("PATCH", path, { amountCents: 2_500 }));
+      // Would be unsupported_transaction (two splits on a transfer leg) on an open pair.
+      await assertRefused(() =>
+        inject("PATCH", path, { occurredAt: "2026-09-08", splits: [{ categoryId: null, amountCents: 1_000 }, { categoryId: null, amountCents: 2_000 }] }),
+      );
+    });
+
+    it("still lets the open leg's memo change with the date both legs already have (#655)", async () => {
+      const response = await inject("PATCH", `/accounts/${openA}/transactions/${openLegId}`, { occurredAt: "2026-09-02", memo: "Same day" });
+      assert.equal(response.statusCode, 200, response.body);
     });
 
     it("refuses deleting a transfer with a leg on a closed account, from the open leg", async () => {

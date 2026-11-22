@@ -19,6 +19,8 @@ interface Split {
 interface Transaction {
   readonly id: string;
   readonly accountId: string;
+  readonly occurredAt: string;
+  readonly budgetDate: string;
   readonly payee: string | null;
   readonly status: string;
   readonly transferId: string | null;
@@ -350,6 +352,130 @@ describe("editing one leg of a transfer (#547)", () => {
     assert.equal(refused.status, 409);
     assert.equal(refused.body.code, "trade_owned_transaction");
     assert.equal(await balance(broker.rows[0]!.id), -700);
+  });
+
+  describe("a new amount alone, or a new date (#655)", () => {
+    it("gives the other leg the opposite amount when amountCents alone changes one leg", async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 5_000);
+
+      const edited = await patchLeg(source, { amountCents: -6_500 });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(total(edited.body), -6_500);
+      assert.equal(edited.body.splits[0]!.id, source.splits[0]!.id, "the leg's one split is rewritten in place");
+      const other = await reread(destination);
+      assert.equal(total(other), 6_500);
+      assert.equal(other.splits[0]!.id, destination.splits[0]!.id);
+      await assertBudgetInvariant();
+    });
+
+    it("keeps the category of the on-budget leg of a transfer to an off-budget account when amountCents alone changes it", async () => {
+      const { source, destination } = await transfer(checkingId, offBudgetId, 1_000, { categoryId });
+
+      const edited = await patchLeg(source, { amountCents: -1_200 });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(edited.body.splits[0]!.categoryId, categoryId);
+      assert.equal(total(await reread(destination)), 1_200);
+      await assertBudgetInvariant();
+    });
+
+    it("refuses a new amount alone that would flip the leg's direction, changing neither leg", async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 900);
+
+      const refused = await patchLeg(source, { amountCents: 900 });
+      assert.equal(refused.status, 400, JSON.stringify(refused.body));
+      assert.equal(refused.body.error, "invalid_amount");
+      assert.deepEqual(await reread(source), source);
+      assert.deepEqual(await reread(destination), destination);
+    });
+
+    it("moves both legs to the new date, sends a cleared other leg back to pending, and keeps the budget whole", async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 2_200, { status: "cleared" });
+
+      const edited = await patchLeg(destination, { occurredAt: `${MONTH}-25` });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(edited.body.budgetDate, `${MONTH}-25`);
+      assert.equal(edited.body.status, "cleared", "the edited leg keeps its own status");
+      const other = await reread(source);
+      assert.equal(other.budgetDate, `${MONTH}-25`);
+      assert.equal(other.occurredAt, edited.body.occurredAt);
+      assert.equal(other.status, "pending");
+      assert.equal(total(other), -2_200);
+      await assertBudgetInvariant();
+    });
+
+    it("moves both legs of a transfer to an off-budget account, its category with them, keeping the budget whole", async () => {
+      const { source, destination } = await transfer(checkingId, offBudgetId, 1_500, { categoryId });
+
+      const edited = await patchLeg(source, { occurredAt: `${MONTH}-03` });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(edited.body.splits[0]!.categoryId, categoryId);
+      assert.equal((await reread(destination)).budgetDate, `${MONTH}-03`);
+      await assertBudgetInvariant();
+    });
+
+    it("leaves a cleared other leg alone when the date sent is the one both legs already have", async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 330, { status: "cleared" });
+
+      const edited = await patchLeg(source, { occurredAt: `${MONTH}-10`, memo: "Same day" });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.deepEqual(await reread(destination), destination);
+    });
+
+    it("leaves both legs of a transfer created at a time alone, its time included, when their own date is sent back", async () => {
+      // A create takes an instant; an edit compares the budget date, not the stored time (#655).
+      const source = await account("Source at a time 655", true);
+      const destination = await account("Destination at a time 655", true);
+      const legs = await transfer(source, destination, 640, { occurredAt: `${MONTH}-10T15:30:00`, status: "cleared" });
+      assert.equal(legs.source.budgetDate, `${MONTH}-10`);
+      // Not a write to the other leg, so its account being closed does not refuse it.
+      await superuserPool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [destination]);
+
+      const edited = await patchLeg(legs.source, { occurredAt: `${MONTH}-10`, memo: "Same day, at a time" });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(edited.body.occurredAt, legs.source.occurredAt, "the leg keeps its time");
+      assert.equal(edited.body.status, "cleared");
+      assert.deepEqual(await reread(legs.destination), legs.destination);
+    });
+
+    it("refuses a new date with 409 when the other leg is reconciled, and moves neither leg", async () => {
+      const { source, destination } = await transfer(checkingId, savingsId, 410);
+      await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [destination.id]);
+      const reconciled = await reread(destination);
+
+      const refused = await patchLeg(source, { occurredAt: `${MONTH}-20` });
+      assert.equal(refused.status, 409, JSON.stringify(refused.body));
+      assert.deepEqual(await reread(source), source);
+      assert.deepEqual(await reread(destination), reconciled);
+    });
+
+    it("refuses a new date for a trade's cash leg with 409 trade_owned_transaction", async () => {
+      const broker = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Broker 655', 'brokerage', 'EUR', false) RETURNING id",
+        [workspaceId],
+      );
+      const portfolio = await superuserPool.query<{ id: string }>("INSERT INTO portfolios (workspace_id, name) VALUES ($1, 'Income 655') RETURNING id", [
+        workspaceId,
+      ]);
+      const trade = await request<{ trades: { cashTransactionId: string }[] }>("POST", "/trades", {
+        type: "fee",
+        accountId: broker.rows[0]!.id,
+        portfolioId: portfolio.rows[0]!.id,
+        tradeDate: `${MONTH}-12`,
+        feesCents: 300,
+      });
+      assert.equal(trade.status, 201, JSON.stringify(trade.body));
+      const path = `/accounts/${broker.rows[0]!.id}/transactions/${trade.body.trades[0]!.cashTransactionId}`;
+
+      for (const payload of [{ occurredAt: `${MONTH}-13` }, { amountCents: -1 }]) {
+        const refused = await request<{ code: string }>("PATCH", path, payload);
+        assert.equal(refused.status, 409, JSON.stringify(payload));
+        assert.equal(refused.body.code, "trade_owned_transaction");
+      }
+      // Its own date sent back changes nothing the trade owns: the memo edit goes through.
+      const memo = await request<Transaction & { budgetDate: string }>("PATCH", path, { occurredAt: `${MONTH}-12`, memo: "Custody fee" });
+      assert.equal(memo.status, 200, JSON.stringify(memo.body));
+      assert.equal(memo.body.budgetDate, `${MONTH}-12`);
+    });
   });
 
   it("refuses a synced change to a transfer leg's amount as unsupported, changing neither leg", async () => {
