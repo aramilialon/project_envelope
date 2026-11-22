@@ -1,6 +1,7 @@
 // Entry point of @envelope/core: everything the apps are allowed to use.
 export type { ValidationErrorCode, ValidationErrorDetail } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
+export { isAssignedCountryCode, ISO_3166_1_ALPHA2_CODES } from "./country.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
   assertAmount,
@@ -88,6 +89,8 @@ export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/exter
 export { externalFlows } from "./portfolio/external-flows.ts";
 export type { AmountInCurrency, Conversion, FxRate, FxRateTable, RateOnDate } from "./market-data/fx.ts";
 export { convertAmount, convertSum, FX_BASE_CURRENCY, FX_RATE_DECIMALS, fxRateTable, rateOn, valueIn } from "./market-data/fx.ts";
+export type { EcbRatesFileProblem, EcbReferenceRates } from "./market-data/ecb.ts";
+export { ECB_RATES_FILE_MAX_CHARS, parseEcbReferenceRates } from "./market-data/ecb.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth, startOfLocalDay } from "./month.ts";

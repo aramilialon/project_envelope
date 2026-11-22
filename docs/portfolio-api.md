@@ -17,9 +17,10 @@ the [domain guide](domain-guide.md#portfolios-and-rebalancing); the decisions ar
 checked against a running server.
 
 What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain or net result
-(milestone 0.2.1); no exchange rates, so a trade's instrument must be in its account's currency;
-no settlement date on a trade; no import of a broker's statement; and no field of a trade is
-synced from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
+(milestone 0.2.1); exchange rates are stored ([Exchange rates](#exchange-rates), milestone 0.2.1)
+but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
+settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
+from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
 [Private instruments](#private-instruments)).
 
 ## Contents
@@ -29,6 +30,7 @@ synced from devices yet. Private instruments, with no ISIN and no ticker, came i
 - [Workspace tax country](#workspace-tax-country)
 - [Brokerage accounts and their tax regime](#brokerage-accounts-and-their-tax-regime)
 - [Instruments](#instruments)
+- [Exchange rates](#exchange-rates)
 - [Portfolios](#portfolios)
 - [Trades](#trades)
 - [Positions](#positions)
@@ -162,8 +164,10 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 { "taxCountry": "IT" }
 ```
 
-`taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+`taxCountry` is an officially assigned ISO 3166-1 alpha-2 code in upper case (`"it"` is refused
+with `invalid_tax_country`, and so are codes that name no country, such as `ZZ`, `EU`, `UN` or
+`UK`: the United Kingdom is `GB`), or `null` to remove it. A code stored before this check (#711)
+is still returned as it is, and can be replaced or removed. The answer is the workspace, with the brokerage
 accounts that have no tax regime yet:
 
 ```json
@@ -183,7 +187,7 @@ for their regimes right away.
 
 | Error | Details |
 | --- | --- |
-| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not a known region |
+| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -350,7 +354,7 @@ workspaces may already use it.
 | `exchange` | the exchange's ISO 10383 market identifier code (MIC), exactly 4 letters or digits, such as `XMIL` or `XETR`; upper-cased |
 | `name` | required, up to 200 characters |
 | `type` | `stock`, `fund` (ETFs included), `etc_etn`, `government_bond`, `bond`, `certificate`, `cash`, `other`. The split follows the lines tax rules draw, since a row is never updated |
-| `currency` | three letters, upper-cased; the currency the instrument is quoted in |
+| `currency` | an ISO 4217 code the runtime lists as in use, upper-cased (the same check as an account's, #595); the currency the instrument is quoted in |
 | `assetClass` | optional free text, up to 64 characters |
 | `priceFactorE6` | optional, default `1000000` (a factor of 1); `10000` (0.01) for a bond quoted in percent of nominal or a price in pence |
 
@@ -373,7 +377,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 | 400 `invalid_isin` | `{ "isin" }`: wrong shape or check digit |
 | 400 `invalid_ticker`, `invalid_exchange` | `{ "ticker" }`, `{ "exchange" }` |
 | 400 `invalid_instrument_type` | `{ "type" }` |
-| 400 `invalid_currency` | `{ "currency" }`: not three letters |
+| 400 `invalid_currency` | `{ "currency" }` as sent: not an ISO 4217 code in use (`XYZ`, the withdrawn `VEF`) |
 | 400 `invalid_instrument_field` | `{ "field" }` (a missing name, or a field that is not a string) or `{ "field", "maxLength" }` |
 | 400 `invalid_price_factor` | `{ "label": "priceFactorE6", "value" }`: not a positive safe integer |
 
@@ -427,6 +431,37 @@ catalog's, never conflict, so a private instrument may be named like a shared on
 
 A trade names a private instrument by its `instrumentId` like any other; in another workspace the
 same id is `unknown_instrument`.
+
+## Exchange rates
+
+The euro reference rates the European Central Bank publishes every working day, shared by every
+workspace like the catalog. The server fetches them by itself (see apps/api/README.md,
+"Exchange rates"); the API only reads what is stored, and no request ever fetches anything.
+
+`GET /fx-rates?quote=USD&from=2026-11-01&to=2026-11-30` — any signed-in user, member of a
+workspace or not. `quote` is required; `from` and `to` are optional and both included. The rates of
+that currency, oldest first, exactly as published:
+
+```json
+{
+  "base": "EUR",
+  "quote": "USD",
+  "rates": [
+    { "date": "2026-11-19", "rateE10": 10992000000 },
+    { "date": "2026-11-20", "rateE10": 10990000000 }
+  ]
+}
+```
+
+`rateE10` is the units of `quote` for one euro × 10^10 (1.0990 dollars for one euro is
+`10990000000`), never inverted ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md)). A
+rate exists only for days the ECB publishes one: no weekends, no TARGET holidays. A currency with no
+stored rate answers an empty list.
+
+| Error | Details |
+| --- | --- |
+| 400 `invalid_currency` | `{ "currency" }`: missing, not a currency code in use (upper case), or `EUR` itself |
+| 400 `invalid_date` | `{ "field", "value" }`: `from` or `to` not a `YYYY-MM-DD` calendar date, or `to` before `from` (`field` is `to`) |
 
 ## Portfolios
 

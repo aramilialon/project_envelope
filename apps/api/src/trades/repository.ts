@@ -1451,11 +1451,12 @@ async function lockTradeGroup(
 
 /**
  * Whether any of the trades' cash legs is reconciled, locking the legs until the end of the
- * transaction so a reconciliation cannot take one between this check and the write.
+ * transaction so a reconciliation cannot take one between this check and the write. In id order,
+ * as a reconciliation locks its ticked rows (#554), so the two cannot deadlock over several legs.
  */
 async function anyCashLegReconciled(db: DbClient, workspaceId: string, tradeIds: readonly string[]): Promise<boolean> {
   const { rows } = await db.query<{ status: string }>(
-    "SELECT status FROM transactions WHERE workspace_id = $1 AND trade_id = ANY($2) FOR UPDATE",
+    "SELECT status FROM transactions WHERE workspace_id = $1 AND trade_id = ANY($2) ORDER BY id FOR UPDATE",
     [workspaceId, tradeIds],
   );
   return rows.some((row) => row.status === "reconciled");

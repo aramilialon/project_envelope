@@ -12,6 +12,8 @@ single amount before the API refused them (#651, ADR 0002; how to fix one by han
 `dev/find-cross-currency.sql`, also read-only, lists an on-budget account outside its workspace's
 base currency, a transfer between accounts in different currencies, and a workspace or account
 whose currency is not three upper-case letters, stored before the API refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").
+`dev/find-unassigned-tax-countries.sql`, also read-only, lists a workspace whose tax country is not
+an officially assigned ISO 3166-1 code, stored before the API refused it (#711; [`apps/api/README.md`](../apps/api/README.md), "Codes stored before #711 and #595").
 `@envelope/scripts` (this package) is the one part with real
 dependencies — the demo data seed and the disposable environments — and it also holds the
 installer's sandbox (`install-env/`, "Installer sandbox" below).
@@ -291,7 +293,8 @@ old volume.
    run's database, the `postgres` queue driver, a fresh VAPID key pair, and a per-address rate
    limit raised far above its default, since every client of the run (the e2e suite's parallel
    workers, several explorers) connects from 127.0.0.1; the per-user limits keep their defaults
-   (#566);
+   (#566); and `MARKET_DATA_FETCH_ENABLED=false`, so a run makes no outbound request (#85): a run
+   that needs exchange rates loads a file into its database with `fx-rates:import`;
 5. writes a first manifest, without personas, so `down` can find the processes if what follows
    fails;
 6. builds `apps/web` (`vite build`) with `VITE_API_URL`, `VITE_KEYCLOAK_ISSUER` and

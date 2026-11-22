@@ -2,7 +2,7 @@
 
 **A self-hosted budget and investment app for households.** Budget the money you already have and keep your data on your own server; keeping your portfolios on the targets you chose is in progress.
 
-`envelope` is for a household that wants its everyday budget and its investments in one place, on a server it runs itself. The budget works only with money that has already arrived; the portfolio side records your trades and, once allocation is built, shows how far each part of your portfolio is from the allocation you chose. Your financial data stays on your server: no tracking, no third-party scripts or fonts. It leaves only through features you turn on yourself, such as notifications on your devices.
+`envelope` is for a household that wants its everyday budget and its investments in one place, on a server it runs itself. The budget works only with money that has already arrived; the portfolio side records your trades and, once allocation is built, shows how far each part of your portfolio is from the allocation you chose. Your financial data stays on your server: no tracking, no third-party scripts or fonts. It leaves only through features you turn on yourself, such as notifications on your devices. The server makes one request of its own, on by default: twice every working day it downloads the European Central Bank's public euro exchange rates file, sending nothing about you or your data (the ECB sees only your server's internet address). One setting, `MARKET_DATA_FETCH_ENABLED=false`, turns it off.
 
 [![CI](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml/badge.svg)](https://github.com/aramilialon/project_envelope/actions/workflows/ci.yml)
 

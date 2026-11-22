@@ -224,6 +224,8 @@ describe("instruments routes (#76)", () => {
       [{ isin: randomIsin(), name: `${namePrefix} Bad type`, type: "crypto", currency: "USD" }, "invalid_instrument_type"],
       [{ isin: randomIsin(), name: `${namePrefix} Old type`, type: "etf", currency: "USD" }, "invalid_instrument_type"],
       [{ isin: randomIsin(), name: `${namePrefix} Bad currency`, type: "stock", currency: "EURO" }, "invalid_currency"],
+      [{ isin: randomIsin(), name: `${namePrefix} Unknown currency`, type: "stock", currency: "XYZ" }, "invalid_currency"],
+      [{ isin: randomIsin(), name: `${namePrefix} Withdrawn currency`, type: "stock", currency: "VEF" }, "invalid_currency"],
       [{ isin: randomIsin(), name: "  ", type: "stock", currency: "USD" }, "invalid_instrument_field"],
       [{ isin: randomIsin(), exchange: "MIL", name: `${namePrefix} Short MIC`, type: "stock", currency: "EUR" }, "invalid_exchange"],
       [{ isin: randomIsin(), exchange: "XMIL\u200b", name: `${namePrefix} Hidden MIC`, type: "stock", currency: "EUR" }, "invalid_exchange"],
@@ -550,6 +552,8 @@ describe("instruments routes (#76)", () => {
         [{ ...base, name: undefined }, "invalid_instrument_field"],
         [{ ...base, type: "house" }, "invalid_instrument_type"],
         [{ ...base, currency: "EURO" }, "invalid_currency"],
+        [{ ...base, currency: "XYZ" }, "invalid_currency"], // three letters, but no ISO 4217 code (#595)
+        [{ ...base, currency: "VEF" }, "invalid_currency"], // withdrawn
         [{ ...base, assetClass: 3 }, "invalid_instrument_field"],
         [{ ...base, priceFactorE6: 0 }, "invalid_price_factor"],
       ] as const) {

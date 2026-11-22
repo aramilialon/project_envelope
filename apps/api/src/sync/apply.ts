@@ -67,17 +67,39 @@ interface FieldApplier {
  * another row (a transfer's other leg), must check that account too, or the trigger's refusal
  * would end the whole upload.
  */
+/**
+ * A backstop (#554) for an applier's UPDATE of a transaction: `isLocked` has read the row
+ * `FOR UPDATE` and found it not reconciled, so it cannot be reconciled here. Should it be all the
+ * same, the change has already been recorded (the change log is append-only), so answering
+ * `locked` would leave a recorded change that never applied: the whole upload fails instead, and
+ * its database transaction rolls back.
+ */
+async function writeUnlessReconciled(db: DbPool | DbClient, sql: string, params: readonly unknown[]): Promise<void> {
+  const { rowCount } = await db.query(sql, [...params]);
+  if (rowCount !== 1) {
+    throw new Error("sync: a transaction found unlocked was reconciled before its change applied");
+  }
+}
+
 const FIELD_APPLIERS: Readonly<Record<string, FieldApplier>> = {
   "transactions.memo": {
     table: "transactions",
     apply: async (db, workspaceId, entityId, value) => {
-      await db.query("UPDATE transactions SET memo = $1 WHERE id = $2 AND workspace_id = $3", [value, entityId, workspaceId]);
+      await writeUnlessReconciled(db, "UPDATE transactions SET memo = $1 WHERE id = $2 AND workspace_id = $3 AND status <> 'reconciled'", [
+        value,
+        entityId,
+        workspaceId,
+      ]);
     },
   },
   "transactions.payee": {
     table: "transactions",
     apply: async (db, workspaceId, entityId, value) => {
-      await db.query("UPDATE transactions SET payee = $1 WHERE id = $2 AND workspace_id = $3", [value, entityId, workspaceId]);
+      await writeUnlessReconciled(db, "UPDATE transactions SET payee = $1 WHERE id = $2 AND workspace_id = $3 AND status <> 'reconciled'", [
+        value,
+        entityId,
+        workspaceId,
+      ]);
     },
   },
 };
@@ -150,11 +172,32 @@ export async function isLocked(db: DbPool | DbClient, workspaceId: string, field
   if (!fieldName.startsWith("transactions.")) {
     return false;
   }
-  const { rows } = await db.query<{ status: string }>("SELECT status FROM transactions WHERE id = $1 AND workspace_id = $2", [
-    entityId,
-    workspaceId,
-  ]);
+  // Read `FOR UPDATE` (#554): a reconciliation cannot mark the row between this check and the write,
+  // and one that marked it first is seen here. The upload route has already locked every
+  // transaction it touches in id order (`lockUploadTransactions`), so this takes no new lock there.
+  const { rows } = await db.query<{ status: string }>(
+    "SELECT status FROM transactions WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
+    [entityId, workspaceId],
+  );
   return rows[0]?.status === "reconciled";
+}
+
+/**
+ * Locks every transaction an upload's `transactions.*` changes name (`FOR UPDATE`, in id order,
+ * #554) before any of them applies, as `updateTransaction` and a reconciliation lock theirs:
+ * locked one by one in the device's order, they could deadlock with a reconciliation ticking the
+ * same rows. Ids that are not uuids, or name no transaction of the workspace, lock nothing; they
+ * are answered by `applyIncomingChange` as before. Wiring a field of `splits` or `trades` must
+ * lock the transactions it writes here as well.
+ */
+export async function lockUploadTransactions(db: DbPool | DbClient, workspaceId: string, changes: readonly IncomingChange[]): Promise<void> {
+  const ids = [
+    ...new Set(changes.filter((change) => change.fieldName.startsWith("transactions.") && isUuid(change.entityId)).map((change) => change.entityId)),
+  ];
+  if (ids.length === 0) {
+    return;
+  }
+  await db.query("SELECT id FROM transactions WHERE workspace_id = $1 AND id = ANY($2::uuid[]) ORDER BY id FOR UPDATE", [workspaceId, ids]);
 }
 
 /**

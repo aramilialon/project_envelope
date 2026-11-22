@@ -208,6 +208,9 @@ async function up(root: string): Promise<void> {
       // explorers at once) connects from 127.0.0.1, so they all share one per-address count (#566):
       // that limit is raised here, while the per-user limits keep their defaults.
       RATE_LIMIT_IP_MAX: "100000",
+      // A disposable environment makes no outbound request (#85): the e2e suite runs on it, and
+      // tests never reach the network. Rates are loaded with `fx-rates:import` when a run needs them.
+      MARKET_DATA_FETCH_ENABLED: "false",
     };
     assertEnvTargetsRun(apiEnv, run);
     processes.api = startDetached(process.execPath, [path.join(API_DIR, "src/main.ts"), marker(run)], {
