@@ -42,7 +42,7 @@ For each branch:
 
 1. `git fetch origin`, then bring it up to date with `origin/main` (rebase or merge, see the rules above), in its worktree.
 2. **Conflicts.** Resolve them yourself only when they are mechanical:
-   - a branch started before #738 that still adds an entry under "Unreleased" in `CHANGELOG.md` and conflicts there: move its entry into a fragment in `changes/unreleased/` ([format](../../changes/unreleased/README.md)) and keep `main`'s `CHANGELOG.md`;
+   - a branch started before #738 that adds an entry under "Unreleased" in `CHANGELOG.md`: whenever you bring it up to date, conflict or not, move that entry into a fragment in `changes/unreleased/` ([format](../../changes/unreleased/README.md)) and keep `main`'s `CHANGELOG.md`. While `.gitattributes` merges `CHANGELOG.md` with the union driver there is no conflict to warn you, and after a release the entry would land silently inside the released section;
    - both sides added entries to a README table, the migrations README, the ADR index, a list of error codes or exports: keep both, in a sensible order (the earlier-merged entry first), and fix a trailing `;` or comma in a TypeScript union or list;
    - translation catalogs in `packages/i18n/locales/` where both sides added or changed different keys: keep the union of the keys, sorted as the catalog is, then regenerate `en.json` with `pnpm --filter @envelope/i18n extract` instead of resolving it by hand, and run `pnpm --filter @envelope/i18n check`. The same key changed on both sides is not mechanical: it goes back to the developer, whose `translator` re-translates it;
    - a branch-local copy of a helper that `main` now provides under the same meaning (for example a local `UUID_PATTERN` where `main` has `isUuid`): use `main`'s.
