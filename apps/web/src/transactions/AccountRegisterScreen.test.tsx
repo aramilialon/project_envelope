@@ -50,6 +50,8 @@ function transaction(overrides: Partial<Transaction>): Transaction {
     transferId: null,
     transferAccountId: null,
     externalId: null,
+    tradeId: null,
+    trade: null,
     createdAt: "2026-09-15T00:00:00.000Z",
     splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     ...overrides,
@@ -226,25 +228,83 @@ describe("AccountRegisterScreen (#54, #333)", () => {
       expect(accBal.textContent).not.toContain("€");
     });
 
-    it("leaves the category cell empty, never 'Unassigned', a trade's cash leg included", async () => {
-      renderScreen(
-        [
-          cashLeg({ id: "t1", payee: "Deposit", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] }),
-          cashLeg({ id: "t2", payee: "Buy ETF", tradeId: "trade-1" } as Partial<Transaction>),
-        ],
-        [],
-        [EU_BROKER],
-      );
+    it("leaves the category cell empty, never 'Unassigned', for a row that is no trade's cash leg", async () => {
+      renderScreen([cashLeg({ id: "t1", payee: "Deposit", splits: [{ id: "s1", categoryId: null, amountCents: 500_000, memo: null }] })], [], [EU_BROKER]);
 
       const deposit = (await screen.findByText("Deposit")).closest("tr")!;
-      const buy = screen.getByText("Buy ETF").closest("tr")!;
-      for (const row of [deposit, buy]) {
-        const cell = row.querySelectorAll("td")[3]!;
-        expect(cell).toHaveTextContent(/^$/);
-        // No unnamed button left as an empty tab stop.
-        expect(within(cell).queryByRole("button")).not.toBeInTheDocument();
-      }
+      const cell = deposit.querySelectorAll("td")[3]!;
+      expect(cell).toHaveTextContent(/^$/);
+      // No unnamed button left as an empty tab stop.
+      expect(within(cell).queryByRole("button")).not.toBeInTheDocument();
       expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+    });
+
+    describe("a trade's cash leg reads as its trade (#657)", () => {
+      const buy = cashLeg({
+        id: "t-buy",
+        payee: null,
+        tradeId: "trade-1",
+        trade: { type: "buy", quantityE8: 1_050_000_000, instrumentId: "i-1", instrumentName: "World equity ETF", instrumentTicker: "WEQ" },
+      });
+      const dividend = cashLeg({
+        id: "t-div",
+        payee: null,
+        occurredAt: "2026-09-16T00:00:00.000Z",
+        budgetDate: "2026-09-16",
+        tradeId: "trade-2",
+        trade: { type: "dividend", quantityE8: 0, instrumentId: "i-2", instrumentName: "Flat for rent", instrumentTicker: null },
+        splits: [{ id: "s2", categoryId: null, amountCents: 900, memo: null }],
+      });
+      const custody = cashLeg({
+        id: "t-fee",
+        payee: null,
+        occurredAt: "2026-09-17T00:00:00.000Z",
+        budgetDate: "2026-09-17",
+        tradeId: "trade-3",
+        trade: { type: "fee", quantityE8: 0, instrumentId: null, instrumentName: null, instrumentTicker: null },
+        splits: [{ id: "s3", categoryId: null, amountCents: -300, memo: null }],
+      });
+
+      it("names each row after its trade: the ticker, else the instrument's name, and no instrument for an account-wide fee", async () => {
+        renderScreen([buy, dividend, custody], [], [EU_BROKER]);
+
+        expect(await screen.findByRole("button", { name: "Buy · 10.5 × WEQ" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Dividend · Flat for rent" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Fee" })).toBeInTheDocument();
+        expect(screen.queryByText("Unassigned")).not.toBeInTheDocument();
+      });
+
+      it("names it on the phone too, before the memo", async () => {
+        setWidth(390);
+        renderScreen([{ ...buy, memo: "Monthly plan" }], [], [EU_BROKER]);
+        expect(await screen.findByText("Buy · 10.5 × WEQ · Monthly plan")).toBeInTheDocument();
+      });
+
+      it("finds it by its trade when searching", async () => {
+        renderScreen([buy, custody], [], [EU_BROKER]);
+        await screen.findByRole("button", { name: "Fee" });
+
+        fireEvent.change(screen.getByRole("searchbox"), { target: { value: "weq" } });
+        expect(screen.getByRole("button", { name: "Buy · 10.5 × WEQ" })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Fee" })).not.toBeInTheDocument();
+      });
+
+      it("opens it in the editor with only its own fields to change", async () => {
+        renderScreen([buy], [], [EU_BROKER]);
+        fireEvent.click(await screen.findByRole("button", { name: "Buy · 10.5 × WEQ" }));
+
+        expect(await screen.findByRole("heading", { name: "Edit transaction" })).toBeInTheDocument();
+        expect(screen.getByLabelText("Amount")).toBeDisabled();
+        expect(screen.getByText("Change it on the trade.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+        expect(screen.getByLabelText("Memo")).toBeEnabled();
+      });
+
+      it("titles a reconciled one's sheet after its trade", async () => {
+        renderScreen([{ ...buy, status: "reconciled" }], [], [EU_BROKER]);
+        fireEvent.click(await screen.findByRole("button", { name: "Buy · 10.5 × WEQ" }));
+        expect(await screen.findByRole("heading", { name: "Buy · 10.5 × WEQ" })).toBeInTheDocument();
+      });
     });
 
     it("shows a zero-decimal currency's amounts and balances with no decimals", async () => {

@@ -10,6 +10,7 @@ import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
 import { shortDate } from "../format.ts";
 import { accountClosedChangeMessage } from "../transactions/accountClosedMessages.ts";
 import { updateTransaction } from "../transactions/api.ts";
+import { tradeLabel } from "../transactions/tradeLabel.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
 import { reconcileAccount, type CandidateTransaction, type ReconciliationRecord } from "./api.ts";
@@ -33,7 +34,10 @@ import "./ReconciliationScreen.css";
  *   state to submit in the first place.
  * - The mockup's "Add an adjustment" button has no category step of its own; design.md requires
  *   one ("its category is chosen by the user, unassigned money by default"), so confirming it
- *   opens a small inline category picker before the call.
+ *   opens a small inline category picker before the call. On an off-budget account the
+ *   adjustment has no category (#710): only its memo is asked for.
+ * - The heading is "Reconcile with your statement" for every account (#657), a brokerage
+ *   account's included, and a trade's cash leg is named after its trade ("Buy · 10 × VWCE").
  *
  * The tally and difference are computed client-side (`reconciliationTally.ts`) from the already
  * fetched candidates, so ticking, unticking and typing the statement balance feel instant; only
@@ -82,6 +86,11 @@ export default function ReconciliationScreen() {
   const currency = account.currency;
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const openCategories = categories.filter((c) => !c.archived);
+  /** An off-budget account's adjustment has no category (#710). */
+  const offBudget = !account.onBudget;
+  /** A row's words: its payee and, for a trade's cash leg, its trade (#657). */
+  const describe = (t: CandidateTransaction) =>
+    [t.payee ?? "", t.trade === null ? "" : tradeLabel(intl, t.trade)].filter((part) => part !== "").join(" · ");
 
   // A balance, not an amount being written: not held to the cap on a single amount (#651);
   // only an adjustment, a transaction of its own, is.
@@ -198,7 +207,7 @@ export default function ReconciliationScreen() {
         date,
         statementBalanceCents: statementCents,
         tickedTransactionIds: tickedIds,
-        adjustment: { categoryId: adjustmentCategoryId || null, ...(adjustmentMemo.trim() ? { memo: adjustmentMemo.trim() } : {}) },
+        adjustment: { categoryId: offBudget ? null : adjustmentCategoryId || null, ...(adjustmentMemo.trim() ? { memo: adjustmentMemo.trim() } : {}) },
       });
       if (result.outcome === "reconciled") {
         setLocked({ reconciliation: result.reconciliation, count: tickedIds.length + 1 });
@@ -215,12 +224,18 @@ export default function ReconciliationScreen() {
                 id: "reconcile.adjustment.cardIncomeNotSupported",
                 defaultMessage: "On a credit card, an adjustment needs a category.",
               })
-            : isAmountTooLarge(caught)
-              ? // #651: the adjustment would be above the cap on a single amount.
-                amountTooLargeMessage(intl, currency)
-              : isAccountClosed(caught)
-                ? accountClosedReconcileMessage()
-                : saveErrorMessage()),
+            : caught instanceof ApiError && caught.code === "category_not_allowed"
+              ? // #710: an adjustment on an off-budget account has no category.
+                intl.formatMessage({
+                  id: "reconcile.adjustment.categoryNotAllowed",
+                  defaultMessage: "On an off-budget account, an adjustment has no category.",
+                })
+              : isAmountTooLarge(caught)
+                ? // #651: the adjustment would be above the cap on a single amount.
+                  amountTooLargeMessage(intl, currency)
+                : isAccountClosed(caught)
+                  ? accountClosedReconcileMessage()
+                  : saveErrorMessage()),
       );
     } finally {
       setSubmitting(false);
@@ -258,7 +273,7 @@ export default function ReconciliationScreen() {
       <Link className="crumb-back" to={backHref}>
         ← {account.name}
       </Link>
-      <h1 className="page-h">{intl.formatMessage({ id: "reconcile.title", defaultMessage: "Reconcile with your bank" })}</h1>
+      <h1 className="page-h">{intl.formatMessage({ id: "reconcile.title.statement", defaultMessage: "Reconcile with your statement" })}</h1>
       <p className="hint">
         {intl.formatMessage({
           id: "reconcile.intro",
@@ -283,7 +298,7 @@ export default function ReconciliationScreen() {
                 <label key={t.id} className={`rl${off ? " off" : ""}${highlighted ? " hl" : ""}`}>
                   <input type="checkbox" checked={!off} onChange={() => toggleOff(t.id)} />
                   <span className="n">{shortDate(t.occurredAt, intl.locale, currentYear)}</span>
-                  <span>{t.payee ?? ""}</span>
+                  <span>{describe(t)}</span>
                   <span className="n r">{money(t.amountCents)}</span>
                 </label>
               );
@@ -302,7 +317,7 @@ export default function ReconciliationScreen() {
                   <label key={t.id} className={`rl off${highlighted ? " hl" : ""}`}>
                     <input type="checkbox" checked={false} disabled={markingId === t.id} onChange={() => void handleTogglePending(t)} />
                     <span className="n">{shortDate(t.occurredAt, intl.locale, currentYear)}</span>
-                    <span>{t.payee ?? ""}</span>
+                    <span>{describe(t)}</span>
                     <span className="n r">{money(t.amountCents)}</span>
                   </label>
                 );
@@ -368,12 +383,12 @@ export default function ReconciliationScreen() {
                   suggestion.kind === "pending" ? (
                     intl.formatMessage(
                       { id: "reconcile.clue.pending", defaultMessage: "The difference equals {payee} from {date} ({amount}), still pending: maybe the bank already recorded it." },
-                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear), amount: money(suggestion.transaction.amountCents) },
+                      { payee: describe(suggestion.transaction), date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear), amount: money(suggestion.transaction.amountCents) },
                     )
                   ) : (
                     intl.formatMessage(
                       { id: "reconcile.clue.unticked", defaultMessage: "The difference equals {payee} from {date}, which you removed from the tally." },
-                      { payee: suggestion.transaction.payee ?? "", date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear) },
+                      { payee: describe(suggestion.transaction), date: shortDate(suggestion.transaction.occurredAt, intl.locale, currentYear) },
                     )
                   )
                 ) : (
@@ -398,17 +413,19 @@ export default function ReconciliationScreen() {
                 </button>
               ) : (
                 <div className="adjustment">
-                  <div className="field">
-                    <label htmlFor="rec-adj-cat">{intl.formatMessage({ id: "reconcile.adjustment.category", defaultMessage: "Category" })}</label>
-                    <select id="rec-adj-cat" value={adjustmentCategoryId} onChange={(event) => setAdjustmentCategoryId(event.target.value)}>
-                      <option value="">{intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" })}</option>
-                      {openCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {!offBudget && (
+                    <div className="field">
+                      <label htmlFor="rec-adj-cat">{intl.formatMessage({ id: "reconcile.adjustment.category", defaultMessage: "Category" })}</label>
+                      <select id="rec-adj-cat" value={adjustmentCategoryId} onChange={(event) => setAdjustmentCategoryId(event.target.value)}>
+                        <option value="">{intl.formatMessage({ id: "transactions.form.unassigned", defaultMessage: "Unassigned" })}</option>
+                        {openCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div className="field">
                     <label htmlFor="rec-adj-memo">{intl.formatMessage({ id: "reconcile.adjustment.memo", defaultMessage: "Memo (optional)" })}</label>
                     <input id="rec-adj-memo" type="text" value={adjustmentMemo} onChange={(event) => setAdjustmentMemo(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />

@@ -35,8 +35,8 @@ function candidates(overrides: Partial<ReconciliationCandidates> = {}): Reconcil
   return {
     lastReconciledBalanceCents: 50_000,
     clearedTransactions: [
-      { id: "t-a", occurredAt: "2026-09-10", payee: "Supermarket", amountCents: -1_000 },
-      { id: "t-b", occurredAt: "2026-09-12", payee: "Salary", amountCents: 2_500 },
+      { id: "t-a", occurredAt: "2026-09-10", payee: "Supermarket", amountCents: -1_000, tradeId: null, trade: null },
+      { id: "t-b", occurredAt: "2026-09-12", payee: "Salary", amountCents: 2_500, tradeId: null, trade: null },
     ],
     pendingTransactions: [],
     ...overrides,
@@ -132,13 +132,13 @@ describe("ReconciliationScreen (#60)", () => {
     const markCleared = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as transactionsApi.Transaction);
     const getCandidates = vi
       .spyOn(reconciliationApi, "getReconciliationCandidates")
-      .mockResolvedValueOnce(candidates({ pendingTransactions: [{ id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500 }] }))
+      .mockResolvedValueOnce(candidates({ pendingTransactions: [{ id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500, tradeId: null, trade: null }] }))
       .mockResolvedValueOnce(
         candidates({
           clearedTransactions: [
-            { id: "t-a", occurredAt: "2026-09-10", payee: "Supermarket", amountCents: -1_000 },
-            { id: "t-b", occurredAt: "2026-09-12", payee: "Salary", amountCents: 2_500 },
-            { id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500 },
+            { id: "t-a", occurredAt: "2026-09-10", payee: "Supermarket", amountCents: -1_000, tradeId: null, trade: null },
+            { id: "t-b", occurredAt: "2026-09-12", payee: "Salary", amountCents: 2_500, tradeId: null, trade: null },
+            { id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500, tradeId: null, trade: null },
           ],
         }),
       );
@@ -240,7 +240,7 @@ describe("ReconciliationScreen (#60)", () => {
   describe("a write the API refuses because the account is closed (#741)", () => {
     const closedRefusal = () => new ApiError("POST failed: 409", 409, "account_closed", {});
     const otherFailure = () => new ApiError("POST failed: 500", 500, "internal_error", {});
-    const pending = candidates({ pendingTransactions: [{ id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500 }] });
+    const pending = candidates({ pendingTransactions: [{ id: "t-p", occurredAt: "2026-09-20", payee: "Gym", amountCents: -500, tradeId: null, trade: null }] });
 
     it("says the account is closed when an adjustment is refused", async () => {
       renderScreen(candidates());
@@ -299,6 +299,92 @@ describe("ReconciliationScreen (#60)", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: /Gym/ }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent("We could not mark this transaction as cleared.");
+    });
+  });
+
+  describe("a brokerage account (#657, #710)", () => {
+    const BROKER: Account = { ...CHECKING, name: "Broker", type: "brokerage", onBudget: false };
+    const brokerCandidates = () =>
+      candidates({
+        lastReconciledBalanceCents: 0,
+        clearedTransactions: [
+          {
+            id: "t-buy",
+            occurredAt: "2026-09-10",
+            payee: null,
+            amountCents: -100_000,
+            tradeId: "trade-1",
+            trade: { type: "buy", quantityE8: 1_000_000_000, instrumentId: "i-1", instrumentName: "World equity ETF", instrumentTicker: "WEQ" },
+          },
+          { id: "t-in", occurredAt: "2026-09-09", payee: "From checking", amountCents: 150_000, tradeId: null, trade: null },
+        ],
+        pendingTransactions: [
+          {
+            id: "t-div",
+            occurredAt: "2026-09-12",
+            payee: "Broker",
+            amountCents: 900,
+            tradeId: "trade-2",
+            trade: { type: "dividend", quantityE8: 0, instrumentId: "i-1", instrumentName: "World equity ETF", instrumentTicker: "WEQ" },
+          },
+        ],
+      });
+
+    it("has the same heading as every account, and names a cash leg after its trade", async () => {
+      vi.spyOn(accountsApi, "listAccounts").mockResolvedValueOnce([BROKER]);
+      renderScreen(brokerCandidates());
+
+      expect(await screen.findByRole("heading", { name: "Reconcile with your statement" })).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: /Buy · 10 × WEQ/ })).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: /Broker · Dividend · WEQ/ })).not.toBeChecked();
+    });
+
+    it("names the trade in the clue too", async () => {
+      vi.spyOn(accountsApi, "listAccounts").mockResolvedValueOnce([BROKER]);
+      renderScreen(brokerCandidates());
+      await screen.findByRole("heading", { name: "Reconcile with your statement" });
+
+      // Cleared balance is 500; a statement of 509 equals the pending dividend.
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "509.00" } });
+      expect(screen.getByText(/The difference equals Broker · Dividend · WEQ from/)).toBeInTheDocument();
+    });
+
+    it("asks for no category on the adjustment, and sends none", async () => {
+      vi.spyOn(accountsApi, "listAccounts").mockResolvedValueOnce([BROKER]);
+      renderScreen(brokerCandidates());
+      await screen.findByRole("heading", { name: "Reconcile with your statement" });
+      const reconcile = vi.spyOn(reconciliationApi, "reconcileAccount").mockResolvedValue({
+        outcome: "reconciled",
+        reconciliation: { id: "r1", workspaceId: "ws-1", accountId: "acc-checking", reconciledAt: "2026-09-26", statementBalanceCents: 50_400, userId: "u1", brokenAt: null, createdAt: "2026-09-26" },
+      });
+
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "504.00" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €4.00" }));
+      expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText("Memo (optional)"), { target: { value: "Interest" } });
+      fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
+
+      await waitFor(() => expect(screen.getByText("Reconciliation complete")).toBeInTheDocument());
+      expect(reconcile).toHaveBeenCalledWith("t", "ws-1", "acc-checking", {
+        date: expect.any(String),
+        statementBalanceCents: 50_400,
+        tickedTransactionIds: ["t-buy", "t-in"],
+        adjustment: { categoryId: null, memo: "Interest" },
+      });
+    });
+
+    it("says why when the API refuses an adjustment with a category (category_not_allowed)", async () => {
+      vi.spyOn(accountsApi, "listAccounts").mockResolvedValueOnce([BROKER]);
+      renderScreen(brokerCandidates());
+      await screen.findByRole("heading", { name: "Reconcile with your statement" });
+      vi.spyOn(reconciliationApi, "reconcileAccount").mockRejectedValue(
+        new ApiError("POST failed: 400", 400, "category_not_allowed", { field: "categoryId" }),
+      );
+
+      fireEvent.change(screen.getByLabelText("Statement balance"), { target: { value: "504.00" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add an adjustment of €4.00" }));
+      fireEvent.click(screen.getByRole("button", { name: "Confirm the adjustment" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("On an off-budget account, an adjustment has no category.");
     });
   });
 });

@@ -1,6 +1,6 @@
 import { computeAccountBalance, computeTimeline, formatMoney, isAfterToday } from "@envelope/core";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { useIntl } from "react-intl";
+import { useIntl, type IntlShape } from "react-intl";
 import { useAuth } from "react-oidc-context";
 import { Link, useParams } from "react-router-dom";
 
@@ -22,6 +22,7 @@ import { currentMonthIn, todayIsoIn } from "../workspaceDate.ts";
 import { accountClosedAddMessage, accountClosedChangeMessage } from "./accountClosedMessages.ts";
 import { updateTransaction, type Transaction, type TransactionStatus } from "./api.ts";
 import { buildCategoryNameById, categoryLabel } from "./categoryLabel.ts";
+import { tradeLabel } from "./tradeLabel.ts";
 import RegisterTodo from "./RegisterTodo.tsx";
 import type { RegisterTodoItem } from "./registerTodo.ts";
 import { balanceRowOf, totalOf } from "./transactionAmount.ts";
@@ -87,10 +88,10 @@ function transferRowLabel(
 }
 
 /**
- * A row's category cell. In an off-budget account's register it is empty for every row that is not
- * a transfer, a brokerage account's trade cash legs included: money outside the budget has no
- * category, so it is never "Unassigned" either (#652, the domain guide: "the off-budget leg never
- * has a category").
+ * A row's category cell. A trade's cash leg reads as its trade ("Buy · 10 × VWCE", #657). In an
+ * off-budget account's register the cell is empty for every other row that is not a transfer:
+ * money outside the budget has no category, so it is never "Unassigned" either (#652, the domain
+ * guide: "the off-budget leg never has a category").
  */
 function rowLabel(
   transaction: Transaction,
@@ -99,7 +100,11 @@ function rowLabel(
   unassignedLabel: string,
   splitLabel: string,
   transferLabel: (transaction: Transaction) => string,
+  intl: IntlShape,
 ): string {
+  if (transaction.trade !== null) {
+    return tradeLabel(intl, transaction.trade);
+  }
   if (transaction.transferId !== null) {
     return transferLabel(transaction);
   }
@@ -310,7 +315,7 @@ export default function AccountRegisterScreen() {
     const haystack = [
       t.payee ?? "",
       t.memo ?? "",
-      rowLabel(t, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel),
+      rowLabel(t, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel, intl),
       ...(account.onBudget ? t.splits.map((s) => categoryLabel(s.categoryId, categoryNameById, unassignedLabel)) : []),
     ]
       .join(" ")
@@ -494,7 +499,7 @@ export default function AccountRegisterScreen() {
         {rows.map(({ transaction }) => {
           const amount = totalOf(transaction);
           const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-          const subtitle = [rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel), transaction.memo ?? ""]
+          const subtitle = [rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel, intl), transaction.memo ?? ""]
             .filter((part) => part !== "")
             .join(" · ");
           return (
@@ -527,7 +532,7 @@ export default function AccountRegisterScreen() {
   function renderTableRow({ transaction, balance }: TransactionWithBalance) {
     const amount = totalOf(transaction);
     const splitLabel = intl.formatMessage({ id: "register.split", defaultMessage: "{n} categories" }, { n: transaction.splits.length });
-    const categoryCell = rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel);
+    const categoryCell = rowLabel(transaction, account.onBudget, categoryNameById, unassignedLabel, splitLabel, transferLabel, intl);
     return (
       <tr key={transaction.id}>
         <td>
@@ -734,7 +739,12 @@ export default function AccountRegisterScreen() {
       )}
       {open !== null && open !== "new" && open.transaction.status === "reconciled" && (
         <SideSheet
-          title={open.transaction.payee ?? intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" })}
+          title={
+            open.transaction.payee ??
+            (open.transaction.trade !== null
+              ? tradeLabel(intl, open.transaction.trade)
+              : intl.formatMessage({ id: "register.transfer", defaultMessage: "Transfer" }))
+          }
           onClose={() => changeSheet(null)}
         >
           <p className="hint">

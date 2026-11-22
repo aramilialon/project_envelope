@@ -166,7 +166,7 @@ async function main(): Promise<void> {
     // all this does: nothing is locked or recorded.
     await page.setViewportSize({ width: 1440, height: 700 });
     await page.getByRole("link", { name: "Reconcile", exact: true }).click();
-    await page.getByRole("heading", { name: "Reconcile with your bank" }).waitFor();
+    await page.getByRole("heading", { name: "Reconcile with your statement" }).waitFor();
     await page.waitForLoadState("networkidle");
     const clearedCents = parseCents(await page.locator(".recon .qa.total .n").innerText());
     const pendingCents = parseCents(await page.locator(".rlist .sec").nth(1).locator(".n.r").first().innerText());

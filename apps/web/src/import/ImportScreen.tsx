@@ -75,6 +75,9 @@ function decisionFromSelection(stagedTransactionId: string, selection: string, t
  *   this step, but `apps/api` has no endpoint to change a staged row before confirming — only to
  *   stage it (with whatever the file's own description produced) and later confirm it.
  *
+ * On an off-budget account a row takes no category (#710): it is ready as it is, imported with
+ * none, and its select offers only "No category" and the transfers.
+ *
  * A duplicate row (the statement's own transaction, already in the register) needs no category,
  * transfer or income of its own: `POST .../staged-transactions/confirm` clears it — status
  * `cleared` — from whatever decision it is given, so every duplicate row is always included in
@@ -125,6 +128,8 @@ export default function ImportScreen() {
   // from a closed account (#729).
   const otherAccounts = accounts.filter((a) => a.id !== accountId && a.closedAt === null && a.currency === currency);
   const openCategories = categories.filter((c) => !c.archived);
+  /** Rows on an off-budget account take no category (#710): ready by default, imported with none. */
+  const offBudget = !account.onBudget;
 
   // A transfer with an off-budget account moves money into or out of the budget, so its on-budget
   // leg's category follows `@envelope/core`'s `transferCategoryRule` (#378, #379, #598, #599), the
@@ -147,7 +152,7 @@ export default function ImportScreen() {
 
   function rowIsReady(selection: string | undefined, transferCategoryId: string | undefined, amountCents: number): boolean {
     if (!selection) {
-      return false;
+      return offBudget;
     }
     return transferRuleOf(selection, amountCents) !== "required" || !!transferCategoryId;
   }
@@ -294,8 +299,10 @@ export default function ImportScreen() {
         decisions.push({ stagedTransactionId: row.id, kind: "income" });
       } else if (includes[row.id] && rowIsReady(selections[row.id], transferCategories[row.id], row.amountCents)) {
         // A category left over from another choice is sent only where this transfer takes one.
-        const transferCategoryId = transferRuleOf(selections[row.id]!, row.amountCents) === "none" ? undefined : transferCategories[row.id];
-        const decision = decisionFromSelection(row.id, selections[row.id]!, transferCategoryId);
+        const transferCategoryId = transferRuleOf(selections[row.id] ?? "", row.amountCents) === "none" ? undefined : transferCategories[row.id];
+        const selection = selections[row.id] ?? "";
+        // On an off-budget account, a row left as it is goes in with no category, like income does.
+        const decision = offBudget && !selection ? { stagedTransactionId: row.id, kind: "income" as const } : decisionFromSelection(row.id, selection, transferCategoryId);
         if (decision) {
           decisions.push(decision);
         }
@@ -543,10 +550,15 @@ export default function ImportScreen() {
               </div>
             </div>
             <p className="hint">
-              {intl.formatMessage({
-                id: "import.check.hint",
-                defaultMessage: "Rows already in the register (same amount, dates within 3 days) are not imported again; a pending one becomes cleared. A new row needs a category, or to be marked as income or a transfer, before it can be imported — one without it stays staged, to confirm later.",
-              })}
+              {offBudget
+                ? intl.formatMessage({
+                    id: "import.check.hintOffBudget",
+                    defaultMessage: "Rows already in the register (same amount, dates within 3 days) are not imported again; a pending one becomes cleared. This account is off budget, so a new row takes no category: mark it as a transfer if it is one.",
+                  })
+                : intl.formatMessage({
+                    id: "import.check.hint",
+                    defaultMessage: "Rows already in the register (same amount, dates within 3 days) are not imported again; a pending one becomes cleared. A new row needs a category, or to be marked as income or a transfer, before it can be imported — one without it stays staged, to confirm later.",
+                  })}
             </p>
             <div className="ihead icols">
               <span />
@@ -594,8 +606,14 @@ export default function ImportScreen() {
                         value={selections[row.id] ?? ""}
                         onChange={(event) => setSelections((current) => ({ ...current, [row.id]: event.target.value }))}
                       >
-                        <option value="">{intl.formatMessage({ id: "import.check.chooseCategory", defaultMessage: "Choose a category" })}</option>
-                        <option value={INCOME_SELECTION}>{intl.formatMessage({ id: "import.check.income", defaultMessage: "Income" })}</option>
+                        {offBudget ? (
+                          <option value="">{intl.formatMessage({ id: "import.check.noCategory", defaultMessage: "No category" })}</option>
+                        ) : (
+                          <>
+                            <option value="">{intl.formatMessage({ id: "import.check.chooseCategory", defaultMessage: "Choose a category" })}</option>
+                            <option value={INCOME_SELECTION}>{intl.formatMessage({ id: "import.check.income", defaultMessage: "Income" })}</option>
+                          </>
+                        )}
                         {otherAccounts.map((other) => (
                           <option key={other.id} value={`${TRANSFER_PREFIX}${other.id}`}>
                             {row.amountCents >= 0
@@ -603,11 +621,12 @@ export default function ImportScreen() {
                               : intl.formatMessage({ id: "import.check.transferTo", defaultMessage: "Transfer to {account}" }, { account: other.name })}
                           </option>
                         ))}
-                        {openCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
+                        {!offBudget &&
+                          openCategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
                       </select>
                       {transferRuleOf(selections[row.id] ?? "", row.amountCents) !== "none" && (
                         <>
