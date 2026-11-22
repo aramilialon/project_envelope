@@ -247,6 +247,8 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       let partialTransfers = 0;
       let settledWithTransfer = 0;
       let cardSpendingWithReservation = 0;
+      let askedBeyondWithTransfer = 0;
+      let askedBeyondChecked = 0;
       for (let run = 0; run < 500; run++) {
         const input = randomMonth(random);
         const month = computeBudgetMonth(input, MONTH);
@@ -265,13 +267,19 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
         const followed = followTodos(input, month);
         const after = computeBudgetMonth(followed, MONTH);
         assert.equal(after.unassigned, month.unassigned - total(items), context);
-        // Exactly what it owes, unless a category's card spending asked on it was more than the
-        // card had to cover (#731): that money then stays set aside for the card.
+        // Exactly what it owes, plus what a category's card spending asked on it was beyond what
+        // the card had to cover (#731): that money stays set aside for the card. With a
+        // card-to-card transfer, that money can move on to the card that paid it (#732), so those
+        // few runs are counted instead, and kept a small minority.
         const askedBeyond = month.paymentCategories.some((card) => askedOnCategoriesFor(month, card) > toCover(card));
-        if (!askedBeyond) {
+        if (askedBeyond && (input.cardTransfers ?? []).length > 0) {
+          askedBeyondWithTransfer++;
+        } else {
           for (const card of month.paymentCategories) {
             const settled = find(after.paymentCategories, card.categoryId);
-            assert.equal(settled.available, Math.max(card.available, card.owed ?? 0), `${context}, card ${card.categoryId}`);
+            const beyond = Math.max(0, askedOnCategoriesFor(month, card) - toCover(card));
+            if (beyond > 0) askedBeyondChecked++;
+            assert.equal(settled.available, Math.max(card.available, card.owed ?? 0) + beyond, `${context}, card ${card.categoryId}`);
           }
         }
         assertSettled(month, after, context);
@@ -285,6 +293,9 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       assert.ok(settledWithTransfer > 100, `only ${settledWithTransfer} runs settled with a card-to-card transfer`);
       assert.ok(partialTransfers > 30, `only ${partialTransfers} runs had a charged card left with something to cover`);
       assert.ok(cardSpendingWithReservation > 20, `only ${cardSpendingWithReservation} runs asked card spending with a reservation`);
+      // The exact figure is checked on cards asked beyond their to cover too, not only on the others.
+      assert.ok(askedBeyondChecked > 5, `only ${askedBeyondChecked} cards were asked beyond their to cover`);
+      assert.ok(askedBeyondWithTransfer < 50, `${askedBeyondWithTransfer} runs asked a card's spending beyond its to cover, with a transfer`);
     });
 
     it("covering the categories' whole overspend first, then following the list, settles every card too", () => {
