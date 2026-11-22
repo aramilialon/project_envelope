@@ -1162,7 +1162,14 @@ const syncLockedMemo: OperationSpec<SyncParams> = {
 type ReconcileParams = { account: string; date: string; ticked: string[]; statementBalanceCents: number };
 const reconcile: OperationSpec<ReconcileParams> = {
   writes: (_model, p) => [p.account],
-  generate(model, { random }) {
+  generate(model, { random, progress }) {
+    // Now and then a closed account, with nothing ticked when it kept no cleared row: refused
+    // `account_closed` either way (the database refuses its reconciliation, ADR 0018).
+    const closed = model.closedAccounts();
+    if (closed.length > 0 && random.chance(0.1)) {
+      const account = random.pick(closed);
+      return { account: account.handle, date: random.date(progress), ticked: [], statementBalanceCents: model.lastReconciledBalance(account.handle) };
+    }
     const cleared = [...model.transactions.values()].filter((e) => e.record.status === "cleared");
     if (cleared.length === 0) return undefined;
     const anchor = pickPreferringClosed(model, random, cleared, (e) => e.record.accountId, 0.25);
