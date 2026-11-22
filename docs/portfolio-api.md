@@ -21,7 +21,8 @@ What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain 
 but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
 settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
 from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
-[Private instruments](#private-instruments)).
+[Private instruments](#private-instruments)), and so did a workspace's own closing prices, typed or
+imported from a CSV file (#83, [Prices](#prices)); positions do not use them yet.
 
 ## Contents
 
@@ -30,6 +31,7 @@ from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1
 - [Workspace tax country](#workspace-tax-country)
 - [Brokerage accounts and their tax regime](#brokerage-accounts-and-their-tax-regime)
 - [Instruments](#instruments)
+- [Prices](#prices)
 - [Exchange rates](#exchange-rates)
 - [Portfolios](#portfolios)
 - [Trades](#trades)
@@ -88,7 +90,7 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 | 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
 | 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
-| 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
+| 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
 
 **Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
 misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
@@ -172,8 +174,10 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 { "taxCountry": "IT" }
 ```
 
-`taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+`taxCountry` is an officially assigned ISO 3166-1 alpha-2 code in upper case (`"it"` is refused
+with `invalid_tax_country`, and so are codes that name no country, such as `ZZ`, `EU`, `UN` or
+`UK`: the United Kingdom is `GB`), or `null` to remove it. A code stored before this check (#711)
+is still returned as it is, and can be replaced or removed. The answer is the workspace, with the brokerage
 accounts that have no tax regime yet:
 
 ```json
@@ -193,7 +197,7 @@ for their regimes right away.
 
 | Error | Details |
 | --- | --- |
-| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not a known region |
+| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
 | 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
@@ -365,7 +369,7 @@ workspaces may already use it.
 | `exchange` | the exchange's ISO 10383 market identifier code (MIC), exactly 4 letters or digits, such as `XMIL` or `XETR`; upper-cased |
 | `name` | required, up to 200 characters |
 | `type` | `stock`, `fund` (ETFs included), `etc_etn`, `government_bond`, `bond`, `certificate`, `cash`, `other`. The split follows the lines tax rules draw, since a row is never updated |
-| `currency` | three letters, upper-cased; the currency the instrument is quoted in |
+| `currency` | an ISO 4217 code the runtime lists as in use, upper-cased (the same check as an account's, #595); the currency the instrument is quoted in |
 | `assetClass` | optional free text, up to 64 characters |
 | `priceFactorE6` | optional, default `1000000` (a factor of 1); `10000` (0.01) for a bond quoted in percent of nominal or a price in pence |
 
@@ -388,7 +392,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 | 400 `invalid_isin` | `{ "isin" }`: wrong shape or check digit |
 | 400 `invalid_ticker`, `invalid_exchange` | `{ "ticker" }`, `{ "exchange" }` |
 | 400 `invalid_instrument_type` | `{ "type" }` |
-| 400 `invalid_currency` | `{ "currency" }`: not three letters |
+| 400 `invalid_currency` | `{ "currency" }` as sent: not an ISO 4217 code in use (`XYZ`, the withdrawn `VEF`) |
 | 400 `invalid_instrument_field` | `{ "field" }` (a missing name, or a field that is not a string) or `{ "field", "maxLength" }` |
 | 400 `invalid_price_factor` | `{ "label": "priceFactorE6", "value" }`: not a positive safe integer |
 
@@ -442,6 +446,77 @@ catalog's, never conflict, so a private instrument may be named like a shared on
 
 A trade names a private instrument by its `instrumentId` like any other; in another workspace the
 same id is `unknown_instrument`.
+
+## Prices
+
+An instrument without automatic quotes (some government bonds, funds, a private instrument such as
+real estate) gets its closing prices from the workspace itself: typed one date at a time, or
+imported from a CSV file. Such a price is the workspace's own (`"origin": "own"`): no other
+workspace sees it, and it never changes a shared price fetched from a provider (`"origin":
+"shared"`), which every workspace reads. On a date with both, the workspace's own price is the one
+that values the instrument ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md),
+"Precedence"). Every path below starts with `/workspaces/:workspaceId/instruments/:instrumentId/prices`.
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to", "value" }`, as on `GET /fx-rates` |
+| `PUT …/prices/:date` `{ "closeE6" }` | `owner`, `editor` | 201 with the price when the date had no own price; 200 when it replaced another close, or already had this one (then nothing is written) |
+| `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `{ "error": "price not found" }` when the date has no own price, even if it has a shared one, which is never deleted |
+| `POST …/prices/import?locale=` with a `text/csv` body | `owner`, `editor` | 200 `{ "inserted", "replaced", "unchanged", "from", "to" }`: how many dates were new, had another close, or already had this one, and the first and last date of the file |
+
+A price object:
+
+```json
+{ "priceDate": "2026-03-31", "closeE6": 101500000, "source": "manual", "origin": "own" }
+```
+
+`closeE6` is the close as quoted × 10^6, like a trade's `priceE6`: a bond quoted in percent of its
+nominal has its close in percent too. It is a safe integer, zero or more. `source` is `manual` for a
+typed price, `csv` for an imported one and `provider` for a shared one. The instrument must be a
+shared one or one of the workspace's private instruments: another workspace's private instrument,
+an unknown or a malformed id answers 404 `{ "error": "instrument not found" }`, the same body as
+every other route's missing row.
+
+**The file.** Two columns, the date (`YYYY-MM-DD`) and the close, read in the locale given by
+`?locale=` (`en`, a dot for decimals, when left out; a tag of at most 35 characters, with no
+extension such as `-u-` and no private-use `-x-` part): a close with a comma, such as `"101,50"` in
+`it-IT`, is quoted as in any CSV file. A first line reading `date,close` is a header and is skipped;
+blank lines are skipped. The body is `content-type: text/csv`, at most 1 MiB and 20,000 rows, and an
+import counts toward the per-user file import limit (`apps/api/README.md`, "Rate limits").
+
+```csv
+date,close
+2026-03-30,101.25
+2026-03-31,101.5
+```
+
+The file is stored whole or not at all. The first line that breaks a rule refuses it with 400
+`{ "error": "invalid_price_file", "details": { "line", "column", "reason" } }`, the line counted
+from 1 with the header and blank lines, the column 1 for the date and 2 for the close. `reason` is
+one of `missing_column`, `extra_column`, `invalid_date` (not a real date, or a date after today,
+then with `"max": "<today>"` in `details` too), `duplicate_date`
+(a date an earlier line gave), `invalid_price_format`, `invalid_price` (negative, or beyond the safe
+range) and `no_rows` (no price in the file). Importing the same file again answers every date as
+`unchanged`. An imported price replaces the workspace's own price of the same date, typed or
+imported, when its close differs.
+
+**Dates.** A price is dated today or earlier in the workspace's time zone, with no lower limit: a
+price from 1850 is accepted, and a price dated before an instrument's first buy values nothing. A
+later date is 400 `invalid_date` with `{ "field": "date", "max": "<today>" }`; in a file, the
+line's `reason` is `invalid_date` with `max`.
+
+| Code | When |
+| --- | --- |
+| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` is not a real date (`{ "field", "value" }`) or is given twice (`{ "field" }`), or `to` is before `from` (`{ "field": "to", "value" }`) |
+| `invalid_price` | `closeE6` is missing, not an integer, negative or beyond the safe range |
+| `unknown_field`, `invalid_body` | a `PUT` body with another field than `closeE6`, or one that is not a JSON object |
+| `invalid_price_file` | a line of the file breaks a rule (above) |
+| `too_many_rows` | the file has more than 20,000 rows (`{ "max": 20000 }`) |
+| `invalid_locale` | `?locale=` is not a locale tag, is longer than 35 characters, or has an extension or private-use part (`{ "value" }`) |
+
+A body of another type than `text/csv` on the import answers 415. Each `PUT` or `DELETE` that
+changes a price writes one entry in the workspace's audit log, and each import that changes any
+price one summary entry. Prices are not synced from devices yet.
 
 ## Exchange rates
 

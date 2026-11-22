@@ -1,6 +1,7 @@
 // Entry point of @envelope/core: everything the apps are allowed to use.
 export type { ValidationErrorCode, ValidationErrorDetail } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
+export { isAssignedCountryCode, ISO_3166_1_ALPHA2_CODES } from "./country.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
   assertAmount,
@@ -65,6 +66,8 @@ export {
 } from "./portfolio/positions.ts";
 export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
+export type { PriceCsvRow, PriceFileProblem } from "./portfolio/price-csv.ts";
+export { assertLocale, assertPriceDate, MAX_LOCALE_LENGTH, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./portfolio/price-csv.ts";
 export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeFigures, TradeRegimeContext } from "./portfolio/trades.ts";
 export {
   checkAccountTradesAgainstRegime,

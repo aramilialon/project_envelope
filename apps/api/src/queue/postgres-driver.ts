@@ -15,12 +15,25 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === UNIQUE_VIOLATION;
 }
 
+export interface PostgresQueueDriverOptions {
+  /**
+   * How long an idle worker waits between two looks for new jobs, in seconds: pg-boss's own
+   * default (2) when left out, at least 0.5. Only the tests that wait for a real delivery set
+   * it lower (#641).
+   */
+  readonly pollingIntervalSeconds?: number;
+}
+
 /**
  * `appPool` is `envelope_app`'s own pool (ADR 0006): a job's effects, and the `processed_jobs`
  * idempotency marker (#36), are domain writes and belong on that connection, never on this
  * driver's own `envelope_queue` one (which pg-boss's own bookkeeping uses).
  */
-export function createPostgresQueueDriver(connectionString: string, appPool: DbPool): QueueDriver {
+export function createPostgresQueueDriver(
+  connectionString: string,
+  appPool: DbPool,
+  options: PostgresQueueDriverOptions = {},
+): QueueDriver {
   const boss = new PgBoss(connectionString);
   const knownQueues = new Set<string>();
 
@@ -77,7 +90,8 @@ export function createPostgresQueueDriver(connectionString: string, appPool: DbP
 
     async work<T extends object>(jobType: string, handler: JobHandler<T>): Promise<void> {
       await ensureQueue(jobType);
-      await boss.work<T>(jobType, async (jobs) => {
+      const workOptions = options.pollingIntervalSeconds === undefined ? {} : { pollingIntervalSeconds: options.pollingIntervalSeconds };
+      await boss.work<T>(jobType, workOptions, async (jobs) => {
         for (const job of jobs) {
           await processJob(appPool, jobType, job.id, job.data, handler);
         }

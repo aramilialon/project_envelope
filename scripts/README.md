@@ -12,6 +12,8 @@ single amount before the API refused them (#651, ADR 0002; how to fix one by han
 `dev/find-cross-currency.sql`, also read-only, lists an on-budget account outside its workspace's
 base currency, a transfer between accounts in different currencies, and a workspace or account
 whose currency is not three upper-case letters, stored before the API refused them (#652; [`apps/api/README.md`](../apps/api/README.md), "Currencies mixed before #652").
+`dev/find-unassigned-tax-countries.sql`, also read-only, lists a workspace whose tax country is not
+an officially assigned ISO 3166-1 code, stored before the API refused it (#711; [`apps/api/README.md`](../apps/api/README.md), "Codes stored before #711 and #595").
 `@envelope/scripts` (this package) is the one part with real
 dependencies — the demo data seed and the disposable environments — and it also holds the
 installer's sandbox (`install-env/`, "Installer sandbox" below).
