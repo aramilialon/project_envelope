@@ -7,6 +7,7 @@ import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
 import { owedAsOf } from "./card-balance.ts";
+import { computeTodos, reservationShortfall } from "../presentation/todos.ts";
 import { shiftMonth } from "../month.ts";
 import type { BudgetAccount, BudgetTransaction } from "./transactions.ts";
 import { aggregateTransactions, UNASSIGNED } from "./transactions.ts";
@@ -85,14 +86,22 @@ describe("aggregateTransactions", () => {
     assert.deepEqual(result.income, []);
   });
 
-  it("counts a transfer between two credit cards once, from the outflow leg (design.md, 'Credit cards')", () => {
+  it("counts a transfer between two credit cards once, from the outflow leg: that card is charged, the other paid (#732)", () => {
+    const outflow = tx({ accountId: "visa", date: "2026-09-20", amount: -40000, transferAccountId: "amex" });
     const result = aggregateTransactions(ACCOUNTS, [
-      tx({ accountId: "visa", date: "2026-09-20", amount: -40000, transferAccountId: "amex" }),
       tx({ accountId: "amex", date: "2026-09-20", amount: 40000, transferAccountId: "visa" }),
+      outflow,
     ]);
 
     assert.deepEqual(result.cardTransfers, [
-      { sourcePaymentCategoryId: "visa-payment", destinationPaymentCategoryId: "amex-payment", month: "2026-09", amount: 40000 },
+      {
+        paidPaymentCategoryId: "amex-payment",
+        chargedPaymentCategoryId: "visa-payment",
+        month: "2026-09",
+        date: "2026-09-20",
+        id: outflow.id,
+        amount: 40000,
+      },
     ]);
     assert.deepEqual(result.cardPayments, []);
     assert.deepEqual(result.activity, []);
@@ -353,6 +362,7 @@ describe("budget invariant with accounts and credit cards", () => {
     // that the test is not vacuous.
     let inCredit = 0;
     let carriedNegative = 0;
+    let settledMonths = 0;
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
     const months = ["2026-01", "2026-02", "2026-03", "2026-04"];
@@ -538,11 +548,33 @@ describe("budget invariant with accounts and credit cards", () => {
           const kept = before === undefined ? 0 : before.available < 0 ? before.available + before.cashOverspending : before.available;
           assert.equal(card.carriedOver, kept, `carried over on run ${run}, month ${month}`);
         }
+
+        // Following the month's "To do" list once settles it (#731, #732): every card's payment
+        // category holds at least what the card owes, no category is overspent in cash or short of
+        // its reservation, and the list asks for nothing more — card-to-card transfers included.
+        const asked = computeTodos({
+          unassignedCents: result.unassigned,
+          categories: result.categories,
+          paymentCategories: result.paymentCategories,
+          overdueScheduledItems: [],
+          targetsNeeded: [],
+        }).flatMap((item) => ("categoryId" in item && item.categoryId !== null ? [{ categoryId: item.categoryId, month, amount: item.amountCents }] : []));
+        const settled = computeBudgetMonth({ ...input, assignments: [...input.assignments, ...asked] }, month);
+        for (const card of settled.paymentCategories) {
+          assert.ok(card.available >= (card.owed ?? 0), `card ${card.categoryId} not settled on run ${run}, month ${month}`);
+          assert.equal(card.cashOverspending, 0, `card ${card.categoryId} overspent after settling on run ${run}, month ${month}`);
+        }
+        for (const c of settled.categories) {
+          assert.equal(c.cashOverspending, 0, `category ${c.categoryId} overspent after settling on run ${run}, month ${month}`);
+          assert.equal(reservationShortfall(c), 0, `reservation of ${c.categoryId} short after settling on run ${run}, month ${month}`);
+        }
+        if (asked.length > 0) settledMonths++;
         previous = result;
       }
     }
     assert.ok(inCredit > 10, `only ${inCredit} months had a payment category held negative by a card in credit`);
     assert.ok(carriedNegative > 5, `only ${carriedNegative} months carried a card's credit over`);
+    assert.ok(settledMonths > 600, `only ${settledMonths} months had something to settle`);
   });
 });
 

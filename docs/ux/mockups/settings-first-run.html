@@ -360,6 +360,17 @@ table.nt small{display:block;color:var(--muted)}
 .accl{display:grid;grid-template-columns:minmax(0,1fr) 150px 120px auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
 .accl small{display:block;color:var(--muted)}
 .accl select{min-height:34px;padding:0 6px;border:1px solid var(--rule);border-radius:3px;background:var(--paper)}
+/* #705: the close confirmation and the refusal, under the account's row */
+.acc-ask{display:flex;flex-direction:column;gap:8px;margin:0 0 10px;padding:14px 16px;border-radius:12px;background:var(--paper-2);border:1px solid var(--rule)}
+.acc-ask p{margin:0;color:var(--ink-2)}
+.acc-refusal{margin:0 0 10px;padding:10px 0;border-bottom:1px solid var(--rule-soft)}
+.acc-refusal p{margin:0}
+.acc-refusal ul{margin:4px 0 0;padding-left:20px}
+/* A closed row's budget is plain text, set where the select's text sits; the action column has one
+   width in every row, so "Reopen" and "Close account" line up. */
+.accl{grid-template-columns:minmax(0,1fr) 150px 120px 112px}
+.accl > button{justify-self:end}
+.accl .ro-val{padding-left:7px;color:var(--ink-2)}
 
 /* Mariner restyle (shared with the budget month): sentence-case labels, the display face for
    titles and big figures, softer corners, and the navigation band that replaces the sidebar. */
@@ -384,7 +395,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, settings mockup, split in two: <b>your account</b> (applies to you in every workspace, from the menu with your name) and <b>workspace settings</b> (apply to every member, from the workspace menu). In the workspace settings you can switch the role you view the page with. Then the first run.</p>
+    <p><b>envelope</b>, settings mockup, split in two: <b>your account</b> (applies to you in every workspace, from the menu with your name) and <b>workspace settings</b> (apply to every member, from the workspace menu). In the workspace settings you can switch the role you view the page with; under Accounts, which an owner or an editor manages, “Close account” asks first (Prepaid card, Gas card), or says why the account can't be closed yet (Savings, Visa, Store card), and a closed account can be reopened. Then the first run.</p>
     <div class="views" role="tablist" aria-label="Screen">
       <button type="button" role="tab" id="tab-acc" aria-controls="view-acc" aria-selected="true">Your account</button>
       <button type="button" role="tab" id="tab-ws" aria-controls="view-ws" aria-selected="false">Workspace</button>
@@ -478,7 +489,21 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       { id: 'g3', name: 'Predictable expenses', cats: [['Car insurance'], ['Car tax'], ['Gifts'], ['Vet'], ['Gym', true]] },
       { id: 'g4', name: 'Fun', cats: [['Subscriptions'], ['Hobbies']] }
     ],
-    accounts: [['Checking', 'Checking', true, false], ['Savings', 'Savings', true, false], ['Cash', 'Cash', true, false], ['Visa', 'Credit card', true, false], ['ETF broker', 'Brokerage', false, false], ['Home mortgage', 'Mortgage', false, false], ['Old post office account', 'Checking', true, true]],
+    // Balances as of today (#702); pay: a card's payment category's available amount (#705).
+    accounts: [
+      { name: 'Checking', type: 'Checking', on: true, bal: 341258 },
+      { name: 'Savings', type: 'Savings', on: true, bal: 800000 },
+      { name: 'Cash', type: 'Cash', on: true, bal: 8540 },
+      { name: 'Prepaid card', type: 'Cash', on: true, bal: 0 },
+      { name: 'Visa', type: 'Credit card', on: true, bal: -64230, card: true, pay: 59380 },
+      { name: 'Gas card', type: 'Credit card', on: true, bal: 0, card: true, pay: 0 },
+      { name: 'Store card', type: 'Credit card', on: true, bal: 0, card: true, pay: -1000, later: { amount: 5000, month: 'October' } },
+      { name: 'ETF broker', type: 'Brokerage', on: false, bal: 4218000 },
+      { name: 'Home mortgage', type: 'Mortgage', on: false, bal: -9630000 },
+      { name: 'Old post office account', type: 'Checking', on: true, bal: 0, closed: 'Sep 12' }
+    ],
+    // #705: the account whose close is being confirmed, or refused, and the last close or reopen.
+    accAsk: null, accRefused: null, accDone: null,
     alerts: [
       ['over', 'A category goes negative', 'Right away', [true, true, false]],
       ['exceed', 'An expense is more than what is available', 'Right away, while you record the expense', [true, false, false]],
@@ -561,7 +586,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   // ---- Workspace settings: shared by every member
   function can(what) {
     if (S.as === 'owner') return true;
-    if (S.as === 'editor') return what === 'categories';
+    // An editor manages the accounts (close and reopen included, #705) and the categories.
+    if (S.as === 'editor') return what === 'categories' || what === 'accounts';
     return false;
   }
   function renderWs() {
@@ -569,7 +595,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var w = S.workspace, ro = !can(S.ws), dis = ro ? ' disabled' : '';
     var out = '<div class="row-btns" style="justify-content:space-between"><span class="scope">Applies to <b>every member</b> of the Family workspace</span>' +
       '<label class="as">View as <select data-as="1">' + ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (S.as === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></label></div>' +
-      (ro ? '<div class="ro">' + (S.as === 'reader' ? 'With read-only access you see these settings but cannot change them.' : 'Only an owner can change this section. An editor manages the categories.') + '</div>' : '');
+      (ro ? '<div class="ro">' + (S.as === 'reader' ? 'With read-only access you see these settings but cannot change them.' : 'Only an owner can change this section. An editor manages the accounts and the categories.') + '</div>' : '');
     if (S.ws === 'general') {
       out += h('General') +
         '<div class="field"><label for="w-name">Name</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"' + dis + '></div>' +
@@ -611,13 +637,53 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         }).join('') + '</div>' +
         (ro ? '' : '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Add a group</button></div>');
     } else if (S.ws === 'accounts') {
+      var accRow = function (a, k) {
+        var closed = !!a.closed;
+        // A closed account's "On budget" is plain text, not a disabled select: nothing about it can change.
+        var budget = closed ? '<span class="ro-val">' + (a.on ? 'On budget' : 'Off budget') + '</span>'
+          : '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro ? ' disabled' : '') + '><option value="1"' + (a.on ? ' selected' : '') + '>On budget</option><option value="0"' + (a.on ? '' : ' selected') + '>Off budget</option></select></span>';
+        // A closing date in the current year shows no year ("closed on Sep 12"); one in another year does.
+        var html = '<div class="accl"><span><b style="font-weight:600' + (closed ? ';color:var(--muted)' : '') + '">' + esc(a.name) + '</b><small>' + esc(a.type) + ' · ' + (closed ? 'closed on ' + a.closed : '<span class="n">' + fmt(a.bal) + '</span> today') + '</small></span>' +
+          budget +
+          '<span class="hint">' + (closed ? 'still counts in past months' : a.on ? 'counts toward “Unassigned”' : 'only in net worth') + '</span>' +
+          (ro ? '<span></span>' : closed ? '<button type="button" class="plain" data-accreopen="' + k + '">Reopen<span class="sr"> ' + esc(a.name) + '</span></button>'
+            : '<button type="button" class="plain" data-accclose="' + k + '" aria-expanded="' + (S.accAsk === k) + '">Close account<span class="sr">, ' + esc(a.name) + '</span></button>') + '</div>';
+        // #705: closing asks first, under the row: the balance today and that nothing is dated after
+        // today (the two figures #703 refuses on, both zero here), and what closing does. A card's
+        // payment category stays in the month of the closing and earlier ones, and leaves the
+        // budget from the month after it.
+        if (S.accAsk === k) {
+          html += '<div class="acc-ask" role="group" aria-labelledby="acc-ask-h"><b id="acc-ask-h">Close ' + esc(a.name) + '?</b>' +
+            '<p>' + esc(a.name) + ' is at <span class="n">' + fmt(0) + '</span>, with nothing dated after today.</p>' +
+            '<p>A closed account takes no new transactions, transfers or trades. Its past transactions stay, and still count in the months they belong to. It can be reopened.</p>' +
+            (a.card ? '<p>Its payment category, ' + esc(a.name) + ', stays in September and earlier months, and leaves the budget from October.</p>' : '') +
+            '<div class="row-btns"><button type="button" class="btn bad primary" data-accconfirm="' + k + '">Close ' + esc(a.name) + '</button><button type="button" class="btn" data-acccancel="' + k + '">Cancel</button></div></div>';
+        }
+        // The refusal of #703 and #741. A card adds the rule of #705: its payment category's
+        // available amount is €0.00 this month and nothing is assigned to it in a later month. The
+        // rule comes first, then only the facts that break it, each naming what it is about.
+        if (S.accRefused === k) {
+          var reasons = [], intro;
+          if (a.card) {
+            intro = esc(a.name) + ' can\'t be closed yet: it has to be empty, today and later, and its payment category has to have <span class="n">' + fmt(0) + '</span> available, with nothing assigned to it in a later month. Right now:';
+            if (a.bal !== 0) reasons.push(esc(a.name) + '\'s balance today is <span class="n">' + fmt(a.bal) + '</span>.');
+            if (a.pay !== 0) reasons.push('Its payment category, ' + esc(a.name) + ', has <span class="n">' + fmt(a.pay) + '</span> available.');
+            if (a.later) reasons.push('Its payment category, ' + esc(a.name) + ', has <span class="n">' + fmt(a.later.amount) + '</span> assigned in ' + a.later.month + '.');
+          } else {
+            intro = esc(a.name) + ' can\'t be closed yet: it has to be empty, today and later. Right now:';
+            if (a.bal !== 0) reasons.push('Its balance today is <span class="n">' + fmt(a.bal) + '</span>.');
+          }
+          html += '<div class="hint bad acc-refusal" role="alert"><p>' + intro + '</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
+        }
+        return html;
+      };
+      var openAcc = [], closedAcc = [];
+      S.accounts.forEach(function (a, k) { (a.closed ? closedAcc : openAcc).push(accRow(a, k)); });
       out += h('Accounts', 'The workspace\'s accounts. A real account belongs to one workspace only, so it is never counted twice.') +
-        '<div>' + S.accounts.map(function (a, k) {
-          return '<div class="accl"><span><b style="font-weight:600' + (a[3] ? ';color:var(--muted)' : '') + '">' + esc(a[0]) + '</b><small>' + esc(a[1]) + (a[3] ? ' · closed' : '') + '</small></span>' +
-            '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro || a[3] ? ' disabled' : '') + '><option value="1"' + (a[2] ? ' selected' : '') + '>On budget</option><option value="0"' + (a[2] ? '' : ' selected') + '>Off budget</option></select></span>' +
-            '<span class="hint">' + (a[2] ? 'counts toward “Unassigned”' : 'only in net worth') + '</span>' +
-            (ro ? '<span></span>' : '<button type="button" class="plain' + (a[3] ? '' : ' danger') + '" data-accclose="' + k + '">' + (a[3] ? 'Reopen' : 'Close') + '</button>') + '</div>';
-        }).join('') + '</div><p class="hint" style="margin:0">An account can be closed when its balance is zero: it stays in the history and no longer shows in the budget.</p>';
+        (S.accDone ? '<p class="saved" role="status" style="margin:0">' + esc(S.accDone) + '</p>' : '') +
+        '<div>' + openAcc.join('') + '</div>' +
+        (closedAcc.length ? '<div class="block"><h4>Closed</h4><div>' + closedAcc.join('') + '</div></div>' : '') +
+        '<p class="hint" style="margin:0">A closed account keeps its history, and past months still count it. Reopen it to add transactions.</p>';
     } else {
       out += h('Data', 'A workspace\'s data belongs to the people who use it.') +
         '<div class="block"><h4>Export</h4><p class="hint" style="margin:0">The whole workspace: accounts, transactions, budget, targets and portfolios, in a file you can read and import again.</p>' +
@@ -708,7 +774,26 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.carch) { var a = d.carch.split(':').map(Number), cc = S.groups[a[0]].cats[a[1]]; cc[1] = !cc[1]; return renderWs(); }
     if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['New category']); renderWs(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
     if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'New group', cats: [['New category']] }); return renderWs(); }
-    if (d.accclose) { var ac = S.accounts[Number(d.accclose)]; ac[3] = !ac[3]; return renderWs(); }
+    if (d.accclose) {
+      var ak = Number(d.accclose), ac = S.accounts[ak];
+      S.accDone = null;
+      if (ac.bal !== 0 || (ac.card && (ac.pay !== 0 || ac.later))) { S.accAsk = null; S.accRefused = ak; return renderWs(); }
+      S.accRefused = null; S.accAsk = S.accAsk === ak ? null : ak; renderWs();
+      // Focus goes to the safe choice; Esc or Cancel puts it back on the row's Close.
+      var cb = document.querySelector('[data-acccancel="' + ak + '"]'); if (cb) cb.focus();
+      return;
+    }
+    if (d.acccancel) { var ck = d.acccancel; S.accAsk = null; renderWs(); var cl = document.querySelector('[data-accclose="' + ck + '"]'); if (cl) cl.focus(); return; }
+    if (d.accconfirm) {
+      var ok = S.accounts[Number(d.accconfirm)];
+      ok.closed = 'Sep 25'; S.accAsk = null; S.accDone = ok.name + ' is closed.';
+      renderWs(); var re = document.querySelector('[data-accreopen="' + d.accconfirm + '"]'); if (re) re.focus(); return;
+    }
+    if (d.accreopen) {
+      var ro2 = S.accounts[Number(d.accreopen)];
+      delete ro2.closed; S.accRefused = null; S.accAsk = null; S.accDone = ro2.card ? ro2.name + ' is open again, and its payment category is back in the budget.' : ro2.name + ' is open again.';
+      renderWs(); var cc = document.querySelector('[data-accclose="' + d.accreopen + '"]'); if (cc) cc.focus(); return;
+    }
     if (d.rmdev) { S.devices.splice(Number(d.rmdev), 1); return renderAcc(); }
     if (d.delws) { S.workspace.confirmDelete = ''; el('ws-main').innerHTML = '<div class="form">' + h('Workspace deleted', 'Nothing irreversible happens in the mockup: reload the page to start again.') + '</div>'; return; }
     if (d.onb === 'next') {
@@ -733,7 +818,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.set === 'wzone') { S.workspace.zone = t.value; return; }
     if (d.set === 'invrole') { S.invite.role = t.value; return; }
     if (d.as) { S.as = t.value; return renderWs(); }
-    if (d.accbud !== undefined) { S.accounts[Number(d.accbud)][2] = t.value === '1'; return renderWs(); }
+    if (d.accbud !== undefined) { S.accounts[Number(d.accbud)].on = t.value === '1'; return renderWs(); }
     if (d.role) {
       var m = S.members.filter(function (x) { return x.id === d.role; })[0];
       var owners = S.members.filter(function (x) { return x.role === 'owner'; }).length;
@@ -755,7 +840,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.cname) { var q = d.cname.split(':').map(Number); S.groups[q[0]].cats[q[1]][0] = t.value; }
     if (d.o === 'ws' || d.o === 'acc' || d.o === 'balStr') O[d.o] = t.value;
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { el('ws-menu').hidden = true; el('me-menu').hidden = true; } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    el('ws-menu').hidden = true; el('me-menu').hidden = true;
+    if (S.accAsk !== null) { var ak = S.accAsk; S.accAsk = null; renderWs(); var cl = document.querySelector('[data-accclose="' + ak + '"]'); if (cl) cl.focus(); }
+  });
   renderAll(); renderOnb();
 })();
 </script>

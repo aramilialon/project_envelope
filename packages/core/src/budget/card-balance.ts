@@ -1,7 +1,7 @@
 /**
  * A credit card's real, external balance, from its own account's transactions (#660, moved here
  * from `apps/api`'s budget repository so that the budget month can read the balance at the end of
- * every month it closes, and card-to-card transfers can read it too, #732).
+ * every month it closes, and card-to-card transfers read it too, #732).
  *
  * The balance is signed: positive is what is owed on the card, negative is a card in credit (it
  * was paid, or refunded, more than its whole balance). It counts every transaction of the card's

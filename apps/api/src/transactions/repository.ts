@@ -399,8 +399,9 @@ export interface TransferRecord {
  * `uncategorized_transaction`. A transfer between accounts in different currencies is refused with
  * `currency_mismatch` (`details`: `sourceCurrency`, `destinationCurrency`; #652): there are no
  * exchange rates, and one amount cannot mean the same money in two currencies.
- * Card-to-card is a card-to-card transfer (#260), moving money between the two cards' payment
- * categories once the budget month is computed, same as any other transfer here.
+ * Card-to-card is a card-to-card transfer (#260): once the budget month is computed, money set
+ * aside follows the debt, from the paid card's payment category to the charged card's (rule 8 of
+ * `packages/core`'s `budget-month.ts`, #732); stored the same as any other transfer here.
  */
 export async function createTransfer(db: DbPool | DbClient, input: CreateTransferInput, queue?: QueueDriver): Promise<TransferRecord> {
   assertAmount(input.amountCents);

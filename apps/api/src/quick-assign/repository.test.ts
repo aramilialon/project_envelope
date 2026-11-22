@@ -1,3 +1,4 @@
+import { computeTodos } from "@envelope/core";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
@@ -8,6 +9,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { upsertGoal } from "../goals/repository.ts";
 import { getBudgetMonth } from "../budget/repository.ts";
+import { createScheduledTransaction } from "../scheduled-transactions/repository.ts";
 import { createTransaction, createTransfer } from "../transactions/repository.ts";
 import { runQuickAssign } from "./repository.ts";
 
@@ -255,6 +257,74 @@ describe("quick assign repository", () => {
       [],
     );
   });
+
+  for (const order of [
+    ["cover_card_debt", "cover_overspending"],
+    ["cover_overspending", "cover_card_debt"],
+  ] as const) {
+    it(`${order[0]} then ${order[1]} assigns what the To do list asks, the card's spending asked on a category with a reservation only once (#731)`, async () => {
+      // A workspace of its own, so the To do list holds this scenario only. Restaurants: nothing
+      // assigned, €30 on the Visa and €10 scheduled; Groceries: nothing assigned, €20 on the
+      // Visa. The Visa owes €50, nothing set aside.
+      const ws = randomUUID();
+      await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'R1', 'EUR', 'UTC')", [ws]);
+      try {
+        const checking = await createAccount(pool, { workspaceId: ws, name: "Checking", type: "checking", currency: "EUR", onBudget: true });
+        const visa = await createAccount(pool, { workspaceId: ws, name: "Visa", type: "credit_card", currency: "EUR", onBudget: true });
+        const visaPayment = visa.paymentCategoryId;
+        assert.ok(visaPayment);
+        const group = await pool.query<{ id: string }>("INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id", [ws]);
+        const insertCategory = async (name: string, sortOrder: number) =>
+          (
+            await pool.query<{ id: string }>("INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, $3, $4) RETURNING id", [
+              ws,
+              group.rows[0]!.id,
+              name,
+              sortOrder,
+            ])
+          ).rows[0]!.id;
+        const restaurants = await insertCategory("Restaurants", 1);
+        const groceries = await insertCategory("Groceries", 2);
+        // Income dated before today: income still to come does not count as unassigned money yet.
+        await createTransaction(pool, { workspaceId: ws, accountId: checking.id, occurredAt: "2026-01-01", splits: [{ categoryId: null, amountCents: 100_000 }] });
+        await createTransaction(pool, { workspaceId: ws, accountId: visa.id, occurredAt: "2028-04-03", splits: [{ categoryId: restaurants, amountCents: -3_000 }] });
+        await createTransaction(pool, { workspaceId: ws, accountId: visa.id, occurredAt: "2028-04-04", splits: [{ categoryId: groceries, amountCents: -2_000 }] });
+        await createScheduledTransaction(pool, {
+          workspaceId: ws,
+          accountId: checking.id,
+          nextDueDate: "2028-04-20",
+          recurEvery: 1,
+          recurUnit: "month",
+          splits: [{ categoryId: restaurants, amountCents: 1_000 }],
+        });
+
+        const before = await getBudgetMonth(pool, ws, "2028-04");
+        const todos = computeTodos({ unassignedCents: before.unassigned, categories: before.categories, paymentCategories: before.paymentCategories, overdueScheduledItems: [], targetsNeeded: [] });
+        const asked = todos.reduce((sum, item) => sum + item.amountCents, 0);
+        // Restaurants €40 (€30 card + €10 scheduled), the Visa €50 − €30 = €20.
+        assert.equal(asked, 6_000);
+
+        const entries = [
+          ...(await runQuickAssign(pool, ws, authorId, "2028-04", { kind: "all" }, order[0])),
+          ...(await runQuickAssign(pool, ws, authorId, "2028-04", { kind: "all" }, order[1])),
+        ];
+        assert.equal(
+          entries.reduce((sum, e) => sum + e.amountCents, 0),
+          asked,
+        );
+
+        const after = await getBudgetMonth(pool, ws, "2028-04");
+        const visaAfter = after.paymentCategories.find((c) => c.categoryId === visaPayment);
+        assert.equal(visaAfter?.available, 5_000);
+        assert.equal(visaAfter?.uncovered, 0);
+        const restaurantsAfter = after.categories.find((c) => c.categoryId === restaurants);
+        assert.equal(restaurantsAfter?.available, 0);
+        assert.equal(restaurantsAfter?.reserved, 1_000);
+      } finally {
+        await pool.query("DELETE FROM workspaces WHERE id = $1", [ws]);
+      }
+    });
+  }
 
   it("repeat_assigned: copies last month's assigned amount into the current month", async () => {
     await createAssignmentBatch(pool, {
