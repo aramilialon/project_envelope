@@ -35,6 +35,7 @@ export type ValidationErrorCode =
   | "invalid_recurrence"
   | "invalid_currency"
   | "invalid_fx_rate"
+  | "invalid_rates_file"
   | "invalid_time_zone"
   | "brokerage_on_budget"
   | "account_currency_not_base"
