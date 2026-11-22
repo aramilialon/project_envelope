@@ -144,6 +144,22 @@ export function isAccountClosedViolation(error: unknown): boolean {
   return constraint === ACCOUNT_CLOSED_CONSTRAINT;
 }
 
+/**
+ * The constraint migrations 0034 and 0035's triggers name when a price or a trade points at an
+ * instrument the caller cannot see: an unknown id, or another workspace's private instrument
+ * (#505). A foreign key check ignores Row-Level Security, so the trigger is what refuses it.
+ */
+export const INSTRUMENT_NOT_FOUND_CONSTRAINT = "instrument_not_found";
+
+/** Whether `error` is PostgreSQL refusing a row whose instrument the caller cannot see. */
+export function isInstrumentNotFoundViolation(error: unknown): boolean {
+  if (sqlStateOf(error) !== CHECK_VIOLATION) {
+    return false;
+  }
+  const { constraint } = error as { constraint?: unknown };
+  return constraint === INSTRUMENT_NOT_FOUND_CONSTRAINT;
+}
+
 /** Fastify's own client errors keep their status; their body names the status, not Fastify's message. */
 const CLIENT_ERROR_NAMES: Readonly<Record<number, string>> = {
   400: "bad_request",

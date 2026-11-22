@@ -108,25 +108,31 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
 .inline input{flex:1 1 220px;min-height:38px;padding:0 12px;border:1px solid var(--rule);border-radius:10px;background:var(--paper)}
 .inline .err{flex-basis:100%;margin:0;color:var(--red-text);font-size:12.5px}
 .add-group{margin-top:18px}
+.phone .add-group .plain{min-height:44px}
 
 /* The category's own row detail, reduced to its header — the rest is budget-month.html's */
 .det{margin:0 0 10px;padding:16px 18px;border-radius:14px;background:var(--desk)}
 .det-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .det-h h4{margin:0;font-family:var(--display);font-size:20px;font-weight:700}
 .det .rest{margin:8px 0 0;color:var(--muted);font-size:12.5px}
+.empty-b{margin:18px 0 0;padding:16px 18px;border-radius:12px;background:var(--paper-2);color:var(--ink-2)}
+.empty-b p{margin:0}
+.empty-b p + p{margin-top:6px}
 .toast{margin-top:14px;padding:10px 14px;border-radius:10px;background:var(--paper-2);color:var(--ink-2);font-size:13px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, proposal for <b>#397</b>: add and rename categories and groups from the budget month itself. Each group row gets one quiet <b>⋯</b> menu (add a category to it, rename it, or go to Workspace settings to reorder or archive); <b>+ Add a group</b> sits below the last group; a category's own row detail gets <b>Rename</b>. Names are typed inline, in place, never in a side sheet. Workspace settings → Categories stays the full management view. Only an owner or an editor sees any of it.</p>
+    <p><b>envelope</b>, proposal for <b>#397</b>: add and rename categories and groups from the budget month itself. Each group row gets one quiet <b>⋯</b> menu (add a category to it, rename it, or go to Workspace settings to reorder or archive); <b>+ Add a group</b> sits below the last group; a category's own row detail gets <b>Rename</b>. Names are typed inline, in place, never in a side sheet. Workspace settings → Categories stays the full management view. Only an owner or an editor sees any of it. With no categories yet (#709), the empty budget points at “+ Add a group”.</p>
   </div>
   <div class="switches">
     <span>Width</span>
     <span class="seg"><button type="button" data-w="desk" aria-pressed="true">Desktop</button><button type="button" data-w="phone" aria-pressed="false">Phone</button></span>
     <span>Role</span>
     <span class="seg"><button type="button" data-r="editor" aria-pressed="true">Owner or editor</button><button type="button" data-r="reader" aria-pressed="false">Read only</button></span>
+    <span>Workspace (sample)</span>
+    <span class="seg"><button type="button" data-e="0" aria-pressed="true">With categories</button><button type="button" data-e="1" aria-pressed="false">No categories yet</button></span>
   </div>
 
   <div class="frame" id="frame">
@@ -216,6 +222,12 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     frame.className = 'frame' + (S.width === 'phone' ? ' phone' : '');
     var html = '<p class="note">(timeline, “To do”, toolbar: unchanged, see budget-month.html)</p>';
     html += GROUPS.map(groupBlock).join('');
+    // #709: a budget with no categories points at the inline "+ Add a group" right below it, not at
+    // Workspace settings; a read-only member, who cannot add any, is told who can.
+    if (!GROUPS.length) {
+      html += '<div class="empty-b"><p>No categories yet. Categories hold the money you assign, like rent, groceries or a trip; groups keep them together.</p>' +
+        '<p>' + (canWrite() ? 'Add a group first, then its categories.' : 'An owner or an editor can add them.') + '</p></div>';
+    }
     if (canWrite()) {
       html += S.editing && S.editing.kind === 'group' ? '<div class="add-group">' + field('Name of the new group', '', 'Add') + '</div>' :
         '<div class="add-group"><button type="button" class="plain" data-add-group="1">+ Add a group</button></div>';
@@ -295,6 +307,16 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     b.addEventListener('click', function () {
       S.width = b.dataset.w;
       document.querySelectorAll('[data-w]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      render();
+    });
+  });
+  var SAVED = null;
+  document.querySelectorAll('[data-e]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (b.dataset.e === '1' && !SAVED) { SAVED = GROUPS.splice(0, GROUPS.length); }
+      if (b.dataset.e === '0' && SAVED) { GROUPS.splice(0, GROUPS.length); Array.prototype.push.apply(GROUPS, SAVED); SAVED = null; }
+      S.menu = null; S.editing = null; S.error = null; S.toast = null; S.open = null;
+      document.querySelectorAll('[data-e]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
       render();
     });
   });

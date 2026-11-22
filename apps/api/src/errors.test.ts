@@ -5,7 +5,15 @@ import { describe, it } from "node:test";
 import { ValidationError } from "@envelope/core";
 import Fastify from "fastify";
 
-import { AccountClosedError, LOG_REDACT_PATHS, registerErrorHandler, strictBody, toErrorReply, TooManyRequestsError } from "./errors.ts";
+import {
+  AccountClosedError,
+  isInstrumentNotFoundViolation,
+  LOG_REDACT_PATHS,
+  registerErrorHandler,
+  strictBody,
+  toErrorReply,
+  TooManyRequestsError,
+} from "./errors.ts";
 import { ID_PARAM_NAMES, isUuid } from "./ids.ts";
 
 describe("registerErrorHandler's logging (#512)", () => {
@@ -184,6 +192,16 @@ describe("toErrorReply (#512)", () => {
       statusCode: 500,
       body: { error: "internal_error" },
     });
+  });
+});
+
+describe("isInstrumentNotFoundViolation (#83)", () => {
+  it("recognises only the check_violation the instrument triggers raise", () => {
+    const raised = { code: "23514", severity: "ERROR", constraint: "instrument_not_found" };
+    assert.equal(isInstrumentNotFoundViolation(raised), true);
+    assert.equal(isInstrumentNotFoundViolation({ ...raised, constraint: "account_closed" }), false);
+    assert.equal(isInstrumentNotFoundViolation({ ...raised, code: "23503" }), false);
+    assert.equal(isInstrumentNotFoundViolation(new Error("instrument_not_found")), false);
   });
 });
 

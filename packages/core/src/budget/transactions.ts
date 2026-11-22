@@ -33,7 +33,7 @@
  *   - cash to cash: no budget effect;
  *   - cash to credit card: a card payment, counted once, from the card side;
  *   - credit card to credit card: a card-to-card transfer (design.md, "Credit cards"), counted
- *     once, from the outflow (negative) leg.
+ *     once, from the outflow (negative) leg: that leg's card is charged, the other card is paid.
  *
  * Limitation of this version: income on a credit card (for example cashback)
  * is not modeled as a transaction here, and is refused as
@@ -173,10 +173,13 @@ export function aggregateTransactions(
           // double-counted. Both sides are on-budget credit cards, so both are guaranteed a
           // payment category (indexAccounts already validated it).
           if (t.amount < 0 && account.paymentCategoryId !== undefined && other.paymentCategoryId !== undefined) {
+            // The outflow leg's card is charged; the other card's debt is paid (rule 8, #732).
             cardTransfers.push({
-              sourcePaymentCategoryId: account.paymentCategoryId,
-              destinationPaymentCategoryId: other.paymentCategoryId,
+              paidPaymentCategoryId: other.paymentCategoryId,
+              chargedPaymentCategoryId: account.paymentCategoryId,
               month,
+              date: t.date,
+              id: t.id,
               amount: -t.amount,
             });
           }

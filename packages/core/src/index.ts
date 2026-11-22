@@ -66,6 +66,8 @@ export {
 } from "./portfolio/positions.ts";
 export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
+export type { PriceCsvRow, PriceFileProblem } from "./portfolio/price-csv.ts";
+export { assertLocale, assertPriceDate, MAX_LOCALE_LENGTH, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./portfolio/price-csv.ts";
 export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeFigures, TradeRegimeContext } from "./portfolio/trades.ts";
 export {
   checkAccountTradesAgainstRegime,
@@ -153,8 +155,8 @@ export type {
   TimelineValueTick,
 } from "./presentation/timeline.ts";
 export { computeTimeline } from "./presentation/timeline.ts";
-export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
-export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";
+export type { CardPartAsked, CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
+export { amountNeededToCover, cardAmountAsked, cardPartsAskedOnCategories, computeTodos, reservationShortfall } from "./presentation/todos.ts";
 export type { AccountBalance, BalanceRow, NotYetRecordedAmount } from "./presentation/accountBalance.ts";
 export { computeAccountBalance, isAfterToday } from "./presentation/accountBalance.ts";
 export type { AvailableChange, InflowTiming, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";
