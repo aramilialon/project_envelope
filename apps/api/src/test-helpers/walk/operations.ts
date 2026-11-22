@@ -322,16 +322,32 @@ const WIND_DOWN_FROM = 0.3;
 /** Where in the walk a brokerage account that never traded may close. */
 const LATE = 0.6;
 
+function hasTraded(model: WorkspaceModel, account: AccountEntity): boolean {
+  return [...model.trades.values()].some((trade) => trade.record.accountId === account.id);
+}
+
 /**
  * The brokerage account the walk winds down from `WIND_DOWN_FROM` on, so that it closes one with a
- * history (#735): the last open one by handle, while another stays open and the workspace has room
- * for a closed account. Buys mostly go elsewhere, sales mostly sell its holdings whole, and
- * `sweepAccount` mostly withdraws its cash once it holds nothing.
+ * history (#735): the last open one by handle that has traded, while another stays open and the
+ * workspace has room for a closed account. Buys mostly go elsewhere, sales mostly sell its
+ * holdings whole, and `sweepAccount` mostly withdraws its cash once it holds nothing.
  */
 function windingDown(model: WorkspaceModel, progress: number): AccountEntity | undefined {
   if (progress < WIND_DOWN_FROM || model.closedAccounts().length >= MAX_CLOSED_ACCOUNTS) return undefined;
   const open = model.openAccounts().filter((account) => account.type === "brokerage");
-  return open.length >= 2 ? open[open.length - 1] : undefined;
+  if (open.length < 2) return undefined;
+  return open.filter((account) => hasTraded(model, account)).at(-1);
+}
+
+/**
+ * One of `items`, now and then (`chance`) one on a closed account when there is one, so that the
+ * rows a closed account kept (its trades, its cleared and reconciled transactions) are written to
+ * as well (#735, ADR 0018).
+ */
+function pickPreferringClosed<T>(model: WorkspaceModel, random: WalkRandom, items: readonly T[], accountId: (item: T) => string, chance: number): T {
+  const closed = new Set(model.closedAccounts().map((account) => account.id));
+  const onClosed = items.filter((item) => closed.has(accountId(item)));
+  return random.pick(onClosed.length > 0 && random.chance(chance) ? onClosed : items);
 }
 
 /**
@@ -361,8 +377,7 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
     const empty = candidates.filter(isEmpty);
     // A brokerage account that never traded closes only late in the walk, so the walk mostly closes
     // one that sold out (`windingDown`), and its trades, legs and reconciliations meet it too.
-    const traded = (account: AccountEntity): boolean => [...model.trades.values()].some((trade) => trade.record.accountId === account.id);
-    const ready = empty.filter((account) => account.type !== "brokerage" || traded(account));
+    const ready = empty.filter((account) => account.type !== "brokerage" || hasTraded(model, account));
     const pool = ready.length > 0 ? ready : progress >= LATE ? empty : [];
     if (pool.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(pool).handle };
     // Mostly, while there is one, a brokerage account whose cash a sweep took and that still holds
@@ -1150,7 +1165,7 @@ const reconcile: OperationSpec<ReconcileParams> = {
   generate(model, { random }) {
     const cleared = [...model.transactions.values()].filter((e) => e.record.status === "cleared");
     if (cleared.length === 0) return undefined;
-    const anchor = random.pick(cleared);
+    const anchor = pickPreferringClosed(model, random, cleared, (e) => e.record.accountId, 0.25);
     const account = model.accountById(anchor.record.accountId);
     const date = anchor.record.budgetDate;
     const eligible = cleared.filter((e) => e.record.accountId === account.id && e.record.budgetDate <= date);
@@ -1183,7 +1198,7 @@ const unlock: OperationSpec<TxParams> = {
   writes: ownAccount,
   generate(model, { random }) {
     const reconciled = [...model.transactions.values()].filter((e) => e.record.status === "reconciled");
-    return reconciled.length === 0 ? undefined : { tx: random.pick(reconciled).handle };
+    return reconciled.length === 0 ? undefined : { tx: pickPreferringClosed(model, random, reconciled, (e) => e.record.accountId, 0.25).handle };
   },
   request: (model, p) => ({ method: "POST", path: ws(model, `/transactions/${model.transaction(p.tx).record.id}/unlock-reconciliation`) }),
   predict: () => ACCEPT,
@@ -1836,7 +1851,8 @@ const deleteTrade: OperationSpec<TradeParams> = {
   writes: groupWrites,
   closedFirst: true,
   generate(model, { random }) {
-    return model.trades.size === 0 ? undefined : { trade: random.pick([...model.trades.keys()]) };
+    const trades = [...model.trades.values()];
+    return trades.length === 0 ? undefined : { trade: pickPreferringClosed(model, random, trades, (t) => t.record.accountId, 0.25).handle };
   },
   request: (model, p) => ({ method: "DELETE", path: ws(model, `/trades/${model.trade(p.trade).record.id}`) }),
   predict: (model, p) => (model.isTradeLocked(model.trade(p.trade)) ? { kind: "refuse", status: 409, code: "reconciled" } : ANY),
