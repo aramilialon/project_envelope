@@ -7,6 +7,7 @@ import { registerWorkspaceScope } from "./auth/workspace-membership.ts";
 import type { Config } from "./config.ts";
 import { createPool, type DbPool } from "./db/pool.ts";
 import { LOG_REDACT_PATHS, registerErrorHandler } from "./errors.ts";
+import { checkIdempotencyKeyHeader, IDEMPOTENT_REPLAYED_HEADER } from "./idempotency/route.ts";
 import { rejectMalformedIdParams } from "./ids.ts";
 import type { QueueDriver } from "./queue/index.ts";
 import { createUserRateLimitPreHandler, registerAddressRateLimit } from "./rate-limit.ts";
@@ -70,11 +71,12 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   // which silently blocked every PATCH/PUT/DELETE endpoint from a real browser until #315.
   // `Retry-After` is not a CORS-safelisted response header: without exposing it, the web app could
   // not read how long a 429 asks it to wait (#566). A CORS preflight is answered in this plugin's
-  // own `onRequest` hook, before the rate limits below, and never counted.
+  // own `onRequest` hook, before the rate limits below, and never counted. `Idempotent-Replayed`
+  // tells a client that a create's reply was sent again from a stored one (#559).
   void fastify.register(cors, {
     origin: config.webOrigin,
     methods: ["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"],
-    exposedHeaders: ["Retry-After"],
+    exposedHeaders: ["Retry-After", IDEMPOTENT_REPLAYED_HEADER],
   });
 
   // Before authentication: the health check and requests with a bad token count too (ADR 0017).
@@ -96,6 +98,9 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   // After authentication, so a caller without a token still gets 401, and before any route's own
   // preHandlers, so a malformed id never takes a database connection (#512).
   fastify.addHook("preHandler", rejectMalformedIdParams);
+  // Before any route's own preHandlers (#559): an `Idempotency-Key` on a write route that does not
+  // take it, or one that is not a UUID, is a 400 before the request takes a database connection.
+  fastify.addHook("preHandler", checkIdempotencyKeyHeader);
   // A thrown error never reaches the client as itself: no database message, table or constraint (#512).
   registerErrorHandler(fastify);
 

@@ -5,7 +5,9 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategoryGroups } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfValidationError } from "../errors.ts";
+import { IDEMPOTENT_ROUTE, sendAndRemember, withIdempotencyKey } from "../idempotency/route.ts";
 import { runQuickAssign, type QuickAssignMode, type QuickAssignScope } from "../quick-assign/repository.ts";
+import { parseBatchId, replayClaimedBatch } from "./assignments.ts";
 
 const MODES: readonly QuickAssignMode[] = [
   "fund_targets",
@@ -37,8 +39,17 @@ function parseScope(body: Record<string, unknown>): QuickAssignScope | string {
 export function registerQuickAssignRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = withWriteAccess(createWorkspaceMembershipPreHandler(pool));
 
-  app.post("/workspaces/:workspaceId/quick-assign", { preHandler }, async (request, reply) => {
+  // An `Idempotency-Key`, or a `batchId` the client chose (#559): a retry of a run that already
+  // assigned gets that run's entries, instead of computing and appending a second run.
+  app.post("/workspaces/:workspaceId/quick-assign", { preHandler, config: IDEMPOTENT_ROUTE }, withIdempotencyKey(async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
+    const batchId = parseBatchId(body);
+    if (
+      batchId !== undefined &&
+      (await replayClaimedBatch(request, reply, batchId, ["quick-assign", body.month ?? null, body.mode ?? null, body.scope ?? null]))
+    ) {
+      return;
+    }
     const month = typeof body.month === "string" ? body.month : "";
     const mode = typeof body.mode === "string" && MODES.includes(body.mode as QuickAssignMode) ? (body.mode as QuickAssignMode) : undefined;
     const scope = parseScope(body);
@@ -61,13 +72,13 @@ export function registerQuickAssignRoutes(app: FastifyInstance, pool: DbPool): v
 
     try {
       assertMonth(month);
-      const entries = await runQuickAssign(request.db!, request.workspace!.id, request.userId!, month, scope, mode);
-      await reply.code(201).send({ entries });
+      const entries = await runQuickAssign(request.db!, request.workspace!.id, request.userId!, month, scope, mode, batchId);
+      await sendAndRemember(request, reply, 201, { entries });
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;
       }
       throw error;
     }
-  });
+  }));
 }
