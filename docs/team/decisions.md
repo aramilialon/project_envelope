@@ -9,6 +9,21 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 
 ## Awaiting review at 0.2.7 Portfolio MVP
 
+### 0.2.1
+
+- **#82** (2026-11-22, domain-expert): a price is the latest one dated on or before the date, the workspace's own winning a tie; prices and exchange rates have no maximum age, and the date used is returned with the value.
+- **#82** (2026-11-22, architect): `prices` has a nullable `workspace_id` (null for a shared provider price) and one Row-Level Security policy per command; shared rows are written only by a system job.
+- **#82** (2026-11-22, architect): system jobs write shared market data through `app_is_system_job()` and an allowlist test, not through a new database role.
+- **#82** (2026-11-22, architect): price precedence is resolved in `@envelope/core` (`resolvePrice`); SQL only loads the candidates.
+- **#84** (2026-11-22, architect): screens and endpoints read only stored prices and rates, never a provider.
+- **#85** (2026-11-22, architect): rates are stored as `rate_e10`, quote currency per 1 EUR as published, never inverted; other pairs are computed through the euro with one rounding.
+- **#85** (2026-11-22, architect): no XML dependency for the ECB file, and the built-in `fetch`.
+- **#87/#88** (2026-11-22, architect): returns are computed in floating point inside, output as an integer `returnE6`, never stored.
+- **#83** (2026-11-22, architect): prices are not a sync entity in 0.2.1; a future entity id is derived from (workspace, instrument, date).
+- **#83** (2026-11-22, architect): one audit entry per manual price write, one summary entry per CSV import.
+- **#89** (2026-11-22, architect): the performance range is capped at 120 months, computed on read, with no cache.
+- **#89** (2026-11-22, architect): #89 depends on #719.
+
 ### 0.2.0
 
 - **#701** (2026-11-21, coordinator alone, review it): a goal amount above the cap is refused with `amount_too_large`, like every other amount (ADR 0002, #651).
@@ -23,3 +38,9 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#729** (2026-11-21, architect): an import confirmation that touches a closed account is refused as a whole.
 - **#728** (2026-11-21, translator): the Italian message for a card's spending against its budget (`budget.bar.spentWithCardOf`) puts its arguments in a different order from the English.
 - **#705** (2026-11-21, domain-expert): closing a credit card requires its payment category to be settled, whether it is above or below zero; a closed card's payment category takes no assignments and leaves the current and later months, and stays in past months so their figures do not change.
+
+### 0.2.1
+
+- **#758** (2026-11-22, architect): the product-marketer gets Read, Grep, Glob, WebSearch and WebFetch only, with no shell; screens stay with the ux-reviewer; public-text wording is recommended by the marketer and decided by the coordinator after the domain-expert (money) and security-reviewer (security, privacy) checks; name, identity and tokens go to the maintainer.
+- **#758** (2026-11-22, security-reviewer): WebSearch is allowed globally and WebFetch for a fixed list of exact public reference hosts; the rules apply to every agent; hosts where anyone can publish content (*.github.io, raw and gist hosts, paste, file and shortener services, web archives, translation proxies) are never added; WebFetch to localhost, 127.0.0.1, ::1, 10.0.0.11 and 169.254.169.254 is denied.
+- **#618** (2026-11-22, architect): moved up from wave 9 to now; the fix is checked on the PRs that follow it, since the review workflow cannot prove itself on its own PR.

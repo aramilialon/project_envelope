@@ -31,7 +31,20 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
+          # The review command's first step lets the model stop, without a word, on a pull request it
+          # judges not to need a review; it did so on small and docs-only pull requests, so a skipped
+          # review looked like one that found nothing (#618). The text after the command reaches the
+          # model as the command's arguments: it may still skip a pull request, but it always says
+          # why in one comment. The prompt is folded into one line so that it all stays the
+          # command's arguments. The full output stays hidden (public repository).
+          prompt: >-
+            /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+            Instructions for this repository, which take precedence over step 1 of the command:
+            whenever you stop without reviewing, for any reason (closed, draft, already commented,
+            or a change you judge not to need a review), post exactly one line with gh pr comment
+            in the form "Not reviewed: <reason>", for example "Not reviewed: a one-line
+            documentation fix that is obviously correct.". Never end without a comment on the
+            pull request.
           # Read-only access to the pull request (the checkout is shallow, so the diff comes from
           # `gh pr diff`), plus posting its comments; no other shell commands.
           claude_args: '--allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Grep,Glob"'

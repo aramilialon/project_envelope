@@ -96,6 +96,8 @@ Already the convention in every mockup; keep it when a screen becomes real code:
 
 [`screenshots/`](screenshots/) holds the reference screenshots the repository README shows. Every one of them is taken in both themes, as `<name>-light.png` and `<name>-dark.png`, and a change to a screen (or mockup) that one of them shows refreshes both in the same pull request. Built screens are shot from the real running app over the demo workspace (`scripts/screenshot-demo.ts`, in English); the portfolio, which has no screen yet, and the three-phone composite from the mockups (`scripts/screenshot-mockups.ts`, in English too), which also makes the README's two mixed images, `budget-month-split.png` and `phones-mixed.png`. Which screenshot comes from where, and the commands, are in [`scripts/README.md`, "Reference screenshots"](../../scripts/README.md#reference-screenshots).
 
+A pull request that proposes a mockup for the maintainer's approval also carries screenshots of each new or changed state, in both themes, on a 360 px phone and on a desktop, in a temporary folder `docs/ux/review/<pr>/` that its description shows. A last commit removes the folder before the merge, so the review screenshots never reach `main`. A change to the copy only, inside a state the maintainer has already approved, is decided by the `ux-reviewer` and the `domain-expert` and logged in [`docs/team/decisions.md`](../team/decisions.md) ([Work with the agent team](../how-to/work-with-the-agent-team.md#coordinators-working-rules)).
+
 ## Screens still to design
 
 Invitations (joining an existing workspace) — not needed by any 0.1.7 issue; design it, with its own mockup, when the workspace-settings work that needs it starts.
