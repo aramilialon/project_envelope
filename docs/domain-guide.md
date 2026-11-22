@@ -193,15 +193,17 @@ card, the card is paid €100 from checking, and then €30 of them are refunded
 
 **Wording for a card in credit** (#660). A card in credit has nothing to cover, but no money set
 aside covers anything either, so the payment category's detail never says the debt is "fully
-covered by money set aside": it says "The card is in credit by €30.00. Spending with the card uses
-it up; there is nothing to cover." When the payment category is negative beyond the credit (the
-€10 / €50 case below), the detail says how much was paid beyond what was set aside in all, how much
-of it is still on the card as credit, and what happens to the rest if it is still uncovered when the
-month ends, as a consequence and not an order: "The card was paid €50.00 more than was set aside;
-€10.00 of it is still on the card as credit. If the other €40.00 is still uncovered when the month
-ends, it comes out of next month's unassigned money." Its card debt list shows "Card's credit" on a
-line of its own, beside "Paid beyond what was set aside". "Fully covered by money set aside" is kept
-for a card that owes money.
+covered by money set aside": it says "The card is in credit by €30.00. Card spending uses up this
+credit first; there is nothing to cover." When the payment category is negative beyond the credit
+(the €10 / €50 case below), the detail says how much was paid beyond what was set aside in all, how
+much of it is still on the card as credit, and what happens to the rest if it is still uncovered
+when the month ends, as a consequence and not an order: "The card was paid €50.00 more than was set
+aside. €10.00 of it is still on the card as credit. If the other €40.00 is still uncovered when the
+month ends, it comes out of next month's unassigned money." Its card debt list shows "Credit on the
+card" with the credit, a positive amount, in place of the card's balance, so no negative amount is
+on screen. A card known to owe nothing reads "The card owes nothing right now; there is nothing to
+cover." "Fully covered by money set aside" is kept for a card that owes money (and for one whose
+balance is not known).
 
 **Known gap: a card refund dated after today** (#660, #668). The card's balance at the end of the
 month counts every card transaction dated in the month, but the budget counts a card refund only
