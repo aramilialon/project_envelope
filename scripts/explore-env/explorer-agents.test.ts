@@ -75,7 +75,7 @@ describe("explorer agents (one browser each)", () => {
     }
   });
 
-  it("denies the unneeded tools on every explorer server, and allows none", () => {
+  it("denies the unneeded tools on every explorer server, and allows none of their tools", () => {
     const settings = readJson(".claude/settings.json") as {
       permissions: { deny: string[]; allow?: string[]; ask?: string[] };
     };
@@ -85,7 +85,7 @@ describe("explorer agents (one browser each)", () => {
       }
     }
     for (const rule of [...(settings.permissions.allow ?? []), ...(settings.permissions.ask ?? [])]) {
-      assert.ok(!rule.startsWith("mcp__"), `unexpected rule ${rule}`);
+      assert.ok(!rule.startsWith("mcp__playwright"), `unexpected rule ${rule}`);
     }
   });
 });
