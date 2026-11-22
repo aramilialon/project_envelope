@@ -29,7 +29,7 @@ export const DEFAULT_MIGRATIONS_DIR = path.join(
  * locks belong to one database, so runners on different databases of one server never wait on
  * each other; nothing else in the app takes an advisory lock on this key.
  */
-export const MIGRATION_LOCK_KEY = "7308332045390876773";
+export const MIGRATION_LOCK_KEY = "7308909423251910757";
 
 interface AppliedMigration {
   readonly name: string;
