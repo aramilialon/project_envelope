@@ -139,7 +139,10 @@ describe("budget month events: transfers and cards on the workspace timeline (#6
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
        JOIN splits s ON s.transaction_id = t.id
-       WHERE t.workspace_id = $1 AND a.on_budget AND t.payee IS DISTINCT FROM 'Starting balance'
+       WHERE t.workspace_id = $1 AND a.on_budget
+         -- isStartingBalanceSplit's own condition: a card's starting balance, not a payee match
+         AND NOT (t.transfer_id IS NULL AND a.payment_category_id IS NOT NULL AND s.category_id = a.payment_category_id
+                  AND (SELECT COUNT(*) FROM splits s2 WHERE s2.transaction_id = t.id) = 1)
          AND t.occurred_at >= '2027-02-01' AND t.occurred_at < '2027-03-01'`,
       [workspaceId],
     );

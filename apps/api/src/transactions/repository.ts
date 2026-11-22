@@ -582,7 +582,9 @@ interface TransactionEventRow {
  * Which legs the workspace-wide timeline counts is `@envelope/core`'s `countsOnWorkspaceTimeline`
  * (#659): the net movement of every on-budget account, credit cards included, so a transfer whose
  * two ends are both on budget (a card payment, cash to cash, card to card) counts at neither end,
- * and one with an off-budget account counts once, at its on-budget end. Filtered to one
+ * and one with an off-budget account counts once, at its on-budget end. The query already leaves
+ * out off-budget accounts' legs, so as not to load rows only to drop them; the predicate stays the
+ * rule, and checks `onBudget` again. Filtered to one
  * `accountId`, a transfer's leg is an ordinary signed row of that account and always shows.
  *
  * A credit card's own "Starting balance" split (`isStartingBalanceSplit`) never becomes an event
@@ -614,7 +616,7 @@ export async function listTransactionEventsForMonth(
      LEFT JOIN accounts partner_account ON partner_account.id = partner.account_id
      WHERE t.workspace_id = $1
        AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM') = $2
-       ${accountId === undefined ? "" : "AND t.account_id = $3"}
+       ${accountId === undefined ? "AND a.on_budget = true" : "AND t.account_id = $3"}
      ORDER BY t.occurred_at, t.created_at`,
     params,
   );
