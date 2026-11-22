@@ -19,7 +19,7 @@ import { registerDeviceTokensRoutes } from "./routes/device-tokens.ts";
 import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerImportRoutes } from "./routes/import.ts";
-import { registerInstrumentsRoutes } from "./routes/instruments.ts";
+import { registerInstrumentsRoutes, registerWorkspaceInstrumentsRoutes } from "./routes/instruments.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerMyWorkspacesRoute } from "./routes/my-workspaces.ts";
 import { registerPortfoliosRoutes } from "./routes/portfolios.ts";
@@ -110,6 +110,7 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   registerGoalsRoutes(fastify, pool);
   registerImportRoutes(fastify, pool);
   registerInstrumentsRoutes(fastify, pool);
+  registerWorkspaceInstrumentsRoutes(fastify, pool);
   registerMyWorkspacesRoute(fastify, pool);
   registerPortfoliosRoutes(fastify, pool);
   registerPositionsRoutes(fastify, pool);
