@@ -83,8 +83,8 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 
 | Status | Body | When |
 | --- | --- | --- |
-| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain: the codes below, each with its `details` |
-| 400 | `{ "error": "invalid trade: fee is not a field of this request" }` | a body the route cannot read: a missing field, a wrong JSON type, an unknown field. English text, no code |
+| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, or a trade body the route cannot read: the codes below, each with its `details` |
+| 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
 | 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
 
@@ -528,27 +528,41 @@ dividend, fee or tax; or both legs of a transfer; or a split, entered once. The 
 `{ "trades": [ … ] }`: one trade, two legs, or one row per holding the split covers, in the
 [replay order](#the-replay-order).
 
-Every request carries `type` and `tradeDate`, and optionally `occurredAt` and `memo`. A field
-that no trade request has is a plain 400 (`"invalid trade: fee is not a field of this
-request"`), so a misspelt field is never dropped silently, and so is an amount the kind of request
-does not take (`quantityE8` on a split). An amount left out is 0. One gap: a non-amount field that
-belongs to another kind of request is ignored rather than refused (`accountId`, `portfolioId`,
-`id` or `taxKind` at the top of a transfer or a split; `from` or `to` on a buy).
+Every request carries `type` and `tradeDate`, and optionally `occurredAt` and `memo`. A request
+takes only its own fields, so nothing sent is ever dropped silently (#594):
+
+- a field that no trade request has is 400 `unknown_field` with `{ "field" }` (`"fee"`, or
+  `"from.fees"` inside a transfer's leg);
+- a field of another kind of request is 400 `invalid_trade` naming it: `from` or `to` on a buy,
+  `accountId`, `portfolioId`, `id` or `taxKind` at the top of a transfer or a split, `quantityE8`
+  on a split or a dividend, `gainTaxCents` on a buy, `grossCents` on a fee. The table below lists
+  what each type takes. `null` reads as left out, so a field of another kind sent as `null` is not
+  refused. `taxKind` on anything but a tax keeps its own code,
+  `tax_kind_not_allowed_for_trade_type`;
+- a field of the wrong JSON type (a string for an amount, an id that is not a UUID, a `type` or
+  `taxKind` that is none of the listed ones, a leg that is not an object) is 400 `invalid_field`
+  with `{ "field" }`;
+- a body that is not a JSON object is 400 `invalid_body`;
+- a required field left out (or `null`) is 400 `invalid_trade` naming it (#600).
+
+An optional amount left out is 0.
 
 **Buy, sell, dividend, fee, tax.** `accountId` (a brokerage account) and `portfolioId` are
-required; `id` is an optional client-generated UUID. Then, by type:
+required; `id` is an optional client-generated UUID; `occurredAt`, `memo` and `taxKind` are taken
+by every one. Then, by type:
 
 | Type | Required | Optional | Rules |
 | --- | --- | --- | --- |
-| `buy` | `instrumentId`, `quantityE8` > 0 | `priceE6` (default 0), `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
-| `sell` | as a buy | as a buy, plus `gainTaxCents` | the portfolio must hold the units on that date |
-| `dividend` (a coupon too) | `instrumentId` | `grossCents` (default 0), `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
+| `buy` | `instrumentId`, `quantityE8` > 0, `priceE6` > 0 | `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor, rounded once half away from zero; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
+| `sell` | `instrumentId`, `quantityE8` > 0, `priceE6` ≥ 0 | as a buy, plus `gainTaxCents` | the portfolio must hold the units on that date. A price of 0 closes a worthless position: the gross is 0 and the whole cost removed is a realized loss |
+| `dividend` (a coupon too) | `instrumentId`, `grossCents` > 0 | `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
 | `fee` | `feesCents` > 0 | `instrumentId` | without an instrument, a fee on the whole account (custody) |
 | `tax` | `taxKind`, `grossCents` > 0 | `instrumentId` | a `gain_tax_adjustment`'s `grossCents` is signed and not 0: positive is a refund, negative extra tax |
 
-A buy or a sale without `priceE6`, and a dividend without `grossCents`, are accepted today: the
-missing amount is 0, so a buy or a sale at a price of 0 and a dividend of 0 are recorded as sent.
-Requiring them is tracked in #600.
+A buy at a price of 0 is refused (`invalid_trade`, `field: "priceE6"`), and so is a dividend of 0
+(`field: "grossCents"`). Shares received for free are a transfer in from outside the app at their
+tax cost; bonus shares (one free share for every ten held) are a split of 10:11
+([domain guide](domain-guide.md#what-each-trade-needs)).
 
 **Transfer of securities.** Units move between two portfolios of one account, between two
 accounts, or into or out of the app. No `accountId` or `portfolioId` at the top: each leg carries
@@ -595,24 +609,37 @@ first.
 
 Nothing is written until every check has passed:
 
-1. the body's shape (plain 400) and the length of `memo`;
-2. the instrument exists (`unknown_instrument`);
-3. the rows the request stands for are built: a transfer's legs, or a split's rows for the
+1. the body's shape: `invalid_body`, `unknown_field`, a field of another kind of request
+   (`invalid_trade`), a wrong JSON type (`invalid_field`), the length of `memo`
+   (`text_too_long`);
+2. the fields the type requires (`invalid_trade` naming the first one missing);
+3. the quantity: a safe integer (`invalid_quantity`) above 0 (`invalid_trade` with
+   `field: "quantity"` on a buy or a sale, `"quantityE8"` on a transfer);
+4. the price of a buy or a sale: a safe integer not below 0 (`invalid_price`), and above 0 on a
+   buy (`invalid_trade`, `field: "priceE6"`); a dividend's gross not 0 and a split's ratio two
+   positive integers (`invalid_trade` naming the field);
+5. the instrument exists (`unknown_instrument`), and the gross of a buy or a sale sent without
+   one is computed from quantity × price;
+6. the rows the request stands for are built: a transfer's legs, or a split's rows for the
    holdings on its date (`split_without_holdings`); a client-generated id is not taken (409
    `id_taken`);
-4. each account exists in the workspace and is a brokerage account, the instrument is in its
+7. each account exists in the workspace and is a brokerage account, the instrument is in its
    currency, each portfolio exists and, unless the row is a split row, a transfer's outgoing leg
    or a row already stored there, is not archived (`portfolio_archived`);
-5. the trade's own rules (amounts not negative, a tax kind only on a tax, accrued interest only
-   on a bond, withholdings not above what they are withheld from);
-6. `occurredAt` falls on `tradeDate` in the workspace's time zone;
-7. in an `IT` workspace, the account's tax regime on the trade date
-   ([domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account));
-8. the workspace's whole history of the instrument, every account and portfolio, is replayed with
-   the new rows: no portfolio may hold a negative quantity at any date, every split must cover
-   every holding, a transfer's legs must match.
+8. the trade's amounts: signs (`negative_amount_not_allowed`) and caps (`amount_too_large`), a tax
+   kind only on a tax, accrued interest only on a bond, withholdings not above what they are
+   withheld from;
+9. `occurredAt` falls on `tradeDate` in the workspace's time zone;
+10. in an `IT` workspace, the account's tax regime on the trade date
+    ([domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account));
+11. the workspace's whole history of the instrument, every account and portfolio, is replayed with
+    the new rows: no portfolio may hold a negative quantity at any date, every split must cover
+    every holding, a transfer's legs must match, no position's quantity may leave the safe range.
 
-Step 8 runs under a lock on the workspace's history of that instrument, so two concurrent
+So the first error names the field actually wrong (#662): a buy with a negative quantity is
+`invalid_trade` with `field: "quantity"`, not a refusal of the negative gross computed from it.
+
+Step 11 runs under a lock on the workspace's history of that instrument, so two concurrent
 requests can never each pass on their own and together oversell.
 
 ### Validation codes
@@ -621,6 +648,9 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 
 | Code | Details | When |
 | --- | --- | --- |
+| `invalid_body` | `{}` | the body is not a JSON object (an array, a string, a number, `null`); on an edit, also a body that changes nothing |
+| `unknown_field` | `{ "field" }` | a field no trade request has, or `id` on an edit; `"from.fees"` inside a leg |
+| `invalid_field` | `{ "field" }` | a field of the wrong JSON type or value: an amount that is not a number, an id or a filter that is not a UUID, a `type` or `taxKind` that is none of the listed ones, a leg that is not an object |
 | `unknown_account` | `{ "accountId" }` | not an account of this workspace |
 | `account_not_brokerage` | `{ "accountId", "accountType" }` | trades go on brokerage accounts only |
 | `unknown_portfolio` | `{ "portfolioId" }` | not a portfolio of this workspace |
@@ -631,7 +661,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `tax_kind_not_allowed_for_trade_type` | `{ "type", "taxKind" }` | `taxKind` on anything but a tax |
 | `accrued_interest_not_allowed` | `{ "instrumentType" }` (`""` without an instrument) | accrued interest on an instrument that is not a bond |
 | `withholding_exceeds_gross` | `{ "field", "withheld", "gross" }` | a dividend's withholdings above its gross (`field: "withholding"`), or a bond trade's domestic withholding above its accrued interest (`field: "withholdingDomesticCents"`) |
-| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a fee or a tax of 0, a field the type does not use, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
+| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a required field missing, a field of another kind of request or one the type does not use, a quantity of 0 or less, a buy's price of 0, a dividend of 0, a fee or a tax of 0, a split ratio that is not two positive integers, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
 | `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet; a new trade only, an edit of a trade there is not checked |
 | `tax_kind_not_allowed_in_regime` | `{ "regime", "field" }`, plus `taxKind` for a tax | gain tax, an adjustment or a managed result tax the regime on that date does not allow |
 | `domestic_withholding_requires_agent` | `{ "field": "withholdingDomesticCents" }` | a domestic withholding on a bond trade's accrued interest at a broker that is not an Italian withholding agent |
@@ -642,13 +672,15 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `split_leaves_no_quantity` | `{ "accountId", "instrumentId", "date" }` | the split rounds a whole position with a cost down to zero units |
 | `invalid_date` | `{ "value" }` | `tradeDate` is not a real date |
 | `invalid_amount`, `invalid_quantity`, `invalid_price` | `{ "label", "value" }` | not a safe integer (a decimal number, or too large); a negative price |
+| `invalid_quantity` | `{ "label": "positionQuantity", "value", "tradeId" }` | a position's quantity, a portfolio's or an account's, would leave the safe range (about 90 million units) at `tradeId`: the buy, the split row of that holding or the incoming leg of a transfer that pushes it over (#662) |
 | `amount_too_large` | `{ "label", "max", "value" }` | an amount, a cost or the cash leg they add up to above 10^12 minor units (€10,000,000,000.00; ADR 0002, #651); `label` is the field, or `cash`. An edit checks the whole trade, so a memo-only edit of a trade stored above the cap before #651 is refused too |
 | 422 `amount_total_overflow` | `{ "label", "tradeId" }` | a running total of a position (`label`: `costBasisCents`, or the total, such as `standaloneFeesCents`) would leave the safe range of minor units while replaying `tradeId`; only trades stored before the cap can do it (ADR 0002, #651). The positions of the account or portfolio answer it too |
 | 409 `id_taken` | `{ "tradeId" }` | the client-generated id is already used, in this workspace or any other |
 
 `invalid_trade`'s `details.field` is usually a field of the request (`feesCents`, `grossCents`,
 `costBasisCents`, `occurredAt`, …), but some checks report the core's own name instead:
-`quantity` for `quantityE8`, `price` for `priceE6`, `date` for `tradeDate`, and `currency`,
+`quantity` for a buy's or a sale's `quantityE8` (a transfer's is `quantityE8`), `price` for a
+`priceE6` on a trade that takes none, `date` for `tradeDate`, and `currency`,
 `priceFactor` and `transferTradeId`, which are not request fields at all (the account's or the
 instrument's currency and price factor, the link between a transfer's legs). A client that shows
 the field to the user maps both kinds of name.
@@ -656,6 +688,12 @@ the field to the user maps both kinds of name.
 The `insufficient_quantity` details name the trade where the holding would go negative, which is
 not always the one being recorded: a backdated sale, or an edit or deletion of an earlier buy,
 makes a *later* trade oversell, and that later trade is the one named.
+
+**`details.tradeId` always names a stored trade, or is `null`** (#662). It is `null` when the trade
+at fault is one the request itself adds: the trade being recorded (with or without a
+client-generated `id`), either leg of a new transfer, a split's new row. The id the server would
+have given it names no trade, so it is never shown. An edit names the trade being edited by its own
+id, since it is stored; a split edit that adds a row for a new holding names that row `null`.
 
 ```json
 {
@@ -670,7 +708,7 @@ makes a *later* trade oversell, and that later trade is the one named.
 ### Listing trades
 
 `GET /workspaces/:workspaceId/trades` — any member. Optional filters `?portfolioId=`,
-`?accountId=`, `?instrumentId=` (UUIDs, else a plain 400), combined with AND. The answer is
+`?accountId=`, `?instrumentId=` (UUIDs, else 400 `invalid_field` naming the filter), combined with AND. The answer is
 `{ "trades": [ … ] }` in the replay order.
 
 ### The replay order
@@ -744,7 +782,7 @@ trade never changes: delete it and record another.
 
 | The trade is | The edit may carry |
 | --- | --- |
-| a buy, sell, dividend, fee or tax | any field of its create request but `id` |
+| a buy, sell, dividend, fee or tax | any field its type's create request takes but `id` (the table in [Recording a trade](#recording-a-trade)) |
 | a transfer leg | `instrumentId`, `tradeDate`, `occurredAt`, `memo`, `quantityE8` (the units moved, positive), and `from` / `to` with any of `{ accountId, portfolioId, feesCents, costBasisCents }` for the legs it has |
 | a split row | `tradeDate`, `occurredAt`, `memo`, `splitFrom`, `splitTo` |
 
@@ -755,11 +793,16 @@ trade never changes: delete it and record another.
 - **The gross of a buy or a sell.** An edit that changes `quantityE8`, `priceE6` or `instrumentId`
   without `grossCents` computes the gross again from them, as a create does: send the broker's
   figure again with the edit to keep it.
+- **The price and the gross only when they change.** The quantity, the price and a dividend's
+  gross are checked again (steps 3 and 4) only when the edit changes the quantity, the price or
+  the gross. A buy recorded at a price of 0, or a dividend of 0, before #600 refused them keeps
+  taking every other edit (its memo, its date); an edit that changes one of those three must give
+  it a price above 0, or a gross.
 - **The history is checked again.** The edited rows go through every check of a create, and the
   whole history of every instrument the edit touches (the old one and the new one) is replayed;
   an edit that would make any portfolio oversell, at any date, is refused.
 - **The tax regime only when something it reads changes.** In an `IT` workspace an edited row is
-  checked against the regime again (step 7) only when its date, account, instrument, tax kind, gain
+  checked against the regime again (step 10) only when its date, account, instrument, tax kind, gain
   tax, transaction tax, either withholding or, on a tax, its amount changes. An edit of the memo,
   the time, the quantity, the price or the portfolio alone skips that check, so a trade recorded
   before its account's regime history changed keeps taking those edits. While an account has no
@@ -779,8 +822,9 @@ trade never changes: delete it and record another.
 
 | Error | When |
 | --- | --- |
-| plain 400 `"invalid trade: nothing to change"` | `{}`, only `null` legs, or the trade's own `type` alone |
-| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it), a different `type`, alone or with other fields (`field: "type"`, #596), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
+| 400 `invalid_body` | not a JSON object; or an edit that changes nothing: `{}`, only `null` legs, or the trade's own `type` alone (checked after the 409s below, #596) |
+| 400 `unknown_field`, `invalid_field` `{ "field" }` | as on create; `id` is `unknown_field` |
+| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it: `from` on a buy, `accountId` on a transfer, `instrumentId` on a split, `grossCents` on a fee), a different `type`, alone or with other fields (`field: "type"`, #596), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
 | 400, the create codes | the edited trade breaks a rule, or the history no longer replays |
 | 404 | no trade of this workspace has this id |
 | 409 `account_closed` | a row of the group is on a closed account, or the edit moves one to a closed account |
@@ -789,7 +833,7 @@ trade never changes: delete it and record another.
 
 The closed account and the reconciled cash leg are checked before anything else, `type` included:
 an edit sending only `type`, the trade's own or another, answers 409 `account_closed` or
-`reconciled` on such a trade, never "nothing to change" or `invalid_trade`.
+`reconciled` on such a trade, never `invalid_body` or `invalid_trade`.
 
 ### Deleting a trade
 

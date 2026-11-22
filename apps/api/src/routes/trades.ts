@@ -275,8 +275,9 @@ function legPatch(body: Record<string, unknown>, field: "from" | "to"): Transfer
 /**
  * Reads an edit: any field of a create request but `id` (`unknown_field`, as any field no request
  * has); `null` clears `occurredAt`, `memo` and `instrumentId`. A field of the wrong JSON type is
- * `invalid_field`, a `memo` too long `text_too_long`, and an edit that changes nothing (`{}`,
- * `type` alone, or only `null` legs) `invalid_body`, so it writes no audit log entry. Which fields
+ * `invalid_field`, a `memo` too long `text_too_long`, and an edit that changes nothing (`{}`, or
+ * only `null` legs) `invalid_body`, so it writes no audit log entry; `type` alone goes on to the
+ * repository (#596), which checks it once it has the trade. Which fields
  * the trade's type takes is the repository's to check (`invalid_trade`), once it has the trade.
  */
 function parsePatch(raw: unknown): TradePatchInput {
