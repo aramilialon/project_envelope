@@ -1,6 +1,7 @@
 import type { TodoItem } from "@envelope/core";
 import { useIntl } from "react-intl";
 import { shortDate } from "../format.ts";
+import { cardPartAskedSentence } from "./cardPartAsked.ts";
 import "./Todo.css";
 
 interface Props {
@@ -45,17 +46,7 @@ function sentenceFor(
   const categoryName = (id: string) => categoryNameById.get(id) ?? id;
   // #731: part of a card's debt asked on categories (with their scheduled transactions) instead.
   const askedOnCategories = (asked: readonly { readonly categoryId: string; readonly amountCents: number }[]) =>
-    intl.formatMessage(
-      {
-        id: "budget.todo.cardPartAskedOnCategories.sub",
-        defaultMessage: "{count, plural, one {{amount} of the card's debt is asked on {category}} other {{amount} of the card's debt is asked on # categories}}",
-      },
-      {
-        count: asked.length,
-        amount: money(asked.reduce((sum, p) => sum + p.amountCents, 0)),
-        category: categoryName(asked[0]?.categoryId ?? ""),
-      },
-    );
+    cardPartAskedSentence(intl, money, asked, categoryName);
 
   switch (item.kind) {
     case "overassigned":
@@ -74,14 +65,16 @@ function sentenceFor(
             : item.cardSpendingCents !== undefined
               ? intl.formatMessage({
                   id: "budget.todo.cashCardAndReservation.sub",
-                  defaultMessage: "overspent in cash and with a card, and not enough for what is scheduled: cover it before the month ends",
+                  defaultMessage:
+                    "overspent in cash and with a card, and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money",
                 })
               : item.reservationShortfallCents !== undefined
                 ? intl.formatMessage({
                     id: "budget.todo.cashOverspendingAndReservation.sub",
-                    defaultMessage: "overspent in cash and not enough for what is scheduled: cover it before the month ends",
+                    defaultMessage:
+                      "overspent in cash and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money",
                   })
-                : intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash: cover it before the month ends" }),
+                : intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash; if still uncovered when the month ends, it comes out of next month's unassigned money" }),
       };
     case "scheduledOverdue":
       return {
@@ -102,7 +95,7 @@ function sentenceFor(
             ? intl.formatMessage(
                 {
                   id: "budget.todo.reservationShortfallWithCard.sub",
-                  defaultMessage: "includes {amount} spent with a card, which money assigned here covers first",
+                  defaultMessage: "includes {amount} spent with a card, covered first by money assigned here",
                 },
                 { amount: money(item.cardSpendingCents) },
               )

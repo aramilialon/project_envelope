@@ -1,6 +1,7 @@
 import { cardDebt, formatMoney } from "@envelope/core";
 import { useIntl } from "react-intl";
 
+import { cardPartAskedSentence } from "./cardPartAsked.ts";
 import DetailFrame from "./DetailFrame.tsx";
 import "./RowDetail.css";
 
@@ -18,6 +19,12 @@ interface Props {
   readonly hasStartingBalance?: boolean;
   /** Which ordinary categories' credit overspending this month is attributable to this card, with their own names and amounts (#355). */
   readonly overspendingBy?: readonly { readonly categoryId: string; readonly name: string; readonly amount: number }[];
+  /**
+   * The part of the card's debt asked on ordinary categories instead (#731, `@envelope/core`'s
+   * `cardPartsAskedOnCategories`), with their names: "Assign" offers the rest only
+   * (`cardAmountAsked`), while "To cover" keeps the whole debt.
+   */
+  readonly askedOnCategories?: readonly { readonly categoryId: string; readonly name: string; readonly amountCents: number }[];
   readonly currency: string;
   onClose(): void;
   /** "Assign €X from unassigned money": opens the move-money form with the source forced to unassigned. */
@@ -59,6 +66,7 @@ export default function PaymentCategoryDetail({
   owed,
   hasStartingBalance,
   overspendingBy,
+  askedOnCategories,
   currency,
   onClose,
   onAssignFromUnassigned,
@@ -71,6 +79,10 @@ export default function PaymentCategoryDetail({
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const debt = cardDebt({ available, cashOverspending, uncovered, ...(owed !== undefined ? { owed } : {}) });
   const covered = debt.toCover <= 0;
+  // #731: what assigning here asks — the card's to cover less what is asked on categories for it,
+  // the same figure as its "To do" item (`cardAmountAsked`); the meter keeps the whole to cover.
+  const asked = askedOnCategories ?? [];
+  const assignAmount = Math.max(0, debt.toCover - asked.reduce((sum, p) => sum + p.amountCents, 0));
   /** The card's credit, when it has one (#660): what the card owes the user, `-owed`. */
   const credit = Math.max(0, -debt.owed);
   const inCredit = credit > 0;
@@ -233,11 +245,16 @@ export default function PaymentCategoryDetail({
             <span className="dots" />
             <span className="n warnl">{money(debt.toCover)}</span>
           </div>
+          {asked.length > 0 && (
+            <p className="explain">{cardPartAskedSentence(intl, money, asked, (id) => asked.find((p) => p.categoryId === id)?.name ?? "")}</p>
+          )}
           {!readOnly && (
             <>
-              <button type="button" className="plain" onClick={onAssignFromUnassigned}>
-                {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(debt.toCover) })}
-              </button>
+              {assignAmount > 0 && (
+                <button type="button" className="plain" onClick={onAssignFromUnassigned}>
+                  {intl.formatMessage({ id: "budget.payment.assignFromUnassigned", defaultMessage: "Assign {amount} from unassigned money" }, { amount: money(assignAmount) })}
+                </button>
+              )}
               <button type="button" className="plain" onClick={onMoveMoneyHere}>
                 {intl.formatMessage({ id: "budget.payment.moveMoneyHere", defaultMessage: "Move money here" })}
               </button>
