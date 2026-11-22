@@ -5,6 +5,7 @@ import { after, before, describe, it } from "node:test";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { createPostgresQueueDriver, processJob } from "./postgres-driver.ts";
 
@@ -210,5 +211,65 @@ describe("processJob (#36)", () => {
 
     const { rows } = await appPool.query("SELECT 1 FROM processed_jobs WHERE job_id = $1", [jobId]);
     assert.equal(rows.length, 0, "a failed attempt must roll back its own processed_jobs row too, so pg-boss's retry gets a clean slate");
+  });
+});
+
+/**
+ * The sweep and a slow handler (#85): in a database of its own, so the stale row is swept by
+ * this test's first job and no other file's.
+ */
+describe("processJob, the retention sweep next to a slow handler (#85)", () => {
+  let database: IsolatedDatabase | undefined;
+  let superuserPool: DbPool;
+  let appPool: DbPool;
+
+  before(async () => {
+    database = await createIsolatedDatabase(databaseUrl);
+    superuserPool = createPool(database.databaseUrl);
+    await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
+    await ensureAppRoleLogin(superuserPool);
+    appPool = createPool(appConnectionString(database.databaseUrl));
+  });
+
+  after(async () => {
+    try {
+      await appPool?.end();
+      await superuserPool?.end();
+    } finally {
+      await database?.drop();
+    }
+  });
+
+  it("a handler still running does not hold up another job's sweep", { timeout: 15_000 }, async () => {
+    await superuserPool.query(
+      "INSERT INTO processed_jobs (job_id, job_type, processed_at) VALUES ($1, 'stale-job-type', now() - interval '31 days')",
+      [randomUUID()],
+    );
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let slowStarted = false;
+    const slow = processJob(appPool, `test-${randomUUID()}`, randomUUID(), {}, async () => {
+      slowStarted = true;
+      await released;
+    });
+    try {
+      await waitUntil(() => slowStarted);
+      const otherJobId = randomUUID();
+      const other = processJob(appPool, `test-${randomUUID()}`, otherJobId, {}, async () => {});
+      const outcome = await Promise.race([
+        other.then(() => "done" as const),
+        new Promise<"blocked">((resolve) => setTimeout(() => resolve("blocked"), 3000)),
+      ]);
+      assert.equal(outcome, "done", "the second job must not wait for the first one's handler");
+      const { rows } = await superuserPool.query("SELECT 1 FROM processed_jobs WHERE job_id = $1", [otherJobId]);
+      assert.equal(rows.length, 1);
+    } finally {
+      release();
+      await slow;
+    }
+    const { rows } = await superuserPool.query("SELECT 1 FROM processed_jobs WHERE job_type = 'stale-job-type'");
+    assert.equal(rows.length, 0, "the stale row is still swept");
   });
 });
