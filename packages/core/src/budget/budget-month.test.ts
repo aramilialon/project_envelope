@@ -464,38 +464,184 @@ describe("computeBudgetMonth", () => {
     assert.equal(computeBudgetMonth(input, "2026-09").unassigned, -5000);
   });
 
-  it("a credit-to-credit transfer moves what the source payment category holds, into the destination's", () => {
-    const input: BudgetInput = {
-      ...EMPTY,
-      paymentCategoryIds: ["a-payment", "b-payment"],
-      assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 50000 }],
-      cardTransfers: [
-        { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 50000 },
-      ],
-    };
+  describe("card B pays card A's debt: money follows the debt (rule 8, #732)", () => {
+    /**
+     * Card A owes `owedBefore` and its payment category holds `holds`; card B, with nothing set
+     * aside and no debt, pays `paid` of A's debt on 15 September (B is charged, A is paid).
+     */
+    function payDown(owedBefore: number, holds: number, paid: number) {
+      const input: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment"],
+        assignments: [{ categoryId: "a-payment", month: "2026-09", amount: holds }],
+        cardBalances: [
+          { paymentCategoryId: "a-payment", transactions: [...owing(owedBefore, "2026-09-01"), { date: "2026-09-15", amount: paid }] },
+          { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-15", amount: -paid }] },
+        ],
+        cardTransfers: [
+          { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: paid },
+        ],
+      };
+      const result = computeBudgetMonth(input, "2026-09");
+      return { a: category(result.paymentCategories, "a-payment"), b: category(result.paymentCategories, "b-payment") };
+    }
 
-    const result = computeBudgetMonth(input, "2026-09");
+    it("A owes €500 and holds €500, B pays €500: €500 moves, B has nothing to cover", () => {
+      const { a, b } = payDown(50000, 50000, 50000);
+      assert.equal(a.available, 0);
+      assert.equal(a.activity, -50000);
+      assert.equal(b.available, 50000);
+      assert.equal(b.owed, 50000);
+      assert.equal(b.uncovered, 0);
+    });
 
-    assert.equal(category(result.paymentCategories, "a-payment").available, 0);
-    assert.equal(category(result.paymentCategories, "b-payment").available, 50000);
-  });
+    it("A owes €500 and holds €300, B pays €500: €300 moves, B has €200 to cover", () => {
+      const { a, b } = payDown(50000, 30000, 50000);
+      assert.equal(a.available, 0);
+      assert.equal(a.uncovered, 0);
+      assert.equal(b.available, 30000);
+      assert.equal(b.uncovered, 20000);
+      assert.equal(b.cashOverspending, 0, "the part that does not move is never cash overspending");
+    });
 
-  it("a transfer beyond what the source holds moves only what it has, never as cash overspending", () => {
-    const input: BudgetInput = {
-      ...EMPTY,
-      paymentCategoryIds: ["a-payment", "b-payment"],
-      assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 30000 }],
-      cardTransfers: [
-        { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 50000 },
-      ],
-    };
+    it("A owes €800 and holds €300, B pays €500: nothing moves, B has €500 to cover", () => {
+      const { a, b } = payDown(80000, 30000, 50000);
+      assert.equal(a.available, 30000);
+      assert.equal(a.owed, 30000);
+      assert.equal(a.uncovered, 0);
+      assert.equal(b.available, 0);
+      assert.equal(b.uncovered, 50000);
+    });
 
-    const result = computeBudgetMonth(input, "2026-09");
+    it("A owes €800 and holds €300, B pays €200: A still owes more than it holds, nothing moves, B has €200 to cover", () => {
+      const { a, b } = payDown(80000, 30000, 20000);
+      assert.equal(a.available, 30000);
+      assert.equal(b.available, 0, "never a negative amount moved to B");
+      assert.equal(b.uncovered, 20000);
+      assert.equal(b.cashOverspending, 0);
+    });
 
-    const a = category(result.paymentCategories, "a-payment");
-    assert.equal(a.available, 0, "the source never goes negative from a transfer it cannot fully cover");
-    assert.equal(a.cashOverspending, 0, "an uncovered transfer is never cash overspending: nothing real moved");
-    assert.equal(category(result.paymentCategories, "b-payment").available, 30000);
+    it("A owes €800 and holds €900, B pays €500: €500 moves, A keeps €400", () => {
+      const { a, b } = payDown(80000, 90000, 50000);
+      assert.equal(a.available, 40000);
+      assert.equal(a.owed, 30000);
+      assert.equal(b.available, 50000);
+      assert.equal(b.uncovered, 0);
+    });
+
+    it("A owes €500 and holds €500, B pays €600: A is €100 in credit, €600 moves, A's −€100 is its credit, not cash overspending", () => {
+      const { a, b } = payDown(50000, 50000, 60000);
+      assert.equal(a.owed, -10000);
+      assert.equal(a.available, -10000);
+      assert.equal(a.cashOverspending, 0);
+      assert.equal(b.available, 60000);
+      assert.equal(b.uncovered, 0);
+    });
+
+    it("money assigned to B, the card that was charged, stays on B: one assignment settles it", () => {
+      const before = payDown(50000, 30000, 50000).b;
+      const input: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment"],
+        assignments: [
+          { categoryId: "a-payment", month: "2026-09", amount: 30000 },
+          { categoryId: "b-payment", month: "2026-09", amount: before.uncovered },
+        ],
+        cardBalances: [
+          { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-15", amount: 50000 }] },
+          { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-15", amount: -50000 }] },
+        ],
+        cardTransfers: [
+          { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+        ],
+      };
+      const b = category(computeBudgetMonth(input, "2026-09").paymentCategories, "b-payment");
+      assert.equal(b.available, 50000);
+      assert.equal(b.uncovered, 0);
+    });
+
+    it("a card whose balance is not given moves only what its payment category holds", () => {
+      const input: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment"],
+        assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 30000 }],
+        cardTransfers: [
+          { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+        ],
+      };
+      const result = computeBudgetMonth(input, "2026-09");
+      assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+      assert.equal(category(result.paymentCategories, "a-payment").cashOverspending, 0);
+      assert.equal(category(result.paymentCategories, "b-payment").available, 30000);
+    });
+
+    it("applies a month's transfers in date order, then id, whatever order they are given in", () => {
+      // A owes €1,000 and holds €600; B pays €500 of it on the 10th, C €500 on the 20th, then
+      // nothing is owed on A. B's transfer comes first and gets €500, C's the €100 left.
+      const transfers = [
+        { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "c-payment", month: "2026-09", date: "2026-09-20", id: "t0", amount: 50000 },
+        { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-10", id: "t9", amount: 50000 },
+      ] as const;
+      const base: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+        assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 60000 }],
+        cardBalances: [{ paymentCategoryId: "a-payment", transactions: [...owing(100000, "2026-09-01"), { date: "2026-09-10", amount: 50000 }, { date: "2026-09-20", amount: 50000 }] }],
+      };
+      for (const cardTransfers of [[...transfers], [...transfers].reverse()]) {
+        const result = computeBudgetMonth({ ...base, cardTransfers }, "2026-09");
+        assert.equal(category(result.paymentCategories, "b-payment").available, 50000);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 10000);
+        assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+      }
+      // The same day: the id decides, whatever order they are given in.
+      const sameDay = transfers.map((t) => ({ ...t, date: "2026-09-10" }));
+      for (const cardTransfers of [sameDay, [...sameDay].reverse()]) {
+        const result = computeBudgetMonth({ ...base, cardTransfers }, "2026-09");
+        assert.equal(category(result.paymentCategories, "c-payment").available, 50000);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 10000);
+      }
+    });
+
+    it("chained transfers: money B received from A follows B's debt on to C", () => {
+      // A owes €500 and holds €500; B pays it on the 10th, then C pays B's €500 on the 20th.
+      const input: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+        assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 50000 }],
+        cardBalances: [
+          { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-10", amount: 50000 }] },
+          { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-10", amount: -50000 }, { date: "2026-09-20", amount: 50000 }] },
+          { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-20", amount: -50000 }] },
+        ],
+        cardTransfers: [
+          { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-10", id: "t1", amount: 50000 },
+          { paidPaymentCategoryId: "b-payment", chargedPaymentCategoryId: "c-payment", month: "2026-09", date: "2026-09-20", id: "t2", amount: 50000 },
+        ],
+      };
+      const result = computeBudgetMonth(input, "2026-09");
+      assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+      assert.equal(category(result.paymentCategories, "b-payment").available, 0);
+      assert.equal(category(result.paymentCategories, "c-payment").available, 50000);
+      assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
+    });
+
+    it("refuses a transfer dated outside its month", () => {
+      assert.throws(
+        () =>
+          computeBudgetMonth(
+            {
+              ...EMPTY,
+              paymentCategoryIds: ["a-payment", "b-payment"],
+              cardTransfers: [
+                { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-10-01", id: "t1", amount: 100 },
+              ],
+            },
+            "2026-09",
+          ),
+        (error) => isValidationError(error, "invalid_date"),
+      );
+    });
   });
 
   it("rejects invalid data with a translatable error code", () => {
@@ -526,7 +672,7 @@ describe("computeBudgetMonth", () => {
             ...EMPTY,
             paymentCategoryIds: ["a-payment"],
             cardTransfers: [
-              { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "missing", month: "2026-09", amount: 100 },
+              { paidPaymentCategoryId: "missing", chargedPaymentCategoryId: "a-payment", month: "2026-09", date: "2026-09-01", id: "t1", amount: 100 },
             ],
           },
           "2026-09",
@@ -540,7 +686,7 @@ describe("computeBudgetMonth", () => {
             ...EMPTY,
             paymentCategoryIds: ["a-payment", "b-payment"],
             cardTransfers: [
-              { sourcePaymentCategoryId: "a-payment", destinationPaymentCategoryId: "b-payment", month: "2026-09", amount: 0 },
+              { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-01", id: "t1", amount: 0 },
             ],
           },
           "2026-09",
