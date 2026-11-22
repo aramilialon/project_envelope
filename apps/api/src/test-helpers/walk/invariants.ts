@@ -482,7 +482,7 @@ export function balancesAtEndOf(model: WorkspaceModel, byAccount: ReadonlyMap<st
  * every positive split on them dated in it or before but after today: income, a refund, a
  * categorized transfer in (not received yet, so it counts nowhere, #668). A card's refund dated
  * after today moves nothing between its category and the payment category, so it leaves the sum
- * alone.
+ * alone. The refund term cannot fire yet: the walk never dates a transaction after today.
  */
 export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel, month: string, balances?: ReadonlyMap<string, number>): Promise<BudgetMonthResponse> {
   const actual = (await get(ctx, model, wsPath(model, `/budget-months/${month}`))) as BudgetMonthResponse;
