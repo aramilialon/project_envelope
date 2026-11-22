@@ -261,6 +261,23 @@ describe("performance route (#89)", () => {
     );
   });
 
+  it("gives a month with only a fee its gain and no return (#89)", async () => {
+    const broker = await account("EUR");
+    const portfolioId = await portfolio();
+    await trade({ type: "fee", accountId: broker, portfolioId, instrumentId: null, tradeDate: "1903-02-03", feesCents: 500 });
+
+    const body = await performance(portfolioId, "1903-02", "1903-02");
+    const [row] = body.months;
+    assert.deepEqual(
+      [row?.valueCents, row?.netContributionsCents, row?.gainCents, row?.twrE6, row?.twrUnknownReason, row?.mwrE6, row?.mwrUnknownReason],
+      [0, 500, -500, null, "no_capital", null, "no_capital"],
+    );
+    assert.deepEqual(
+      [body.totals.gainCents, body.totals.twrUnknownReason, body.totals.mwrUnknownReason],
+      [-500, "no_capital", "no_capital"],
+    );
+  });
+
   it("gives an unpriced instrument's month a null value and a missing entry, never a partial sum", async () => {
     const priced = await instrument("EUR");
     const unpriced = await instrument("EUR");
