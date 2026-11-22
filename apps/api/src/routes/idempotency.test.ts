@@ -49,6 +49,7 @@ describe("idempotent creates (#559)", () => {
   let otherAccountId: string;
   let otherCategoryId: string;
   const queue = countingQueue();
+  const unstoredReplyErrors: string[] = [];
 
   async function insertId(sql: string, params: unknown[]): Promise<string> {
     const { rows } = await superuserPool.query<{ id: string }>(`${sql} RETURNING id`, params);
@@ -64,7 +65,14 @@ describe("idempotent creates (#559)", () => {
         // must refuse it (500), and nothing may be committed.
         built.fastify.post(
           "/workspaces/:workspaceId/test-unstored-reply",
-          { preHandler, config: IDEMPOTENT_ROUTE },
+          {
+            preHandler,
+            config: IDEMPOTENT_ROUTE,
+            // The error the request failed with: the onSend check's own, not the trigger's at commit.
+            onError: async (_request, _reply, error) => {
+              unstoredReplyErrors.push(error.message);
+            },
+          },
           withIdempotencyKey(async (request, reply) => {
             await request.db!.query("INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Unstored', 99)", [
               request.workspace!.id,
@@ -633,6 +641,30 @@ describe("idempotent creates (#559)", () => {
       assert.equal(workspace.statusCode, 400);
     });
 
+    it("refuses it as invalid_field to a non-member too, before membership is checked", async () => {
+      const strangerToken = await realm.getTokenForNewUser();
+      await app.fastify.inject({ method: "GET", url: "/me", headers: { authorization: `Bearer ${strangerToken}` } });
+      const key = randomUUID();
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: headers(key, strangerToken),
+        payload: { name: `Stranger ${key}`, type: "cash", currency: "EUR" },
+      });
+      assert.equal(response.statusCode, 400);
+      assert.deepEqual(response.json(), { error: "invalid_field", details: { field: "Idempotency-Key" } });
+      assert.equal(await countRows("SELECT count(*) FROM accounts WHERE name = $1", [`Stranger ${key}`]), 0);
+
+      // Without the header, the same request is refused for not being a member.
+      const withoutKey = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts`,
+        headers: headers(undefined, strangerToken),
+        payload: { name: `Stranger ${key}`, type: "cash", currency: "EUR" },
+      });
+      assert.equal(withoutKey.statusCode, 403);
+    });
+
     it("ignores it on a read", async () => {
       const response = await app.fastify.inject({
         method: "GET",
@@ -653,6 +685,7 @@ describe("idempotent creates (#559)", () => {
         payload: {},
       });
       assert.equal(response.statusCode, 500);
+      assert.deepEqual(unstoredReplyErrors, ["an idempotent route replied without storing its reply"]);
       assert.equal(await storedKeys(key), 0);
       assert.equal(await countRows("SELECT count(*) FROM category_groups WHERE workspace_id = $1 AND name = 'Unstored'", [workspaceId]), 0);
     });
