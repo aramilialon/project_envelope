@@ -16,10 +16,12 @@
  *
  * A realm's name says which process created it, on which host, and when (`testRealmName`), so a
  * run that crashed or was killed before it could delete its realm does not leave it there for
- * long: every global setup first deletes the test realms whose process is gone, or that are
- * older than `LEFTOVER_REALM_AGE_MS` (`sweepLeftoverTestRealms`).
+ * long: every global setup first deletes the test realms whose process on this host is gone, and
+ * those from another host older than `LEFTOVER_REALM_AGE_MS` (`sweepLeftoverTestRealms`).
  */
 import { createHash, randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import { readFileSync, readlinkSync } from "node:fs";
 import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -34,8 +36,8 @@ export const SHORT_LIVED_TOKEN_SECONDS = 2;
 
 /** The environment variable through which the global setup hands the run's realm to every test file. */
 export const RUN_REALM_ENV = "ENVELOPE_TEST_KEYCLOAK_REALM";
-/** A test realm older than this is deleted by the next sweep, whichever process created it: no run lasts this long. */
-export const LEFTOVER_REALM_AGE_MS = 6 * 60 * 60 * 1000;
+/** A test realm from another host, or from before #639, older than this is deleted by the next sweep: its process cannot be checked. */
+export const LEFTOVER_REALM_AGE_MS = 24 * 60 * 60 * 1000;
 
 const TEST_REALM_PATTERN = /^envelope-test-run-([0-9a-f]{8})-([1-9][0-9]*)-([0-9a-z]+)-[0-9a-f]{8}$/;
 /** The name the helper gave every realm, one per test file, before #639: it says neither who created it nor when. */
@@ -189,21 +191,35 @@ export function parseTestRealmName(realm: string): { host: string; pid: number; 
   return { host, pid: Number(pid), startedAt: parseInt(startedAt, 36) };
 }
 
-export function hostTag(name = hostname()): string {
+/**
+ * The host name and, on Linux, the PID namespace (`/proc/self/ns/pid`): two containers with the
+ * same host name see different processes under the same ids, so neither must judge the other's.
+ */
+export function hostTag(name = `${hostname()} ${pidNamespace()}`): string {
   return createHash("sha256").update(name).digest("hex").slice(0, 8);
+}
+
+function pidNamespace(): string {
+  try {
+    return readlinkSync("/proc/self/ns/pid");
+  } catch {
+    return "";
+  }
 }
 
 export interface SweepContext {
   readonly now: number;
   readonly host: string;
-  readonly isProcessAlive: (pid: number) => boolean;
+  /** Whether the process that created a realm at `realmStartedAt` is still running under `pid`. */
+  readonly isProcessAlive: (pid: number, realmStartedAt: number) => boolean;
 }
 
 /**
- * What a sweep does with a realm: `delete` a test realm whose process on this host is gone, or
- * that is older than `LEFTOVER_REALM_AGE_MS`; `check-age` for a realm named by the helper before
- * #639, whose name says neither, so its age is read from its users; `keep` anything else,
- * another run's live realm and every realm that is not a test realm.
+ * What a sweep does with a realm: `keep` a test realm whose process on this host is still
+ * running, however old (a long walk keeps its realm to the end); `delete` one whose process on
+ * this host is gone, and one from another host once it is older than `LEFTOVER_REALM_AGE_MS`;
+ * `check-age` for a realm named by the helper before #639, whose name says neither, so its age is
+ * read from its users; `keep` anything else, every realm that is not a test realm included.
  */
 export function judgeRealm(realm: string, context: SweepContext): "keep" | "delete" | "check-age" {
   if (PER_FILE_REALM_PATTERN.test(realm)) {
@@ -213,20 +229,55 @@ export function judgeRealm(realm: string, context: SweepContext): "keep" | "dele
   if (!origin) {
     return "keep";
   }
-  if (context.now - origin.startedAt > LEFTOVER_REALM_AGE_MS) {
-    return "delete";
+  if (origin.host === context.host) {
+    return context.isProcessAlive(origin.pid, origin.startedAt) ? "keep" : "delete";
   }
-  return origin.host === context.host && !context.isProcessAlive(origin.pid) ? "delete" : "keep";
+  return context.now - origin.startedAt > LEFTOVER_REALM_AGE_MS ? "delete" : "keep";
 }
 
-export function isProcessAlive(pid: number): boolean {
+/**
+ * Whether `pid` is a running process that was already running at `realmStartedAt`. A process
+ * that started later only reuses the id of the one that created the realm. Where its start time
+ * cannot be read (no `/proc`), a running process counts as the realm's.
+ */
+export function isProcessAlive(pid: number, realmStartedAt: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     // EPERM: the process exists, it only belongs to another user.
-    return (error as NodeJS.ErrnoException).code === "EPERM";
+    if ((error as NodeJS.ErrnoException).code !== "EPERM") {
+      return false;
+    }
   }
+  const startedAt = processStartedAt(pid);
+  // A few seconds of slack: the start time is read in clock ticks, the boot time in whole seconds.
+  return startedAt === undefined || startedAt <= realmStartedAt + 5_000;
+}
+
+/** When a process started, in milliseconds since the epoch, from `/proc`; `undefined` where that cannot be read. */
+function processStartedAt(pid: number): number | undefined {
+  try {
+    // Field 22, start time in clock ticks since boot; the fields after the parenthesised command name.
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const startTicks = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19]);
+    const bootSeconds = Number(/^btime (\d+)$/m.exec(readFileSync("/proc/stat", "utf8"))?.[1]);
+    if (!Number.isFinite(startTicks) || !Number.isFinite(bootSeconds)) {
+      return undefined;
+    }
+    return bootSeconds * 1000 + (startTicks * 1000) / clockTicksPerSecond();
+  } catch {
+    return undefined;
+  }
+}
+
+let clockTicks: number | undefined;
+
+function clockTicksPerSecond(): number {
+  if (clockTicks === undefined) {
+    const value = Number(spawnSync("getconf", ["CLK_TCK"], { encoding: "utf8" }).stdout?.trim());
+    clockTicks = Number.isInteger(value) && value > 0 ? value : 100;
+  }
+  return clockTicks;
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   createTestRealm,
   deleteTestRealm,
   hostTag,
+  isProcessAlive,
   judgeRealm,
   LEFTOVER_REALM_AGE_MS,
   parseTestRealmName,
@@ -53,10 +54,24 @@ describe("Keycloak test realm names (#639)", () => {
     assert.equal(judgeRealm(testRealmName(1001, NOW - 60_000, HOST), context), "delete");
   });
 
+  it("keeps the realm of a live process of this host however old it is: a long walk keeps its realm", () => {
+    assert.equal(judgeRealm(testRealmName(1000, NOW - LEFTOVER_REALM_AGE_MS - 1, HOST), context), "keep");
+  });
+
   it("keeps another host's realm, whose process it cannot see, until it is older than the limit", () => {
+    assert.equal(LEFTOVER_REALM_AGE_MS, 24 * 60 * 60 * 1000);
     assert.equal(judgeRealm(testRealmName(1001, NOW - LEFTOVER_REALM_AGE_MS, "ffffffff"), context), "keep");
-    assert.equal(judgeRealm(testRealmName(1001, NOW - LEFTOVER_REALM_AGE_MS - 1, "ffffffff"), context), "delete");
-    assert.equal(judgeRealm(testRealmName(1000, NOW - LEFTOVER_REALM_AGE_MS - 1, HOST), context), "delete");
+    assert.equal(judgeRealm(testRealmName(1000, NOW - LEFTOVER_REALM_AGE_MS - 1, "ffffffff"), context), "delete");
+  });
+
+  it("tells this process from a later one that reused its id", { skip: process.platform !== "linux" }, () => {
+    assert.equal(isProcessAlive(process.pid, Date.now()), true);
+    assert.equal(isProcessAlive(process.pid, Date.now() - 365 * 24 * 60 * 60 * 1000), false, "a realm from before this process started");
+    assert.equal(isProcessAlive(deadPid(), Date.now()), false);
+  });
+
+  it("gives another PID namespace with the same host name a tag of its own", () => {
+    assert.notEqual(hostTag("envelope pid:[4026531836]"), hostTag("envelope pid:[4026532001]"));
   });
 
   it("reads the age of a per-file realm from before #639 from its users, and keeps every other realm", () => {
@@ -117,15 +132,15 @@ describe("Keycloak test realms, against a real Keycloak (#639)", () => {
     await assert.rejects(own.getUserToken(), /responded 404/);
   });
 
-  it("sweeps the realms of a run that is gone or too old, and keeps a live run's", async () => {
+  it("sweeps the realms of a run that is gone, or from another host and too old, and keeps a live run's", async () => {
     const gone = await createTestRealm(adminPassword, testRealmName(deadPid()));
-    const old = await createTestRealm(adminPassword, testRealmName(process.pid, Date.now() - LEFTOVER_REALM_AGE_MS - 60_000));
+    const old = await createTestRealm(adminPassword, testRealmName(1, Date.now() - LEFTOVER_REALM_AGE_MS - 60_000, "ffffffff"));
     const live = await createTestRealm(adminPassword, testRealmName());
     created.push(gone.realm, old.realm, live.realm);
 
     const deleted = await sweepLeftoverTestRealms(adminPassword);
     assert.ok(deleted.includes(gone.realm), "the realm of a process that is gone");
-    assert.ok(deleted.includes(old.realm), "the realm older than the limit");
+    assert.ok(deleted.includes(old.realm), "another host's realm older than the limit");
     assert.ok(!deleted.includes(live.realm), "the realm of this live process");
   });
 });
