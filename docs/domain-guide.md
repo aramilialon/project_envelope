@@ -244,9 +244,16 @@ What a category asks for (its "To do" item, "Move money" and quick assign's "Cov
   overspending *and* its reservation shortfall. Money assigned to such a category covers its card
   spending first and moves to the card (rule 4 of `budget-month.ts`), so nothing reaches the
   reservation until the card part is covered. Each card it spent on then asks that much less, and
-  its "To do" line says how much of its debt is asked on which category. Before #731 the category
+  its "To do" line says how much of its debt is included in what a category still needs. Before #731 the category
   asked only its cash overspending, and its reservation shortfall came back only after its card
   spending had been covered some other way.
+
+Every action that assigns to a card asks the same net amount, max(0, to cover − the card spending
+asked on categories): its "To do" item, the "Assign" button in its payment category, the amount
+"Move money" preselects for it and quick assign's "Cover the cards' debt", each with the line saying
+how much of its debt is included in what a category still needs. The debt meter, the detail's "To
+cover" line, keeps the card's whole to cover. So following the list, or running quick assign's
+"Cover overspending" and "Cover the cards' debt" in either order, sets the same money aside once.
 
 Assigning to a category with credit overspending is still fine: it moves the money into the card,
 and the card's "to cover" goes down by the same amount — but only up to the card's own "to cover".
@@ -263,12 +270,14 @@ Visa and a €10 scheduled cash transaction not yet recorded. Credit overspendin
 overspending = €0, reservation shortfall = €10.
 
 - The list asks "Restaurants: not enough for what is scheduled" **€40.00** ("includes €30.00 spent
-  with a card, which money assigned here covers first"), and nothing for the Visa, whose €30 debt is
+  with a card, covered first by money assigned here"), and nothing for the Visa, whose €30 debt is
   all asked on Restaurants.
 - Assigning €40 to Restaurants moves €30 into the Visa's payment category, which then holds what
   the Visa owes, and leaves Restaurants at zero with its €10 reserved. The list asks nothing more.
 - Had the Visa owed €50 (€20 from before), it would ask **€20.00**, with the line "€30.00 of the
-  card's debt is asked on Restaurants": €60.00 in all.
+  card's debt is included in what Restaurants still needs": €60.00 in all. Its "Assign" button,
+  "Move money" and quick assign's "Cover the cards' debt" ask the same €20.00, while its "To cover"
+  line still reads €50.00.
 - Before #731 the list asked "Debt to cover: Visa" €30.00 and nothing for Restaurants; its €10
   came back only when the scheduled transaction was recorded, and the total depended on the order
   (category first €40, card first €30).

@@ -780,8 +780,11 @@ button{cursor:pointer}
   // #731: the line on a card's "To do" item when part of its debt is asked on categories.
   function askedSub(a) {
     var total = sum(a, function (p) { return p.amount; });
-    return a.length === 1 ? f(total) + ' of the card\'s debt is asked on ' + a[0].name : f(total) + ' of the card\'s debt is asked on ' + a.length + ' categories';
+    return a.length === 1 ? f(total) + ' of the card\'s debt is included in what ' + a[0].name + ' still needs' : f(total) + ' of the card\'s debt is included in what ' + a.length + ' categories still need';
   }
+  // #731: what every action that assigns to the card `k` asks ("To do", Assign, Move money, quick
+  // assign): its to cover less the card spending asked on categories. The meter keeps needOf.
+  function cardNeed(byId, k) { return Math.max(0, needOf(byId[k]) - sum(askedOn(byId, k), function (p) { return p.amount; })); }
   // #731: the card spending asked on categories instead of on the card `k`.
   function askedOn(byId, k) {
     var card = byId[k].c.card;
@@ -1075,7 +1078,8 @@ button{cursor:pointer}
     var toCover = x.cash + x.uncovered;
     // "Assign" offers that whole amount, the same as the card's one "To fix" item; this
     // mockup caps it at what is still unassigned, as every other assign button here does.
-    var can = Math.min(toCover, Math.max(0, rta()));
+    // #731: less the card spending asked on categories with scheduled transactions short.
+    var asked = askedOn(byId, c.id), can = Math.min(cardNeed(byId, c.id), Math.max(0, rta()));
     var txs = (c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · debt, not counted as activity' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">No activity this month.</span>';
@@ -1085,7 +1089,8 @@ button{cursor:pointer}
       '<div class="sec"><h5><span>Card debt</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Move money here</button></h5>' + line('Card balance', f(-x.debt)) + line('Set aside', f(Math.max(0, x.avail))) +
       (x.cash > 0 ? line('Paid beyond what was set aside', f(x.cash)) : '') +
       line('To cover', f(toCover), toCover > 0 ? 'warnl' : '') +
-      (toCover > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>' : '') + '</div>' +
+      (asked.length ? '<p class="explain">' + esc(askedSub(asked)) + '</p>' : '') +
+      (cardNeed(byId, c.id) > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>' : '') + '</div>' +
       '<div class="sec"><h5>The month in numbers</h5>' + line('Carried over from August', f(c.carried)) + asgLine(x, p) +
       line('Card spending covered', f(x.covered)) + line('Card payments', f(c.paid)) + line('Available', f(x.avail)) + '</div>' +
       '<div class="sec"><h5>September assignments</h5>' + histHtml(c.id) + '</div>' +
@@ -1182,8 +1187,10 @@ button{cursor:pointer}
     else {
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
-      var gap = needOf(y);
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 && y.short > 0 ? 'The overspending and the scheduled transactions are covered: ' + f(y.credit) + ' of it moves to the card.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
+      var gap = y.c.payment ? cardNeed(byId, to) : needOf(y), asked = y.c.payment ? askedOn(byId, to) : [];
+      if (gap > 0 && !(amount >= gap && asked.length)) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 && y.short > 0 ? 'The overspending and the scheduled transactions are covered. ' + f(y.credit) + ' of this amount covers card spending and moves to the card.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
+      // #731: part of the card's debt is asked on categories instead.
+      if (asked.length) lines.push('<div class="ba note">' + esc(askedSub(asked)) + '</div>');
     }
     var warn = from === null && amount > r ? 'Unassigned will go below zero: you are assigning money that has not arrived yet.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1212,7 +1219,7 @@ button{cursor:pointer}
     if (spec && spec.indexOf('to:') === 0) {
       var t = spec.slice(3), y = byId[t];
       m.to = t;
-      var gap = needOf(y);
+      var gap = y.c.payment ? cardNeed(byId, t) : needOf(y);
       if (gap > 0) m.amt = amountStr(gap);
       if (rta() < gap) {
         var srcs = Object.keys(byId).filter(function (k) { return k !== t && !byId[k].c.payment && byId[k].avail >= gap; });
@@ -1240,7 +1247,8 @@ button{cursor:pointer}
       if (scope !== 'all' && scope !== g.id) return;
       g.cats.forEach(function (c) {
         var x = byId[c.id], t = target(x), n = 0;
-        if (c.payment) { if (kind === 'debt') n = x.cash + x.uncovered; }
+        // #731: the same figure as the card's "To do" item, less what categories ask for it.
+        if (c.payment) { if (kind === 'debt') n = cardNeed(byId, c.id); }
         else if (kind === 'targets') n = t ? t.need : 0;
         else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
         // The same figure as the API's cover_overspending (#728): needOf, so a category short only
@@ -1263,7 +1271,10 @@ button{cursor:pointer}
     }).join('');
     var list = qaNeeds(q.kind, byId, q.scope), give = sum(list, function (z) { return z[2]; }), want = sum(list, function (z) { return z[1]; });
     var prev = list.length ? list.map(function (z) {
-      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
+      // #731: once per card, the part of its debt asked on categories instead.
+      var asked = byId[z[0]].c.payment ? askedOn(byId, z[0]) : [];
+      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>' +
+        (asked.length ? '<div class="ba note">' + esc(askedSub(asked)) + '</div>' : '');
     }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Unassigned</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
       (give < want ? '<div class="ba note" style="color:var(--warn)">Unassigned is not enough for everything: categories get money in the order of the table while it lasts.</div>' : '')
       : '<span style="color:var(--muted)">Nothing to assign for this choice.</span>';
@@ -1498,8 +1509,8 @@ button{cursor:pointer}
       var x = byId[k];
       // #728: card overspending is no item of its own here; it is already in the card's debt below,
       // unless the category's scheduled transactions are missing money too (#731).
-      if (x.cash > 0 && !x.c.payment) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.short > 0 ? (x.credit > 0 ? 'overspent in cash and with a card, and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash and not enough for what is scheduled: cover it before the month ends') : 'overspent in cash: cover it before the month ends', amount: needOf(x), cat: k });
-      if (x.cash > 0 && x.c.payment) { var a = askedOn(byId, k), n = Math.max(0, needOf(x) - sum(a, function (p) { return p.amount; })); if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: a.length ? askedSub(a) : 'overspent in cash: cover it before the month ends', amount: n, cat: k }); }
+      if (x.cash > 0 && !x.c.payment) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.short > 0 ? (x.credit > 0 ? 'overspent in cash and with a card, and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month\'s unassigned money' : 'overspent in cash and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month\'s unassigned money') : 'overspent in cash; if still uncovered when the month ends, it comes out of next month\'s unassigned money', amount: needOf(x), cat: k });
+      if (x.cash > 0 && x.c.payment) { var a = askedOn(byId, k), n = cardNeed(byId, k); if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: a.length ? askedSub(a) : 'overspent in cash; if still uncovered when the month ends, it comes out of next month\'s unassigned money', amount: n, cat: k }); }
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
       list.push({ dot: '', title: 'Record ' + s.payee, sub: 'scheduled for ' + dLabel(s.due) + ', not yet in the account', amount: s.amount, rec: s.id });
@@ -1508,14 +1519,14 @@ button{cursor:pointer}
       var x = byId[k];
       if (x.short > 0 && x.cash === 0) {
         var s = schedThisMonth(k)[0];
-        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + (x.credit > 0 ? 'includes ' + f(x.credit) + ' spent with a card, which money assigned here covers first' : 'still missing'), amount: x.credit + x.short, cat: k });
+        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + (x.credit > 0 ? 'includes ' + f(x.credit) + ' spent with a card, covered first by money assigned here' : 'still missing'), amount: x.credit + x.short, cat: k });
       }
     });
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
       if (!(x.uncovered > 0 && x.cash === 0)) return;
       // #731: what a category asks for this card is not asked here again.
-      var a = askedOn(byId, k), n = Math.max(0, x.uncovered - sum(a, function (p) { return p.amount; }));
+      var a = askedOn(byId, k), n = cardNeed(byId, k);
       if (n > 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: a.length ? askedSub(a) : x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: n, cat: k });
     });
     var need = Object.keys(byId).filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
