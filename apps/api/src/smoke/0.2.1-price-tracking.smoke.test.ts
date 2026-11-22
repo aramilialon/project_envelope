@@ -1,7 +1,8 @@
 /**
- * Certifies 0.2.1 Price tracking against the real process (ADR 0007): the actual server (main.ts)
- * as a subprocess, driven over real HTTP connections, not buildApp()+inject(). Each issue of the
- * milestone that needs a smoke step adds a top-level `describe` block of its own.
+ * Certifies 0.2.1 Price tracking & performance against the real process (ADR 0007: one file per
+ * milestone): the actual server (main.ts) as a subprocess, driven over real HTTP connections, not
+ * buildApp()+inject(). Each issue of the milestone that needs a smoke case adds a top-level
+ * `describe` of its own, with its own server, realm and workspace.
  *
  * Idempotent creates (#559, ADR 0020): a create sent twice under the same `Idempotency-Key` records
  * once and answers the same; the same key with another body is refused; an assignment batch sent
@@ -32,7 +33,7 @@ if (!process.env.KEYCLOAK_ADMIN_PASSWORD) {
   throw new Error("Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) before running the integration tests");
 }
 
-describe("smoke: 0.2.1 idempotent creates (#559), against the real process", () => {
+describe("smoke: 0.2.1 idempotent creates, against the real process", () => {
   let superuserPool: DbPool;
   let realm: KeycloakTestRealm;
   let server: RunningServer;
