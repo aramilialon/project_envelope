@@ -22,6 +22,7 @@ import {
   type UpdateTransactionInput,
 } from "./api.ts";
 import { accountClosedAddMessage, accountClosedChangeMessage, accountClosedDeleteMessage, closedAccountOf } from "./accountClosedMessages.ts";
+import { tradeLabel } from "./tradeLabel.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
@@ -95,7 +96,7 @@ function centsToInput(cents: number, locale: string, currency: string): string {
  * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
  * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
  * A trade's cash leg (`tradeId`, ADR 0012, #657) edits only its payee, memo and cleared status:
- * its amount, date, kind and category are locked with "Change it on the trade.", and it has no
+ * its amount, date, kind and category are locked under a note naming the trade, and it has no
  * "Delete". On an off-budget account, a transaction that is not a transfer has no category and
  * no split (#710).
  */
@@ -352,19 +353,19 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       // #657: the amount, date and account of a trade's cash leg belong to the trade (ADR 0012).
       return intl.formatMessage({
         id: "transactions.form.tradeOwned",
-        defaultMessage: "This transaction is a trade's cash: its amount, date and account change on the trade.",
+        defaultMessage: "This transaction belongs to a trade: its amount, date and account change on the trade.",
       });
     }
     if (caught instanceof ApiError && caught.code === "category_not_allowed") {
       // #710: a transaction on an off-budget account that is not a transfer has no category.
       return intl.formatMessage({
         id: "transactions.form.categoryNotAllowed",
-        defaultMessage: "A transaction on an off-budget account has no category.",
+        defaultMessage: "On an off-budget account, a transaction has no category.",
       });
     }
     if (caught instanceof ApiError && caught.code === "unsupported_transaction" && offBudget && kind !== "transfer") {
       // #710: with no category, an off-budget transaction cannot be split across lines.
-      return intl.formatMessage({ id: "transactions.form.offBudgetOneLine", defaultMessage: "An off-budget transaction has one line." });
+      return intl.formatMessage({ id: "transactions.form.offBudgetOneLine", defaultMessage: "On an off-budget account, a transaction can't be split." });
     }
     if (caught instanceof ApiError && caught.code === "card_income_not_supported") {
       // #548: income (an inflow with no category) on an on-budget credit card is not supported yet.
@@ -609,7 +610,10 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
         {isCashLeg && (
           <p className="hint" id="tx-trade-note">
-            {intl.formatMessage({ id: "transactions.form.tradeNote", defaultMessage: "Change it on the trade." })}
+            {intl.formatMessage(
+              { id: "transactions.form.tradeNote", defaultMessage: "This transaction belongs to “{trade}”: its amount and date change on the trade." },
+              { trade: transaction?.trade ? tradeLabel(intl, transaction.trade) : "" },
+            )}
           </p>
         )}
 

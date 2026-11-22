@@ -68,7 +68,7 @@ test.describe("a trade's cash leg (#657)", () => {
       await row.getByRole("button", { name: "Buy · 10 × World equity fund" }).click();
       const sheet = page.getByRole("dialog");
       await expect(sheet.getByLabel("Amount")).toBeDisabled();
-      await expect(sheet.getByText("Change it on the trade.")).toBeVisible();
+      await expect(sheet.getByText("This transaction belongs to “Buy · 10 × World equity fund”: its amount and date change on the trade.")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Delete" })).toHaveCount(0);
       await sheet.getByLabel("Memo").fill("Monthly plan");
       await sheet.getByRole("button", { name: "Save" }).click();

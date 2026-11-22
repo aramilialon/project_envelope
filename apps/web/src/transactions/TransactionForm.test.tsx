@@ -1245,8 +1245,8 @@ describe("TransactionForm: off-budget accounts (#710) and trade cash legs (#657)
   });
 
   it.each([
-    ["category_not_allowed", { field: "categoryId" }, "A transaction on an off-budget account has no category."],
-    ["unsupported_transaction", {}, "An off-budget transaction has one line."],
+    ["category_not_allowed", { field: "categoryId" }, "On an off-budget account, a transaction has no category."],
+    ["unsupported_transaction", {}, "On an off-budget account, a transaction can't be split."],
   ])("says why the API refused an off-budget row (%s)", async (code, details, message) => {
     vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(new ApiError("POST failed: 400", 400, code, details));
     renderOnBroker();
@@ -1274,8 +1274,8 @@ describe("TransactionForm: off-budget accounts (#710) and trade cash legs (#657)
     expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Split across categories" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Amount")).toHaveAccessibleDescription("Change it on the trade.");
-    expect(screen.getByLabelText("Date")).toHaveAccessibleDescription("Change it on the trade.");
+    expect(screen.getByLabelText("Amount")).toHaveAccessibleDescription("This transaction belongs to “Buy · 10 × WEQ”: its amount and date change on the trade.");
+    expect(screen.getByLabelText("Date")).toHaveAccessibleDescription("This transaction belongs to “Buy · 10 × WEQ”: its amount and date change on the trade.");
     // Its own fields stay editable.
     expect(screen.getByLabelText("Payee")).toBeEnabled();
     expect(screen.getByLabelText("Memo")).toBeEnabled();
@@ -1303,7 +1303,7 @@ describe("TransactionForm: off-budget accounts (#710) and trade cash legs (#657)
     fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Monthly plan" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This transaction is a trade's cash: its amount, date and account change on the trade.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transaction belongs to a trade: its amount, date and account change on the trade.");
     expect(onSaved).not.toHaveBeenCalled();
   });
 });
