@@ -47,7 +47,15 @@ describe("trades routes (#77)", () => {
   const otherWorkspaceIds: string[] = [];
   const instrumentIds: string[] = [];
 
+  let tokenFetchedAt = 0;
+
+  // The file outlives one 60-second token when it runs alongside the others (ADR 0016): fetch the
+  // same user's token again once it is 30 seconds old.
   async function auth(): Promise<Record<string, string>> {
+    if (Date.now() - tokenFetchedAt > 30_000) {
+      token = await realm.getUserToken();
+      tokenFetchedAt = Date.now();
+    }
     return { authorization: `Bearer ${token}` };
   }
 
@@ -145,6 +153,7 @@ describe("trades routes (#77)", () => {
 
   before(async () => {
     ({ superuserPool, realm, app, workspaceId, token } = await setupIntegrationTest());
+    tokenFetchedAt = Date.now();
     const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM users WHERE keycloak_subject = $1", [decodeJwt(token).sub]);
     userId = rows[0]!.id;
   });
