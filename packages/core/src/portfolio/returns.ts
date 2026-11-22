@@ -397,6 +397,7 @@ function nearestRoot(f: (rate: number) => number): number | null {
   if (other.root === null) return found.root;
   const [first, second] = [found.root as number, other.root];
   if (Math.abs(first) !== Math.abs(second)) return Math.abs(first) < Math.abs(second) ? first : second;
+  // A tie needs two roots exactly as far from 0 in double precision: practically unreachable, kept for determinism.
   return Math.max(first, second);
 }
 

@@ -616,6 +616,23 @@ describe("moneyWeightedReturn: the period ends at the last money received, and t
     assertRate(outcome, 0.011, true);
   });
 
+  it("a root found first below 0 (−0.52%) loses to a nearer one above (+0.50%) found by scanning on", () => {
+    // QA's brute-forced case: the side below 0 brackets −0.52% at a step where the side above has not
+    // yet reached +0.50%, so returning the first root found would give −0.0052.
+    const S = 100_000_000;
+    const outcome = moneyWeightedRate({
+      start: { date: "2023-01-01", valueCents: S },
+      end: { date: "2025-01-01", valueCents: 0 },
+      valuations: [{ date: "2024-01-01", valueCents: 0 }],
+      flows: [
+        { date: "2024-01-01", amountCents: -Math.round(S * (0.9948 + 1.005)) },
+        { date: "2025-01-01", amountCents: Math.round(S * 0.9948 * 1.005) },
+      ],
+    });
+    assert.equal(outcome.status, "known", JSON.stringify(outcome));
+    assert.ok(outcome.status === "known" && Math.abs(outcome.rate - 0.005) < 1e-6, JSON.stringify(outcome));
+  });
+
   it("two roots one step apart in the scan, 7% and 9% a year: the figure is 7%", () => {
     const outcome = moneyWeightedRate({
       start: value("2023-01-01", 1_000_000),
