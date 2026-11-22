@@ -49,6 +49,7 @@ interface PositionBody {
 type SummaryBody = Omit<PositionBody, "accountId" | "instrument" | "quantityE8" | "accountAverageCostE6">;
 
 interface PositionsBody {
+  readonly asOf: string;
   readonly positions: PositionBody[];
   readonly summaries: SummaryBody[];
 }
@@ -101,8 +102,8 @@ describe("positions routes (#79)", () => {
     return app.fastify.inject({ method: "GET", url: `/workspaces/${ws}${path}`, headers: headers() });
   }
 
-  async function positionsOf(kind: "portfolios" | "accounts", id: string): Promise<PositionsBody> {
-    const response = await get(`/${kind}/${id}/positions`);
+  async function positionsOf(kind: "portfolios" | "accounts", id: string, ws = workspaceId): Promise<PositionsBody> {
+    const response = await get(`/${kind}/${id}/positions`, ws);
     assert.equal(response.statusCode, 200, response.body);
     return response.json();
   }
@@ -135,12 +136,12 @@ describe("positions routes (#79)", () => {
     return rows[0]!.id;
   }
 
-  async function addWorkspace(role: "owner" | "editor" | "read_only"): Promise<string> {
+  async function addWorkspace(role: "owner" | "editor" | "read_only", timeZone = "Europe/Rome"): Promise<string> {
     const id = randomUUID();
     otherWorkspaceIds.push(id);
     await superuserPool.query(
-      "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Other', 'EUR', 'Europe/Rome')",
-      [id],
+      "INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Other', 'EUR', $2)",
+      [id, timeZone],
     );
     await superuserPool.query("INSERT INTO memberships (user_id, workspace_id, role) VALUES ($1, $2, $3)", [userId, id, role]);
     return id;
@@ -423,9 +424,11 @@ describe("positions routes (#79)", () => {
   });
 
   it("returns no positions for a portfolio without trades and for an account that is not a brokerage account", async () => {
-    assert.deepEqual(await positionsOf("portfolios", await portfolio()), { positions: [], summaries: [] });
-    assert.deepEqual(await positionsOf("accounts", await account("checking")), { positions: [], summaries: [] });
-    assert.deepEqual(await positionsOf("accounts", await account()), { positions: [], summaries: [] });
+    const { rows } = await superuserPool.query<{ today: string }>("SELECT to_char(now() AT TIME ZONE 'Europe/Rome', 'YYYY-MM-DD') AS today");
+    const none = { asOf: rows[0]!.today, positions: [], summaries: [] };
+    assert.deepEqual(await positionsOf("portfolios", await portfolio()), none);
+    assert.deepEqual(await positionsOf("accounts", await account("checking")), none);
+    assert.deepEqual(await positionsOf("accounts", await account()), none);
   });
 
   it("reads an archived portfolio's positions", async () => {
@@ -604,5 +607,108 @@ describe("positions routes (#79)", () => {
     } finally {
       await setRole("owner");
     }
+  });
+
+  describe("as of a date (#719)", () => {
+    /** Today in a workspace's time zone. */
+    async function todayIn(ws = workspaceId): Promise<string> {
+      const { rows } = await superuserPool.query<{ today: string }>(
+        "SELECT to_char(now() AT TIME ZONE time_zone, 'YYYY-MM-DD') AS today FROM workspaces WHERE id = $1",
+        [ws],
+      );
+      return rows[0]!.today;
+    }
+    const plusDays = (date: string, days: number): string =>
+      new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+    async function positionsAsOf(kind: "portfolios" | "accounts", id: string, asOf: string, ws = workspaceId): Promise<PositionsBody> {
+      const response = await get(`/${kind}/${id}/positions?asOf=${asOf}`, ws);
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json();
+    }
+
+    it("leaves out a sale dated after today, on both routes, and counts it as of its own date", async () => {
+      // The issue's example: 10 units bought for €1,000, a sale of the 10 for €1,500 recorded ahead.
+      const today = await todayIn();
+      const bought = plusDays(today, -20);
+      const sold = plusDays(today, 467);
+      const etf = await instrument();
+      const broker = await account();
+      const held = await portfolio();
+      const common = { accountId: broker, portfolioId: held, instrumentId: etf, quantityE8: units(10) };
+      await trade({ ...common, type: "buy", tradeDate: bought, priceE6: price(100) });
+      await trade({ ...common, type: "sell", tradeDate: sold, priceE6: price(150) });
+
+      for (const kind of ["accounts", "portfolios"] as const) {
+        const id = kind === "accounts" ? broker : held;
+        const now = await positionsOf(kind, id);
+        assert.equal(now.asOf, today, kind);
+        assert.equal(now.positions.length, 1, kind);
+        assert.equal(now.positions[0]!.quantityE8, units(10), kind);
+        assert.equal(now.positions[0]!.costBasisCents, 100_000, kind);
+        assert.equal(now.positions[0]!.accountAverageCostE6, price(100), kind);
+        assert.equal(now.positions[0]!.realizedCents, 0, kind);
+        assert.equal(now.summaries[0]!.costBasisCents, 100_000, kind);
+
+        const dayBefore = await positionsAsOf(kind, id, plusDays(sold, -1));
+        assert.equal(dayBefore.positions[0]!.quantityE8, units(10), kind);
+
+        const afterSale = await positionsAsOf(kind, id, sold);
+        assert.equal(afterSale.asOf, sold, kind);
+        assert.equal(afterSale.positions[0]!.quantityE8, 0, kind);
+        assert.equal(afterSale.positions[0]!.costBasisCents, 0, kind);
+        assert.equal(afterSale.positions[0]!.accountAverageCostE6, null, kind);
+        assert.equal(afterSale.positions[0]!.realizedCents, 50_000, kind);
+
+        const beforeBuy = await positionsAsOf(kind, id, plusDays(bought, -1));
+        assert.deepEqual({ positions: beforeBuy.positions, summaries: beforeBuy.summaries }, { positions: [], summaries: [] }, kind);
+      }
+    });
+
+    it("refuses a malformed date with invalid_date, on both routes", async () => {
+      const broker = await account();
+      const held = await portfolio();
+      for (const path of [`/accounts/${broker}/positions`, `/portfolios/${held}/positions`]) {
+        for (const query of ["asOf=2026-02-30", "asOf=yesterday", "asOf=", "asOf=2026-01-01&asOf=2026-01-02"]) {
+          const response = await get(`${path}?${query}`);
+          assert.equal(response.statusCode, 400, `${path}?${query}: ${response.body}`);
+          assert.equal(response.json().error, "invalid_date", query);
+        }
+      }
+    });
+
+    it("takes today in the workspace's time zone, not in UTC", async () => {
+      // Kiritimati (UTC+14) is always a day or two ahead of Pago Pago (UTC-11): a buy dated
+      // Kiritimati's today is held today there, and not yet in Pago Pago.
+      const east = await addWorkspace("owner", "Pacific/Kiritimati");
+      const west = await addWorkspace("owner", "Pacific/Pago_Pago");
+      const eastToday = await todayIn(east);
+      const westToday = await todayIn(west);
+      assert.ok(westToday < eastToday, `${westToday} < ${eastToday}`);
+      const etf = await instrument();
+      for (const [ws, today, expected] of [
+        [east, eastToday, units(1)],
+        [west, westToday, undefined],
+      ] as const) {
+        const broker = await account("brokerage", ws);
+        const buy = { type: "buy", accountId: broker, portfolioId: await portfolio(ws), instrumentId: etf, quantityE8: units(1), priceE6: price(10) };
+        await trade({ ...buy, tradeDate: eastToday }, ws);
+        const body = await positionsOf("accounts", broker, ws);
+        assert.equal(body.asOf, today);
+        assert.equal(body.positions[0]?.quantityE8, expected);
+        assert.equal((await positionsAsOf("accounts", broker, eastToday, ws)).positions[0]!.quantityE8, units(1));
+      }
+    });
+
+    it("lets a read_only member read positions as of another date", async () => {
+      const { a } = await twoPortfolios();
+      await setRole("read_only");
+      try {
+        assert.equal((await positionsAsOf("portfolios", a, "2026-01-06")).positions[0]!.quantityE8, units(10));
+        assert.equal((await positionsAsOf("portfolios", a, "2026-01-07")).positions[0]!.quantityE8, units(5));
+      } finally {
+        await setRole("owner");
+      }
+    });
   });
 });

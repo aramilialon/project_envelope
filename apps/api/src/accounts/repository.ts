@@ -304,9 +304,8 @@ export async function closeAccount(db: DbClient, workspaceId: string, accountId:
   const later = { count: laterRows[0]?.count ?? 0, firstDate: laterRows[0]?.first_date ?? null };
 
   // Only a brokerage account has trades: for any other account the replay finds none. The replay
-  // stops at today, so a sale dated later does not empty a holding held today.
-  const trades = (await loadPositionTrades(db, workspaceId, { accountId })).filter((trade) => trade.date <= today);
-  const { accounts: positions } = computePositions(trades);
+  // stops at today (#719), so a sale dated later does not empty a holding held today.
+  const { accounts: positions } = computePositions(await loadPositionTrades(db, workspaceId, { accountId }), { asOf: today });
   const holdsPositions = positions.some((position) => position.accountId === accountId && position.quantity !== 0);
 
   // The count, and the schedule due first (earliest next due date, then lowest id) for the user to find (#741).

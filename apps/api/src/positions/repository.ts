@@ -9,6 +9,9 @@
  * kept. A portfolio gets its own quantity, its share of the account's cost, the account's average
  * cost and the totals of its own trades.
  *
+ * Positions are as of a date (#719), by default today in the workspace's time zone, the same day an
+ * account's balance is as of (#702): only the trades dated on or before it are replayed.
+ *
  * No prices exist yet (milestone 0.2.1): no current value, no unrealized gain and no net result.
  */
 import {
@@ -55,6 +58,8 @@ export interface SummaryRecord extends PositionTotals, DerivedResults {
 }
 
 export interface PositionsResult {
+  /** The date the positions are as of: trades dated after it are left out. */
+  readonly asOf: string;
   /** Sorted by account, then instrument id. */
   readonly positions: PositionRecord[];
   /** One per currency, sorted by currency: amounts in different currencies are never added together. */
@@ -121,35 +126,43 @@ function summaryOf(summary: PositionSummary): SummaryRecord {
 }
 
 /**
- * A portfolio's positions, one per account and instrument it has ever had a trade of, and its
- * totals per currency, including its fees and taxes recorded without an instrument.
+ * A portfolio's positions as of `asOf`, one per account and instrument it has a trade of dated on
+ * or before it, and its totals per currency, including its fees and taxes recorded without an
+ * instrument.
+ *
+ * @throws ValidationError "invalid_date" for a malformed `asOf`.
  */
-export async function portfolioPositions(db: DbClient, workspaceId: string, portfolioId: string): Promise<PositionsResult> {
-  const all = computePositions(await loadPositionTrades(db, workspaceId, { portfolioId }));
+export async function portfolioPositions(db: DbClient, workspaceId: string, portfolioId: string, asOf: string): Promise<PositionsResult> {
+  const all = computePositions(await loadPositionTrades(db, workspaceId, { portfolioId }), { asOf });
   const own: Positions = {
     accounts: [],
     portfolios: all.portfolios.filter((row) => row.portfolioId === portfolioId),
     charges: all.charges.filter((charge) => charge.portfolioId === portfolioId),
   };
   return {
+    asOf,
     positions: await toRecords(db, own.portfolios),
     summaries: summarizeByPortfolio(own).map(summaryOf),
   };
 }
 
 /**
- * An account's positions, one per instrument it has ever had a trade of, across its portfolios,
- * and its totals per currency, including its fees and taxes recorded without an instrument. An
- * account with no trades (any account that is not a brokerage account) has none.
+ * An account's positions as of `asOf`, one per instrument it has a trade of dated on or before it,
+ * across its portfolios, and its totals per currency, including its fees and taxes recorded
+ * without an instrument. An account with no trades (any account that is not a brokerage account)
+ * has none.
+ *
+ * @throws ValidationError "invalid_date" for a malformed `asOf`.
  */
-export async function accountPositions(db: DbClient, workspaceId: string, accountId: string): Promise<PositionsResult> {
-  const all = computePositions(await loadPositionTrades(db, workspaceId, { accountId }));
+export async function accountPositions(db: DbClient, workspaceId: string, accountId: string, asOf: string): Promise<PositionsResult> {
+  const all = computePositions(await loadPositionTrades(db, workspaceId, { accountId }), { asOf });
   const own: Positions = {
     accounts: all.accounts.filter((row) => row.accountId === accountId),
     portfolios: [],
     charges: all.charges.filter((charge) => charge.accountId === accountId),
   };
   return {
+    asOf,
     positions: await toRecords(db, own.accounts),
     summaries: summarizeByAccount(own).map(summaryOf),
   };
