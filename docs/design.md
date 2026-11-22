@@ -367,6 +367,10 @@ The queue module prevents duplicate effects by itself, without relying on whoeve
 4. **Mandatory double-delivery test.** The shared suite runs every job type twice with the same data and checks that the database and simulated external effects are identical to a single run. A job without this test fails CI.
 5. **Cleanup.** Rows in `processed_jobs` are deleted after 30 days, well beyond the maximum retry window, by each delivery in a statement of its own before the job's transaction, so a slow handler never holds other deliveries' cleanup up (#85).
 
+### Paging lists
+
+A list that grows without bound is returned one page at a time, with an opaque cursor, never an offset (#560; the account's transactions first). A page is `{ <items>, nextCursor }`: the request takes `limit` (bounded, with a default), `order` where the list has two, and the previous page's `nextCursor`, which is `null` on the last page. The order is a key with no two rows equal (for transactions: date and time, when the row was written, then the id), and the cursor holds the last returned row's place in it, so a row added or deleted between two requests neither skips nor repeats another. The cursor keeps the database's own values, timestamps to the microsecond, never a value a client language rounds. It is valid only for the list it was given out for (workspace, account, order): any other cursor, or one that does not decode, is refused with `invalid_cursor` and no details, and a bad `limit` or `order` with `invalid_field` naming it. A client that needs the whole list, such as one that adds it up, follows `nextCursor` to the end. The API's own computations read the whole list inside, unpaged.
+
 ### Code quality
 
 - Unit tests and property-based tests for the core (for example: unassigned money plus every available balance, payment categories included, plus money assigned to future months plus the current credit overspending must always equal the balance of the on-budget cash accounts).
