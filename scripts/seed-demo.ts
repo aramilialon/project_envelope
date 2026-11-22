@@ -383,12 +383,20 @@ async function verifyInvariant(api: Api, workspaceId: string, month: string, acc
   let right = 0;
   for (const acc of accounts) {
     if (!acc.onBudget || acc.type === "credit_card") continue;
-    const { transactions } = await api.get<{ transactions: readonly Transaction[] }>(`/workspaces/${workspaceId}/accounts/${acc.id}/transactions`);
-    for (const t of transactions) {
-      for (const split of t.splits) {
-        right += split.amountCents;
+    // The list comes one page at a time (#560): follow nextCursor to the last page.
+    let cursor: string | null = null;
+    do {
+      const query: string = cursor === null ? "?limit=500" : `?limit=500&cursor=${encodeURIComponent(cursor)}`;
+      const page: { transactions: readonly Transaction[]; nextCursor: string | null } = await api.get(
+        `/workspaces/${workspaceId}/accounts/${acc.id}/transactions${query}`,
+      );
+      for (const t of page.transactions) {
+        for (const split of t.splits) {
+          right += split.amountCents;
+        }
       }
-    }
+      cursor = page.nextCursor;
+    } while (cursor !== null);
   }
 
   if (left !== right) {
