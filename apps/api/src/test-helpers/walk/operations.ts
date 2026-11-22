@@ -336,7 +336,7 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
     if (empty.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(empty).handle };
     // Now and then an account that is not empty: refused, with the figures.
     const full = candidates.filter((account) => !isEmpty(account));
-    return full.length > 0 && random.chance(0.15) ? { account: random.pick(full).handle } : undefined;
+    return full.length > 0 && random.chance(0.35) ? { account: random.pick(full).handle } : undefined;
   },
   request: (model, p) => ({ method: "PATCH", path: ws(model, `/accounts/${model.account(p.account).id}/close`) }),
   predict(model, p) {
@@ -446,13 +446,19 @@ type ReplaceTaxRegimesParams = { account: string; history: TaxRegimeEntry[] };
 /**
  * The whole history corrected at once: now and then emptied (`tax_regime_required` in the `IT`
  * workspace), else one to three periods, the first from any day, the others from a 1 January or,
- * now and then, from another day.
+ * now and then, from another day. When the account has a sale that withheld gain tax, often the
+ * same periods all made `managed`, which never allows it: a change that breaks a trade the account
+ * already has, as `oversell` breaks a holding (`tax_regime_conflicts_with_trade`, #653).
  */
 const replaceTaxRegimes: OperationSpec<ReplaceTaxRegimesParams> = {
   writes: NONE,
   generate(model, { random, progress }) {
     const account = regimeAccount(model, random);
     if (!account) return undefined;
+    const taxedSale = model.regimeCheckedTrades(account).some((trade) => trade.type === "sell" && trade.gainTaxCents !== 0);
+    if (taxedSale && random.chance(0.7)) {
+      return { account: account.handle, history: account.taxRegimes.map((entry) => ({ validFrom: entry.validFrom, regime: "managed" })) };
+    }
     if (random.chance(0.15)) return { account: account.handle, history: [] };
     const history: TaxRegimeEntry[] = [{ validFrom: random.date(progress), regime: random.pick(TAX_REGIMES) }];
     for (let count = random.int(0, 2); count > 0; count--) {
@@ -1916,7 +1922,7 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     createAccount: 1,
     closeAccount: 4,
     addTaxRegime: 2,
-    replaceTaxRegimes: 1,
+    replaceTaxRegimes: 3,
     setWithholdingAgent: 1,
     createPortfolio: 1,
     deletePortfolio: 1,
