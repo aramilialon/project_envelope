@@ -21,6 +21,7 @@ import { appConnectionString, ensureAppRoleLogin } from "../app-role.ts";
 import { requireIntegrationTestEnv } from "../integration-setup.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "../keycloak.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../queue-role.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../isolated-database.ts";
 import { HIGH_RATE_LIMITS_ENV } from "../rate-limits.ts";
 import { TEST_VAPID_PRIVATE_KEY, TEST_VAPID_PUBLIC_KEY, TEST_VAPID_SUBJECT } from "../vapid-keys.ts";
 import { fetchDriver, injectDriver, type WalkDriver } from "./driver.ts";
@@ -70,8 +71,19 @@ export interface WalkSuite {
   readonly env: () => WalkEnvironment;
   /** The same users and database, through a real server process instead of `inject`. */
   readonly fetchEnvironment: () => Promise<WalkEnvironment>;
-  /** Stops the real server `fetchEnvironment` started, if any (see below). */
+  /** Stops the real server `fetchEnvironment` started, if any. */
   readonly stopRealServer: () => Promise<void>;
+}
+
+export interface WalkSuiteOptions {
+  /**
+   * Run on a throwaway database of the file's own (`createIsolatedDatabase`) instead of the run's
+   * shared one. Required by a file that starts the real server (`fetchEnvironment`): the process
+   * starts queue workers (`budget-recompute`, ...) and the hourly `scheduled-transactions-fire`
+   * schedule, which in the shared database would take jobs other test files queued and wait for
+   * (#638, ADR 0016).
+   */
+  readonly isolatedDatabase?: boolean;
 }
 
 /**
@@ -80,8 +92,10 @@ export interface WalkSuite {
  * against both, and a user per persona and role. Call it once per file, at the top of its
  * `describe`.
  */
-export function useWalkSuite(): WalkSuite {
-  const { databaseUrl } = requireIntegrationTestEnv();
+export function useWalkSuite(options: WalkSuiteOptions = {}): WalkSuite {
+  const { databaseUrl: runDatabaseUrl } = requireIntegrationTestEnv();
+  let databaseUrl = runDatabaseUrl;
+  let database: IsolatedDatabase | undefined;
   let superuserPool: DbPool;
   let realm: KeycloakTestRealm;
   let app: App;
@@ -91,6 +105,10 @@ export function useWalkSuite(): WalkSuite {
   let lastServer: RunningServer | undefined;
 
   before(async () => {
+    if (options.isolatedDatabase) {
+      database = await createIsolatedDatabase(runDatabaseUrl);
+      databaseUrl = database.databaseUrl;
+    }
     superuserPool = createPool(databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
@@ -120,9 +138,13 @@ export function useWalkSuite(): WalkSuite {
     await app?.close();
     await realm?.teardown();
     await superuserPool?.end();
+    await database?.drop();
   });
 
   async function startRealServer(): Promise<WalkDriver> {
+    if (!database) {
+      throw new Error("a walk file that starts the real server needs useWalkSuite({ isolatedDatabase: true })");
+    }
     await ensureQueueRoleLogin(superuserPool);
     server = await startServer({
       NODE_ENV: "development",
@@ -141,22 +163,10 @@ export function useWalkSuite(): WalkSuite {
     return fetchDriver(server.baseUrl);
   }
 
-  /**
-   * Stops the real server and drops the `budget-recompute` jobs its writes queued for workspaces
-   * the walk has since deleted. The server works through them one at a time, so a walk leaves a
-   * backlog behind; a test file that starts a worker on that queue in this database would have to
-   * get through it first, and a test waiting a few seconds for its own job would time out (#80:
-   * `transactions/repository.test.ts` did).
-   */
   async function stopRealServer(): Promise<void> {
     if (!server) return;
     await server.stop();
     server = undefined;
-    await superuserPool.query(
-      `DELETE FROM pgboss.job j
-       WHERE j.name = 'budget-recompute' AND j.state IN ('created', 'retry', 'active')
-         AND NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id::text = j.data->>'workspaceId')`,
-    );
   }
 
   function currentEnv(): WalkEnvironment {

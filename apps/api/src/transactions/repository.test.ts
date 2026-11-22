@@ -10,15 +10,6 @@ import { createPostgresQueueDriver } from "../queue/postgres-driver.ts";
 import { ensureQueueRoleLogin, queueConnectionString } from "../test-helpers/queue-role.ts";
 import { createTransaction, createTransfer, listTransactionsForAccount, updateTransaction } from "./repository.ts";
 
-async function waitUntil(check: () => boolean, timeoutMs = 10_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`condition not met within ${timeoutMs}ms`);
-}
-
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error(
@@ -730,14 +721,19 @@ describe("transactions repository", () => {
   });
 
   it("queues a budget-recompute job in the same transaction as the write that triggers it, and rolls both back together (#35)", async () => {
+    // Proved from pg-boss's own job rows, not by a worker of this file: with the test files running
+    // concurrently (ADR 0016), another file's worker on the same queue could take the job first (#638).
     const queue = createPostgresQueueDriver(queueConnectionString(databaseUrl), pool);
     await queue.start();
-    // Stopped whatever happens: a failed wait must fail the test, not leave pg-boss polling and the run hanging (#80).
+    // Stopped whatever happens: a failed assertion must fail the test, not leave pg-boss polling and the run hanging (#80).
     try {
-      const received: unknown[] = [];
-      await queue.work("budget-recompute", async (data) => {
-        received.push(data);
-      });
+      async function jobsFor(transactionId: string | undefined): Promise<number> {
+        const { rows } = await pool.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM pgboss.job WHERE name = 'budget-recompute' AND data->>'transactionId' = $1",
+          [transactionId],
+        );
+        return rows[0]!.n;
+      }
 
       // Committed: the transaction and its job both persist.
       const client = await pool.connect();
@@ -754,7 +750,7 @@ describe("transactions repository", () => {
       } finally {
         client.release();
       }
-      await waitUntil(() => received.some((d) => (d as { transactionId: string }).transactionId === committedId));
+      assert.equal(await jobsFor(committedId), 1, "the committed write must have queued exactly one job");
 
       // Rolled back: neither the transaction row nor its job survive.
       const rollbackClient = await pool.connect();
@@ -767,15 +763,12 @@ describe("transactions repository", () => {
           queue,
         );
         rolledBackId = rolledBack.id;
+        assert.equal(await jobsFor(rolledBackId), 0, "the job must not be visible outside the write's transaction before it commits");
         await rollbackClient.query("ROLLBACK");
       } finally {
         rollbackClient.release();
       }
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // long enough for at least one poll, had the job survived
-      assert.ok(
-        !received.some((d) => (d as { transactionId: string }).transactionId === rolledBackId),
-        "a job queued inside a rolled-back transaction must never have been delivered",
-      );
+      assert.equal(await jobsFor(rolledBackId), 0, "a job queued inside a rolled-back transaction must not exist");
       const rolledBackTransaction = await pool.query("SELECT 1 FROM transactions WHERE id = $1", [rolledBackId]);
       assert.equal(rolledBackTransaction.rows.length, 0, "the rolled-back transaction row must not exist either");
     } finally {

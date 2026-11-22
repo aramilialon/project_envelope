@@ -9,7 +9,7 @@ import { runWalk } from "./run.ts";
 import { FETCH_SEED, FETCH_STEPS, logOptions, report, useWalkSuite } from "./suite.ts";
 
 describe("random walk through the real process (#80, ADR 0013)", () => {
-  const suite = useWalkSuite();
+  const suite = useWalkSuite({ isolatedDatabase: true });
 
   it(`keeps every invariant through the real process, seed ${FETCH_SEED}, ${FETCH_STEPS} steps (fetch)`, async () => {
     const fetchEnv = await suite.fetchEnvironment();

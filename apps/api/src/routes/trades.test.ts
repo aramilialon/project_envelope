@@ -1755,14 +1755,20 @@ describe("trades routes (#77)", () => {
       const holder = await superuserPool.connect();
       try {
         await holder.query("BEGIN");
-        await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`trades:${workspaceId}:${first}`]);
+        const lockKey = `trades:${workspaceId}:${first}`;
+        await holder.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [lockKey]);
         const pending = patch(fee!.id, { memo: "waiting" });
         // Once the edit waits on that lock, the trade moves to the second instrument and commits.
+        // Only a waiter on this instrument's own key counts: other test files take advisory locks of
+        // their own in this database at the same time (ADR 0016). A bigint key is split into
+        // classid (high 32 bits) and objid (low 32 bits), with objsubid 1.
         for (let attempt = 0; ; attempt++) {
           const { rows } = await superuserPool.query(
-            `SELECT 1 FROM pg_stat_activity
-             WHERE datname = current_database() AND wait_event_type = 'Lock' AND wait_event = 'advisory'
-               AND query LIKE '%pg_advisory_xact_lock%'`,
+            `SELECT 1 FROM pg_locks l
+             WHERE l.locktype = 'advisory' AND NOT l.granted AND l.objsubid = 1
+               AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
+               AND ((l.classid::bigint << 32) | l.objid::bigint) = hashtextextended($1, 0)`,
+            [lockKey],
           );
           if (rows.length > 0) break;
           assert.ok(attempt < 200, "the edit never waited on the lock");

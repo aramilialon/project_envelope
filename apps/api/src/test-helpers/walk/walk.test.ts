@@ -34,10 +34,12 @@ if (replay === undefined && seed === undefined) {
   it.skip("walks on demand only: set WALK_SEED or WALK_REPLAY (README, \"The random walk\")");
 } else {
   describe("random walk through the API, on demand (#80, ADR 0013)", () => {
-    const suite = useWalkSuite();
+    const throughFetch = process.env.WALK_DRIVER === "fetch";
+    // The real server starts queue workers and schedules: a database of its own (#638).
+    const suite = useWalkSuite({ isolatedDatabase: throughFetch });
 
     async function walkEnvironment(): Promise<WalkEnvironment> {
-      return process.env.WALK_DRIVER === "fetch" ? suite.fetchEnvironment() : suite.env();
+      return throughFetch ? suite.fetchEnvironment() : suite.env();
     }
 
     it(replay ? `replays ${process.env.WALK_REPLAY}` : `walks seed ${seed} for ${steps ?? CI_STEPS} steps`, { timeout: Infinity }, async () => {
