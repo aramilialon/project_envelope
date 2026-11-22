@@ -6,9 +6,10 @@
   not a login form. The three states below are what the app actually shows around that
   redirect: idle, in flight, and back with an error. Open it in a browser; no build step,
   no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself self-hosts its
-  fonts). The UI copy is the Italian translation; English stays the source language.
+  fonts). The UI copy is English, the source language (#622); the Italian approved before that
+  is at the commit recorded in docs/ux/README.md.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -108,37 +109,37 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 </head>
 <body>
 
-<div class="tools" role="radiogroup" aria-label="Stato">
+<div class="tools" role="radiogroup" aria-label="State">
   <button type="button" data-state="idle" aria-pressed="true">Idle</button>
   <button type="button" data-state="pending" aria-pressed="false">Redirecting</button>
-  <button type="button" data-state="error" aria-pressed="false">Errore</button>
+  <button type="button" data-state="error" aria-pressed="false">Error</button>
 </div>
 
 <main class="card" aria-live="polite">
   <p class="mark" aria-hidden="true">envelope</p>
 
   <div id="view-idle">
-    <p class="tag">Budget e portafoglio, sul tuo server.</p>
-    <button type="button" class="primary" id="go">Accedi</button>
+    <p class="tag">Budget and portfolio, on your own server.</p>
+    <button type="button" class="primary" id="go">Sign in</button>
   </div>
 
   <div id="view-pending" hidden>
-    <p class="tag">Reindirizzamento in corso…</p>
+    <p class="tag">Redirecting…</p>
     <button type="button" class="primary" disabled aria-busy="true">
-      <span class="spin" aria-hidden="true"></span>Accesso in corso
+      <span class="spin" aria-hidden="true"></span>Signing in
     </button>
-    <p class="sr-only" role="status">Reindirizzamento alla pagina di accesso</p>
+    <p class="sr-only" role="status">Redirecting to the sign-in page</p>
   </div>
 
   <div id="view-error" hidden>
     <div class="err" role="alert">
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22L12 2Zm0 6 7 12H5l7-12Zm-1 4h2v5h-2v-5Zm0 6h2v2h-2v-2Z"/></svg>
-      <p>Non è stato possibile completare l'accesso.<span class="code">invalid_state — la sessione di accesso non è valida, riprova</span></p>
+      <p>We could not complete sign-in.<span class="code">invalid_state — the sign-in session is not valid, try again</span></p>
     </div>
-    <button type="button" class="primary" id="retry">Riprova</button>
+    <button type="button" class="primary" id="retry">Retry</button>
   </div>
 
-  <p class="foot">Un problema? <a href="#">Scrivi all'amministratore del tuo server</a>.</p>
+  <p class="foot">A problem? <a href="#">Write to your server's administrator</a>.</p>
 </main>
 
 <script>

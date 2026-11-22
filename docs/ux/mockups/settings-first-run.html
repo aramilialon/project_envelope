@@ -3,10 +3,10 @@
   Interactive mockup of the settings (your account, workspace) and of the first run.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself
-  self-hosts its fonts). The UI copy is the Italian translation; English stays
-  the source language of the app. Sample data is fictional.
+  self-hosts its fonts). The UI copy is English, the app's source language; the Italian
+  approved before #622 is kept at the commit recorded in docs/ux/README.md. Sample data is fictional.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -385,7 +385,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <div class="wrap">
   <div class="strip">
     <p><b>envelope</b>, settings mockup, split in two: <b>your account</b> (applies to you in every workspace, from the menu with your name) and <b>workspace settings</b> (apply to every member, from the workspace menu). In the workspace settings you can switch the role you view the page with. Then the first run.</p>
-    <div class="views" role="tablist" aria-label="Schermata">
+    <div class="views" role="tablist" aria-label="Screen">
       <button type="button" role="tab" id="tab-acc" aria-controls="view-acc" aria-selected="true">Your account</button>
       <button type="button" role="tab" id="tab-ws" aria-controls="view-ws" aria-selected="false">Workspace</button>
       <button type="button" role="tab" id="tab-onb" aria-controls="view-onb" aria-selected="false">First run</button>
@@ -395,8 +395,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   <section id="view-acc" role="tabpanel" aria-labelledby="tab-acc">
     <div class="scroller">
       <div class="acct">
-        <div class="acct-top"><span><b>envelope</b> · Il tuo account</span><button type="button" class="plain" data-view="ws">← Torna al workspace Famiglia</button></div>
-        <nav class="subnav" aria-label="Il tuo account" id="acc-nav"></nav>
+        <div class="acct-top"><span><b>envelope</b> · Your account</span><button type="button" class="plain" data-view="ws">← Back to the Family workspace</button></div>
+        <nav class="subnav" aria-label="Your account" id="acc-nav"></nav>
         <div class="main" id="acc-main"></div>
       </div>
     </div>
@@ -405,41 +405,41 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   <section id="view-ws" role="tabpanel" aria-labelledby="tab-ws" hidden>
     <div class="scroller">
       <div class="desk set">
-        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button">Conti</button><button type="button">Portafoglio</button></nav><button type="button" class="ws2">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
+        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button">Accounts</button><button type="button">Portfolio</button></nav><button type="button" class="ws2">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
         <nav class="side" aria-label="Main (mockup)">
           <div class="brand menu">
             <b>envelope</b>
-            <button type="button" class="ws" id="ws-menu-btn" aria-expanded="false" aria-haspopup="true">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <button type="button" class="ws" id="ws-menu-btn" aria-expanded="false" aria-haspopup="true">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
             <div class="menu-pop" id="ws-menu" hidden>
               <span>Workspace</span>
-              <button type="button">Famiglia ✓</button>
-              <button type="button">Personale</button>
+              <button type="button">Family ✓</button>
+              <button type="button">Personal</button>
               <hr>
-              <button type="button" data-close-menu="1">Impostazioni del workspace</button>
-              <button type="button">+ Nuovo workspace</button>
+              <button type="button" data-close-menu="1">Workspace settings</button>
+              <button type="button">+ New workspace</button>
             </div>
           </div>
           <div class="nav">
             <button type="button">Budget</button>
-            <button type="button">Conti</button>
-            <button type="button">Portafoglio</button>
+            <button type="button">Accounts</button>
+            <button type="button">Portfolio</button>
           </div>
           <div class="ledger">
-            <h5>In budget</h5>
-            <div class="lr"><span>Conto corrente</span><span class="dots"></span><span class="n">3.412,58</span></div>
-            <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
-            <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
-            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+            <h5>On budget</h5>
+            <div class="lr"><span>Checking</span><span class="dots"></span><span class="n">3,412.58</span></div>
+            <div class="lr"><span>Savings</span><span class="dots"></span><span class="n">8,000.00</span></div>
+            <div class="lr"><span>Cash</span><span class="dots"></span><span class="n">85.40</span></div>
+            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642.30</span></div>
           </div>
           <div class="me menu">
             <button type="button" class="plain" id="me-btn" aria-expanded="false" aria-haspopup="true" style="color:var(--ink)">Giorgio ▾</button>
             <div class="menu-pop" id="me-menu" hidden style="top:auto;bottom:calc(100% + 4px)">
-              <button type="button" data-view="acc">Il tuo account</button>
-              <button type="button">Esci</button>
+              <button type="button" data-view="acc">Your account</button>
+              <button type="button">Sign out</button>
             </div>
           </div>
         </nav>
-        <nav class="subnav" aria-label="Impostazioni del workspace" id="ws-nav"></nav>
+        <nav class="subnav" aria-label="Workspace settings" id="ws-nav"></nav>
         <div class="main" id="ws-main"></div>
       </div>
     </div>
@@ -455,39 +455,39 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function el(id) { return document.getElementById(id); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function parseAmount(str) {
-    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/,/g, '');
     if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
     return Math.round(Number(clean) * 100);
   }
-  function fmt(c, locale) { return new Intl.NumberFormat(locale || 'it-IT', { style: 'currency', currency: 'EUR' }).format(c / 100).replace('-', '−'); }
+  function fmt(c, locale) { return new Intl.NumberFormat(locale || 'en-US', { style: 'currency', currency: 'EUR' }).format(c / 100).replace('-', '−'); }
 
-  var ACC_SECTIONS = [['profile', 'Profilo'], ['prefs', 'Preferenze'], ['notifications', 'Notifiche'], ['security', 'Accesso e sicurezza'], ['workspaces', 'I tuoi workspace']];
-  var WS_SECTIONS = [['general', 'Generale'], ['members', 'Membri'], ['categories', 'Categorie'], ['accounts', 'Conti'], ['data', 'Dati']];
-  var LOCALES = [['it-IT', 'Italia'], ['en-GB', 'Regno Unito'], ['en-US', 'Stati Uniti'], ['de-DE', 'Germania'], ['fr-FR', 'Francia'], ['de-CH', 'Svizzera']];
+  var ACC_SECTIONS = [['profile', 'Profile'], ['prefs', 'Preferences'], ['notifications', 'Notifications'], ['security', 'Sign-in and security'], ['workspaces', 'Your workspaces']];
+  var WS_SECTIONS = [['general', 'General'], ['members', 'Members'], ['categories', 'Categories'], ['accounts', 'Accounts'], ['data', 'Data']];
+  var LOCALES = [['it-IT', 'Italy'], ['en-GB', 'United Kingdom'], ['en-US', 'United States'], ['de-DE', 'Germany'], ['fr-FR', 'France'], ['de-CH', 'Switzerland']];
   var ZONES = ['Europe/Rome', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'Asia/Tokyo'];
-  var ROLE = { owner: 'Proprietario', editor: 'Può modificare', reader: 'Sola lettura' };
+  var ROLE = { owner: 'Owner', editor: 'Can edit', reader: 'Read only' };
   var S = {
-    acc: 'profile', ws: 'general', saved: null, as: 'owner', notifWs: 'Famiglia',
-    profile: { name: 'Giorgio', email: 'giorgio@example.org', lang: 'it', locale: 'it-IT', zone: 'Europe/Rome', theme: 'system' },
-    workspace: { name: 'Famiglia', zone: 'Europe/Rome', confirmDelete: '' },
+    acc: 'profile', ws: 'general', saved: null, as: 'owner', notifWs: 'Family',
+    profile: { name: 'Giorgio', email: 'giorgio@example.org', lang: 'en', locale: 'en-US', zone: 'Europe/Rome', theme: 'system' },
+    workspace: { name: 'Family', zone: 'Europe/Rome', confirmDelete: '' },
     members: [{ id: 'm1', name: 'Giorgio', email: 'giorgio@example.org', role: 'owner', me: true }, { id: 'm2', name: 'Anna', email: 'anna@example.org', role: 'editor' }, { id: 'm3', name: 'Luca', email: 'luca@example.org', role: 'reader' }],
-    invites: [{ email: 'nonna@example.org', role: 'reader' }], invite: { email: '', role: 'editor' }, memberError: '',
+    invites: [{ email: 'grandma@example.org', role: 'reader' }], invite: { email: '', role: 'editor' }, memberError: '',
     groups: [
-      { id: 'g1', name: 'Casa e bollette', cats: [['Rata del mutuo'], ['Luce e gas'], ['Internet e telefono'], ['Manutenzione casa']] },
-      { id: 'g2', name: 'Spese di tutti i giorni', cats: [['Spesa alimentare'], ['Carburante e trasporti'], ['Ristoranti'], ['Farmacia e salute']] },
-      { id: 'g3', name: 'Spese prevedibili', cats: [['Assicurazione auto'], ['Bollo auto'], ['Regali'], ['Veterinario'], ['Palestra', true]] },
-      { id: 'g4', name: 'Svago', cats: [['Abbonamenti'], ['Hobby']] }
+      { id: 'g1', name: 'Home and bills', cats: [['Mortgage payment'], ['Electricity and gas'], ['Internet and phone'], ['Home maintenance']] },
+      { id: 'g2', name: 'Everyday spending', cats: [['Groceries'], ['Fuel and transport'], ['Restaurants'], ['Pharmacy and health']] },
+      { id: 'g3', name: 'Predictable expenses', cats: [['Car insurance'], ['Car tax'], ['Gifts'], ['Vet'], ['Gym', true]] },
+      { id: 'g4', name: 'Fun', cats: [['Subscriptions'], ['Hobbies']] }
     ],
-    accounts: [['Conto corrente', 'Conto corrente', true, false], ['Conto risparmio', 'Risparmio', true, false], ['Contanti', 'Contanti', true, false], ['Visa', 'Carta di credito', true, false], ['Broker ETF', 'Conto titoli', false, false], ['Mutuo casa', 'Mutuo', false, false], ['Vecchio conto postale', 'Conto corrente', true, true]],
+    accounts: [['Checking', 'Checking', true, false], ['Savings', 'Savings', true, false], ['Cash', 'Cash', true, false], ['Visa', 'Credit card', true, false], ['ETF broker', 'Brokerage', false, false], ['Home mortgage', 'Mortgage', false, false], ['Old post office account', 'Checking', true, true]],
     alerts: [
-      ['over', 'Una categoria va in negativo', 'Subito', [true, true, false]],
-      ['exceed', 'Una spesa supera il disponibile', 'Subito, mentre registri la spesa', [true, false, false]],
-      ['income', 'Arrivano soldi da assegnare', 'Quando entra un’entrata', [true, true, false]],
-      ['approve', 'Transazioni importate da controllare', 'Dopo ogni import', [false, true, false]],
-      ['portfolio', 'Controllo mensile del portafoglio', 'Il primo del mese, se qualcosa è oltre la soglia', [true, false, true]]
+      ['over', 'A category goes negative', 'Right away', [true, true, false]],
+      ['exceed', 'An expense is more than what is available', 'Right away, while you record the expense', [true, false, false]],
+      ['income', 'Money arrives to assign', 'When income comes in', [true, true, false]],
+      ['approve', 'Imported transactions to check', 'After each import', [false, true, false]],
+      ['portfolio', 'Monthly portfolio check', 'On the first of the month, if something is past its threshold', [true, false, true]]
     ],
-    devices: [['iPhone di Giorgio', 'App envelope · ultima attività oggi'], ['Chrome su Mac', 'Browser · ultima attività ora']],
-    myWorkspaces: [['Famiglia', 'owner', '3 membri'], ['Personale', 'owner', 'solo tu'], ['Casa al mare', 'editor', '4 membri, di Anna']]
+    devices: [['Giorgio’s iPhone', 'envelope app · last active today'], ['Chrome on Mac', 'Browser · last active now']],
+    myWorkspaces: [['Family', 'owner', '3 members'], ['Personal', 'owner', 'only you'], ['Beach house', 'editor', '4 members, Anna’s']]
   };
 
   function applyTheme() {
@@ -499,7 +499,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var d = new Date(Date.UTC(2026, 8, 26, 12)), loc = S.profile.locale;
     return new Intl.DateTimeFormat(loc, { dateStyle: 'full', timeZone: 'UTC' }).format(d) + ' · ' + fmt(123456, loc) + ' · ' + fmt(-4215, loc);
   }
-  function savedNote(key) { return S.saved === key ? '<span class="saved" role="status">Salvato</span>' : ''; }
+  function savedNote(key) { return S.saved === key ? '<span class="saved" role="status">Saved</span>' : ''; }
   function h(title, lead) { return '<div><h3 class="page-h">' + title + '</h3>' + (lead ? '<p class="lead">' + lead + '</p>' : '') + '</div>'; }
   function segs(name, value, opts, disabled) {
     return '<div class="segs" role="radiogroup">' + opts.map(function (o) { return '<label><input type="radio" name="' + name + '" value="' + o[0] + '" data-set="' + name + '"' + (value === o[0] ? ' checked' : '') + (disabled ? ' disabled' : '') + '><span>' + o[1] + '</span></label>'; }).join('') + '</div>';
@@ -510,50 +510,50 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 
   // ---- Your account: the person, in every workspace
   function renderAcc() {
-    el('acc-nav').innerHTML = nav(ACC_SECTIONS, S.acc, 'data-acc', 'Il tuo account');
-    var p = S.profile, out = '<span class="scope">Vale per <b>te</b>, in tutti i tuoi workspace</span>';
+    el('acc-nav').innerHTML = nav(ACC_SECTIONS, S.acc, 'data-acc', 'Your account');
+    var p = S.profile, out = '<span class="scope">Applies to <b>you</b>, in all your workspaces</span>';
     if (S.acc === 'profile') {
-      out += h('Profilo') +
-        '<div class="field"><label for="p-name">Nome</label><input type="text" id="p-name" data-set="name" value="' + esc(p.name) + '"><span class="hint">È il nome che vedono gli altri membri dei tuoi workspace.</span></div>' +
-        '<div class="field"><label for="p-email">Email</label><input type="email" id="p-email" value="' + esc(p.email) + '" readonly><span class="hint">Si cambia da "Accesso e sicurezza".</span></div>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-save="profile">Salva</button>' + savedNote('profile') + '</div>';
+      out += h('Profile') +
+        '<div class="field"><label for="p-name">Name</label><input type="text" id="p-name" data-set="name" value="' + esc(p.name) + '"><span class="hint">The name the other members of your workspaces see.</span></div>' +
+        '<div class="field"><label for="p-email">Email</label><input type="email" id="p-email" value="' + esc(p.email) + '" readonly><span class="hint">Changed from “Sign-in and security”.</span></div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="profile">Save</button>' + savedNote('profile') + '</div>';
     } else if (S.acc === 'prefs') {
-      out += h('Preferenze', 'Come vedi envelope: lingua, formati e tema.') +
-        '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('lang', p.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>' +
-        '<div class="field"><label for="p-locale">Formato di date e numeri</label><select id="p-locale" data-set="locale">' + LOCALES.map(function (l) { return '<option value="' + l[0] + '"' + (p.locale === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
+      out += h('Preferences', 'How you see envelope: language, formats and theme.') +
+        '<div class="field"><span style="font-weight:600">Language</span>' + segs('lang', p.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>' +
+        '<div class="field"><label for="p-locale">Date and number format</label><select id="p-locale" data-set="locale">' + LOCALES.map(function (l) { return '<option value="' + l[0] + '"' + (p.locale === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
         '<div class="sample" aria-live="polite">' + esc(sample()) + '</div></div>' +
-        '<div class="field"><label for="p-zone">Il tuo fuso orario</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Per mostrarti ore e notifiche. A quale mese appartiene una spesa lo decide il fuso del workspace, uguale per tutti.</span></div>' +
-        '<div class="field"><span style="font-weight:600">Tema</span>' + segs('theme', p.theme, [['system', 'Come il sistema'], ['light', 'Chiaro'], ['dark', 'Scuro']]) + '<span class="hint">Si applica subito: prova.</span></div>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-save="prefs">Salva</button>' + savedNote('prefs') + '</div>';
+        '<div class="field"><label for="p-zone">Your time zone</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Used to show you times and notifications. Which month an expense belongs to is decided by the workspace’s time zone, the same for everyone.</span></div>' +
+        '<div class="field"><span style="font-weight:600">Theme</span>' + segs('theme', p.theme, [['system', 'Same as the system'], ['light', 'Light'], ['dark', 'Dark']]) + '<span class="hint">Applies right away.</span></div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-save="prefs">Save</button>' + savedNote('prefs') + '</div>';
     } else if (S.acc === 'notifications') {
-      out += h('Notifiche', 'Quali avvisi ricevi e dove. Sono tue: gli altri membri scelgono i propri.') +
-        '<div class="field" style="max-width:320px"><label for="n-ws">Per il workspace</label><select id="n-ws" data-set="notifws">' + S.myWorkspaces.map(function (w) { return '<option' + (S.notifWs === w[0] ? ' selected' : '') + '>' + w[0] + '</option>'; }).join('') + '</select></div>' +
-        '<table class="nt"><thead><tr><th>Avviso</th><th class="c">Telefono</th><th class="c">Browser</th><th class="c">Email</th></tr></thead><tbody>' +
+      out += h('Notifications', 'Which alerts you get, and where. They are yours: the other members choose their own.') +
+        '<div class="field" style="max-width:320px"><label for="n-ws">For the workspace</label><select id="n-ws" data-set="notifws">' + S.myWorkspaces.map(function (w) { return '<option' + (S.notifWs === w[0] ? ' selected' : '') + '>' + w[0] + '</option>'; }).join('') + '</select></div>' +
+        '<table class="nt"><thead><tr><th>Alert</th><th class="c">Phone</th><th class="c">Browser</th><th class="c">Email</th></tr></thead><tbody>' +
         S.alerts.map(function (a, ai) {
-          return '<tr><td>' + esc(a[1]) + '<small>' + esc(a[2]) + '</small></td>' + ['Telefono', 'Browser', 'Email'].map(function (ch, k) {
+          return '<tr><td>' + esc(a[1]) + '<small>' + esc(a[2]) + '</small></td>' + ['Phone', 'Browser', 'Email'].map(function (ch, k) {
             return '<td class="c"><input type="checkbox" data-alert="' + ai + ':' + k + '" aria-label="' + esc(a[1]) + ', ' + ch + '"' + (a[3][k] ? ' checked' : '') + '></td>';
           }).join('') + '</tr>';
         }).join('') + '</tbody></table>' +
-        '<div class="block"><h4>I tuoi dispositivi</h4>' + S.devices.map(function (d, k) {
-          return '<div class="dev"><span>' + esc(d[0]) + '<small>' + esc(d[1]) + '</small></span><button type="button" class="plain danger" data-rmdev="' + k + '">Scollega</button></div>';
+        '<div class="block"><h4>Your devices</h4>' + S.devices.map(function (d, k) {
+          return '<div class="dev"><span>' + esc(d[0]) + '<small>' + esc(d[1]) + '</small></span><button type="button" class="plain danger" data-rmdev="' + k + '">Disconnect</button></div>';
         }).join('') + '</div>';
     } else if (S.acc === 'security') {
-      out += h('Accesso e sicurezza', 'L’accesso è gestito dal servizio di autenticazione del tuo envelope. Qui vedi lo stato; le modifiche si fanno nella sua pagina dell’account.') +
-        '<div><div class="kc"><span>Email<small>giorgio@example.org · verificata</small></span><button type="button" class="btn">Cambia</button></div>' +
-        '<div class="kc"><span>Password<small>cambiata 3 mesi fa</small></span><button type="button" class="btn">Cambia</button></div>' +
-        '<div class="kc"><span>Verifica in due passaggi <span class="st-ok">attiva</span><small>app di autenticazione</small></span><button type="button" class="btn">Gestisci</button></div>' +
-        '<div class="kc"><span>Passkey <span class="st-no">nessuna</span><small>Entra con l’impronta o il volto, senza password</small></span><button type="button" class="btn primary">Aggiungi una passkey</button></div></div>' +
-        '<div class="block"><h4>Sessioni aperte</h4>' +
-        '<div class="dev"><span>Chrome su Mac<small>questa sessione · Milano</small></span><span class="hint">In uso</span></div>' +
-        '<div class="dev"><span>App envelope su iPhone<small>ultimo accesso oggi alle 8:12</small></span><button type="button" class="plain danger">Esci</button></div>' +
-        '<div class="row-btns"><button type="button" class="btn">Esci da tutte le altre sessioni</button></div></div>' +
-        '<div class="block danger-zone"><h4>Elimina il tuo account</h4><p class="hint" style="margin:0">Prima devi lasciare o eliminare i workspace di cui sei l’unico proprietario.</p><div class="row-btns"><button type="button" class="btn bad" disabled>Elimina l’account</button></div></div>';
+      out += h('Sign-in and security', 'Sign-in is handled by your envelope’s authentication service. Here you see its status; changes are made on its account page.') +
+        '<div><div class="kc"><span>Email<small>giorgio@example.org · verified</small></span><button type="button" class="btn">Change</button></div>' +
+        '<div class="kc"><span>Password<small>changed 3 months ago</small></span><button type="button" class="btn">Change</button></div>' +
+        '<div class="kc"><span>Two-step verification <span class="st-ok">on</span><small>authenticator app</small></span><button type="button" class="btn">Manage</button></div>' +
+        '<div class="kc"><span>Passkeys <span class="st-no">none</span><small>Sign in with your fingerprint or face, without a password</small></span><button type="button" class="btn primary">Add a passkey</button></div></div>' +
+        '<div class="block"><h4>Open sessions</h4>' +
+        '<div class="dev"><span>Chrome on Mac<small>this session · Milan</small></span><span class="hint">In use</span></div>' +
+        '<div class="dev"><span>envelope app on iPhone<small>last signed in today at 8:12 AM</small></span><button type="button" class="plain danger">Sign out</button></div>' +
+        '<div class="row-btns"><button type="button" class="btn">Sign out of all other sessions</button></div></div>' +
+        '<div class="block danger-zone"><h4>Delete your account</h4><p class="hint" style="margin:0">First leave or delete the workspaces you are the only owner of.</p><div class="row-btns"><button type="button" class="btn bad" disabled>Delete the account</button></div></div>';
     } else {
-      out += h('I tuoi workspace', 'Ogni workspace ha i suoi conti, il suo budget e i suoi membri. Le sue impostazioni si aprono dal menu del workspace.') +
+      out += h('Your workspaces', 'Each workspace has its own accounts, budget and members. Its settings open from the workspace menu.') +
         '<div>' + S.myWorkspaces.map(function (w) {
           return '<div class="wsl"><span><b style="font-weight:600">' + esc(w[0]) + '</b><small>' + esc(w[2]) + '</small></span><span class="hint">' + ROLE[w[1]] + '</span>' +
-            '<span class="row-btns">' + (w[0] === 'Famiglia' ? '<button type="button" class="btn" data-view="ws">Impostazioni</button>' : '') + (w[1] === 'owner' ? '' : '<button type="button" class="plain danger">Lascia</button>') + '</span></div>';
-        }).join('') + '</div><div class="row-btns"><button type="button" class="btn primary" data-view="onb">+ Nuovo workspace</button></div>';
+            '<span class="row-btns">' + (w[0] === 'Family' ? '<button type="button" class="btn" data-view="ws">Settings</button>' : '') + (w[1] === 'owner' ? '' : '<button type="button" class="plain danger">Leave</button>') + '</span></div>';
+        }).join('') + '</div><div class="row-btns"><button type="button" class="btn primary" data-view="onb">+ New workspace</button></div>';
     }
     el('acc-main').innerHTML = '<div class="form">' + out + '</div>';
   }
@@ -565,113 +565,113 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     return false;
   }
   function renderWs() {
-    el('ws-nav').innerHTML = nav(WS_SECTIONS, S.ws, 'data-wsec', 'Workspace Famiglia');
+    el('ws-nav').innerHTML = nav(WS_SECTIONS, S.ws, 'data-wsec', 'Family workspace');
     var w = S.workspace, ro = !can(S.ws), dis = ro ? ' disabled' : '';
-    var out = '<div class="row-btns" style="justify-content:space-between"><span class="scope">Vale per <b>tutti i membri</b> del workspace Famiglia</span>' +
-      '<label class="as">Guarda come <select data-as="1">' + ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (S.as === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></label></div>' +
-      (ro ? '<div class="ro">' + (S.as === 'reader' ? 'Con la sola lettura vedi queste impostazioni ma non le puoi cambiare.' : 'Solo un proprietario può cambiare questa sezione. Chi può modificare gestisce le categorie.') + '</div>' : '');
+    var out = '<div class="row-btns" style="justify-content:space-between"><span class="scope">Applies to <b>every member</b> of the Family workspace</span>' +
+      '<label class="as">View as <select data-as="1">' + ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (S.as === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></label></div>' +
+      (ro ? '<div class="ro">' + (S.as === 'reader' ? 'With read-only access you see these settings but cannot change them.' : 'Only an owner can change this section. An editor manages the categories.') + '</div>' : '');
     if (S.ws === 'general') {
-      out += h('Generale') +
-        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"' + dis + '></div>' +
-        '<div class="field"><label for="w-cur">Valuta</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Si sceglie alla creazione e non cambia: i conti in altre valute vengono convertiti in questa.</span></div>' +
-        '<div class="field"><label for="w-zone">Fuso orario del workspace</label><select id="w-zone" data-set="wzone"' + dis + '>' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
-        '<span class="hint">Decide a quale giorno e mese appartiene una spesa, uguale per tutti i membri anche in viaggio: una spesa delle 23 del 30 settembre a New York conta a settembre.</span></div>' +
-        (ro ? '' : '<div class="row-btns"><button type="button" class="btn primary" data-save="general">Salva</button>' + savedNote('general') + '</div>');
+      out += h('General') +
+        '<div class="field"><label for="w-name">Name</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"' + dis + '></div>' +
+        '<div class="field"><label for="w-cur">Currency</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Chosen when the workspace is created, and never changed: accounts in other currencies are converted into it.</span></div>' +
+        '<div class="field"><label for="w-zone">Workspace time zone</label><select id="w-zone" data-set="wzone"' + dis + '>' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
+        '<span class="hint">Decides which day and month an expense belongs to, the same for every member, even when travelling: an expense at 11 PM on September 30 in New York counts in September.</span></div>' +
+        (ro ? '' : '<div class="row-btns"><button type="button" class="btn primary" data-save="general">Save</button>' + savedNote('general') + '</div>');
     } else if (S.ws === 'members') {
       var owners = S.members.filter(function (m) { return m.role === 'owner'; }).length;
-      out += h('Membri', 'Chi può vedere e modificare questo workspace.') +
+      out += h('Members', 'Who can see and edit this workspace.') +
         '<div>' + S.members.map(function (m) {
           var lastOwner = m.role === 'owner' && owners === 1;
-          return '<div class="mrow"><span><b style="font-weight:600">' + esc(m.name) + (m.me ? ' (tu)' : '') + '</b><small>' + esc(m.email) + '</small></span>' +
-            '<span><label class="sr" for="role-' + m.id + '">Ruolo di ' + esc(m.name) + '</label><select id="role-' + m.id + '" data-role="' + m.id + '"' + (lastOwner || ro ? ' disabled' : '') + (lastOwner ? ' title="Serve almeno un proprietario"' : '') + '>' +
+          return '<div class="mrow"><span><b style="font-weight:600">' + esc(m.name) + (m.me ? ' (you)' : '') + '</b><small>' + esc(m.email) + '</small></span>' +
+            '<span><label class="sr" for="role-' + m.id + '">Role of ' + esc(m.name) + '</label><select id="role-' + m.id + '" data-role="' + m.id + '"' + (lastOwner || ro ? ' disabled' : '') + (lastOwner ? ' title="A workspace needs at least one owner"' : '') + '>' +
             ['owner', 'editor', 'reader'].map(function (r) { return '<option value="' + r + '"' + (m.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></span>' +
-            (m.me || ro ? '<span></span>' : '<button type="button" class="plain danger" data-rmm="' + m.id + '">Togli</button>') + '</div>';
+            (m.me || ro ? '<span></span>' : '<button type="button" class="plain danger" data-rmm="' + m.id + '">Remove</button>') + '</div>';
         }).join('') + '</div>' +
         (S.memberError ? '<div class="hint bad" role="alert">' + esc(S.memberError) + '</div>' : '') +
-        (ro ? '' : '<div class="block"><h4>Invita qualcuno</h4><div class="inv"><div class="field"><label for="inv-email">Email</label><input type="email" id="inv-email" data-set="invemail" value="' + esc(S.invite.email) + '" placeholder="nome@esempio.it"></div>' +
-        '<div class="field"><label for="inv-role">Ruolo</label><select id="inv-role" data-set="invrole">' + ['editor', 'reader', 'owner'].map(function (r) { return '<option value="' + r + '"' + (S.invite.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></div>' +
-        '<button type="button" class="btn primary" data-invite="1">Invia l’invito</button></div>' +
-        (S.invites.length ? '<div>' + S.invites.map(function (i, k) { return '<div class="dev"><span>' + esc(i.email) + '<small>Invito in attesa · ' + ROLE[i.role] + '</small></span><button type="button" class="plain danger" data-rminv="' + k + '">Annulla l’invito</button></div>'; }).join('') + '</div>' : '') + '</div>') +
-        '<div class="block"><h4>Cosa può fare ogni ruolo</h4><div class="roles"><b>Proprietario</b><span>Tutto, comprese queste impostazioni, i membri, l’esportazione e l’eliminazione del workspace.</span>' +
-        '<b>Può modificare</b><span>Conti, transazioni, budget, obiettivi, portafogli e categorie.</span><b>Sola lettura</b><span>Vede tutto e riceve le notifiche, ma non cambia niente.</span></div></div>';
+        (ro ? '' : '<div class="block"><h4>Invite someone</h4><div class="inv"><div class="field"><label for="inv-email">Email</label><input type="email" id="inv-email" data-set="invemail" value="' + esc(S.invite.email) + '" placeholder="name@example.org"></div>' +
+        '<div class="field"><label for="inv-role">Role</label><select id="inv-role" data-set="invrole">' + ['editor', 'reader', 'owner'].map(function (r) { return '<option value="' + r + '"' + (S.invite.role === r ? ' selected' : '') + '>' + ROLE[r] + '</option>'; }).join('') + '</select></div>' +
+        '<button type="button" class="btn primary" data-invite="1">Send the invitation</button></div>' +
+        (S.invites.length ? '<div>' + S.invites.map(function (i, k) { return '<div class="dev"><span>' + esc(i.email) + '<small>Invitation pending · ' + ROLE[i.role] + '</small></span><button type="button" class="plain danger" data-rminv="' + k + '">Cancel the invitation</button></div>'; }).join('') + '</div>' : '') + '</div>') +
+        '<div class="block"><h4>What each role can do</h4><div class="roles"><b>Owner</b><span>Everything, including these settings, the members, exporting and deleting the workspace.</span>' +
+        '<b>Can edit</b><span>Accounts, transactions, budget, targets, portfolios and categories.</span><b>Read only</b><span>Sees everything and gets notifications, but changes nothing.</span></div></div>';
     } else if (S.ws === 'categories') {
-      out += h('Categorie', 'Gruppi e categorie del budget. Rinomina scrivendo sul nome; una categoria archiviata sparisce dal budget ma resta nelle transazioni passate.') +
+      out += h('Categories', 'The budget’s groups and categories. Rename by typing over the name; an archived category leaves the budget but stays on past transactions.') +
         '<div>' + S.groups.map(function (g, gi) {
           return '<div class="cg"><div class="cg-h"><span style="flex:1">' + esc(g.name) + '</span>' +
-            (ro ? '' : '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Sposta su ' + esc(g.name) + '"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
-            '<button type="button" class="ib" data-gmove="' + gi + ':1" aria-label="Sposta giù ' + esc(g.name) + '"' + (gi === S.groups.length - 1 ? ' disabled' : '') + '>↓</button>') + '</div>' +
+            (ro ? '' : '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Move ' + esc(g.name) + ' up"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
+            '<button type="button" class="ib" data-gmove="' + gi + ':1" aria-label="Move ' + esc(g.name) + ' down"' + (gi === S.groups.length - 1 ? ' disabled' : '') + '>↓</button>') + '</div>' +
             g.cats.map(function (c, ci) {
-              return '<div class="cr"><span><label class="sr" for="c-' + gi + '-' + ci + '">Nome</label><input type="text" id="c-' + gi + '-' + ci + '" data-cname="' + gi + ':' + ci + '" value="' + esc(c[0]) + '"' + (c[1] ? ' style="color:var(--muted)"' : '') + (ro ? ' readonly' : '') + '></span>' +
-                '<span class="tools">' + (c[1] ? '<span class="tag-arch" style="align-self:center;margin-right:6px">Archiviata</span>' : '') +
-                (ro ? '' : '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':-1" aria-label="Sposta su"' + (ci === 0 ? ' disabled' : '') + '>↑</button>' +
-                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':1" aria-label="Sposta giù"' + (ci === g.cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
-                '<button type="button" class="btn" style="min-height:34px" data-carch="' + gi + ':' + ci + '">' + (c[1] ? 'Ripristina' : 'Archivia') + '</button>') + '</span></div>';
+              return '<div class="cr"><span><label class="sr" for="c-' + gi + '-' + ci + '">Category name</label><input type="text" id="c-' + gi + '-' + ci + '" data-cname="' + gi + ':' + ci + '" value="' + esc(c[0]) + '"' + (c[1] ? ' style="color:var(--muted)"' : '') + (ro ? ' readonly' : '') + '></span>' +
+                '<span class="tools">' + (c[1] ? '<span class="tag-arch" style="align-self:center;margin-right:6px">Archived</span>' : '') +
+                (ro ? '' : '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':-1" aria-label="Move ' + esc(c[0]) + ' up"' + (ci === 0 ? ' disabled' : '') + '>↑</button>' +
+                '<button type="button" class="ib" data-cmove="' + gi + ':' + ci + ':1" aria-label="Move ' + esc(c[0]) + ' down"' + (ci === g.cats.length - 1 ? ' disabled' : '') + '>↓</button>' +
+                '<button type="button" class="btn" style="min-height:34px" data-carch="' + gi + ':' + ci + '">' + (c[1] ? 'Restore' : 'Archive') + '</button>') + '</span></div>';
             }).join('') +
-            (ro ? '' : '<div class="cr"><button type="button" class="plain" style="justify-self:start" data-cadd="' + gi + '">+ Aggiungi una categoria</button><span></span></div>') + '</div>';
+            (ro ? '' : '<div class="cr"><button type="button" class="plain" style="justify-self:start" data-cadd="' + gi + '">+ Add a category</button><span></span></div>') + '</div>';
         }).join('') + '</div>' +
-        (ro ? '' : '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Aggiungi un gruppo</button></div>');
+        (ro ? '' : '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Add a group</button></div>');
     } else if (S.ws === 'accounts') {
-      out += h('Conti', 'I conti del workspace. Un conto reale sta in un solo workspace, così non viene mai contato due volte.') +
+      out += h('Accounts', 'The workspace’s accounts. A real account belongs to one workspace only, so it is never counted twice.') +
         '<div>' + S.accounts.map(function (a, k) {
-          return '<div class="accl"><span><b style="font-weight:600' + (a[3] ? ';color:var(--muted)' : '') + '">' + esc(a[0]) + '</b><small>' + esc(a[1]) + (a[3] ? ' · chiuso' : '') + '</small></span>' +
-            '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro || a[3] ? ' disabled' : '') + '><option value="1"' + (a[2] ? ' selected' : '') + '>In budget</option><option value="0"' + (a[2] ? '' : ' selected') + '>Fuori budget</option></select></span>' +
-            '<span class="hint">' + (a[2] ? 'entra in "da assegnare"' : 'solo nel patrimonio') + '</span>' +
-            (ro ? '<span></span>' : '<button type="button" class="plain' + (a[3] ? '' : ' danger') + '" data-accclose="' + k + '">' + (a[3] ? 'Riapri' : 'Chiudi') + '</button>') + '</div>';
-        }).join('') + '</div><p class="hint" style="margin:0">Un conto si chiude quando il saldo è zero: resta nello storico, non compare più nel budget.</p>';
+          return '<div class="accl"><span><b style="font-weight:600' + (a[3] ? ';color:var(--muted)' : '') + '">' + esc(a[0]) + '</b><small>' + esc(a[1]) + (a[3] ? ' · closed' : '') + '</small></span>' +
+            '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro || a[3] ? ' disabled' : '') + '><option value="1"' + (a[2] ? ' selected' : '') + '>On budget</option><option value="0"' + (a[2] ? '' : ' selected') + '>Off budget</option></select></span>' +
+            '<span class="hint">' + (a[2] ? 'counts toward “Unassigned”' : 'only in net worth') + '</span>' +
+            (ro ? '<span></span>' : '<button type="button" class="plain' + (a[3] ? '' : ' danger') + '" data-accclose="' + k + '">' + (a[3] ? 'Reopen' : 'Close') + '</button>') + '</div>';
+        }).join('') + '</div><p class="hint" style="margin:0">An account can be closed when its balance is zero: it stays in the history and no longer shows in the budget.</p>';
     } else {
-      out += h('Dati', 'I dati del workspace sono di chi lo usa.') +
-        '<div class="block"><h4>Esporta</h4><p class="hint" style="margin:0">Tutto il workspace: conti, transazioni, budget, obiettivi e portafogli, in un file che puoi leggere e reimportare.</p>' +
-        '<div class="row-btns"><button type="button" class="btn"' + dis + '>Esporta in JSON</button><button type="button" class="btn"' + dis + '>Esporta le transazioni in CSV</button></div></div>' +
-        '<div class="block danger-zone"><h4>Elimina il workspace</h4><p class="hint" style="margin:0">Cancella per sempre il workspace e tutti i suoi dati, per tutti i membri. Scarica prima una copia.</p>' +
-        '<div class="field"><label for="w-del">Per confermare scrivi <b>' + esc(w.name) + '</b></label><input type="text" id="w-del" data-set="wdel" value="' + esc(w.confirmDelete) + '" autocomplete="off"' + dis + '></div>' +
-        '<div class="row-btns"><button type="button" class="btn bad primary" data-delws="1"' + (!ro && w.confirmDelete === w.name ? '' : ' disabled') + '>Elimina il workspace</button></div></div>';
+      out += h('Data', 'A workspace’s data belongs to the people who use it.') +
+        '<div class="block"><h4>Export</h4><p class="hint" style="margin:0">The whole workspace: accounts, transactions, budget, targets and portfolios, in a file you can read and import again.</p>' +
+        '<div class="row-btns"><button type="button" class="btn"' + dis + '>Export as JSON</button><button type="button" class="btn"' + dis + '>Export transactions as CSV</button></div></div>' +
+        '<div class="block danger-zone"><h4>Delete the workspace</h4><p class="hint" style="margin:0">Permanently deletes the workspace and all its data, for every member.</p>' +
+        '<div class="field"><label for="w-del">To confirm, type <b>' + esc(w.name) + '</b></label><input type="text" id="w-del" data-set="wdel" value="' + esc(w.confirmDelete) + '" autocomplete="off"' + dis + '></div>' +
+        '<div class="row-btns"><button type="button" class="btn bad primary" data-delws="1"' + (!ro && w.confirmDelete === w.name ? '' : ' disabled') + '>Delete the workspace</button></div></div>';
     }
     el('ws-main').innerHTML = '<div class="form">' + out + '</div>';
   }
 
   // ---- First run
-  var O = { step: 1, lang: 'it', ws: 'Famiglia', zone: 'Europe/Rome', acc: 'Conto corrente', type: 'checking', balStr: '', cats: {}, err: '' };
+  var O = { step: 1, lang: 'en', ws: 'Family', zone: 'Europe/Rome', acc: 'Checking', type: 'checking', balStr: '', cats: {}, err: '' };
   var START = [
-    ['Casa e bollette', ['Affitto o mutuo', 'Luce e gas', 'Acqua', 'Internet e telefono']],
-    ['Spese di tutti i giorni', ['Spesa alimentare', 'Trasporti', 'Ristoranti', 'Salute']],
-    ['Spese prevedibili', ['Assicurazioni', 'Manutenzione auto', 'Regali', 'Vacanze']],
-    ['Risparmio', ['Fondo emergenze']],
-    ['Svago', ['Abbonamenti', 'Hobby']]
+    ['Home and bills', ['Rent or mortgage', 'Electricity and gas', 'Water', 'Internet and phone']],
+    ['Everyday spending', ['Groceries', 'Transport', 'Restaurants', 'Health']],
+    ['Predictable expenses', ['Insurance', 'Car maintenance', 'Gifts', 'Vacations']],
+    ['Savings', ['Emergency fund']],
+    ['Fun', ['Subscriptions', 'Hobbies']]
   ];
-  START.forEach(function (g) { g[1].forEach(function (c) { O.cats[c] = c !== 'Acqua'; }); });
-  var TYPES = [['checking', 'Conto corrente', 'Stipendio, bollette, bancomat'], ['savings', 'Conto risparmio', 'Soldi messi da parte, in budget'], ['cash', 'Contanti', 'I contanti che hai con te'], ['offbudget', 'Fuori budget', 'Investimenti, mutuo: si vedono ma non si assegnano']];
+  START.forEach(function (g) { g[1].forEach(function (c) { O.cats[c] = c !== 'Water'; }); });
+  var TYPES = [['checking', 'Checking', 'Salary, bills, debit card'], ['savings', 'Savings', 'Money set aside, on or off budget as you choose'], ['cash', 'Cash', 'Your wallet'], ['offbudget', 'Off budget', 'Investments, a mortgage: shown, but not assigned']];
   function renderOnb() {
-    var total = 5, h = '<div class="onb-top"><b>envelope</b><div class="dots-steps" aria-label="Passo ' + O.step + ' di ' + total + '">' + [1, 2, 3, 4, 5].map(function (i) { return '<i class="' + (i <= O.step ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
+    var total = 5, h = '<div class="onb-top"><b>envelope</b><div class="dots-steps" aria-label="Step ' + O.step + ' of ' + total + '">' + [1, 2, 3, 4, 5].map(function (i) { return '<i class="' + (i <= O.step ? 'on' : '') + '"></i>'; }).join('') + '</div></div>';
     if (O.step === 1) {
-      h += '<h2>Benvenuto in envelope.</h2><p>Qui assegni alle categorie solo i soldi che sono già arrivati sui tuoi conti. Ogni spesa scala dalla sua categoria, e quello che avanza passa al mese dopo.</p>' +
-        '<ul class="rules4"><li>Ogni categoria mostra quanto resta da spendere questo mese.</li><li>Le spese rare, come l\u2019assicurazione, si preparano un po\u2019 alla volta con gli obiettivi.</li><li>Il budget e i conti tornano sempre al centesimo.</li></ul>' +
-        '<div class="field"><span style="font-weight:600">Lingua</span>' + segs('olang', O.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>';
+      h += '<h2>Welcome to envelope.</h2><p>Here you assign to categories only the money that has already reached your accounts. Each expense comes out of its category, and what is left over carries over to the next month.</p>' +
+        '<ul class="rules4"><li>Each category shows how much is left to spend this month.</li><li>Rare expenses, like insurance, are prepared for a little at a time with targets.</li><li>The budget and the accounts always match to the cent.</li></ul>' +
+        '<div class="field"><span style="font-weight:600">Language</span>' + segs('olang', O.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>';
     } else if (O.step === 2) {
-      h += '<h2>Crea il tuo workspace</h2><p>Un workspace contiene un budget e i suoi conti. Puoi invitare altre persone più avanti.</p>' +
-        '<div class="field"><label for="o-ws">Nome</label><input type="text" id="o-ws" data-o="ws" value="' + esc(O.ws) + '" placeholder="Famiglia, Personale…"></div>' +
-        '<div class="field"><label for="o-cur">Valuta</label><select id="o-cur"><option>Euro (EUR)</option><option>Franco svizzero (CHF)</option><option>Sterlina (GBP)</option><option>Dollaro (USD)</option></select><span class="hint">Non si potrà cambiare dopo.</span></div>' +
-        '<div class="field"><label for="o-zone">Fuso orario</label><select id="o-zone" data-o="zone">' + ZONES.map(function (z) { return '<option' + (O.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Decide a quale mese appartiene una spesa, per tutti i membri.</span></div>';
+      h += '<h2>Create your workspace</h2><p>A workspace holds a budget and its accounts. You can invite other people later.</p>' +
+        '<div class="field"><label for="o-ws">Name</label><input type="text" id="o-ws" data-o="ws" value="' + esc(O.ws) + '" placeholder="Family, Personal…"></div>' +
+        '<div class="field"><label for="o-cur">Currency</label><select id="o-cur"><option>Euro (EUR)</option><option>Swiss franc (CHF)</option><option>Pound sterling (GBP)</option><option>US dollar (USD)</option></select><span class="hint">Chosen now, and never changed later.</span></div>' +
+        '<div class="field"><label for="o-zone">Time zone</label><select id="o-zone" data-o="zone">' + ZONES.map(function (z) { return '<option' + (O.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Decides which month a transaction belongs to, the same for every member.</span></div>';
     } else if (O.step === 3) {
-      h += '<h2>Aggiungi il primo conto</h2><p>Scrivi il saldo di oggi, come lo vedi dalla banca. Carte di credito e altri conti li aggiungi dopo.</p>' +
-        '<div class="types" role="radiogroup" aria-label="Tipo di conto">' + TYPES.map(function (t) { return '<label class="tp"><input type="radio" name="otype" value="' + t[0] + '" data-o="type"' + (O.type === t[0] ? ' checked' : '') + '><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></label>'; }).join('') + '</div>' +
-        '<div class="field"><label for="o-acc">Nome del conto</label><input type="text" id="o-acc" data-o="acc" value="' + esc(O.acc) + '"></div>' +
-        '<div class="field"><label for="o-bal">Saldo di oggi</label><span class="money-in"><input type="text" inputmode="decimal" id="o-bal" data-o="balStr" value="' + esc(O.balStr) + '" placeholder="0,00"><span>€</span></span>' +
-        (O.type === 'offbudget' ? '<span class="hint">Un conto fuori budget non entra in "da assegnare".</span>' : '<span class="hint">Questo importo diventa subito "da assegnare".</span>') + '</div>' +
+      h += '<h2>Add your first account</h2><p>Type today’s balance, as your bank shows it. Credit cards and other accounts can be added later.</p>' +
+        '<div class="types" role="radiogroup" aria-label="Account type">' + TYPES.map(function (t) { return '<label class="tp"><input type="radio" name="otype" value="' + t[0] + '" data-o="type"' + (O.type === t[0] ? ' checked' : '') + '><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></label>'; }).join('') + '</div>' +
+        '<div class="field"><label for="o-acc">Name</label><input type="text" id="o-acc" data-o="acc" value="' + esc(O.acc) + '"></div>' +
+        '<div class="field"><label for="o-bal">Today’s balance</label><span class="money-in"><input type="text" inputmode="decimal" id="o-bal" data-o="balStr" value="' + esc(O.balStr) + '" placeholder="0.00"><span>€</span></span>' +
+        (O.type === 'offbudget' ? '<span class="hint">An off-budget account does not count toward “Unassigned”.</span>' : '<span class="hint">This amount becomes “Unassigned” right away.</span>') + '</div>' +
         (O.err ? '<div class="hint bad" role="alert">' + esc(O.err) + '</div>' : '');
     } else if (O.step === 4) {
       var n = Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length;
-      h += '<h2>Scegli le categorie di partenza</h2><p>Togli quelle che non ti servono. Potrai rinominarle, aggiungerne e riordinarle quando vuoi.</p>' +
+      h += '<h2>Choose your starting categories</h2><p>Untick the ones you do not need. You can rename, add and reorder them whenever you like.</p>' +
         '<div class="catpick">' + START.map(function (g) {
           return '<h5>' + esc(g[0]) + '</h5>' + g[1].map(function (c, k) { var id = 'oc-' + esc(g[0]).replace(/\W/g, '') + k; return '<label class="check" for="' + id + '"><input type="checkbox" id="' + id + '" data-ocat="' + esc(c) + '"' + (O.cats[c] ? ' checked' : '') + '> ' + esc(c) + '</label>'; }).join('');
-        }).join('') + '</div><span class="hint">' + n + ' categorie selezionate.</span>';
+        }).join('') + '</div><span class="hint">' + n + ' categories selected.</span>';
     } else {
       var bal = parseAmount(O.balStr) || 0;
       var rta = O.type === 'offbudget' ? 0 : bal;
-      h += '<h2>Tutto pronto</h2><p>Il workspace <b>' + esc(O.ws) + '</b> ha il conto <b>' + esc(O.acc) + '</b> e ' + Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length + ' categorie.</p>' +
-        '<div class="bigsum"><span style="font-weight:600">Da assegnare</span><b class="n">' + fmt(rta) + '</b><span class="hint">' + (rta > 0 ? 'Il prossimo passo: distribuiscili tra le categorie, partendo dalle spese di questo mese.' : 'Quando arriva un’entrata in un conto in budget, la trovi qui.') + '</span></div>';
+      h += '<h2>All set</h2><p>The <b>' + esc(O.ws) + '</b> workspace has the <b>' + esc(O.acc) + '</b> account and ' + Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length + ' categories.</p>' +
+        '<div class="bigsum"><span style="font-weight:600">Unassigned</span><b class="n">' + fmt(rta) + '</b><span class="hint">' + (rta > 0 ? 'Next step: spread it across your categories, starting with this month’s expenses.' : 'When income reaches an on-budget account, you find it here.') + '</span></div>';
     }
-    h += '<div class="onb-nav">' + (O.step > 1 && O.step < 5 ? '<button type="button" class="btn" data-onb="back">Indietro</button>' : '<span></span>') +
-      (O.step < 5 ? '<button type="button" class="btn primary" data-onb="next">' + (O.step === 4 ? 'Crea il budget' : 'Continua') + '</button>' : '<span class="row-btns"><button type="button" class="btn" data-onb="restart">Ricomincia il bozzetto</button><button type="button" class="btn primary">Vai al budget e assegna</button></span>') + '</div>';
+    h += '<div class="onb-nav">' + (O.step > 1 && O.step < 5 ? '<button type="button" class="btn" data-onb="back">Back</button>' : '<span></span>') +
+      (O.step < 5 ? '<button type="button" class="btn primary" data-onb="next">' + (O.step === 4 ? 'Create the budget' : 'Continue') + '</button>' : '<span class="row-btns"><button type="button" class="btn" data-onb="restart">Restart the mockup</button><button type="button" class="btn primary">Go to the budget and assign</button></span>') + '</div>';
     el('onb').innerHTML = h;
   }
 
@@ -698,24 +698,24 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.rmm) { S.members = S.members.filter(function (m) { return m.id !== d.rmm; }); return renderWs(); }
     if (d.invite) {
       var em = S.invite.email.trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { S.memberError = 'Scrivi un indirizzo email valido.'; return renderWs(); }
-      if (S.members.some(function (m) { return m.email === em; }) || S.invites.some(function (i) { return i.email === em; })) { S.memberError = 'Questa persona è già membro o invitata.'; return renderWs(); }
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { S.memberError = 'Enter a valid email address.'; return renderWs(); }
+      if (S.members.some(function (m) { return m.email === em; }) || S.invites.some(function (i) { return i.email === em; })) { S.memberError = 'This person is already a member or invited.'; return renderWs(); }
       S.invites.push({ email: em, role: S.invite.role }); S.invite.email = ''; S.memberError = ''; return renderWs();
     }
     if (d.rminv) { S.invites.splice(Number(d.rminv), 1); return renderWs(); }
     if (d.gmove) { var q = d.gmove.split(':').map(Number), g = S.groups.splice(q[0], 1)[0]; S.groups.splice(q[0] + q[1], 0, g); return renderWs(); }
     if (d.cmove) { var r = d.cmove.split(':').map(Number), cats = S.groups[r[0]].cats, c = cats.splice(r[1], 1)[0]; cats.splice(r[1] + r[2], 0, c); return renderWs(); }
     if (d.carch) { var a = d.carch.split(':').map(Number), cc = S.groups[a[0]].cats[a[1]]; cc[1] = !cc[1]; return renderWs(); }
-    if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['Nuova categoria']); renderWs(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
-    if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'Nuovo gruppo', cats: [['Nuova categoria']] }); return renderWs(); }
+    if (d.cadd) { S.groups[Number(d.cadd)].cats.push(['New category']); renderWs(); var gi = Number(d.cadd), inp = el('c-' + gi + '-' + (S.groups[gi].cats.length - 1)); if (inp) { inp.focus(); inp.select(); } return; }
+    if (d.gadd) { S.groups.push({ id: 'g' + Date.now(), name: 'New group', cats: [['New category']] }); return renderWs(); }
     if (d.accclose) { var ac = S.accounts[Number(d.accclose)]; ac[3] = !ac[3]; return renderWs(); }
     if (d.rmdev) { S.devices.splice(Number(d.rmdev), 1); return renderAcc(); }
-    if (d.delws) { S.workspace.confirmDelete = ''; el('ws-main').innerHTML = '<div class="form">' + h('Workspace eliminato', 'Nel bozzetto non succede niente di irreversibile: ricarica la pagina per ricominciare.') + '</div>'; return; }
+    if (d.delws) { S.workspace.confirmDelete = ''; el('ws-main').innerHTML = '<div class="form">' + h('Workspace deleted', 'Nothing irreversible happens in the mockup: reload the page to start again.') + '</div>'; return; }
     if (d.onb === 'next') {
       if (O.step === 3) {
         var v = parseAmount(O.balStr || '0');
-        if (v === null) { O.err = 'Scrivi il saldo come un importo, per esempio 1.250,00.'; return renderOnb(); }
-        if (!O.acc.trim()) { O.err = 'Dai un nome al conto.'; return renderOnb(); }
+        if (v === null) { O.err = 'Type the balance as an amount, for example 1,250.00.'; return renderOnb(); }
+        if (!O.acc.trim()) { O.err = 'Give the account a name.'; return renderOnb(); }
         O.err = '';
       }
       O.step++; return renderOnb();
@@ -737,11 +737,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.role) {
       var m = S.members.filter(function (x) { return x.id === d.role; })[0];
       var owners = S.members.filter(function (x) { return x.role === 'owner'; }).length;
-      if (m.role === 'owner' && t.value !== 'owner' && owners === 1) { S.memberError = 'Serve almeno un proprietario.'; return renderWs(); }
+      if (m.role === 'owner' && t.value !== 'owner' && owners === 1) { S.memberError = 'A workspace needs at least one owner.'; return renderWs(); }
       m.role = t.value; S.memberError = ''; return renderWs();
     }
     if (d.alert) { var q = d.alert.split(':').map(Number); S.alerts[q[0]][3][q[1]] = t.checked; return; }
-    if (d.o === 'type') { O.type = t.value; if (t.value === 'offbudget' && O.acc === 'Conto corrente') O.acc = 'Broker'; return renderOnb(); }
+    if (d.o === 'type') { O.type = t.value; if (t.value === 'offbudget' && O.acc === 'Checking') O.acc = 'Broker'; return renderOnb(); }
     if (d.o === 'zone') { O.zone = t.value; return; }
     if (d.ocat) { O.cats[d.ocat] = t.checked; return renderOnb(); }
     if (d.set === 'olang') { O.lang = t.value; return; }

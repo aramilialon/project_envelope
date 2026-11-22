@@ -3,10 +3,10 @@
   Interactive mockup of the portfolio: overview, allocation, rebalancing, linked accounts, new-portfolio setup, trade entry.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself
-  self-hosts its fonts). The UI copy is the Italian translation; English stays
-  the source language of the app. Sample data is fictional.
+  self-hosts its fonts). The UI copy is English, the source language of the app; the Italian approved
+  before #622 is at the commit recorded in docs/ux/README.md. Sample data is fictional.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -401,7 +401,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <div class="wrap">
   <div class="strip">
     <p><b>envelope</b>, portfolio mockup: overview with the monthly history, target allocation with thresholds, mechanical rebalancing, linked accounts (one brokerage account holding several portfolios), the guided setup of a new portfolio and trade entry. Instrument names are fictional.</p>
-    <div class="views" role="tablist" aria-label="Vista">
+    <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
     </div>
@@ -410,32 +410,32 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   <section id="view-desk" role="tabpanel" aria-labelledby="tab-desk">
     <div class="scroller">
       <div class="desk pf" id="desk">
-        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button">Conti</button><button type="button" aria-current="page">Portafoglio</button></nav><button type="button" class="ws2">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
+        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button">Accounts</button><button type="button" aria-current="page">Portfolio</button></nav><button type="button" class="ws2">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
         <nav class="side" aria-label="Main (mockup)">
           <div class="brand">
             <b>envelope</b>
-            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <button type="button" class="ws">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           </div>
           <div class="nav">
             <button type="button">Budget</button>
-            <button type="button">Conti</button>
-            <button type="button" aria-current="page">Portafoglio</button>
+            <button type="button">Accounts</button>
+            <button type="button" aria-current="page">Portfolio</button>
           </div>
           <div id="pf-side" style="display:flex;flex-direction:column;gap:26px"></div>
-          <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+          <div class="me"><span>Giorgio</span><button type="button" class="plain">Settings</button></div>
         </nav>
         <div class="main">
           <div id="pf-normal">
             <div class="pf-head">
-              <div><h3>Lungo termine</h3><div class="sub">Nel conto Broker ETF, insieme a Terzo pilastro · prezzi al 25 settembre 2026 · prossimo controllo il 1° ottobre</div></div>
+              <div><h3>Long term</h3><div class="sub">In the ETF broker account, together with Third pillar · prices as of September 25, 2026 · next check on October 1</div></div>
               <div class="figs" id="figs"></div>
             </div>
-            <div class="subtabs" role="tablist" aria-label="Sezioni del portafoglio" id="subtabs"></div>
+            <div class="subtabs" role="tablist" aria-label="Portfolio sections" id="subtabs"></div>
             <div id="pane"></div>
           </div>
           <div id="pf-wizard" hidden></div>
         </div>
-        <aside class="insp" aria-label="Nuova operazione" id="panel" hidden></aside>
+        <aside class="insp" aria-label="New trade" id="panel" hidden></aside>
       </div>
     </div>
   </section>
@@ -459,49 +459,49 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 (function () {
   function el(id) { return document.getElementById(id); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
-  function f0(c) { return new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100).replace('-', '−'); }
-  function pct(x, d) { return (x * 100).toLocaleString('it-IT', { minimumFractionDigits: d === undefined ? 1 : d, maximumFractionDigits: d === undefined ? 1 : d }).replace('-', '−') + '%'; }
+  function f0(c) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(c / 100).replace('-', '−'); }
+  function pct(x, d) { return (x * 100).toLocaleString('en-US', { minimumFractionDigits: d === undefined ? 1 : d, maximumFractionDigits: d === undefined ? 1 : d }).replace('-', '−') + '%'; }
   function signed(c) { return (c > 0 ? '+' : '') + f(c); }
   function parseAmount(str) {
-    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/,/g, '');
     if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
     return Math.round(Number(clean) * 100);
   }
 
   // Instruments (fictional names), prices in cents.
   var INST = [
-    { id: 'mondo', name: 'ETF azioni mondo', code: 'MONDO', qty: 239, price: 9840, avg: 8610, item: 'world' },
-    { id: 'emerg', name: 'ETF azioni mercati emergenti', code: 'EMERG', qty: 131, price: 3125, avg: 2980, item: 'em' },
-    { id: 'obbl', name: 'ETF obbligazioni governative euro', code: 'OBBL', qty: 98, price: 11280, avg: 11450, item: 'bonds' },
-    { id: 'oro', name: 'ETC oro fisico', code: 'ORO', qty: 83, price: 4210, avg: 3620, item: 'gold' }
+    { id: 'mondo', name: 'World equity ETF', code: 'MONDO', qty: 239, price: 9840, avg: 8610, item: 'world' },
+    { id: 'emerg', name: 'Emerging markets equity ETF', code: 'EMERG', qty: 131, price: 3125, avg: 2980, item: 'em' },
+    { id: 'obbl', name: 'Euro government bond ETF', code: 'OBBL', qty: 98, price: 11280, avg: 11450, item: 'bonds' },
+    { id: 'oro', name: 'Physical gold ETC', code: 'ORO', qty: 83, price: 4210, avg: 3620, item: 'gold' }
   ];
   var CASH = 1995;
-  // The Broker ETF account holds several portfolios: every unit always belongs to exactly one (#219).
-  // INST's own qty is the Lungo termine share; HOLD holds each instrument's share in every other portfolio.
-  var PF = [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro']];
+  // The ETF broker account holds several portfolios: every unit always belongs to exactly one (#219).
+  // INST's own qty is the Long term share; HOLD holds each instrument's share in every other portfolio.
+  var PF = [['lt', 'Long term'], ['tp', 'Third pillar']];
   var HOLD = { mondo: { tp: 60 }, emerg: { tp: 0 }, obbl: { tp: 65 }, oro: { tp: 20 } };
-  var OTHER_PF = [['Fondo pensione', 1892000, 'conto Fondo pensione']];
+  var OTHER_PF = [['Pension fund', 1892000, 'Pension fund account']];
   // Allocation tree: top-level items with optional children. Targets in percent.
   var S = {
     tab: 'overview', panel: false, wizard: null, created: [], phScreen: 'home', phPeriod: 12,
     items: [
-      { id: 'stocks', name: 'Azioni', target: 60, children: [{ id: 'world', name: 'Mondo', target: 50 }, { id: 'em', name: 'Mercati emergenti', target: 10 }] },
-      { id: 'bonds', name: 'Obbligazioni', target: 30 },
-      { id: 'gold', name: 'Oro', target: 10 }
+      { id: 'stocks', name: 'Stocks', target: 60, children: [{ id: 'world', name: 'World', target: 50 }, { id: 'em', name: 'Emerging markets', target: 10 }] },
+      { id: 'bonds', name: 'Bonds', target: 30 },
+      { id: 'gold', name: 'Gold', target: 10 }
     ],
-    rule: '525', preset: 'bands525', mode: 'contrib', contribStr: '500,00', minTradeStr: '100,00', fractional: false,
-    trade: { type: 'buy', inst: 'obbl', date: '2026-09-26', qtyStr: '3', priceStr: '112,80', feesStr: '2,95', saved: null, portfolio: 'lt' }
+    rule: '525', preset: 'bands525', mode: 'contrib', contribStr: '500.00', minTradeStr: '100.00', fractional: false,
+    trade: { type: 'buy', inst: 'obbl', date: '2026-09-26', qtyStr: '3', priceStr: '112.80', feesStr: '2.95', saved: null, portfolio: 'lt' }
   };
   var PRESETS = [
-    ['monthly', 'Solo controllo mensile', 'Ogni mese riporta tutto agli obiettivi, qualunque sia lo scostamento.', 'abs5', 'full'],
-    ['bands5', 'Bande di 5 punti', 'Interviene solo se una voce si sposta di più di 5 punti, e la riporta all’obiettivo.', 'abs5', 'full'],
-    ['bands525', 'Regola 5/25', 'Soglia pari al più stretto tra ±5 punti e ±25% dell’obiettivo.', '525', 'full'],
-    ['contrib', 'Solo con i versamenti', 'Non vende mai: i nuovi soldi vanno alle voci sotto l’obiettivo.', '525', 'contrib'],
-    ['edge', 'Operazioni minime', 'Fuori soglia, riporta la voce solo al bordo della sua banda.', '525', 'edge']
+    ['monthly', 'Monthly check only', 'Every month, brings everything back to the targets, whatever the drift.', 'abs5', 'full'],
+    ['bands5', '5-point bands', 'Acts only when an item drifts by more than 5 points, and brings it back to its target.', 'abs5', 'full'],
+    ['bands525', '5/25 rule', 'A threshold equal to the narrower of ±5 points and ±25% of the target.', '525', 'full'],
+    ['contrib', 'Contributions only', 'Never sells: new money goes to the items below their target.', '525', 'contrib'],
+    ['edge', 'Fewest trades', 'Outside the threshold, brings the item back only to the edge of its band.', '525', 'edge']
   ];
-  var RULES = { abs5: 'Assoluta: ±5 punti', rel20: 'Relativa: ±20% dell’obiettivo', '525': 'Regola 5/25: la più stretta tra ±5 punti e ±25%' };
+  var RULES = { abs5: 'Absolute: ±5 points', rel20: 'Relative: ±20% of the target', '525': '5/25 rule: the narrower of ±5 points and ±25%' };
 
   function leaves() {
     var out = [];
@@ -571,7 +571,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
 
   // Monthly history: portfolio value and cumulative net contributions (cents).
-  var MONTHS = ['ott 25', 'nov 25', 'dic 25', 'gen 26', 'feb 26', 'mar 26', 'apr 26', 'mag 26', 'giu 26', 'lug 26', 'ago 26', 'set 26'];
+  var MONTHS = ['Oct 25', 'Nov 25', 'Dec 25', 'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26', 'Jun 26', 'Jul 26', 'Aug 26', 'Sep 26'];
   var VALUES = [3490000, 3580000, 3610000, 3695000, 3720000, 3640000, 3790000, 3880000, 3960000, 4030000, 4105000, 4218000];
   var CONTRIB = MONTHS.map(function (m, i) { return 3400000 + i * 50000; });
   function monthlyReturns() {
@@ -587,22 +587,22 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var ticks = [3400000, 3600000, 3800000, 4000000, 4200000];
     var path = function (arr) { return arr.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' '); };
     var last = MONTHS.length - 1;
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Valore del portafoglio e versamenti netti, ottobre 2025 – settembre 2026">' +
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Portfolio value and net contributions, October 2025 – September 2026">' +
       ticks.map(function (t) { return '<line class="grid" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(t) + '" y2="' + y(t) + '"></line><text class="axis" x="' + (pl - 8) + '" y="' + (y(t) + 4) + '" text-anchor="end">' + f0(t) + '</text>'; }).join('') +
       MONTHS.map(function (m, i) { return i % 2 === 1 || i === last ? '<text class="axis" x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle">' + m + '</text>' : ''; }).join('') +
       '<path d="' + path(CONTRIB) + '" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="5 4"></path>' +
       '<path d="' + path(VALUES) + '" fill="none" stroke="var(--s1)" stroke-width="2"></path>' +
       '<circle cx="' + x(last) + '" cy="' + y(VALUES[last]) + '" r="4" fill="var(--s1)" stroke="var(--paper)" stroke-width="2"></circle>' +
-      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(VALUES[last]) + 4) + '" style="fill:var(--ink)">Valore</text>' +
-      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(CONTRIB[last]) + 4) + '" style="fill:var(--ink-2)">Versato</text>' +
+      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(VALUES[last]) + 4) + '" style="fill:var(--ink)">Value</text>' +
+      '<text class="axis" x="' + (x(last) + 8) + '" y="' + (y(CONTRIB[last]) + 4) + '" style="fill:var(--ink-2)">Contributed</text>' +
       '<line id="xh" x1="0" x2="0" y1="' + pt + '" y2="' + (H - pb) + '" stroke="var(--muted)" stroke-width="1" visibility="hidden"></line>' +
       '<rect x="' + pl + '" y="' + pt + '" width="' + (W - pl - pr) + '" height="' + (H - pt - pb) + '" fill="transparent" id="hit" data-w="' + W + '" data-pl="' + pl + '" data-pr="' + pr + '"></rect></svg>';
   }
 
   function figsHtml() {
     var V = total(), paid = CONTRIB[CONTRIB.length - 1], gain = V - paid;
-    return '<div class="big"><small>Valore</small><b class="n">' + f(V) + '</b></div><div><small>Versato</small><b class="n">' + f(paid) + '</b></div>' +
-      '<div><small>Guadagno</small><b class="n' + (gain < 0 ? ' negv' : '') + '">' + signed(gain) + '</b></div><div><small>Rendimento 12 mesi</small><b class="n">' + pct(twr()) + '</b></div>';
+    return '<div class="big"><small>Value</small><b class="n">' + f(V) + '</b></div><div><small>Contributed</small><b class="n">' + f(paid) + '</b></div>' +
+      '<div><small>Gain</small><b class="n' + (gain < 0 ? ' negv' : '') + '">' + signed(gain) + '</b></div><div><small>12-month return</small><b class="n">' + pct(twr()) + '</b></div>';
   }
   function gauge(w, t, b, out) {
     var scale = function (v) { return Math.max(0, Math.min(100, v / 0.8 * 100)); };
@@ -611,16 +611,16 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function allocTable(editable) {
     var V = total(), st = status();
-    var h = '<div class="alloc-row alloc-head"><span>Voce</span><span class="r">Obiettivo</span><span class="r">Attuale</span><span>Obiettivo, soglia e attuale</span><span>Stato</span></div>';
+    var h = '<div class="alloc-row alloc-head"><span>Item</span><span class="r">Target</span><span class="r">Current</span><span>Target, threshold and current</span><span>Status</span></div>';
     st.forEach(function (x) {
       h += '<div class="alloc-row"><b style="font-weight:600">' + esc(x.it.name) + '</b>' +
-        (editable ? '<span class="pct-in"><label class="sr" for="t-' + x.it.id + '">Obiettivo ' + esc(x.it.name) + '</label><input type="text" inputmode="decimal" id="t-' + x.it.id + '" data-tgt="' + x.it.id + '" value="' + x.it.target + '">%</span>' : '<span class="r n">' + pct(x.t, 0) + '</span>') +
+        (editable ? '<span class="pct-in"><label class="sr" for="t-' + x.it.id + '">Target for ' + esc(x.it.name) + '</label><input type="text" inputmode="decimal" id="t-' + x.it.id + '" data-tgt="' + x.it.id + '" value="' + x.it.target + '">%</span>' : '<span class="r n">' + pct(x.t, 0) + '</span>') +
         '<span class="r n">' + pct(x.w) + '</span>' + gauge(x.w, x.t, x.band, x.out) +
-        '<span class="st ' + (x.out ? 'out' : 'in') + '">' + (x.out ? (x.w > x.band[1] ? 'Sopra la soglia' : 'Sotto la soglia') : 'Dentro la soglia') + '<br><span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">' + pct(x.band[0], 1) + ' – ' + pct(x.band[1], 1) + '</span></span></div>';
+        '<span class="st ' + (x.out ? 'out' : 'in') + '">' + (x.out ? (x.w > x.band[1] ? 'Above the threshold' : 'Below the threshold') : 'Within the threshold') + '<br><span class="hint" style="text-transform:none;letter-spacing:0;font-weight:400">' + pct(x.band[0], 1) + ' – ' + pct(x.band[1], 1) + '</span></span></div>';
       (x.it.children || []).forEach(function (c) {
         var v = valueOf(c.id), w = v / V;
         h += '<div class="alloc-row sub"><span>' + esc(c.name) + '</span>' +
-          (editable ? '<span class="pct-in"><label class="sr" for="t-' + c.id + '">Obiettivo ' + esc(c.name) + '</label><input type="text" inputmode="decimal" id="t-' + c.id + '" data-sub="' + x.it.id + ':' + c.id + '" value="' + c.target + '">%</span>' : '<span class="r n">' + pct(c.target / 100, 0) + '</span>') +
+          (editable ? '<span class="pct-in"><label class="sr" for="t-' + c.id + '">Target for ' + esc(c.name) + '</label><input type="text" inputmode="decimal" id="t-' + c.id + '" data-sub="' + x.it.id + ':' + c.id + '" value="' + c.target + '">%</span>' : '<span class="r n">' + pct(c.target / 100, 0) + '</span>') +
           '<span class="r n">' + pct(w) + '</span><span class="inst">' + INST.filter(function (i) { return i.item === c.id; }).map(function (i) { return '<span>' + i.code + '</span>'; }).join('') + '</span><span></span></div>';
       });
     });
@@ -631,54 +631,54 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var st = status(), outs = st.filter(function (x) { return x.out; });
     var note = outs.length
       ? '<div class="note-line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path></svg><span>' +
-        outs.map(function (x) { return '<b>' + esc(x.it.name) + '</b> al ' + pct(x.w) + ', fuori dalla soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]); }).join('; ') + '.</span><button type="button" class="plain" data-tab="rebal">Per tornare ai tuoi obiettivi</button></div>'
-      : '<div class="note-line ok">Tutte le voci sono dentro le soglie.</div>';
+        outs.map(function (x) { return '<b>' + esc(x.it.name) + '</b> at ' + pct(x.w) + ', outside the threshold ' + pct(x.band[0]) + '–' + pct(x.band[1]); }).join('; ') + '.</span><button type="button" class="plain" data-tab="rebal">To get back to your targets</button></div>'
+      : '<div class="note-line ok">Every item is within its threshold.</div>';
     var rets = monthlyReturns();
     var rows = MONTHS.map(function (m, i) { return { m: m, v: VALUES[i], c: CONTRIB[i], r: rets[i] }; }).reverse();
     var pos = INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<tr><td><b style="font-weight:500">' + esc(i.name) + '</b><div class="hint">' + i.code + '</div></td><td class="r n">' + i.qty + '</td><td class="r n">' + f(i.price) + '</td><td class="r n">' + f(v) + '</td><td class="r n ' + (g < 0 ? 'negv' : '') + '">' + signed(g) + '</td></tr>'; }).join('') +
-      '<tr><td>Liquidità nel conto</td><td></td><td></td><td class="r n">' + f(CASH) + '</td><td></td></tr>';
+      '<tr><td>Cash in the account</td><td></td><td></td><td class="r n">' + f(CASH) + '</td><td></td></tr>';
     return note +
-      '<div class="two-col"><div><div class="card-h"><span>Andamento</span><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Valore</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Versamenti netti</span></span></div>' +
+      '<div class="two-col"><div><div class="card-h"><span>History</span><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Value</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Net contributions</span></span></div>' +
       '<div class="chart" id="chart">' + chartSvg() + '<div class="tip" id="tip" hidden></div></div></div>' +
-      '<div><div class="card-h"><span>Mese per mese</span></div><table class="t"><thead><tr><th>Mese</th><th class="r">Valore</th><th class="r">Versato</th><th class="r">Rendimento</th></tr></thead><tbody>' +
+      '<div><div class="card-h"><span>Month by month</span></div><table class="t"><thead><tr><th>Month</th><th class="r">Value</th><th class="r">Contributed</th><th class="r">Return</th></tr></thead><tbody>' +
       rows.slice(0, 7).map(function (r) { return '<tr><td>' + r.m + '</td><td class="r n">' + f0(r.v) + '</td><td class="r n">' + f0(r.c) + '</td><td class="r n ' + (r.r < 0 ? 'negv' : '') + '">' + (r.r === null ? '–' : pct(r.r)) + '</td></tr>'; }).join('') +
-      '</tbody></table><p class="hint" style="margin:6px 0 0">Rendimento ponderato nel tempo: misura la strategia senza l’effetto dei versamenti.</p></div></div>' +
-      '<div><div class="card-h"><span>Allocazione</span><button type="button" class="plain" data-tab="alloc">Modifica</button></div>' + allocTable(false) + '</div>' +
-      '<div><div class="card-h"><span>Posizioni</span><button type="button" class="plain" data-trade="1">Registra un’operazione</button></div><table class="t"><thead><tr><th>Strumento</th><th class="r">Quote</th><th class="r">Prezzo</th><th class="r">Valore</th><th class="r">Guadagno</th></tr></thead><tbody>' + pos + '</tbody></table></div>';
+      '</tbody></table><p class="hint" style="margin:6px 0 0">Time-weighted return: measures the strategy without the effect of contributions.</p></div></div>' +
+      '<div><div class="card-h"><span>Target allocation</span><button type="button" class="plain" data-tab="alloc">Edit</button></div>' + allocTable(false) + '</div>' +
+      '<div><div class="card-h"><span>Positions</span><button type="button" class="plain" data-trade="1">Record a trade</button></div><table class="t"><thead><tr><th>Instrument</th><th class="r">Quantity</th><th class="r">Price</th><th class="r">Value</th><th class="r">Gain</th></tr></thead><tbody>' + pos + '</tbody></table></div>';
   }
 
   function allocPane() {
     var sm = sums();
-    return '<p class="hint" style="margin:0;max-width:75ch">Gli obiettivi di ogni livello devono sommare al 100% (le sottovoci alla loro voce). Le soglie decidono quando il controllo mensile segnala una voce; l’app lavora solo sugli strumenti che hai messo qui.</p>' +
+    return '<p class="hint" style="margin:0;max-width:75ch">The targets at each level must add up to 100% (sub-items to their item). The thresholds decide when the monthly check flags an item; the app works only with the instruments you put here.</p>' +
       '<div>' + allocTable(true) +
-      '<div class="sumline"><span>Totale</span><span class="n ' + (Math.abs(sm.top - 100) < 1e-9 ? '' : 'bad') + '">' + sm.top.toLocaleString('it-IT') + '%</span></div>' +
-      sm.subs.filter(function (x) { return Math.abs(x.sum - x.it.target) > 1e-9; }).map(function (x) { return '<div class="hint bad">Le sottovoci di ' + esc(x.it.name) + ' sommano a ' + x.sum.toLocaleString('it-IT') + '% invece di ' + x.it.target.toLocaleString('it-IT') + '%.</div>'; }).join('') +
-      (Math.abs(sm.top - 100) > 1e-9 ? '<div class="hint bad">Le voci principali sommano a ' + sm.top.toLocaleString('it-IT') + '%: devono fare 100%.</div>' : '') + '</div>' +
-      '<div class="field" style="max-width:420px"><label for="rule">Soglia</label><select id="rule" data-rule="1">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (S.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
-      '<div><div class="card-h"><span>Parti da una regola</span></div><div class="presets">' + PRESETS.map(function (p) {
+      '<div class="sumline"><span>Total</span><span class="n ' + (Math.abs(sm.top - 100) < 1e-9 ? '' : 'bad') + '">' + sm.top.toLocaleString('en-US') + '%</span></div>' +
+      sm.subs.filter(function (x) { return Math.abs(x.sum - x.it.target) > 1e-9; }).map(function (x) { return '<div class="hint bad">The sub-items of ' + esc(x.it.name) + ' add up to ' + x.sum.toLocaleString('en-US') + '% instead of ' + x.it.target.toLocaleString('en-US') + '%.</div>'; }).join('') +
+      (Math.abs(sm.top - 100) > 1e-9 ? '<div class="hint bad">The top-level items add up to ' + sm.top.toLocaleString('en-US') + '%: they must make 100%.</div>' : '') + '</div>' +
+      '<div class="field" style="max-width:420px"><label for="rule">Threshold</label><select id="rule" data-rule="1">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (S.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
+      '<div><div class="card-h"><span>Start from a rule</span></div><div class="presets">' + PRESETS.map(function (p) {
         return '<button type="button" class="preset" data-preset="' + p[0] + '" aria-pressed="' + (S.preset === p[0]) + '"><b>' + p[1] + '</b><small>' + p[2] + '</small></button>';
-      }).join('') + '</div><p class="hint" style="margin:8px 0 0">Sono metodi meccanici e non dicono cosa comprare: impostano soglia e modo di ribilanciare, poi li modifichi come vuoi.</p></div>';
+      }).join('') + '</div><p class="hint" style="margin:8px 0 0">These are mechanical methods and do not say what to buy: they set the threshold and the rebalancing mode, which you can then change as you like.</p></div>';
   }
 
   function rebalPane() {
     var sm = sums();
-    if (!sm.ok) return '<div class="hint bad">Sistema prima gli obiettivi nella scheda Allocazione: non sommano al 100%.</div>';
+    if (!sm.ok) return '<div class="hint bad">The targets in the Target allocation tab do not add up to 100%.</div>';
     var p = plan(), V = total();
-    var modes = [['contrib', 'Solo con i versamenti'], ['full', 'Completo'], ['edge', 'Fino al bordo della soglia']];
+    var modes = [['contrib', 'Contributions only'], ['full', 'Full'], ['edge', 'To the edge of the threshold']];
     var rows = p.rows.map(function (r) {
       var v = valueOf(r.l.id), w = v / V, after = (v + r.amount) / (V - CASH + p.contrib - p.left + p.left);
-      var kind = r.qty > 0 ? '<span class="kind-tag buy">Compra</span>' : r.qty < 0 ? '<span class="kind-tag sell">Vendi</span>' : '<span class="kind-tag">–</span>';
+      var kind = r.qty > 0 ? '<span class="kind-tag buy">Buy</span>' : r.qty < 0 ? '<span class="kind-tag sell">Sell</span>' : '<span class="kind-tag">–</span>';
       return '<tr><td><b style="font-weight:500">' + esc(r.l.name) + '</b><div class="hint">' + r.inst.code + ' · ' + f(r.inst.price) + '</div></td><td class="r n">' + pct(r.l.target, 0) + '</td><td class="r n">' + pct(w) + '</td>' +
-        '<td>' + kind + (r.qty ? '<span class="n trade">' + Math.abs(r.qty).toLocaleString('it-IT') + ' quote</span>' : '') + '</td><td class="r n">' + (r.qty ? f(Math.abs(r.amount)) : '') + '</td><td class="r n">' + pct(after) + '</td></tr>';
+        '<td>' + kind + (r.qty ? '<span class="n trade">' + Math.abs(r.qty).toLocaleString('en-US') + ' units</span>' : '') + '</td><td class="r n">' + (r.qty ? f(Math.abs(r.amount)) : '') + '</td><td class="r n">' + pct(after) + '</td></tr>';
     }).join('');
-    return '<div class="ctrls"><div class="field"><span style="font-weight:600">Modo</span><div class="segs" role="radiogroup" aria-label="Modo di ribilanciamento">' + modes.map(function (m) { return '<label><input type="radio" name="mode" value="' + m[0] + '" data-mode="1"' + (S.mode === m[0] ? ' checked' : '') + '><span>' + m[1] + '</span></label>'; }).join('') + '</div></div>' +
-      '<div class="field"><label for="contrib">Versamento di questo mese</label><span class="money-in" style="width:160px"><input type="text" inputmode="decimal" id="contrib" data-contrib="1" value="' + esc(S.contribStr) + '"><span>€</span></span></div>' +
-      '<div class="field"><label for="mint">Operazione minima</label><span class="money-in" style="width:130px"><input type="text" inputmode="decimal" id="mint" data-mint="1" value="' + esc(S.minTradeStr) + '"><span>€</span></span></div>' +
-      '<label class="check" style="min-height:40px"><input type="checkbox" data-frac="1"' + (S.fractional ? ' checked' : '') + '> Quote frazionate</label></div>' +
-      '<div><div class="card-h"><span>Per tornare ai tuoi obiettivi</span><span class="n" style="text-transform:none;letter-spacing:0;font-stretch:100%">Da investire ' + f(p.contrib) + ' (versamento + ' + f(CASH) + ' di liquidità)</span></div>' +
-      '<table class="t"><thead><tr><th>Voce</th><th class="r">Obiettivo</th><th class="r">Attuale</th><th>Operazione</th><th class="r">Importo</th><th class="r">Dopo</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="hint" style="margin:8px 0 0">Resta in liquidità ' + f(p.left) + '. ' + (S.mode === 'contrib' ? 'Nessuna vendita: i soldi nuovi vanno alle voci sotto l’obiettivo, in proporzione a quanto ne mancano.' : S.mode === 'full' ? 'Compra e vende per riportare ogni voce al suo obiettivo.' : 'Riporta le voci fuori soglia solo al bordo della banda: meno operazioni, meno costi.') + ' Le operazioni sotto il minimo vengono saltate.</p></div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" data-trade="1">Registra un’operazione fatta</button><span class="hint">envelope non esegue ordini: fai le operazioni dal tuo broker e registrale qui con i prezzi reali.</span></div>';
+    return '<div class="ctrls"><div class="field"><span style="font-weight:600">Mode</span><div class="segs" role="radiogroup" aria-label="Rebalancing mode">' + modes.map(function (m) { return '<label><input type="radio" name="mode" value="' + m[0] + '" data-mode="1"' + (S.mode === m[0] ? ' checked' : '') + '><span>' + m[1] + '</span></label>'; }).join('') + '</div></div>' +
+      '<div class="field"><label for="contrib">This month\'s contribution</label><span class="money-in" style="width:160px"><input type="text" inputmode="decimal" id="contrib" data-contrib="1" value="' + esc(S.contribStr) + '"><span>€</span></span></div>' +
+      '<div class="field"><label for="mint">Minimum trade</label><span class="money-in" style="width:130px"><input type="text" inputmode="decimal" id="mint" data-mint="1" value="' + esc(S.minTradeStr) + '"><span>€</span></span></div>' +
+      '<label class="check" style="min-height:40px"><input type="checkbox" data-frac="1"' + (S.fractional ? ' checked' : '') + '> Fractional units</label></div>' +
+      '<div><div class="card-h"><span>To get back to your targets:</span><span class="n" style="text-transform:none;letter-spacing:0;font-stretch:100%">To invest ' + f(p.contrib) + ' (contribution + ' + f(CASH) + ' cash)</span></div>' +
+      '<table class="t"><thead><tr><th>Item</th><th class="r">Target</th><th class="r">Current</th><th>Trade</th><th class="r">Amount</th><th class="r">After</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="hint" style="margin:8px 0 0">' + f(p.left) + ' stays in cash. ' + (S.mode === 'contrib' ? 'No sales: new money goes to the items below their target, in proportion to how much each is missing.' : S.mode === 'full' ? 'Buys and sells to bring every item back to its target.' : 'Brings the items outside their threshold back only to the edge of the band: fewer trades, lower costs.') + ' Trades below the minimum are skipped.</p></div>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-trade="1">Record a trade you made</button><span class="hint">envelope does not place orders: trades are placed with your broker and recorded here with the real prices.</span></div>';
   }
 
   // Every account portfolio, as {id, name} — the two seeded ones plus any created in this session (#219: a trade always names one).
@@ -689,24 +689,24 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var t = S.trade, qty = Number(String(t.qtyStr).replace(',', '.')), price = parseAmount(t.priceStr), fees = parseAmount(t.feesStr) || 0;
     var ok = qty > 0 && price !== null;
     var gross = ok ? Math.round(qty * price) : 0, net = t.type === 'sell' ? gross - fees : gross + fees;
-    var TYPES = [['buy', 'Acquisto'], ['sell', 'Vendita'], ['div', 'Dividendo o cedola'], ['fee', 'Commissione'], ['split', 'Frazionamento'], ['xfer', 'Trasferimento titoli']];
+    var TYPES = [['buy', 'Buy'], ['sell', 'Sell'], ['div', 'Dividend or coupon'], ['fee', 'Fee'], ['split', 'Stock split'], ['xfer', 'Transfer of securities']];
     var portfolios = accountPortfolios();
     if (portfolios.length === 1) t.portfolio = portfolios[0].id; // the account holds a single portfolio: preselected, nothing to ask
     var curPf = portfolios.filter(function (p) { return p.id === t.portfolio; })[0] || portfolios[0];
-    if (t.saved) return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">Operazione registrata</span><h4>' + esc(t.saved) + '</h4></div><p class="explain">Le posizioni e l’allocazione sono aggiornate. Il conto Broker ETF riflette il movimento.</p><div class="row-btns"><button type="button" class="btn" data-newtrade="1">Registrane un’altra</button></div>';
-    return '<button type="button" class="plain closer" data-close="1">× Chiudi</button><div><span class="where">' + esc(curPf.name) + '</span><h4>Nuova operazione</h4></div>' +
-      '<div class="field"><label for="tt">Tipo</label><select id="tt" data-tr="type">' + TYPES.map(function (x) { return '<option value="' + x[0] + '"' + (t.type === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="tpf">Portafoglio</label><select id="tpf" data-tr="portfolio"' + (portfolios.length === 1 ? ' disabled' : '') + '>' + portfolios.map(function (p) { return '<option value="' + p.id + '"' + (curPf.id === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="ti">Strumento</label><select id="ti" data-tr="inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (t.inst === i.id ? ' selected' : '') + '>' + esc(i.name) + ' (' + i.code + ')</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="td">Data</label><input type="date" id="td" data-tr="date" value="' + t.date + '"></div>' +
-      '<div class="twof"><div class="field"><label for="tq">Quote</label><input type="text" inputmode="decimal" id="tq" data-tr="qtyStr" value="' + esc(t.qtyStr) + '"></div>' +
-      '<div class="field"><label for="tp">Prezzo</label><span class="money-in"><input type="text" inputmode="decimal" id="tp" data-tr="priceStr" value="' + esc(t.priceStr) + '"><span>€</span></span></div></div>' +
-      '<div class="field"><label for="tf">Commissioni e tasse</label><span class="money-in"><input type="text" inputmode="decimal" id="tf" data-tr="feesStr" value="' + esc(t.feesStr) + '"><span>€</span></span></div>' +
-      '<div class="sec" id="tr-sum"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Controvalore</span><span class="dots"></span><span class="n">' + f(gross) + '</span></div>' +
-      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>' + (t.type === 'sell' ? 'Entrano nel conto' : 'Escono dal conto') + '</span><span class="dots"></span><span class="n">' + f(net) + '</span></div></div>' +
-      (ok ? '' : '<div class="hint bad">Scrivi quote e prezzo, per esempio 3 e 112,80.</div>') +
-      '<div class="row-btns"><button type="button" class="btn primary" data-savetrade="1"' + (ok && (t.type === 'buy' || t.type === 'sell') ? '' : ' disabled') + '>Registra</button><button type="button" class="btn" data-close="1">Annulla</button></div>' +
-      (t.type !== 'buy' && t.type !== 'sell' ? '<p class="hint">Nel bozzetto si registrano solo acquisti e vendite; gli altri tipi hanno il loro modulo.</p>' : '');
+    if (t.saved) return '<button type="button" class="plain closer" data-close="1">× Close</button><div><span class="where">Trade recorded</span><h4>' + esc(t.saved) + '</h4></div><p class="explain">The positions and the allocation are up to date. The ETF broker account shows the cash movement.</p><div class="row-btns"><button type="button" class="btn" data-newtrade="1">Record another</button></div>';
+    return '<button type="button" class="plain closer" data-close="1">× Close</button><div><span class="where">' + esc(curPf.name) + '</span><h4>New trade</h4></div>' +
+      '<div class="field"><label for="tt">Type</label><select id="tt" data-tr="type">' + TYPES.map(function (x) { return '<option value="' + x[0] + '"' + (t.type === x[0] ? ' selected' : '') + '>' + x[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="tpf">Portfolio</label><select id="tpf" data-tr="portfolio"' + (portfolios.length === 1 ? ' disabled' : '') + '>' + portfolios.map(function (p) { return '<option value="' + p.id + '"' + (curPf.id === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="ti">Instrument</label><select id="ti" data-tr="inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (t.inst === i.id ? ' selected' : '') + '>' + esc(i.name) + ' (' + i.code + ')</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="td">Date</label><input type="date" id="td" data-tr="date" value="' + t.date + '"></div>' +
+      '<div class="twof"><div class="field"><label for="tq">Quantity</label><input type="text" inputmode="decimal" id="tq" data-tr="qtyStr" value="' + esc(t.qtyStr) + '"></div>' +
+      '<div class="field"><label for="tp">Price</label><span class="money-in"><input type="text" inputmode="decimal" id="tp" data-tr="priceStr" value="' + esc(t.priceStr) + '"><span>€</span></span></div></div>' +
+      '<div class="field"><label for="tf">Fees and taxes</label><span class="money-in"><input type="text" inputmode="decimal" id="tf" data-tr="feesStr" value="' + esc(t.feesStr) + '"><span>€</span></span></div>' +
+      '<div class="sec" id="tr-sum"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Gross amount</span><span class="dots"></span><span class="n">' + f(gross) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>' + (t.type === 'sell' ? 'Into the account' : 'Out of the account') + '</span><span class="dots"></span><span class="n">' + f(net) + '</span></div></div>' +
+      (ok ? '' : '<div class="hint bad">Enter the quantity and the price, for example 3 and 112.80.</div>') +
+      '<div class="row-btns"><button type="button" class="btn primary" data-savetrade="1"' + (ok && (t.type === 'buy' || t.type === 'sell') ? '' : ' disabled') + '>Record</button><button type="button" class="btn" data-close="1">Cancel</button></div>' +
+      (t.type !== 'buy' && t.type !== 'sell' ? '<p class="hint">This mockup records only buys and sells; the other types have their own form.</p>' : '');
   }
 
   function phChart(n) {
@@ -718,7 +718,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var path = function (a) { return a.map(function (v, i) { return (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); }).join(' '); };
     var area = path(vals) + ' L' + x(vals.length - 1) + ' ' + (H - pb) + ' L' + x(0) + ' ' + (H - pb) + ' Z';
     var l = vals.length - 1;
-    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Valore e versamenti negli ultimi ' + n + ' mesi">' +
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Value and contributions over the last ' + n + ' months">' +
       '<path d="' + area + '" fill="var(--s1)" opacity="0.10"></path>' +
       '<path d="' + path(con) + '" fill="none" stroke="var(--s2)" stroke-width="2" stroke-dasharray="5 4"></path>' +
       '<path d="' + path(vals) + '" fill="none" stroke="var(--s1)" stroke-width="2"></path>' +
@@ -729,26 +729,26 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var st = status(), outs = st.filter(function (x) { return x.out; });
     if (S.phScreen === 'check') {
       var saved = S.mode; S.mode = 'contrib'; var p = plan(); S.mode = saved;
-      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portafoglio</button><span class="hint">Notifica del 1° ottobre</span><h3>Controllo di ottobre</h3>' +
-        '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' voce è' : ' voci sono') + ' fuori dalla soglia.' : 'Tutte le voci sono dentro le soglie.') + '</p>' +
-        st.map(function (x) { return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>obiettivo ' + pct(x.t, 0) + ' · soglia ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>'; }).join('') +
-        '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Per tornare ai tuoi obiettivi, con il versamento di ' + f(parseAmount(S.contribStr) || 0) + '</h5>' +
-        p.rows.filter(function (r) { return r.qty; }).map(function (r) { return '<div class="ph-item"><span>' + (r.qty > 0 ? 'Compra ' : 'Vendi ') + Math.abs(r.qty) + ' ' + r.inst.code + '<small>' + esc(r.l.name) + '</small></span><span class="n">' + f(Math.abs(r.amount)) + '</span></div>'; }).join('') +
-        '<button type="button" class="btn primary" style="min-height:48px">Registra le operazioni fatte</button></div>';
+      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portfolio</button><span class="hint">Notification of October 1</span><h3>October check</h3>' +
+        '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' item is' : ' items are') + ' outside the threshold.' : 'Every item is within its threshold.') + '</p>' +
+        st.map(function (x) { return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>target ' + pct(x.t, 0) + ' · threshold ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>'; }).join('') +
+        '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">To get back to your targets, with a contribution of ' + f(parseAmount(S.contribStr) || 0) + ':</h5>' +
+        p.rows.filter(function (r) { return r.qty; }).map(function (r) { return '<div class="ph-item"><span>' + (r.qty > 0 ? 'Buy ' : 'Sell ') + Math.abs(r.qty) + ' ' + r.inst.code + '<small>' + esc(r.l.name) + '</small></span><span class="n">' + f(Math.abs(r.amount)) + '</span></div>'; }).join('') +
+        '<button type="button" class="btn primary" style="min-height:48px">Record the trades you made</button></div>';
     }
     var V = total(), paid = CONTRIB[CONTRIB.length - 1], n = S.phPeriod;
     var change = VALUES[VALUES.length - 1] - VALUES[VALUES.length - n];
-    return '<div class="ph-card"><div class="ph-pick">' + [['lt', 'Lungo termine'], ['tp', 'Terzo pilastro'], ['fp', 'Fondo pensione']].map(function (x) { return '<button type="button" class="chip2" aria-pressed="' + (x[0] === 'lt') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
-      '<div><span class="hint">Lungo termine · 25 settembre</span><div style="font-size:34px;font-weight:700;font-stretch:85%" class="n">' + f(V) + '</div>' +
-      '<span class="n" style="font-size:13px;color:var(--ink-2)">' + signed(V - paid) + ' rispetto ai versamenti · ' + signed(change) + ' in ' + n + ' mesi</span></div>' +
+    return '<div class="ph-card"><div class="ph-pick">' + [['lt', 'Long term'], ['tp', 'Third pillar'], ['fp', 'Pension fund']].map(function (x) { return '<button type="button" class="chip2" aria-pressed="' + (x[0] === 'lt') + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      '<div><span class="hint">Long term · September 25</span><div style="font-size:34px;font-weight:700;font-stretch:85%" class="n">' + f(V) + '</div>' +
+      '<span class="n" style="font-size:13px;color:var(--ink-2)">' + signed(V - paid) + ' against contributions · ' + signed(change) + ' in ' + n + ' months</span></div>' +
       '<div class="ph-chart">' + phChart(n) + '</div>' +
-      '<div class="row-btns" style="justify-content:space-between"><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Valore</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Versato</span></span>' +
-      '<span class="ph-pick">' + [6, 12].map(function (k) { return '<button type="button" class="chip2" data-php="' + k + '" aria-pressed="' + (n === k) + '">' + k + ' mesi</button>'; }).join('') + '</span></div>' +
-      (outs.length ? '<button type="button" class="ph-alert" data-phs="check"><span><b>Controllo di ottobre</b><small>' + outs.length + (outs.length === 1 ? ' voce fuori soglia' : ' voci fuori soglia') + ': ' + outs.map(function (x) { return esc(x.it.name); }).join(', ') + '</small></span><span>\u203a</span></button>' : '') +
-      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Allocazione</h5>' +
+      '<div class="row-btns" style="justify-content:space-between"><span class="legend2"><span><i class="sw" style="border-color:var(--s1)"></i>Value</span><span><i class="sw" style="border-color:var(--s2);border-top-style:dashed"></i>Contributed</span></span>' +
+      '<span class="ph-pick">' + [6, 12].map(function (k) { return '<button type="button" class="chip2" data-php="' + k + '" aria-pressed="' + (n === k) + '">' + k + ' months</button>'; }).join('') + '</span></div>' +
+      (outs.length ? '<button type="button" class="ph-alert" data-phs="check"><span><b>October check</b><small>' + outs.length + (outs.length === 1 ? ' item outside its threshold' : ' items outside their threshold') + ': ' + outs.map(function (x) { return esc(x.it.name); }).join(', ') + '</small></span><span>\u203a</span></button>' : '') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Target allocation</h5>' +
       st.map(function (x) { return '<div><div class="row-btns" style="justify-content:space-between"><b style="font-weight:600">' + esc(x.it.name) + '</b><span class="n" style="' + (x.out ? 'color:var(--warn);font-weight:700' : '') + '">' + pct(x.w) + ' <span class="hint">/ ' + pct(x.t, 0) + '</span></span></div>' + gauge(x.w, x.t, x.band, x.out) + '</div>'; }).join('') +
-      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Posizioni</h5>' +
-      INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<div class="ph-item"><span>' + esc(i.name) + '<small>' + i.qty + ' quote · ' + f(i.price) + '</small></span><span style="text-align:right"><span class="n" style="font-weight:600">' + f(v) + '</span><small class="n' + (g < 0 ? ' negv' : '') + '">' + signed(g) + '</small></span></div>'; }).join('') +
+      '<h5 style="margin:6px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">Positions</h5>' +
+      INST.map(function (i) { var v = i.qty * i.price, g = v - i.qty * i.avg; return '<div class="ph-item"><span>' + esc(i.name) + '<small>' + i.qty + ' units · ' + f(i.price) + '</small></span><span style="text-align:right"><span class="n" style="font-weight:600">' + f(v) + '</span><small class="n' + (g < 0 ? ' negv' : '') + '">' + signed(g) + '</small></span></div>'; }).join('') +
       '</div>';
   }
 
@@ -756,15 +756,15 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function tpValue() { return INST.reduce(function (s2, i) { return s2 + HOLD[i.id].tp * i.price; }, 0); }
   function sideHtml() {
     var lt = total(), tp = tpValue();
-    var extra = (S.created || []).map(function (c) { return '<div class="lr"><span>' + esc(c.name) + '</span><span class="dots"></span><span class="n">' + (c.value / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>'; }).join('');
-    return '<div class="ledger"><h5>Portafogli</h5>' +
-      '<div class="lr" style="font-weight:700"><span>Lungo termine</span><span class="dots"></span><span class="n">' + (lt / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
-      '<div class="lr"><span>Terzo pilastro</span><span class="dots"></span><span class="n">' + (tp / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
-      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div>' + extra +
-      '<button type="button" class="plain" style="margin-top:6px;text-align:left" data-wiz="start">+ Nuovo portafoglio</button></div>' +
-      '<div class="ledger"><h5>Conti</h5>' +
-      '<div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">' + ((lt + tp + createdValue()) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }) + '</span></div>' +
-      '<div class="lr"><span>Fondo pensione</span><span class="dots"></span><span class="n">18.920,00</span></div></div>';
+    var extra = (S.created || []).map(function (c) { return '<div class="lr"><span>' + esc(c.name) + '</span><span class="dots"></span><span class="n">' + (c.value / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</span></div>'; }).join('');
+    return '<div class="ledger"><h5>Portfolios</h5>' +
+      '<div class="lr" style="font-weight:700"><span>Long term</span><span class="dots"></span><span class="n">' + (lt / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Third pillar</span><span class="dots"></span><span class="n">' + (tp / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Pension fund</span><span class="dots"></span><span class="n">18,920.00</span></div>' + extra +
+      '<button type="button" class="plain" style="margin-top:6px;text-align:left" data-wiz="start">+ New portfolio</button></div>' +
+      '<div class="ledger"><h5>Accounts</h5>' +
+      '<div class="lr"><span>ETF broker</span><span class="dots"></span><span class="n">' + ((lt + tp + createdValue()) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }) + '</span></div>' +
+      '<div class="lr"><span>Pension fund</span><span class="dots"></span><span class="n">18,920.00</span></div></div>';
   }
   function createdValue() { return (S.created || []).reduce(function (s2, c) { return s2 + c.value; }, 0); }
   function accountsPane() {
@@ -776,63 +776,63 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '</tr>';
     }).join('');
     var seg = function (v, cls) { return v > 0 ? '<i class="' + cls + '" style="flex:' + v + '"></i>' : ''; };
-    return '<p class="hint" style="margin:0;max-width:78ch">Un portafoglio è un insieme logico di titoli, non un conto: lo stesso conto del broker può contenerne più di uno, e un portafoglio può stare su più conti. Ogni operazione appartiene a un conto e a un portafoglio; spostare quote tra due portafogli dello stesso conto è un trasferimento senza movimento di denaro.</p>' +
-      '<div class="acc-block"><h4><span>Broker ETF</span><span class="n">' + f(all) + '</span></h4>' +
+    return '<p class="hint" style="margin:0;max-width:78ch">A portfolio is a logical set of securities, not an account: one broker account can hold more than one, and one portfolio can span several accounts. Every trade belongs to one account and one portfolio; moving units between two portfolios in the same account is a transfer with no cash movement.</p>' +
+      '<div class="acc-block"><h4><span>ETF broker</span><span class="n">' + f(all) + '</span></h4>' +
       '<div class="split-bar" aria-hidden="true">' + seg(lt + CASH, 'lt') + seg(tp, 'tp') + seg(cv, 'tp') + '</div>' +
-      '<div class="legend2" style="flex-wrap:wrap"><span><i class="sw2" style="background:var(--s1)"></i>Lungo termine ' + f(lt + CASH) + '</span><span><i class="sw2" style="background:var(--s2)"></i>Terzo pilastro ' + f(tp) + '</span>' +
+      '<div class="legend2" style="flex-wrap:wrap"><span><i class="sw2" style="background:var(--s1)"></i>Long term ' + f(lt + CASH) + '</span><span><i class="sw2" style="background:var(--s2)"></i>Third pillar ' + f(tp) + '</span>' +
       (S.created || []).map(function (c) { return '<span><i class="sw2" style="background:var(--s2)"></i>' + esc(c.name) + ' ' + f(c.value) + '</span>'; }).join('') + '</div>' +
-      '<table class="t" style="margin-top:12px"><thead><tr><th>Strumento</th><th class="r">Nel conto</th><th class="r">Lungo termine</th><th class="r">Terzo pilastro</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '</tr></thead><tbody>' + rows +
-      '<tr><td>Liquidità</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '</tr></tbody></table></div>' +
-      '<div class="acc-block"><h4><span>Fondo pensione</span><span class="n">' + f(1892000) + '</span></h4><p class="hint" style="margin:8px 0 0">Tutto nel portafoglio Fondo pensione.</p></div>';
+      '<table class="t" style="margin-top:12px"><thead><tr><th>Instrument</th><th class="r">In the account</th><th class="r">Long term</th><th class="r">Third pillar</th>' + ((S.created || []).length ? '<th class="r">' + esc(S.created[0].name) + '</th>' : '') + '</tr></thead><tbody>' + rows +
+      '<tr><td>Cash</td><td class="r n">' + f(CASH) + '</td><td class="r n">' + f(CASH) + '</td><td></td>' + ((S.created || []).length ? '<td></td>' : '') + '</tr></tbody></table></div>' +
+      '<div class="acc-block"><h4><span>Pension fund</span><span class="n">' + f(1892000) + '</span></h4><p class="hint" style="margin:8px 0 0">All in the Pension fund portfolio.</p></div>';
   }
-  var WSTEPS = ['Nome', 'Conti', 'Titoli', 'Allocazione', 'Fatto'];
+  var WSTEPS = ['Name', 'Accounts', 'Securities', 'Target allocation', 'Done'];
   function wizardHtml() {
-    var w = S.wizard, h = '<div class="wiz"><button type="button" class="plain" data-wiz="cancel" style="align-self:flex-start">\u00d7 Annulla</button><h3>Nuovo portafoglio</h3>' +
+    var w = S.wizard, h = '<div class="wiz"><button type="button" class="plain" data-wiz="cancel" style="align-self:flex-start">\u00d7 Cancel</button><h3>New portfolio</h3>' +
       '<ol class="steps">' + WSTEPS.map(function (t, k) { var n = k + 1; return '<li class="' + (n < w.step ? 'done' : n === w.step ? 'now' : '') + '"><span class="num">' + (n < w.step ? '\u2713' : n) + '</span>' + t + '</li>'; }).join('') + '</ol>';
     if (w.step === 1) {
-      h += '<p style="margin:0;color:var(--ink-2);max-width:65ch">Un portafoglio raggruppa i titoli che hanno uno scopo comune e un\u2019allocazione obiettivo, anche se stanno in conti diversi o condividono un conto con altri portafogli.</p>' +
-        '<div class="field"><label for="w-name">Nome</label><input type="text" id="w-name" data-w="name" value="' + esc(w.name) + '" placeholder="Quarto pilastro, Studi dei figli\u2026"></div>' +
-        '<div class="field"><label for="w-purpose">Scopo (facoltativo)</label><input type="text" id="w-purpose" data-w="purpose" value="' + esc(w.purpose) + '" placeholder="Per cosa sono questi soldi"></div>' +
+      h += '<p style="margin:0;color:var(--ink-2);max-width:65ch">A portfolio groups the securities that share a purpose and a target allocation, even when they sit in different accounts or share an account with other portfolios.</p>' +
+        '<div class="field"><label for="w-name">Name</label><input type="text" id="w-name" data-w="name" value="' + esc(w.name) + '" placeholder="Fourth pillar, Children\'s education\u2026"></div>' +
+        '<div class="field"><label for="w-purpose">Purpose (optional)</label><input type="text" id="w-purpose" data-w="purpose" value="' + esc(w.purpose) + '" placeholder="What this money is for"></div>' +
         (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
     } else if (w.step === 2) {
-      h += '<p style="margin:0;color:var(--ink-2)">In quali conti stanno i titoli di questo portafoglio? Puoi sceglierne più di uno, anche già usati da altri portafogli.</p>' +
-        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>Broker ETF</b><small>Contiene già Lungo termine e Terzo pilastro</small></span></label>' +
-        '<label class="opt2"><input type="checkbox" data-wacc="fp"' + (w.accounts.fp ? ' checked' : '') + '><span><b>Fondo pensione</b><small>Tutto assegnato a Fondo pensione</small></span></label>' +
-        '<button type="button" class="plain" style="align-self:flex-start">+ Aggiungi un conto di investimento</button>';
+      h += '<p style="margin:0;color:var(--ink-2)">Which accounts hold this portfolio\'s securities? You can choose more than one, including accounts other portfolios already use.</p>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="broker"' + (w.accounts.broker ? ' checked' : '') + '><span><b>ETF broker</b><small>Already holds Long term and Third pillar</small></span></label>' +
+        '<label class="opt2"><input type="checkbox" data-wacc="fp"' + (w.accounts.fp ? ' checked' : '') + '><span><b>Pension fund</b><small>All in Pension fund</small></span></label>' +
+        '<button type="button" class="plain" style="align-self:flex-start">+ Add an investment account</button>';
     } else if (w.step === 3) {
-      h += '<p style="margin:0;color:var(--ink-2)">Il portafoglio parte vuoto: se vuoi, sposta qui delle quote da un altro portafoglio dello stesso conto (0 di default). È uno spostamento senza movimento di denaro, e resta nella cronologia di entrambi i portafogli.</p>' +
-        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Titolo</span><span class="r">Portafoglio</span><span class="r">Quote lì</span><span>Sposta qui</span></div>' +
-        wizPositions().map(function (p) { return '<div class="take"><span>' + esc(p.inst.name) + '<div class="hint">' + p.inst.code + ' · ' + f(p.inst.price) + '</div></span><span class="r">' + esc(p.src.name) + '</span><span class="r n">' + p.src.qty + '</span><span><label class="sr" for="tk-' + p.inst.id + '-' + p.src.id + '">Quote di ' + p.inst.code + ' da spostare da ' + p.src.name + '</label><input type="text" inputmode="numeric" id="tk-' + p.inst.id + '-' + p.src.id + '" data-take="' + p.inst.id + ':' + p.src.id + '" value="' + wizTake(p.inst.id, p.src.id) + '"></span></div>'; }).join('') +
-        '</div><div class="sumline"><span>Valore del nuovo portafoglio</span><span class="n" id="w-val">' + f(wizValue()) + '</span></div>' +
+      h += '<p style="margin:0;color:var(--ink-2)">The portfolio starts empty: units can be moved here from another portfolio in the same account (0 by default). The move has no cash movement, and stays in the history of both portfolios.</p>' +
+        '<div><div class="take" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Security</span><span class="r">Portfolio</span><span class="r">Units there</span><span>Move here</span></div>' +
+        wizPositions().map(function (p) { return '<div class="take"><span>' + esc(p.inst.name) + '<div class="hint">' + p.inst.code + ' · ' + f(p.inst.price) + '</div></span><span class="r">' + esc(p.src.name) + '</span><span class="r n">' + p.src.qty + '</span><span><label class="sr" for="tk-' + p.inst.id + '-' + p.src.id + '">Units of ' + p.inst.code + ' to move from ' + p.src.name + '</label><input type="text" inputmode="numeric" id="tk-' + p.inst.id + '-' + p.src.id + '" data-take="' + p.inst.id + ':' + p.src.id + '" value="' + wizTake(p.inst.id, p.src.id) + '"></span></div>'; }).join('') +
+        '</div><div class="sumline"><span>Value of the new portfolio</span><span class="n" id="w-val">' + f(wizValue()) + '</span></div>' +
         (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
     } else if (w.step === 4) {
       var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
-      h += '<p style="margin:0;color:var(--ink-2)">Da dove partiamo per gli obiettivi? Potrai modificarli quando vuoi nella scheda Allocazione.</p>' +
+      h += '<p style="margin:0;color:var(--ink-2)">Where do the targets start from? They can be changed at any time in the Target allocation tab.</p>' +
         '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">' +
-        [['own', 'Le mie voci', 'Scrivi tu voci e percentuali'], ['copy', 'Copia da Lungo termine', 'Stesse voci e soglie, poi le cambi'], ['known', 'Allocazione nota', 'Dalla libreria (in una versione successiva)']].map(function (o) {
+        [['own', 'My own items', 'Write the items and percentages yourself'], ['copy', 'Copy from Long term', 'The same items and thresholds, to change afterwards'], ['known', 'Known allocation', 'From the library (in a later version)']].map(function (o) {
           return '<label class="opt2' + (o[0] === 'known' ? ' off' : '') + '"><input type="radio" name="wstart" value="' + o[0] + '" data-wstart="1"' + (w.start === o[0] ? ' checked' : '') + (o[0] === 'known' ? ' disabled' : '') + '><span><b>' + o[1] + '</b><small>' + o[2] + '</small></span></label>';
         }).join('') + '</div>' +
-        '<div><div class="witem" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Voce</span><span class="r">Obiettivo</span><span>Strumenti</span><span></span></div>' +
+        '<div><div class="witem" style="font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule-strong)"><span>Item</span><span class="r">Target</span><span>Instruments</span><span></span></div>' +
         w.items.map(function (it, k) {
-          return '<div class="witem"><span><label class="sr" for="wi-n-' + k + '">Voce</label><input type="text" id="wi-n-' + k + '" data-wi="' + k + ':name" value="' + esc(it.name) + '"></span>' +
-            '<span class="pct-in"><label class="sr" for="wi-t-' + k + '">Obiettivo</label><input type="text" inputmode="decimal" id="wi-t-' + k + '" data-wi="' + k + ':t" value="' + esc(String(it.t)) + '">%</span>' +
-            '<span><label class="sr" for="wi-i-' + k + '">Strumento</label><select id="wi-i-' + k + '" data-wi="' + k + ':inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (it.inst === i.id ? ' selected' : '') + '>' + i.code + '</option>'; }).join('') + '</select></span>' +
-            '<button type="button" class="rm" data-wirm="' + k + '" aria-label="Togli la voce">\u00d7</button></div>';
-        }).join('') + '<button type="button" class="plain" data-wiadd="1" style="margin-top:6px">+ Aggiungi una voce</button>' +
-        '<div class="sumline"><span>Totale</span><span class="n' + (Math.abs(sum - 100) > 1e-9 ? ' bad' : '') + '" id="w-sum">' + sum.toLocaleString('it-IT') + '%</span></div></div>' +
-        '<div class="field" style="max-width:420px"><label for="w-rule">Soglia</label><select id="w-rule" data-w="rule">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (w.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
+          return '<div class="witem"><span><label class="sr" for="wi-n-' + k + '">Item</label><input type="text" id="wi-n-' + k + '" data-wi="' + k + ':name" value="' + esc(it.name) + '"></span>' +
+            '<span class="pct-in"><label class="sr" for="wi-t-' + k + '">Target</label><input type="text" inputmode="decimal" id="wi-t-' + k + '" data-wi="' + k + ':t" value="' + esc(String(it.t)) + '">%</span>' +
+            '<span><label class="sr" for="wi-i-' + k + '">Instrument</label><select id="wi-i-' + k + '" data-wi="' + k + ':inst">' + INST.map(function (i) { return '<option value="' + i.id + '"' + (it.inst === i.id ? ' selected' : '') + '>' + i.code + '</option>'; }).join('') + '</select></span>' +
+            '<button type="button" class="rm" data-wirm="' + k + '" aria-label="Remove the item">\u00d7</button></div>';
+        }).join('') + '<button type="button" class="plain" data-wiadd="1" style="margin-top:6px">+ Add an item</button>' +
+        '<div class="sumline"><span>Total</span><span class="n' + (Math.abs(sum - 100) > 1e-9 ? ' bad' : '') + '" id="w-sum">' + sum.toLocaleString('en-US') + '%</span></div></div>' +
+        '<div class="field" style="max-width:420px"><label for="w-rule">Threshold</label><select id="w-rule" data-w="rule">' + Object.keys(RULES).map(function (k) { return '<option value="' + k + '"' + (w.rule === k ? ' selected' : '') + '>' + RULES[k] + '</option>'; }).join('') + '</select></div>' +
         (w.err ? '<div class="hint bad" role="alert">' + esc(w.err) + '</div>' : '');
     } else {
-      h += '<div class="figs" style="align-self:flex-start"><div class="big"><small>' + esc(w.name) + '</small><b class="n">' + f(wizValue()) + '</b></div><div><small>Voci</small><b class="n">' + w.items.length + '</b></div><div><small>Conti</small><b class="n">' + (w.accounts.broker ? 'Broker ETF' : '') + (w.accounts.fp ? (w.accounts.broker ? ', ' : '') + 'Fondo pensione' : '') + '</b></div></div>' +
-        '<p style="margin:0;color:var(--ink-2)">Il portafoglio è pronto. Le quote scelte sono ora assegnate a lui; da qui in avanti, ogni operazione su questi titoli ti chiederà a quale portafoglio appartiene.</p>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-wiz="finish">Apri il portafoglio</button></div>';
+      h += '<div class="figs" style="align-self:flex-start"><div class="big"><small>' + esc(w.name) + '</small><b class="n">' + f(wizValue()) + '</b></div><div><small>Items</small><b class="n">' + w.items.length + '</b></div><div><small>Accounts</small><b class="n">' + (w.accounts.broker ? 'ETF broker' : '') + (w.accounts.fp ? (w.accounts.broker ? ', ' : '') + 'Pension fund' : '') + '</b></div></div>' +
+        '<p style="margin:0;color:var(--ink-2)">The portfolio is ready. The chosen units now belong to it; from now on, every trade in these securities asks which portfolio it belongs to.</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-wiz="finish">Open the portfolio</button></div>';
     }
-    if (w.step < 5) h += '<div class="row-btns" style="justify-content:space-between;padding-top:10px;border-top:1px solid var(--rule)">' + (w.step > 1 ? '<button type="button" class="btn" data-wiz="back">Indietro</button>' : '<span></span>') + '<button type="button" class="btn primary" data-wiz="next">' + (w.step === 4 ? 'Crea il portafoglio' : 'Continua') + '</button></div>';
+    if (w.step < 5) h += '<div class="row-btns" style="justify-content:space-between;padding-top:10px;border-top:1px solid var(--rule)">' + (w.step > 1 ? '<button type="button" class="btn" data-wiz="back">Back</button>' : '<span></span>') + '<button type="button" class="btn primary" data-wiz="next">' + (w.step === 4 ? 'Create the portfolio' : 'Continue') + '</button></div>';
     return h + '</div>';
   }
   // Positions available in this wizard's account(s): one row per (instrument, source portfolio) actually holding units.
   function wizSources(i) {
-    return [{ id: 'lt', name: 'Lungo termine', qty: i.qty }, { id: 'tp', name: 'Terzo pilastro', qty: HOLD[i.id].tp }].filter(function (s) { return s.qty > 0; });
+    return [{ id: 'lt', name: 'Long term', qty: i.qty }, { id: 'tp', name: 'Third pillar', qty: HOLD[i.id].tp }].filter(function (s) { return s.qty > 0; });
   }
   function wizPositions() {
     var rows = [];
@@ -843,16 +843,16 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function wizValue() { return wizPositions().reduce(function (s2, p) { return s2 + (Number(wizTake(p.inst.id, p.src.id)) || 0) * p.inst.price; }, 0); }
   function wizardNext() {
     var w = S.wizard; w.err = '';
-    if (w.step === 1 && !w.name.trim()) { w.err = 'Dai un nome al portafoglio.'; return; }
-    if (w.step === 2 && !w.accounts.broker && !w.accounts.fp) { w.err = 'Scegli almeno un conto.'; return; }
+    if (w.step === 1 && !w.name.trim()) { w.err = 'Enter a name for the portfolio.'; return; }
+    if (w.step === 2 && !w.accounts.broker && !w.accounts.fp) { w.err = 'Choose at least one account.'; return; }
     if (w.step === 3) {
       var bad = wizPositions().filter(function (p) { var q = Number(wizTake(p.inst.id, p.src.id)) || 0; return q < 0 || q !== Math.floor(q) || q > p.src.qty; })[0];
-      if (bad) { w.err = 'Le quote di ' + bad.inst.code + ' da ' + bad.src.name + ' non sono valide.'; return; }
+      if (bad) { w.err = 'The units of ' + bad.inst.code + ' from ' + bad.src.name + ' are not valid.'; return; }
     }
     if (w.step === 4) {
       var sum = w.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0);
-      if (Math.abs(sum - 100) > 1e-9) { w.err = 'Le voci devono sommare al 100% (ora ' + sum.toLocaleString('it-IT') + '%).'; return; }
-      if (w.items.some(function (it) { return !it.name.trim(); })) { w.err = 'Ogni voce ha bisogno di un nome.'; return; }
+      if (Math.abs(sum - 100) > 1e-9) { w.err = 'The items must add up to 100% (now ' + sum.toLocaleString('en-US') + '%).'; return; }
+      if (w.items.some(function (it) { return !it.name.trim(); })) { w.err = 'Every item needs a name.'; return; }
     }
     w.step++;
     if (w.step === 5) {
@@ -873,7 +873,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     el('pf-normal').hidden = !!S.wizard; el('pf-wizard').hidden = !S.wizard;
     if (S.wizard) el('pf-wizard').innerHTML = wizardHtml();
     el('figs').innerHTML = figsHtml();
-    var TABS = [['overview', 'Panoramica'], ['alloc', 'Allocazione'], ['rebal', 'Ribilanciamento'], ['accounts', 'Conti collegati']];
+    var TABS = [['overview', 'Overview'], ['alloc', 'Target allocation'], ['rebal', 'Rebalancing'], ['accounts', 'Linked accounts']];
     el('subtabs').innerHTML = TABS.map(function (t) { return '<button type="button" role="tab" data-tab="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '">' + t[1] + '</button>'; }).join('');
     el('pane').innerHTML = '<div class="pane">' + paneHtml() + '</div>';
     el('panel').hidden = !S.panel;
@@ -901,7 +901,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.setAttribute('visibility', 'visible');
       tip.hidden = false;
       tip.style.left = (x * r.width / W) + 'px'; tip.style.top = '14px'; tip.style.transform = x > W * 0.55 ? 'translateX(calc(-100% - 10px))' : 'translateX(10px)';
-      tip.innerHTML = '<b>' + MONTHS[i] + '</b><br>Valore <span class="n">' + f0(VALUES[i]) + '</span><br>Versato <span class="n">' + f0(CONTRIB[i]) + '</span><br>Guadagno <span class="n">' + f0(VALUES[i] - CONTRIB[i]) + '</span>';
+      tip.innerHTML = '<b>' + MONTHS[i] + '</b><br>Value <span class="n">' + f0(VALUES[i]) + '</span><br>Contributed <span class="n">' + f0(CONTRIB[i]) + '</span><br>Gain <span class="n">' + f0(VALUES[i] - CONTRIB[i]) + '</span>';
     }
     hit.addEventListener('pointermove', move);
     hit.addEventListener('pointerleave', function () { tip.hidden = true; xh.setAttribute('visibility', 'hidden'); });
@@ -918,7 +918,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (b.id === 'tab-desk') return show('desk');
     if (b.id === 'tab-phone') return show('phone');
     if (d.tab) { S.tab = d.tab; return render(); }
-    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: {}, start: 'own', items: [{ name: 'Obbligazioni', t: 75, inst: 'obbl' }, { name: 'Oro', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
+    if (d.wiz === 'start') { S.wizard = { step: 1, name: '', purpose: '', accounts: { broker: true, fp: false }, take: {}, start: 'own', items: [{ name: 'Bonds', t: 75, inst: 'obbl' }, { name: 'Gold', t: 25, inst: 'oro' }], rule: '525', err: '' }; S.panel = false; return render(); }
     if (d.wiz === 'cancel') { S.wizard = null; return render(); }
     if (d.wiz === 'back') { S.wizard.step--; S.wizard.err = ''; return render(); }
     if (d.wiz === 'next') { wizardNext(); return render(); }
@@ -944,7 +944,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       else if (createdPf) createdPf.take[inst.id] = Math.max(0, (createdPf.take[inst.id] || 0) + delta);
       else inst.qty = Math.max(0, inst.qty + delta);
       inst.price = price;
-      t.saved = (t.type === 'buy' ? 'Acquisto di ' : 'Vendita di ') + q + ' ' + inst.code;
+      t.saved = (t.type === 'buy' ? 'Bought ' : 'Sold ') + q + ' ' + inst.code;
       return render();
     }
   });
@@ -954,14 +954,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.wacc) { S.wizard.accounts[d.wacc] = t.checked; return; }
     if (d.wstart) {
       S.wizard.start = t.value;
-      if (t.value === 'copy') S.wizard.items = [{ name: 'Azioni', t: 60, inst: 'mondo' }, { name: 'Obbligazioni', t: 30, inst: 'obbl' }, { name: 'Oro', t: 10, inst: 'oro' }];
+      if (t.value === 'copy') S.wizard.items = [{ name: 'Stocks', t: 60, inst: 'mondo' }, { name: 'Bonds', t: 30, inst: 'obbl' }, { name: 'Gold', t: 10, inst: 'oro' }];
       return render();
     }
     if (d.w === 'rule') { S.wizard.rule = t.value; return; }
     if (d.wi && t.tagName === 'SELECT') { var qq = d.wi.split(':'); S.wizard.items[Number(qq[0])][qq[1]] = t.value; return; }
     if (d.rule) { S.rule = t.value; S.preset = null; return render(); }
     if (d.frac) { S.fractional = t.checked; return renderPaneOnly(); }
-    if (d.tr) { S.trade[d.tr] = t.value; if (d.tr === 'inst') { var i = INST.filter(function (x) { return x.id === t.value; })[0]; S.trade.priceStr = (i.price / 100).toLocaleString('it-IT', { minimumFractionDigits: 2 }); } el('panel').innerHTML = tradePanel(); var n = el(t.id); if (n) n.focus(); return; }
+    if (d.tr) { S.trade[d.tr] = t.value; if (d.tr === 'inst') { var i = INST.filter(function (x) { return x.id === t.value; })[0]; S.trade.priceStr = (i.price / 100).toLocaleString('en-US', { minimumFractionDigits: 2 }); } el('panel').innerHTML = tradePanel(); var n = el(t.id); if (n) n.focus(); return; }
   });
   document.addEventListener('input', function (e) {
     var t = e.target, d = t.dataset;
@@ -973,7 +973,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.wi && t.tagName === 'INPUT') {
       var q2 = d.wi.split(':'); S.wizard.items[Number(q2[0])][q2[1]] = t.value;
       var sm = S.wizard.items.reduce(function (s2, it) { return s2 + (Number(String(it.t).replace(',', '.')) || 0); }, 0), ws = el('w-sum');
-      if (ws) { ws.textContent = sm.toLocaleString('it-IT') + '%'; ws.classList.toggle('bad', Math.abs(sm - 100) > 1e-9); }
+      if (ws) { ws.textContent = sm.toLocaleString('en-US') + '%'; ws.classList.toggle('bad', Math.abs(sm - 100) > 1e-9); }
       return;
     }
     if (d.mint) { S.minTradeStr = t.value; return renderPaneOnly(); }

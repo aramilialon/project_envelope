@@ -3,15 +3,15 @@
   Interactive mockup of an account register and transaction entry (desktop and phone).
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself
-  self-hosts its fonts). The UI copy is the Italian translation; English stays
-  the source language of the app. Sample data is fictional.
+  self-hosts its fonts). The UI copy is in English, the source language of the app; the Italian
+  approved before #622 is at the commit recorded in docs/ux/README.md. Sample data is fictional.
 
   Every balance is as of today (the 25th, #702): a row dated after today, this month or
-  later, sits apart in the "Più avanti" (Later) section at the top of the register, is not in
+  later, sits apart in the "Later" section at the top of the register, is not in
   today's balance, is never "still awaiting the bank", and shows the running balance it leads to on
   top of today's; the timeline draws the rows after today in its dashed, projected part. A short date shows its year when it is not the current one.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -305,7 +305,7 @@ button{cursor:pointer}
 .kind{font-size:11px;font-weight:600;font-stretch:78%;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);margin-right:6px}
 .month-sep{display:flex;justify-content:space-between;padding:14px 10px 6px 34px;border-bottom:1px solid var(--rule);font-weight:700;font-stretch:78%}
 .month-sep .n{font-weight:600;font-stretch:100%;color:var(--ink-2)}
-/* "Più avanti" (Later, #702): rows dated after today, apart at the top, above today's rows. */
+/* "Later" (#702): rows dated after today, apart at the top, above today's rows. */
 .later-sep{justify-content:flex-start;align-items:baseline;flex-wrap:wrap;gap:4px 10px}
 .later-sep h3{margin:0;font:inherit}
 .later-sep small,.later-sep p{margin:0;font-weight:400;font-stretch:100%;font-size:12px;color:var(--muted)}
@@ -446,8 +446,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "Nuova transazione", split an expense across categories, record a transfer coming in from another account ("Trasferimento", then "Da un altro conto": from the off-budget "Broker ETF" the money lands in "Da assegnare" unless a category is chosen), tick transactions as cleared, or work through the "Da fare" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
-    <div class="views" role="tablist" aria-label="Vista">
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
+    <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
     </div>
@@ -456,62 +456,62 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   <section id="view-desk" role="tabpanel" aria-labelledby="tab-desk">
     <div class="scroller">
       <div class="desk reg nopanel" id="desk">
-        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button" aria-current="page">Conti</button><button type="button">Portafoglio</button></nav><button type="button" class="ws2">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
+        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button" aria-current="page">Accounts</button><button type="button">Portfolio</button></nav><button type="button" class="ws2">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
         <nav class="side" aria-label="Main (mockup)">
           <div class="brand">
             <b>envelope</b>
-            <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+            <button type="button" class="ws">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           </div>
           <div class="nav">
             <button type="button">Budget</button>
-            <button type="button" aria-current="page">Conti</button>
-            <button type="button">Portafoglio</button>
+            <button type="button" aria-current="page">Accounts</button>
+            <button type="button">Portfolio</button>
           </div>
           <div class="ledger">
-            <h5>In budget</h5>
-            <div class="lr on"><span>Conto corrente</span><span class="dots"></span><span class="n" id="side-bal"></span></div>
-            <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
-            <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
-            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+            <h5>On budget</h5>
+            <div class="lr on"><span>Checking</span><span class="dots"></span><span class="n" id="side-bal"></span></div>
+            <div class="lr"><span>Savings</span><span class="dots"></span><span class="n">8,000.00</span></div>
+            <div class="lr"><span>Cash</span><span class="dots"></span><span class="n">85.40</span></div>
+            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642.30</span></div>
           </div>
           <div class="ledger">
-            <h5>Fuori budget</h5>
-            <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
-            <div class="lr"><span>Mutuo casa</span><span class="dots"></span><span class="n neg">−96.300,00</span></div>
+            <h5>Off budget</h5>
+            <div class="lr"><span>ETF broker</span><span class="dots"></span><span class="n">42,180.00</span></div>
+            <div class="lr"><span>Home mortgage</span><span class="dots"></span><span class="n neg">−96,300.00</span></div>
           </div>
-          <button type="button" class="plain">+ Aggiungi conto</button>
-          <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+          <button type="button" class="plain">+ Add account</button>
+          <div class="me"><span>Giorgio</span><button type="button" class="plain">Settings</button></div>
         </nav>
 
         <div class="main">
           <div class="acc-head">
             <div>
-              <h3>Conto corrente</h3>
-              <div class="sub">Conto in budget · ultima riconciliazione il 5 settembre, <span class="n">1.780,73 €</span></div>
+              <h3>Checking</h3>
+              <div class="sub">On-budget account · last reconciled on September 5, <span class="n">€1,780.73</span></div>
             </div>
-            <div class="acc-bal" aria-label="Saldi del conto">
-              <small>Saldo</small>
+            <div class="acc-bal" aria-label="Account balances">
+              <small>Balance</small>
               <span class="big n" id="b-total"></span>
-              <div class="acc-facts"><span>Verificato <b class="n" id="b-cleared"></b></span><span>In attesa <b class="n" id="b-pending"></b></span><span>Previsto a fine mese <b class="n" id="b-proj"></b></span></div>
+              <div class="acc-facts"><span>Cleared <b class="n" id="b-cleared"></b></span><span>Pending <b class="n" id="b-pending"></b></span><span>Projected at month end <b class="n" id="b-proj"></b></span></div>
             </div>
           </div>
 
           <div class="insight" id="insight"></div>
 
           <div class="reg-tools">
-            <div class="tabs" role="group" aria-label="Filtra le transazioni" id="reg-filters"></div>
+            <div class="tabs" role="group" aria-label="Filter transactions" id="reg-filters"></div>
             <div class="right">
-              <label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="reg-search" placeholder="Cerca beneficiario, categoria, nota"></label>
-              <button type="button" class="btn">Importa</button>
-              <button type="button" class="btn">Riconcilia</button>
-              <button type="button" class="btn primary" id="new-tx">Nuova transazione</button>
+              <label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Search</span><input type="search" id="reg-search" placeholder="Search payee, category, memo"></label>
+              <button type="button" class="btn">Import</button>
+              <button type="button" class="btn">Reconcile</button>
+              <button type="button" class="btn primary" id="new-tx">New transaction</button>
             </div>
           </div>
 
           <div id="register"></div>
         </div>
 
-        <aside class="insp" aria-label="Transazione" id="panel" hidden></aside>
+        <aside class="insp" aria-label="Transaction" id="panel" hidden></aside>
       </div>
     </div>
   </section>
@@ -520,12 +520,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     <div class="phones">
       <div class="phone">
         <div class="ph-in" id="ph"></div>
-        <nav class="tabbar" aria-label="Principale (bozzetto telefono)">
+        <nav class="tabbar" aria-label="Main, phone (mockup)">
           <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1"></rect><path d="m3 6 9 7 9-7"></path></svg>Budget</button>
-          <button type="button" data-phscreen="accounts" id="ph-tab-acc" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Conti</button>
-          <button type="button" class="add" data-phscreen="quick" aria-label="Nuova spesa"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
-          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portafoglio</button>
-          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>Altro</button>
+          <button type="button" data-phscreen="accounts" id="ph-tab-acc" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"></path></svg>Accounts</button>
+          <button type="button" class="add" data-phscreen="quick" aria-label="New expense"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16v-5M11 16V7M16 16v-8M21 16V4"></path></svg>Portfolio</button>
+          <button type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></svg>More</button>
         </nav>
       </div>
       <div class="ph-note">
@@ -543,21 +543,21 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 
 <script>
 (function () {
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
-  function plainN(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('-', '−'); }
+  function plainN(c) { return (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).replace('-', '−'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function el(id) { return document.getElementById(id); }
   function parseAmount(str) {
-    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.');
+    var clean = String(str).trim().replace(/\s|€|,/g, '');
     if (!/^\d+(\.\d{1,2})?$/.test(clean)) return null;
     return Math.round(Number(clean) * 100);
   }
-  function amountStr(c) { return c ? (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''; }
-  var MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+  function amountStr(c) { return c ? (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''; }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var TODAY_ISO = '2026-09-25';
   // A short date, with its year when it is not the current one (#702).
-  function dLabel(iso) { var q = iso.split('-'); return Number(q[2]) + ' ' + MONTHS[Number(q[1]) - 1] + (q[0] === TODAY_ISO.slice(0, 4) ? '' : ' ' + q[0]); }
+  function dLabel(iso) { var q = iso.split('-'); return MONTHS[Number(q[1]) - 1] + ' ' + Number(q[2]) + (q[0] === TODAY_ISO.slice(0, 4) ? '' : ', ' + q[0]); }
   // A row dated after today has not happened yet: it is not in today's balance (#702).
   function isLater(t) { return t.date > TODAY_ISO; }
 
@@ -567,47 +567,47 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     locked: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="1"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>',
     chev: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>'
   };
-  var STATUS_LABEL = { pending: 'In attesa', cleared: 'Verificata', locked: 'Riconciliata' };
+  var STATUS_LABEL = { pending: 'Pending', cleared: 'Cleared', locked: 'Reconciled' };
 
   // Categories with the money available in September (same example as the budget month mockup).
   var CATS = [
-    ['Casa e bollette', [['mutuo', 'Rata del mutuo', 0], ['luce', 'Luce e gas', 5560], ['net', 'Internet e telefono', 0], ['manut', 'Manutenzione casa', 23000]]],
-    ['Spese di tutti i giorni', [['spesa', 'Spesa alimentare', -4215], ['carb', 'Carburante e trasporti', 6170], ['rist', 'Ristoranti', -4850], ['farm', 'Farmacia e salute', 8110]]],
-    ['Spese prevedibili', [['ass', 'Assicurazione auto', 35000], ['bollo', 'Bollo auto', 10500], ['regali', 'Regali', 18000], ['vet', 'Veterinario', 6000]]],
-    ['Obiettivi e risparmio', [['fondo', 'Fondo emergenze', 783190], ['vac', 'Vacanze estate 2027', 145000], ['pac', 'Versamento nel piano di accumulo', 0]]],
-    ['Svago', [['abb', 'Abbonamenti', 403], ['hobby', 'Hobby', 2500]]]
+    ['Home and bills', [['mutuo', 'Mortgage payment', 0], ['luce', 'Electricity and gas', 5560], ['net', 'Internet and phone', 0], ['manut', 'Home maintenance', 23000]]],
+    ['Everyday spending', [['spesa', 'Groceries', -4215], ['carb', 'Fuel and transport', 6170], ['rist', 'Restaurants', -4850], ['farm', 'Pharmacy and health', 8110]]],
+    ['Predictable expenses', [['ass', 'Car insurance', 35000], ['bollo', 'Car tax', 10500], ['regali', 'Gifts', 18000], ['vet', 'Vet', 6000]]],
+    ['Goals and savings', [['fondo', 'Emergency fund', 783190], ['vac', 'Summer vacation 2027', 145000], ['pac', 'Investment plan contribution', 0]]],
+    ['Fun', [['abb', 'Subscriptions', 403], ['hobby', 'Hobbies', 2500]]]
   ];
   var CAT = {};
   CATS.forEach(function (g) { g[1].forEach(function (c) { CAT[c[0]] = { id: c[0], name: c[1], avail: c[2], group: g[0] }; }); });
   var RTA_ID = 'rta';
-  CAT[RTA_ID] = { id: RTA_ID, name: 'Da assegnare', avail: 31200, group: '' };
+  CAT[RTA_ID] = { id: RTA_ID, name: 'Unassigned', avail: 31200, group: '' };
   var ACCOUNTS = [
-    ['risp', 'Conto risparmio', 'cash', true], ['cont', 'Contanti', 'cash', true], ['visa', 'Visa', 'credit', true], ['tv', 'Carta viaggi', 'credit', true], ['broker', 'Broker ETF', 'cash', false], ['mutuo', 'Mutuo casa', 'loan', false]
+    ['risp', 'Savings', 'cash', true], ['cont', 'Cash', 'cash', true], ['visa', 'Visa', 'credit', true], ['tv', 'Travel card', 'credit', true], ['broker', 'ETF broker', 'cash', false], ['mutuo', 'Home mortgage', 'loan', false]
   ];
   var ACC = {};
   ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3] }; });
 
-  var OPENING = 317573; // balance on 31 August
+  var OPENING = 317573; // balance on August 31
   var seq = 0;
   function tx(o) { seq++; o.id = 't' + seq; return o; }
   var TXS = [
-    tx({ date: '2026-09-01', payee: 'Banca, rata mutuo', amount: -85000, cat: 'mutuo', status: 'locked' }),
-    tx({ date: '2026-09-02', payee: 'Operatore telefonico', amount: -4500, cat: 'net', status: 'locked' }),
-    tx({ date: '2026-09-05', payee: 'Trasferimento', amount: -50000, transfer: 'broker', cat: 'pac', memo: 'Versamento mensile', status: 'locked' }),
-    tx({ date: '2026-09-09', payee: 'Idraulico', amount: -12000, cat: 'manut', memo: 'Perdita lavello', status: 'cleared' }),
-    tx({ date: '2026-09-15', payee: 'Pagamento della carta', amount: -45000, transfer: 'visa', status: 'cleared' }),
-    tx({ date: '2026-09-16', payee: 'Fornitore energia', amount: -9640, cat: 'luce', status: 'cleared' }),
-    tx({ date: '2026-09-17', payee: 'Supermercato', amount: -11205, cat: 'spesa', status: 'cleared' }),
-    tx({ date: '2026-09-18', payee: 'Clinica veterinaria', amount: -8500, cat: 'vet', memo: 'Vaccino', status: 'cleared' }),
-    tx({ date: '2026-09-20', payee: 'Pagamento della carta', amount: -30000, transfer: 'tv', status: 'cleared' }),
-    tx({ date: '2026-09-20', payee: 'Grande magazzino', amount: -6730, splits: [['spesa', -4230], ['regali', -2500]], memo: 'Spesa e regalo per Anna', status: 'cleared' }),
-    tx({ date: '2026-09-24', payee: 'Supermercato', amount: -8740, cat: 'spesa', status: 'pending' }),
-    tx({ date: '2026-09-25', payee: 'Stipendio', amount: 265000, cat: RTA_ID, memo: 'Settembre', status: 'cleared' }),
+    tx({ date: '2026-09-01', payee: 'Bank, mortgage payment', amount: -85000, cat: 'mutuo', status: 'locked' }),
+    tx({ date: '2026-09-02', payee: 'Phone provider', amount: -4500, cat: 'net', status: 'locked' }),
+    tx({ date: '2026-09-05', payee: 'Transfer', amount: -50000, transfer: 'broker', cat: 'pac', memo: 'Monthly contribution', status: 'locked' }),
+    tx({ date: '2026-09-09', payee: 'Plumber', amount: -12000, cat: 'manut', memo: 'Sink leak', status: 'cleared' }),
+    tx({ date: '2026-09-15', payee: 'Card payment', amount: -45000, transfer: 'visa', status: 'cleared' }),
+    tx({ date: '2026-09-16', payee: 'Energy provider', amount: -9640, cat: 'luce', status: 'cleared' }),
+    tx({ date: '2026-09-17', payee: 'Supermarket', amount: -11205, cat: 'spesa', status: 'cleared' }),
+    tx({ date: '2026-09-18', payee: 'Vet clinic', amount: -8500, cat: 'vet', memo: 'Vaccine', status: 'cleared' }),
+    tx({ date: '2026-09-20', payee: 'Card payment', amount: -30000, transfer: 'tv', status: 'cleared' }),
+    tx({ date: '2026-09-20', payee: 'Department store', amount: -6730, splits: [['spesa', -4230], ['regali', -2500]], memo: 'Groceries and a gift for Anna', status: 'cleared' }),
+    tx({ date: '2026-09-24', payee: 'Supermarket', amount: -8740, cat: 'spesa', status: 'pending' }),
+    tx({ date: '2026-09-25', payee: 'Salary', amount: 265000, cat: RTA_ID, memo: 'September', status: 'cleared' }),
     // Recorded ahead of their date: this month after today, and next year (#702).
-    tx({ date: '2026-09-28', payee: 'Palestra', amount: -4500, cat: 'hobby', memo: 'Quota di ottobre', status: 'pending' }),
-    tx({ date: '2027-01-12', payee: 'Compagnia assicurativa', amount: -32000, cat: 'ass', memo: 'Rinnovo polizza auto', status: 'pending' })
+    tx({ date: '2026-09-28', payee: 'Gym', amount: -4500, cat: 'hobby', memo: 'October fee', status: 'pending' }),
+    tx({ date: '2027-01-12', payee: 'Insurance company', amount: -32000, cat: 'ass', memo: 'Car policy renewal', status: 'pending' })
   ];
-  var LAST_CAT = { 'Supermercato': 'spesa', 'Mercato rionale': 'spesa', 'Panificio': 'spesa', 'Distributore': 'carb', 'Farmacia': 'farm', 'Trattoria': 'rist', 'Pizzeria': 'rist', 'Bar': 'rist', 'Fornitore energia': 'luce', 'Idraulico': 'manut', 'Clinica veterinaria': 'vet', 'Stipendio': RTA_ID, 'Grande magazzino': 'spesa', 'Operatore telefonico': 'net' };
+  var LAST_CAT = { 'Supermarket': 'spesa', 'Local market': 'spesa', 'Bakery': 'spesa', 'Gas station': 'carb', 'Pharmacy': 'farm', 'Trattoria': 'rist', 'Pizzeria': 'rist', 'Café': 'rist', 'Energy provider': 'luce', 'Plumber': 'manut', 'Vet clinic': 'vet', 'Salary': RTA_ID, 'Department store': 'spesa', 'Phone provider': 'net' };
 
   var state = { sel: null, filter: 'all', q: '', open: {}, draft: null, errors: [], where: 'desk' };
   var ph = { screen: 'accounts', filter: 'all', q: '' };
@@ -621,12 +621,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function catText(t) {
     if (t.transfer) {
       var a = ACC[t.transfer];
-      var label = a.type === 'credit' ? 'Pagamento carta: ' + a.name : (t.amount < 0 ? 'Verso ' : 'Da ') + a.name;
-      // An incoming transfer from an off-budget account shows where it landed: "Da assegnare" or its category.
-      return '<span class="kind">' + (a.type === 'credit' ? 'Carta' : 'Trasferimento') + '</span>' + esc(label) + (t.cat ? ' <span class="muted">· ' + esc(CAT[t.cat].name) + '</span>' : '');
+      var label = a.type === 'credit' ? 'Card payment: ' + a.name : (t.amount < 0 ? 'To ' : 'From ') + a.name;
+      // An incoming transfer from an off-budget account shows where it landed: "Unassigned" or its category.
+      return '<span class="kind">' + (a.type === 'credit' ? 'Card' : 'Transfer') + '</span>' + esc(label) + (t.cat ? ' <span class="muted">· ' + esc(CAT[t.cat].name) + '</span>' : '');
     }
-    if (t.splits) return '<span class="kind">Divisa</span>' + t.splits.length + ' categorie ' + ICON.chev;
-    if (t.cat === RTA_ID) return '<span class="kind">Entrata</span>Da assegnare';
+    if (t.splits) return '<span class="kind">Split</span>' + t.splits.length + ' categories ' + ICON.chev;
+    if (t.cat === RTA_ID) return '<span class="kind">Inflow</span>Unassigned';
     return esc(CAT[t.cat].name);
   }
   function matches(t) {
@@ -643,16 +643,16 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var TODAY = 25;
   var TODAY_ISO = '2026-09-25';
   var SCHED = [
-    { id: 's-vet', payee: 'Clinica veterinaria', memo: 'richiamo del vaccino', cat: 'vet', amount: -4500, d: 22 },
-    { id: 's-stip', payee: 'Stipendio di Anna', amount: 245000, d: 27, income: true },
-    { id: 's-cald', payee: 'Tecnico caldaia', memo: 'revisione annuale', cat: 'manut', amount: -9000, d: 29 }
+    { id: 's-vet', payee: 'Vet clinic', memo: 'vaccine booster', cat: 'vet', amount: -4500, d: 22 },
+    { id: 's-stip', payee: 'Anna\'s salary', amount: 245000, d: 27, income: true },
+    { id: 's-cald', payee: 'Boiler technician', memo: 'annual service', cat: 'manut', amount: -9000, d: 29 }
   ];
-  var LABEL = { 'Banca, rata mutuo': 'mutuo', 'Operatore telefonico': 'telefono', 'Idraulico': 'idraulico', 'Fornitore energia': 'energia', 'Supermercato': 'spesa', 'Clinica veterinaria': 'veterinario', 'Grande magazzino': 'grande magazzino', 'Stipendio': 'stipendio', 'Stipendio di Anna': 'stipendio', 'Tecnico caldaia': 'caldaia' };
+  var LABEL = { 'Bank, mortgage payment': 'mortgage', 'Phone provider': 'phone', 'Plumber': 'plumber', 'Energy provider': 'energy', 'Supermarket': 'groceries', 'Vet clinic': 'vet', 'Department store': 'department store', 'Salary': 'salary', 'Anna\'s salary': 'salary', 'Boiler technician': 'boiler' };
   function lab(t) {
-    if (t.transfer) return ACC[t.transfer].type === 'credit' ? ACC[t.transfer].name : t.amount > 0 ? ACC[t.transfer].name.toLowerCase() : 'piano di accumulo';
+    if (t.transfer) return ACC[t.transfer].type === 'credit' ? ACC[t.transfer].name : t.amount > 0 ? ACC[t.transfer].name.toLowerCase() : 'investment plan';
     return LABEL[t.payee] || t.payee.toLowerCase();
   }
-  function euros(c) { return (Math.abs(c) / 100).toLocaleString('it-IT', { maximumFractionDigits: 0 }); }
+  function euros(c) { return (Math.abs(c) / 100).toLocaleString('en-US', { maximumFractionDigits: 0 }); }
   function events() {
     var list = [];
     // A recorded row dated after today has not happened yet (#702): it joins the dashed, projected part.
@@ -687,7 +687,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     // left of the plot, as wide as the widest amount (10px, at most about 6.2 units a character), so
     // the line never runs over a label and a long negative amount is never cut off (#405, #591).
     var ticks = [];
-    function tickLabel(v) { return (v < 0 ? '-' : '') + (Math.abs(v) / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'; }
+    function tickLabel(v) { return (v < 0 ? '-' : '') + '€' + (Math.abs(v) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     var rough = (maxV - minV) / 4, ex = Math.pow(10, Math.floor(Math.log10(rough))), fr = rough / ex;
     var step = (fr <= 1 ? 1 : fr <= 2 ? 2 : fr <= 5 ? 5 : 10) * ex;
     for (var tv = Math.ceil(minV / step) * step; tv <= maxV; tv += step) ticks.push(tv);
@@ -697,8 +697,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var tx = x(TODAY), zeroY = y(0), curY = y(actual[TODAY]);
 
     var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' +
-      esc('Settembre, il totale del mese giorno per giorno: oggi è a ' + (actual[TODAY] >= 0 ? '+' : '') + euros(actual[TODAY]) + ' €' +
-        (projected[30] !== actual[TODAY] ? ', con ' + (projected[30] - actual[TODAY] >= 0 ? '+' : '') + euros(projected[30] - actual[TODAY]) + ' € ancora previsti entro fine mese' : '') + '.') +
+      esc('September, the month\'s total day by day: today it is at ' + (actual[TODAY] >= 0 ? '+' : '-') + '€' + euros(actual[TODAY]) +
+        (projected[30] !== actual[TODAY] ? ', with ' + (projected[30] - actual[TODAY] >= 0 ? '+' : '-') + '€' + euros(projected[30] - actual[TODAY]) + ' still expected by the end of the month' : '') + '.') +
       '">';
     out += '<rect x="' + tx + '" y="' + PT + '" width="' + (X1 - tx + 6) + '" height="' + plot + '" class="t-future"/>';
     ticks.forEach(function (t) {
@@ -719,23 +719,23 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     }
     if (overdueHere !== 0) out += '<circle cx="' + tx + '" cy="' + y(projected[TODAY]).toFixed(1) + '" r="3.5" class="t-overdue"/>';
 
-    out += '<line x1="' + tx + '" y1="6" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - 6) + '" y="16" class="t-today-l" text-anchor="end">oggi, ' + TODAY + '</text>';
+    out += '<line x1="' + tx + '" y1="6" x2="' + tx + '" y2="' + (H - 14) + '" class="t-today"/><text x="' + (tx - 6) + '" y="16" class="t-today-l" text-anchor="end">today</text>';
     // The current value: a short dashed line at today's own height, out to the right edge, with
     // its amount — the equivalent of a price chart's own "current price" tag.
     out += '<line x1="' + tx + '" y1="' + curY.toFixed(1) + '" x2="' + X1 + '" y2="' + curY.toFixed(1) + '" class="t-cur"/>';
-    out += '<text x="' + (X1 - 2) + '" y="' + (curY - 5).toFixed(1) + '" text-anchor="end" class="t-cur-l">' + (actual[TODAY] >= 0 ? '+' : '') + euros(actual[TODAY]) + ' €</text>';
+    out += '<text x="' + (X1 - 2) + '" y="' + (curY - 5).toFixed(1) + '" text-anchor="end" class="t-cur-l">' + (actual[TODAY] >= 0 ? '+' : '-') + '€' + euros(actual[TODAY]) + '</text>';
     return out + '</svg>';
   }
   function todos() {
     var list = [], b = balances();
     SCHED.filter(function (x) { return x.d < TODAY; }).forEach(function (x) {
-      list.push({ dot: '', title: 'Registrare ' + x.payee, sub: 'programmata del ' + dLabel('2026-09-' + (x.d < 10 ? '0' : '') + x.d) + ', non ancora nel conto', amount: Math.abs(x.amount), attr: ' data-tdrec="' + x.id + '"', verb: 'Registra' });
+      list.push({ dot: '', title: 'Record ' + x.payee, sub: 'scheduled for ' + dLabel('2026-09-' + (x.d < 10 ? '0' : '') + x.d) + ', not yet in the account', amount: Math.abs(x.amount), attr: ' data-tdrec="' + x.id + '"', verb: 'Record' });
     });
     TXS.filter(function (t) { return t.status === 'pending' && !isLater(t); }).forEach(function (t) {
-      list.push({ dot: '', title: 'Verificare ' + t.payee, sub: dLabel(t.date) + ', ancora in attesa della banca', amount: Math.abs(t.amount), attr: ' data-toggle="' + t.id + '"', verb: 'Segna' });
+      list.push({ dot: '', title: 'Mark ' + t.payee, sub: dLabel(t.date) + ', still awaiting the bank', amount: Math.abs(t.amount), attr: ' data-toggle="' + t.id + '"', verb: 'Mark' });
     });
     var nCleared = TXS.filter(function (t) { return t.status === 'cleared'; }).length;
-    if (nCleared) list.push({ dot: '', title: 'Riconciliare il conto', sub: nCleared + ' verificate dopo il 5 set', amount: b.cleared, href: 'import-reconciliation.html', verb: 'Riconcilia' });
+    if (nCleared) list.push({ dot: '', title: 'Reconcile the account', sub: nCleared + ' cleared since Sep 5', amount: b.cleared, href: 'import-reconciliation.html', verb: 'Reconcile' });
     return list;
   }
   function todoItems(list, max) {
@@ -746,9 +746,9 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function todoHtml(max) {
     var list = todos();
-    if (!list.length) return '<h5>Da fare</h5><p class="explain">Niente da sistemare su questo conto.</p>';
-    return '<h5>Da fare <span>' + (list.length === 1 ? '1 cosa' : list.length + ' cose') + '</span></h5>' + todoItems(list, max) +
-      (max && list.length > max ? '<p class="explain" style="font-size:13px">e altre ' + (list.length - max) + '</p>' : '');
+    if (!list.length) return '<h5>To do</h5><p class="explain">Nothing to fix on this account.</p>';
+    return '<h5>To do <span>' + (list.length === 1 ? '1 thing' : list.length + ' things') + '</span></h5>' + todoItems(list, max) +
+      (max && list.length > max ? '<p class="explain" style="font-size:13px">+' + (list.length - max) + ' more</p>' : '');
   }
   function projected() {
     // Today's balance + the rows after today up to the month end + the month's scheduled items not recorded yet.
@@ -759,8 +759,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function renderInsight() {
     el('b-proj').textContent = f(projected());
-    el('insight').innerHTML = '<div class="time"><h5>Settembre, giorno per giorno</h5>' + timelineSvg() +
-      '<p class="t-note">Quanto si è mosso finora questo mese, non il saldo del conto; tratteggiato quello che deve ancora succedere.</p></div>' +
+    el('insight').innerHTML = '<div class="time"><h5>September, day by day</h5>' + timelineSvg() +
+      '<p class="t-note">What has moved so far this month, not your account balance; dashed is what has not happened yet.</p></div>' +
       '<div class="todo">' + todoHtml() + '</div>';
   }
 
@@ -771,7 +771,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     renderInsight();
     var counts = { all: TXS.length, pending: 0, cleared: 0, locked: 0 };
     TXS.forEach(function (t) { counts[t.status]++; });
-    var F = [['all', 'Tutte', 'neutral'], ['pending', 'In attesa', 'under'], ['cleared', 'Verificate', 'neutral'], ['locked', 'Riconciliate', 'neutral']];
+    var F = [['all', 'All', 'neutral'], ['pending', 'Pending', 'under'], ['cleared', 'Cleared', 'neutral'], ['locked', 'Reconciled', 'neutral']];
     el('reg-filters').innerHTML = F.map(function (x) {
       var n = counts[x[0]];
       return '<button type="button" data-filter="' + x[0] + '" aria-pressed="' + (state.filter === x[0]) + '">' + x[1] + '<span class="count n ' + (n === 0 ? 'none' : x[2]) + '">' + n + '</span></button>';
@@ -781,16 +781,16 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var run = OPENING, rows = [];
     sorted().forEach(function (t) { run += t.amount; rows.push({ t: t, bal: run }); });
     rows.reverse();
-    var html = '<div class="rth rcols"><span></span><span>Data</span><span>Beneficiario</span><span>Categoria</span><span class="r">Uscita</span><span class="r">Entrata</span><span class="r">Saldo</span></div>';
+    var html = '<div class="rth rcols"><span></span><span>Date</span><span>Payee</span><span>Category</span><span class="r">Outflow</span><span class="r">Inflow</span><span class="r">Balance</span></div>';
     var shown = 0, laterShown = 0, laterTotal = rows.filter(function (r) { return isLater(r.t) && matches(r.t); }).length;
     rows.forEach(function (r) {
       var t = r.t;
       if (!matches(t)) return;
       shown++;
-      if (isLater(t) && laterShown++ === 0) html += '<div class="month-sep later-sep"><span>Più avanti</span> <small>Con data dopo oggi: non entrano nel saldo di oggi.</small></div>';
-      var st = '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button>';
+      if (isLater(t) && laterShown++ === 0) html += '<div class="month-sep later-sep"><span>Later</span> <small>Dated after today: not in today\'s balance.</small></div>';
+      var st = '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': change status') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button>';
       html += '<div class="rrow rcols' + (state.sel === t.id ? ' on' : '') + (isLater(t) && laterShown === laterTotal ? ' later-end' : '') + '">' + st +
-        '<button type="button" class="open" data-open="' + t.id + '" aria-label="Apri ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
+        '<button type="button" class="open" data-open="' + t.id + '" aria-label="Open ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
         '<span class="cell n">' + dLabel(t.date) + '</span>' +
         '<span class="cell"><b style="font-weight:500">' + esc(t.payee) + '</b>' + (t.memo ? '<small>' + esc(t.memo) + '</small>' : '') + '</span>' +
         '<span class="cell" title="' + esc(catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) + '">' + catText(t) + '</span>' +
@@ -804,14 +804,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       }
       html += '</div>';
     });
-    if (!shown) html += '<div class="empty">Nessuna transazione con questo filtro.</div>';
-    html += '<div class="month-sep"><span>Saldo al 31 agosto</span><span class="n">' + f(OPENING) + '</span></div>';
+    if (!shown) html += '<div class="empty">No transactions match this filter.</div>';
+    html += '<div class="month-sep"><span>Balance on August 31</span><span class="n">' + f(OPENING) + '</span></div>';
     el('register').innerHTML = html;
   }
 
   // ---- Editor
   function catOptions(selected, withRta) {
-    var out = withRta ? '<option value="' + RTA_ID + '"' + (selected === RTA_ID ? ' selected' : '') + '>Da assegnare (' + f(CAT[RTA_ID].avail) + ')</option>' : '<option value="">Scegli una categoria</option>';
+    var out = withRta ? '<option value="' + RTA_ID + '"' + (selected === RTA_ID ? ' selected' : '') + '>Unassigned (' + f(CAT[RTA_ID].avail) + ')</option>' : '<option value="">Choose a category</option>';
     CATS.forEach(function (g) {
       out += '<optgroup label="' + esc(g[0]) + '">' + g[1].map(function (c) {
         return '<option value="' + c[0] + '"' + (selected === c[0] ? ' selected' : '') + '>' + esc(c[1]) + ' (' + f(CAT[c[0]].avail) + ')</option>';
@@ -838,13 +838,13 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     state.draft.lines.forEach(function (l) { used += parseAmount(l.amountStr) || 0; });
     return total - used;
   }
-  // A transfer's other account is off budget (a brokerage account, or a loan such as the Mutuo casa:
+  // A transfer's other account is off budget (a brokerage account, or a loan such as the Mortgage:
   // every off-budget source is covered): going out it needs a category; coming in to this account
-  // (a cash account) it lands in "Da assegnare" by default, or in a chosen category.
+  // (a cash account) it lands in "Unassigned" by default, or in a chosen category.
   // If this account were a credit card, an incoming transfer from an off-budget account would not
-  // offer "Da assegnare" and would need a category, like an outgoing one (card income is not
-  // supported yet); the mockup only has the Conto corrente's register, so that case is not drawn.
-  // "Dal conto" leaves credit cards out: money coming from a card (a cash advance) is not covered by
+  // offer "Unassigned" and would need a category, like an outgoing one (card income is not
+  // supported yet); the mockup only has the Checking account's register, so that case is not drawn.
+  // "From account" leaves credit cards out: money coming from a card (a cash advance) is not covered by
   // the rules for transfers from off-budget accounts, and an incoming transfer to a card with no
   // category is refused, so the form does not offer a card as the source.
   function sourceAccounts() {
@@ -855,97 +855,97 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function impactLine() {
     var d = state.draft, a = draftAmount();
     if (!a || d.split) return '';
-    if (d.kind === 'in' && d.cat === RTA_ID) return '<span class="hint">«Da assegnare» passa da ' + f(CAT[RTA_ID].avail) + ' a ' + f(CAT[RTA_ID].avail + a) + '.</span>';
+    if (d.kind === 'in' && d.cat === RTA_ID) return '<span class="hint">“Unassigned” goes from ' + f(CAT[RTA_ID].avail) + ' to ' + f(CAT[RTA_ID].avail + a) + '.</span>';
     if (d.kind === 'transfer') {
       var acc = ACC[d.transfer];
       if (!acc) return '';
       if (d.dir === 'in') {
-        if (acc.onBudget) return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
+        if (acc.onBudget) return '<span class="hint">Between two on-budget accounts: no effect on categories.</span>';
         var into = CAT[d.cat];
         if (!into) return '';
-        // Income counts only from its own date (#650, #700): into «Da assegnare» with a date after
+        // Income counts only from its own date (#650, #700): into “Unassigned” with a date after
         // today, the hint says on which day the money comes in instead of the from and to.
-        if (d.cat === RTA_ID && d.date > TODAY_ISO) return '<span class="hint">I soldi entrano in «Da assegnare» il ' + dLabel(d.date) + '.</span>';
-        return '<span class="hint">I soldi entrano nel budget: ' + (d.cat === RTA_ID ? '«Da assegnare»' : esc(into.name)) + ' passa da ' + f(into.avail) + ' a ' + f(into.avail + a) + '.</span>';
+        if (d.cat === RTA_ID && d.date > TODAY_ISO) return '<span class="hint">The money comes into “Unassigned” on ' + dLabel(d.date) + '.</span>';
+        return '<span class="hint">The money comes into the budget: ' + (d.cat === RTA_ID ? '“Unassigned”' : esc(into.name)) + ' goes from ' + f(into.avail) + ' to ' + f(into.avail + a) + '.</span>';
       }
-      if (acc.type === 'credit') return '<span class="hint">Paga la carta: scala dalla categoria di pagamento Visa, non tocca le altre categorie.</span>';
-      if (!acc.onBudget) return d.cat ? '<span class="hint">I soldi escono dal budget: ' + esc(CAT[d.cat].name) + ' passa da ' + f(CAT[d.cat].avail) + ' a ' + f(CAT[d.cat].avail - a) + '.</span>' : '<span class="hint warn">Il conto è fuori budget: scegli la categoria da cui escono i soldi.</span>';
-      return '<span class="hint">Tra due conti in budget: nessun effetto sulle categorie.</span>';
+      if (acc.type === 'credit') return '<span class="hint">Pays the card: it comes out of the Visa payment category and does not touch the other categories.</span>';
+      if (!acc.onBudget) return d.cat ? '<span class="hint">The money leaves the budget: ' + esc(CAT[d.cat].name) + ' goes from ' + f(CAT[d.cat].avail) + ' to ' + f(CAT[d.cat].avail - a) + '.</span>' : '<span class="hint warn">The account is off budget: choose the category the money leaves from.</span>';
+      return '<span class="hint">Between two on-budget accounts: no effect on categories.</span>';
     }
     var c = CAT[d.cat];
     if (!c || d.cat === RTA_ID) return '';
     var before = c.avail, after = c.avail + (d.kind === 'out' ? -a : a);
     if (d.id) { var old = TXS.filter(function (t) { return t.id === d.id; })[0]; if (old && old.cat === d.cat) after -= old.amount; }
-    return '<span class="hint' + (after < 0 ? ' bad' : '') + '">Disponibile in ' + esc(c.name) + ': ' + f(before) + ' → ' + f(after) + (after < 0 ? ', la categoria sarà sforata' : '') + '.</span>';
+    return '<span class="hint' + (after < 0 ? ' bad' : '') + '">Available in ' + esc(c.name) + ': ' + f(before) + ' → ' + f(after) + (after < 0 ? ', so the category will be overspent' : '') + '.</span>';
   }
   function editorHtml() {
     var d = state.draft;
     var isNew = !d.id;
     if (d.locked) {
       var t = TXS.filter(function (x) { return x.id === d.id; })[0];
-      return '<button type="button" class="plain closer" data-close="1">× Chiudi</button>' +
-        '<div><span class="where">Transazione riconciliata</span><h4>' + esc(t.payee) + '</h4></div>' +
-        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ' 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
-        '<div class="locknote">Fa parte della riconciliazione del 5 settembre, quando il saldo del conto è stato confrontato con quello della banca. Per non rompere quel confronto è bloccata: sbloccala solo se la banca l’ha davvero registrata in modo diverso.</div>' +
-        '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Sblocca e modifica</button></div>';
+      return '<button type="button" class="plain closer" data-close="1">× Close</button>' +
+        '<div><span class="where">Reconciled transaction</span><h4>' + esc(t.payee) + '</h4></div>' +
+        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
+        '<div class="locknote">It is part of the September 5 reconciliation, when the account\'s balance was compared with the bank\'s. It is locked so that comparison stays intact; unlocking it changes a balance the bank already confirmed.</div>' +
+        '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Unlock</button></div>';
     }
-    var kinds = [['out', 'Uscita'], ['in', 'Entrata'], ['transfer', 'Trasferimento']];
-    var h = '<button type="button" class="plain closer" data-close="1">× Chiudi</button>' +
-      '<div><span class="where">Conto corrente</span><h4>' + (isNew ? 'Nuova transazione' : 'Modifica transazione') + '</h4></div>' +
-      '<div class="segs" role="radiogroup" aria-label="Tipo">' + kinds.map(function (k) {
+    var kinds = [['out', 'Outflow'], ['in', 'Inflow'], ['transfer', 'Transfer']];
+    var h = '<button type="button" class="plain closer" data-close="1">× Close</button>' +
+      '<div><span class="where">Checking</span><h4>' + (isNew ? 'New transaction' : 'Edit transaction') + '</h4></div>' +
+      '<div class="segs" role="radiogroup" aria-label="Kind">' + kinds.map(function (k) {
         return '<label><input type="radio" name="kind" value="' + k[0] + '" data-df="kind" id="kind-' + k[0] + '"' + (d.kind === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>' +
-      '<div class="two"><div class="field"><label for="tx-date">Data</label><input type="date" id="tx-date" data-df="date" value="' + d.date + '"></div>' +
-      '<div class="field"><label for="tx-amt">Importo</label><span class="money-in"><input type="text" inputmode="decimal" id="tx-amt" data-df="amountStr" value="' + esc(d.amountStr) + '" placeholder="0,00"><span>€</span></span></div></div>';
+      '<div class="two"><div class="field"><label for="tx-date">Date</label><input type="date" id="tx-date" data-df="date" value="' + d.date + '"></div>' +
+      '<div class="field"><label for="tx-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="tx-amt" data-df="amountStr" value="' + esc(d.amountStr) + '" placeholder="0.00"><span>€</span></span></div></div>';
     if (d.kind === 'transfer') {
-      var dirs = [['out', 'Verso un altro conto'], ['in', 'Da un altro conto']];
-      h += '<div class="segs" role="radiogroup" aria-label="Direzione">' + dirs.map(function (k) {
+      var dirs = [['out', 'To another account'], ['in', 'From another account']];
+      h += '<div class="segs" role="radiogroup" aria-label="Direction">' + dirs.map(function (k) {
         return '<label><input type="radio" name="dir" value="' + k[0] + '" data-df="dir" id="dir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>';
-      h += '<div class="field"><label for="tx-acc">' + (d.dir === 'in' ? 'Dal conto' : 'Verso il conto') + '</label><select id="tx-acc" data-df="transfer"><option value="">Scegli un conto</option>' +
-        sourceAccounts().map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (fuori budget)') + '</option>'; }).join('') + '</select></div>';
-      if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.dir === 'in') + '</select></div>';
+      h += '<div class="field"><label for="tx-acc">' + (d.dir === 'in' ? 'From account' : 'To account') + '</label><select id="tx-acc" data-df="transfer"><option value="">Choose an account</option>' +
+        sourceAccounts().map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (off budget)') + '</option>'; }).join('') + '</select></div>';
+      if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Category</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.dir === 'in') + '</select></div>';
     } else {
-      h += '<div class="field"><label for="tx-payee">' + (d.kind === 'in' ? 'Da chi' : 'Beneficiario') + '</label><input type="text" id="tx-payee" data-df="payee" list="payees" value="' + esc(d.payee) + '" autocomplete="off">' +
+      h += '<div class="field"><label for="tx-payee">Payee</label><input type="text" id="tx-payee" data-df="payee" list="payees" value="' + esc(d.payee) + '" autocomplete="off">' +
         '<datalist id="payees">' + Object.keys(LAST_CAT).map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('') + '</datalist>' +
-        (LAST_CAT[d.payee] && isNew ? '<span class="hint">L’ultima volta: ' + esc(CAT[LAST_CAT[d.payee]].name) + '</span>' : '') + '</div>';
+        (LAST_CAT[d.payee] && isNew ? '<span class="hint">Last time: ' + esc(CAT[LAST_CAT[d.payee]].name) + '</span>' : '') + '</div>';
       if (!d.split) {
-        h += '<div class="field"><label for="tx-cat">Categoria</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.kind === 'in') + '</select></div>';
-        if (d.kind === 'out') h += '<button type="button" class="plain" style="align-self:flex-start" data-split="on">Suddividi su più categorie</button>';
+        h += '<div class="field"><label for="tx-cat">Category</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.kind === 'in') + '</select></div>';
+        if (d.kind === 'out') h += '<button type="button" class="plain" style="align-self:flex-start" data-split="on">Split across categories</button>';
       } else {
         var rem = splitRemaining();
-        h += '<div class="sec"><h5><span>Suddivisione su più categorie</span><button type="button" class="plain" data-split="off">Annulla la suddivisione</button></h5><div class="splits">' +
+        h += '<div class="sec"><h5><span>Split across categories</span><button type="button" class="plain" data-split="off">Cancel split</button></h5><div class="splits">' +
           d.lines.map(function (l, i) {
-            return '<div class="sline"><label class="sr" for="sl-cat-' + i + '">Categoria riga ' + (i + 1) + '</label><select id="sl-cat-' + i + '" data-line="' + i + '" data-lf="cat">' + catOptions(l.cat, false) + '</select>' +
-              '<span class="money-in"><label class="sr" for="sl-amt-' + i + '">Importo riga ' + (i + 1) + '</label><input type="text" inputmode="decimal" id="sl-amt-' + i + '" data-line="' + i + '" data-lf="amountStr" value="' + esc(l.amountStr) + '" placeholder="0,00"><span>€</span></span>' +
-              '<button type="button" class="rm" data-rmline="' + i + '" aria-label="Togli la riga ' + (i + 1) + '">×</button></div>';
+            return '<div class="sline"><label class="sr" for="sl-cat-' + i + '">Line ' + (i + 1) + ' category</label><select id="sl-cat-' + i + '" data-line="' + i + '" data-lf="cat">' + catOptions(l.cat, false) + '</select>' +
+              '<span class="money-in"><label class="sr" for="sl-amt-' + i + '">Line ' + (i + 1) + ' amount</label><input type="text" inputmode="decimal" id="sl-amt-' + i + '" data-line="' + i + '" data-lf="amountStr" value="' + esc(l.amountStr) + '" placeholder="0.00"><span>€</span></span>' +
+              '<button type="button" class="rm" data-rmline="' + i + '" aria-label="Remove line ' + (i + 1) + '">×</button></div>';
           }).join('') +
-          '<button type="button" class="plain" style="align-self:flex-start" data-addline="1">+ Aggiungi una riga</button>' +
-          '<div class="remain" id="remain"><span>Da ripartire</span><span class="n' + (rem !== 0 ? ' neg' : '') + '">' + f(rem) + '</span></div></div></div>';
+          '<button type="button" class="plain" style="align-self:flex-start" data-addline="1">+ Add a line</button>' +
+          '<div class="remain" id="remain"><span>Left to split</span><span class="n' + (rem !== 0 ? ' neg' : '') + '">' + f(rem) + '</span></div></div></div>';
       }
     }
     h += '<div id="impact">' + impactLine() + '</div>' +
-      '<div class="field"><label for="tx-memo">Nota</label><input type="text" id="tx-memo" data-df="memo" value="' + esc(d.memo) + '"></div>' +
-      '<label class="check"><input type="checkbox" data-df="cleared" id="tx-cleared"' + (d.cleared ? ' checked' : '') + '> Verificata con l’estratto conto</label>' +
+      '<div class="field"><label for="tx-memo">Memo</label><input type="text" id="tx-memo" data-df="memo" value="' + esc(d.memo) + '"></div>' +
+      '<label class="check"><input type="checkbox" data-df="cleared" id="tx-cleared"' + (d.cleared ? ' checked' : '') + '> Cleared against the bank</label>' +
       (state.errors.length ? '<div class="errs" role="alert">' + state.errors.map(esc).join('<br>') + '</div>' : '') +
-      '<div class="row-btns"><button type="button" class="btn primary" data-save="1">' + (isNew ? 'Aggiungi' : 'Salva') + '</button><button type="button" class="btn" data-close="1">Annulla</button>' +
-      (isNew ? '' : '<button type="button" class="plain danger" data-delete="1">Elimina</button>') + '</div>';
+      '<div class="row-btns"><button type="button" class="btn primary" data-save="1">' + (isNew ? 'Add' : 'Save') + '</button><button type="button" class="btn" data-close="1">Cancel</button>' +
+      (isNew ? '' : '<button type="button" class="plain danger" data-delete="1">Delete</button>') + '</div>';
     return h;
   }
   // The same checks the core does (ValidationError codes), shown in words.
   function validate() {
     var d = state.draft, errs = [], a = draftAmount();
-    if (a === null || a <= 0) errs.push('Scrivi un importo maggiore di zero, per esempio 12,50.');
+    if (a === null || a <= 0) errs.push('Enter an amount greater than zero.');
     if (d.kind === 'transfer') {
-      if (!d.transfer) errs.push(d.dir === 'in' ? 'Scegli il conto di provenienza.' : 'Scegli il conto di destinazione.');
-      else if (d.dir === 'out' && !ACC[d.transfer].onBudget && !d.cat) errs.push('Il conto è fuori budget: scegli la categoria da cui escono i soldi.');
+      if (!d.transfer) errs.push(d.dir === 'in' ? 'Choose a source account.' : 'Choose a destination account.');
+      else if (d.dir === 'out' && !ACC[d.transfer].onBudget && !d.cat) errs.push('The account is off budget: choose the category the money leaves from.');
     } else {
-      if (!d.payee.trim()) errs.push('Scrivi il beneficiario.');
+      if (!d.payee.trim()) errs.push('Enter the payee.');
       if (d.split) {
-        if (d.lines.some(function (l) { return !l.cat; })) errs.push('Ogni riga ha bisogno di una categoria.');
+        if (d.lines.some(function (l) { return !l.cat; })) errs.push('Every split line needs a category.');
         var rem = splitRemaining();
-        if (a && rem !== 0) errs.push('Le righe devono sommare all’importo: ' + (rem > 0 ? 'mancano ' + f(rem) : 'ci sono ' + f(-rem) + ' di troppo') + '.');
-      } else if (!d.cat) errs.push('Scegli una categoria.');
+        if (a && rem !== 0) errs.push('The split lines add up to ' + f(a - rem) + ', not ' + f(a) + '.');
+      } else if (!d.cat) errs.push('Choose a category.');
     }
     return errs;
   }
@@ -956,7 +956,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var t = d.id ? TXS.filter(function (x) { return x.id === d.id; })[0] : tx({});
     t.date = d.date; t.amount = sign * a; t.memo = d.memo; t.status = d.cleared ? 'cleared' : 'pending';
     delete t.transfer; delete t.splits; delete t.cat;
-    if (d.kind === 'transfer') { t.transfer = d.transfer; t.payee = ACC[d.transfer].type === 'credit' ? 'Pagamento della carta' : 'Trasferimento'; if (!ACC[d.transfer].onBudget) t.cat = d.cat; }
+    if (d.kind === 'transfer') { t.transfer = d.transfer; t.payee = ACC[d.transfer].type === 'credit' ? 'Card payment' : 'Transfer'; if (!ACC[d.transfer].onBudget) t.cat = d.cat; }
     else {
       t.payee = d.payee.trim();
       if (d.split) t.splits = d.lines.map(function (l) { return [l.cat, -parseAmount(l.amountStr)]; });
@@ -979,35 +979,35 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function refreshLive() {
     var imp = el('impact'); if (imp) imp.innerHTML = impactLine();
     var rem = el('remain');
-    if (rem) { var r = splitRemaining(); rem.innerHTML = '<span>Da ripartire</span><span class="n' + (r !== 0 ? ' neg' : '') + '">' + f(r) + '</span>'; }
+    if (rem) { var r = splitRemaining(); rem.innerHTML = '<span>Left to split</span><span class="n' + (r !== 0 ? ' neg' : '') + '">' + f(r) + '</span>'; }
   }
 
   // ---- Phone quick entry
   var qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null };
-  var QE_PAYEES = ['Supermercato', 'Distributore', 'Farmacia', 'Bar', 'Panificio', 'Trattoria'];
+  var QE_PAYEES = ['Supermarket', 'Gas station', 'Pharmacy', 'Café', 'Bakery', 'Trattoria'];
   var QE_CATS = ['spesa', 'carb', 'rist', 'farm', 'hobby', 'regali'];
-  function qeCents() { return qe.amt ? Math.round(Number(qe.amt.replace(',', '.')) * 100) : 0; }
+  function qeCents() { return qe.amt ? Math.round(Number(qe.amt) * 100) : 0; }
   function qeHtml() {
     var c = qeCents();
     if (qe.done) {
-      return '<div class="qe"><div class="qe-top"><h3>Spesa salvata</h3></div>' +
-        '<div class="toast"><b>' + f(-qe.done.amount) + '</b> da ' + esc(qe.done.payee) + ' con ' + esc(qe.done.acc) + '.<br>' + esc(qe.done.cat) + ' ora ha <b class="n">' + f(qe.done.after) + '</b> disponibili' + (qe.done.after < 0 ? ': è sforata.' : '.') + '</div>' +
-        '<button type="button" class="btn primary qe-save" data-qe="again">Un’altra spesa</button><button type="button" class="btn" data-qe="close">Chiudi</button></div>';
+      return '<div class="qe"><div class="qe-top"><h3>Expense saved</h3></div>' +
+        '<div class="toast"><b>' + f(-qe.done.amount) + '</b> from ' + esc(qe.done.payee) + ' with ' + esc(qe.done.acc) + '.<br>' + esc(qe.done.cat) + ' now has <b class="n">' + f(qe.done.after) + '</b> available.' + (qe.done.after < 0 ? ' It is overspent.' : '') + '</div>' +
+        '<button type="button" class="btn primary qe-save" data-qe="again">Another expense</button><button type="button" class="btn" data-qe="close">Close</button></div>';
     }
-    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', 'del'];
-    return '<div class="qe"><div class="qe-top"><button type="button" class="ph-back" data-qe="close">Annulla</button><h3>Nuova spesa</h3><span style="width:60px"></span></div>' +
-      '<div class="qe-amt n' + (c ? '' : ' zero') + '" aria-live="polite">' + (qe.amt ? qe.amt.replace('.', ',') + ' €' : '0,00 €') + '</div>' +
-      '<h5>Dove</h5><div class="chips2">' + QE_PAYEES.map(function (p) { return '<button type="button" class="chip2" data-qepayee="' + p + '" aria-pressed="' + (qe.payee === p) + '">' + p + '</button>'; }).join('') + '</div>' +
-      '<h5>Categoria</h5><div class="chips2">' + QE_CATS.map(function (id) {
+    var keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'];
+    return '<div class="qe"><div class="qe-top"><button type="button" class="ph-back" data-qe="close">Cancel</button><h3>New expense</h3><span style="width:60px"></span></div>' +
+      '<div class="qe-amt n' + (c ? '' : ' zero') + '" aria-live="polite">' + (qe.amt ? '€' + qe.amt : '€0.00') + '</div>' +
+      '<h5>Where</h5><div class="chips2">' + QE_PAYEES.map(function (p) { return '<button type="button" class="chip2" data-qepayee="' + p + '" aria-pressed="' + (qe.payee === p) + '">' + p + '</button>'; }).join('') + '</div>' +
+      '<h5>Category</h5><div class="chips2">' + QE_CATS.map(function (id) {
         return '<button type="button" class="chip2" data-qecat="' + id + '" aria-pressed="' + (qe.cat === id) + '">' + esc(CAT[id].name) + '<small>' + f(CAT[id].avail) + '</small></button>';
       }).join('') + '</div>' +
-      '<h5>Con</h5><div class="chips2">' + [['visa', 'Visa'], ['cc', 'Conto corrente'], ['cont', 'Contanti']].map(function (a) { return '<button type="button" class="chip2" data-qeacc="' + a[0] + '" aria-pressed="' + (qe.acc === a[0]) + '">' + a[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="keys">' + keys.map(function (k) { return '<button type="button" data-key="' + k + '"' + (k === 'del' ? ' aria-label="Cancella una cifra"' : '') + '>' + (k === 'del' ? '⌫' : k) + '</button>'; }).join('') + '</div>' +
-      '<button type="button" class="btn primary qe-save" data-qe="save"' + (c > 0 && qe.cat ? '' : ' disabled') + '>' + (c > 0 ? 'Salva ' + f(c) : 'Salva') + '</button></div>';
+      '<h5>With</h5><div class="chips2">' + [['visa', 'Visa'], ['cc', 'Checking'], ['cont', 'Cash']].map(function (a) { return '<button type="button" class="chip2" data-qeacc="' + a[0] + '" aria-pressed="' + (qe.acc === a[0]) + '">' + a[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="keys">' + keys.map(function (k) { return '<button type="button" data-key="' + k + '"' + (k === 'del' ? ' aria-label="Delete a digit"' : '') + '>' + (k === 'del' ? '⌫' : k) + '</button>'; }).join('') + '</div>' +
+      '<button type="button" class="btn primary qe-save" data-qe="save"' + (c > 0 && qe.cat ? '' : ' disabled') + '>' + (c > 0 ? 'Save ' + f(c) : 'Save') + '</button></div>';
   }
 
-  var LONGDAY = new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
-  var LONGDAY_Y = new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  var LONGDAY = new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  var LONGDAY_Y = new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   function phMatches(t) {
     if (ph.filter === 'pending' && t.status !== 'pending') return false;
     if (ph.filter === 'cleared' && t.status === 'pending') return false;
@@ -1019,40 +1019,40 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var b = balances(), rows = sorted().reverse().filter(phMatches), html = '', day = null, laterOpen = false;
     var laterShown = 0, laterTotal = rows.filter(isLater).length;
     rows.forEach(function (t) {
-      // The heading is "Più avanti" alone; its note follows it, outside it.
-      if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><h3>Più avanti</h3><p>Con data dopo oggi: non entrano nel saldo di oggi.</p></div>'; }
+      // The heading is "Later" alone; its note follows it, outside it.
+      if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><h3>Later</h3><p>Dated after today: not in today\'s balance.</p></div>'; }
       var laterEnd = isLater(t) && ++laterShown === laterTotal;
-      if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === TODAY_ISO ? 'Oggi' : (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
+      if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === TODAY_ISO ? 'Today' : (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
       var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       html += '<div class="ph-tx' + (laterEnd ? ' later-end' : '') + '"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
         '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
-        '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': cambia stato') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';
+        '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': change status') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';
     });
-    if (!rows.length) html = '<p class="hint" style="padding:16px 0">Nessuna transazione.</p>';
-    var chips = [['all', 'Tutte'], ['pending', 'In attesa'], ['cleared', 'Verificate']].map(function (c) { return '<button type="button" class="chip2" data-phfilter="' + c[0] + '" aria-pressed="' + (ph.filter === c[0]) + '">' + c[1] + '</button>'; }).join('');
-    return '<div class="ph-h"><button type="button" class="ph-back" data-phscreen="accounts">‹ Conti</button><button type="button" class="btn primary" data-phnew="1">+ Nuova</button></div>' +
-      '<div class="ph-h" style="margin-top:6px"><h3>Conto corrente</h3></div>' +
-      '<div class="ph-bal"><b class="n">' + f(b.total) + '</b><span class="n">verificato ' + f(b.cleared) + ' · in attesa ' + f(b.pending) + '</span></div>' +
+    if (!rows.length) html = '<p class="hint" style="padding:16px 0">No transactions.</p>';
+    var chips = [['all', 'All'], ['pending', 'Pending'], ['cleared', 'Cleared']].map(function (c) { return '<button type="button" class="chip2" data-phfilter="' + c[0] + '" aria-pressed="' + (ph.filter === c[0]) + '">' + c[1] + '</button>'; }).join('');
+    return '<div class="ph-h"><button type="button" class="ph-back" data-phscreen="accounts">‹ Accounts</button><button type="button" class="btn primary" data-phnew="1">+ New</button></div>' +
+      '<div class="ph-h" style="margin-top:6px"><h3>Checking</h3></div>' +
+      '<div class="ph-bal"><b class="n">' + f(b.total) + '</b><span class="n">cleared ' + f(b.cleared) + ' · pending ' + f(b.pending) + '</span></div>' +
       '<div class="ph-todo">' + todoHtml(2) + '</div>' +
-      '<label class="ph-search" style="margin-top:12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Cerca</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Cerca"></label>' +
+      '<label class="ph-search" style="margin-top:12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Search</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Search"></label>' +
       '<div class="ph-chips">' + chips + '</div>' + html;
   }
   function phAccountsHtml() {
     var b = balances();
-    return '<div class="ph-h"><h3>Conti</h3><button type="button" class="plain">+ Aggiungi</button></div>' +
-      '<div class="ph-day">In budget · ' + f(b.total + 800000 + 8540 - 64230) + '</div>' +
-      '<button type="button" class="ph-acc" data-phscreen="register"><span>Conto corrente<small>1 transazione in attesa</small></span><span class="n" style="display:flex;align-items:center;gap:6px">' + f(b.total) + ' ›</span></button>' +
-      '<div class="ph-acc static"><span>Conto risparmio</span><span class="n">' + f(800000) + '</span></div>' +
-      '<div class="ph-acc static"><span>Contanti</span><span class="n">' + f(8540) + '</span></div>' +
-      '<div class="ph-acc static"><span>Visa<small>carta di credito</small></span><span class="n neg">' + f(-64230) + '</span></div>' +
-      '<div class="ph-day">Fuori budget</div>' +
-      '<div class="ph-acc static"><span>Broker ETF</span><span class="n">' + f(4218000) + '</span></div>' +
-      '<div class="ph-acc static"><span>Mutuo casa</span><span class="n neg">' + f(-9630000) + '</span></div>' +
-      '<p class="hint">Nel bozzetto solo il Conto corrente ha i movimenti.</p>';
+    return '<div class="ph-h"><h3>Accounts</h3><button type="button" class="plain">+ Add</button></div>' +
+      '<div class="ph-day">On budget · ' + f(b.total + 800000 + 8540 - 64230) + '</div>' +
+      '<button type="button" class="ph-acc" data-phscreen="register"><span>Checking<small>1 pending transaction</small></span><span class="n" style="display:flex;align-items:center;gap:6px">' + f(b.total) + ' ›</span></button>' +
+      '<div class="ph-acc static"><span>Savings</span><span class="n">' + f(800000) + '</span></div>' +
+      '<div class="ph-acc static"><span>Cash</span><span class="n">' + f(8540) + '</span></div>' +
+      '<div class="ph-acc static"><span>Visa<small>credit card</small></span><span class="n neg">' + f(-64230) + '</span></div>' +
+      '<div class="ph-day">Off budget</div>' +
+      '<div class="ph-acc static"><span>ETF broker</span><span class="n">' + f(4218000) + '</span></div>' +
+      '<div class="ph-acc static"><span>Home mortgage</span><span class="n neg">' + f(-9630000) + '</span></div>' +
+      '<p class="hint">In this mockup only Checking has transactions.</p>';
   }
   function renderPhone() {
     var out;
-    if (state.draft && state.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-close="1" style="align-self:flex-start">‹ Conto corrente</button>' + editorHtml() + '</div>';
+    if (state.draft && state.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-close="1" style="align-self:flex-start">‹ Checking</button>' + editorHtml() + '</div>';
     else if (ph.screen === 'quick') out = qeHtml();
     else if (ph.screen === 'register') out = phRegisterHtml();
     else out = phAccountsHtml();
@@ -1106,8 +1106,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     // Phone
     if (d.key) {
       if (d.key === 'del') qe.amt = qe.amt.slice(0, -1);
-      else if (d.key === ',') { if (qe.amt.indexOf(',') < 0) qe.amt = (qe.amt || '0') + ','; }
-      else { var parts = qe.amt.split(','); if (!(parts[1] && parts[1].length >= 2) && qe.amt.length < 8) qe.amt += d.key; }
+      else if (d.key === '.') { if (qe.amt.indexOf('.') < 0) qe.amt = (qe.amt || '0') + '.'; }
+      else { var parts = qe.amt.split('.'); if (!(parts[1] && parts[1].length >= 2) && qe.amt.length < 8) qe.amt += d.key; }
       return renderPhone();
     }
     if (d.qepayee) { qe.payee = d.qepayee; qe.cat = LAST_CAT[d.qepayee] || qe.cat; return renderPhone(); }
@@ -1122,7 +1122,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.qe === 'save') {
       var cents = qeCents();
       CAT[qe.cat].avail -= cents;
-      qe.done = { amount: -cents, payee: qe.payee || 'Spesa', cat: CAT[qe.cat].name, after: CAT[qe.cat].avail, acc: { visa: 'Visa', cc: 'Conto corrente', cont: 'Contanti' }[qe.acc] };
+      qe.done = { amount: -cents, payee: qe.payee || 'Expense', cat: CAT[qe.cat].name, after: CAT[qe.cat].avail, acc: { visa: 'Visa', cc: 'Checking', cont: 'Cash' }[qe.acc] };
       if (qe.acc === 'cc') TXS.push(tx({ date: '2026-09-25', payee: qe.done.payee, amount: -cents, cat: qe.cat, status: 'pending' }));
       return renderAll();
     }
@@ -1147,7 +1147,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       else if (state.draft.cat === RTA_ID) state.draft.cat = '';
       renderPanel(); var rd = el('dir-' + t.value); if (rd) rd.focus(); return; }
     if (t.dataset.df === 'transfer') {
-      // From an off-budget account "Da assegnare" is preselected; going out to one it is not offered.
+      // From an off-budget account "Unassigned" is preselected; going out to one it is not offered.
       state.draft.transfer = t.value;
       if (offBudgetIn()) { if (!state.draft.cat) state.draft.cat = RTA_ID; }
       else if (state.draft.cat === RTA_ID) state.draft.cat = '';

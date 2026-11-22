@@ -7,10 +7,10 @@
   its name". Everything else on the budget month is unchanged and only sketched here for context
   (docs/ux/mockups/budget-month.html is the reference for it).
   Open it in a browser; no build step, no dependencies except the Bricolage Grotesque and Figtree
-  fonts from Google Fonts (the app itself self-hosts). UI copy is the Italian translation; English
-  stays the source language of the app.
+  fonts from Google Fonts (the app itself self-hosts). UI copy is English, the app's source language;
+  the Italian approved before #622 is kept at the commit recorded in docs/ux/README.md.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -120,36 +120,36 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, proposal for <b>#397</b>: add and rename categories and groups from the budget month itself. Each group row gets one quiet <b>⋯</b> menu (add a category to it, rename it, or go to Workspace settings to reorder or archive); <b>+ Aggiungi un gruppo</b> sits below the last group; a category's own row detail gets <b>Rinomina</b>. Names are typed inline, in place, never in a side sheet. Workspace settings → Categories stays the full management view. Only an owner or an editor sees any of it.</p>
+    <p><b>envelope</b>, proposal for <b>#397</b>: add and rename categories and groups from the budget month itself. Each group row gets one quiet <b>⋯</b> menu (add a category to it, rename it, or go to Workspace settings to reorder or archive); <b>+ Add a group</b> sits below the last group; a category's own row detail gets <b>Rename</b>. Names are typed inline, in place, never in a side sheet. Workspace settings → Categories stays the full management view. Only an owner or an editor sees any of it.</p>
   </div>
   <div class="switches">
-    <span>Larghezza</span>
-    <span class="seg"><button type="button" data-w="desk" aria-pressed="true">Desktop</button><button type="button" data-w="phone" aria-pressed="false">Telefono</button></span>
-    <span>Ruolo</span>
-    <span class="seg"><button type="button" data-r="editor" aria-pressed="true">Proprietario o chi può modificare</button><button type="button" data-r="reader" aria-pressed="false">Sola lettura</button></span>
+    <span>Width</span>
+    <span class="seg"><button type="button" data-w="desk" aria-pressed="true">Desktop</button><button type="button" data-w="phone" aria-pressed="false">Phone</button></span>
+    <span>Role</span>
+    <span class="seg"><button type="button" data-r="editor" aria-pressed="true">Owner or editor</button><button type="button" data-r="reader" aria-pressed="false">Read only</button></span>
   </div>
 
   <div class="frame" id="frame">
-    <header class="band"><span class="brand">envelope</span><span class="ws">Famiglia</span></header>
+    <header class="band"><span class="brand">envelope</span><span class="ws">Family</span></header>
     <div class="main" id="main"></div>
   </div>
 </div>
 
 <script>
 (function () {
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100); }
   function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // Sample data — the same household as budget-month.html, trimmed to two groups.
   var GROUPS = [
-    { id: 'g1', name: 'Casa e bollette', cats: [
-      { id: 'c1', name: 'Rata del mutuo', spent: 85000, given: 85000 },
-      { id: 'c2', name: 'Luce e gas', spent: 9640, given: 12000 }
+    { id: 'g1', name: 'Home and bills', cats: [
+      { id: 'c1', name: 'Mortgage payment', spent: 85000, given: 85000 },
+      { id: 'c2', name: 'Electricity and gas', spent: 9640, given: 12000 }
     ] },
-    { id: 'g2', name: 'Spese di tutti i giorni', cats: [
-      { id: 'c3', name: 'Spesa', spent: 64215, given: 60000 },
-      { id: 'c4', name: 'Trasporti', spent: 3200, given: 8000 }
+    { id: 'g2', name: 'Everyday spending', cats: [
+      { id: 'c3', name: 'Groceries', spent: 64215, given: 60000 },
+      { id: 'c4', name: 'Transport', spent: 3200, given: 8000 }
     ] }
   ];
 
@@ -169,7 +169,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
       '<label for="nm">' + label + '</label>' +
       '<input id="nm" autocomplete="off" value="' + esc(value) + '">' +
       '<button type="submit" class="btn primary">' + submit + '</button>' +
-      '<button type="button" class="btn" data-cancel="1">Annulla</button>' +
+      '<button type="button" class="btn" data-cancel="1">Cancel</button>' +
       (S.error ? '<p class="err" role="alert">' + S.error + '</p>' : '') +
       '</form>';
   }
@@ -178,14 +178,14 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     var avail = c.given - c.spent;
     var open = S.open === c.id;
     var html = '<button type="button" class="brow" data-open="' + c.id + '" aria-expanded="' + open + '">' +
-      '<span class="cn"><b>' + esc(c.name) + '</b><span class="spent">' + (c.given === 0 && c.spent === 0 ? 'Niente assegnato' : f(c.spent) + ' spesi di ' + f(c.given)) + '</span></span>' +
+      '<span class="cn"><b>' + esc(c.name) + '</b><span class="spent">' + (c.given === 0 && c.spent === 0 ? 'No activity' : f(c.spent) + ' spent of ' + f(c.given)) + '</span></span>' +
       '<span class="bar"><span class="tr' + (c.given === 0 ? ' empty' : '') + '">' + (c.given ? '<span class="sp" style="width:' + Math.min(100, Math.round(c.spent / c.given * 100)) + '%"></span>' : '') + '</span></span>' +
       '<span class="r"><span class="amt-cell n' + (avail === 0 ? ' zero' : '') + '">' + f(avail) + '</span></span></button>';
     if (open) {
       var renaming = S.editing && S.editing.kind === 'renameCat' && S.editing.cat === c.id;
-      html += '<div class="det">' + (renaming ? field('Nuovo nome della categoria', c.name, 'Salva') :
-        '<div class="det-h"><h4>' + esc(c.name) + '</h4>' + (canWrite() ? '<button type="button" class="plain" data-rename-cat="' + c.id + '">Rinomina</button>' : '') + '</div>') +
-        '<p class="rest">(il resto del dettaglio — assegnato, obiettivo, transazioni — resta quello di budget-month.html)</p></div>';
+      html += '<div class="det">' + (renaming ? field('New name for the category', c.name, 'Save') :
+        '<div class="det-h"><h4>' + esc(c.name) + '</h4>' + (canWrite() ? '<button type="button" class="plain" data-rename-cat="' + c.id + '">Rename</button>' : '') + '</div>') +
+        '<p class="rest">(the rest of the detail — assigned, target, transactions — stays as in budget-month.html)</p></div>';
     }
     return html;
   }
@@ -193,20 +193,20 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
   function groupBlock(g) {
     var sum = g.cats.reduce(function (s, c) { return s + c.given - c.spent; }, 0);
     var renaming = S.editing && S.editing.kind === 'renameGroup' && S.editing.group === g.id;
-    var html = renaming ? '<div style="margin-top:18px">' + field('Nuovo nome del gruppo', g.name, 'Salva') + '</div>' :
+    var html = renaming ? '<div style="margin-top:18px">' + field('New name for the group', g.name, 'Save') + '</div>' :
       '<div class="bgr"><span class="gh">' +
-        '<button type="button" class="chev" aria-label="Comprimi ' + esc(g.name) + '" aria-expanded="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>' +
+        '<button type="button" class="chev" aria-label="Close ' + esc(g.name) + '" aria-expanded="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>' +
         '<span class="gname">' + esc(g.name) + '</span>' +
-        (canWrite() ? '<button type="button" class="gmenu-btn" data-menu="' + g.id + '" aria-haspopup="menu" aria-expanded="' + (S.menu === g.id) + '" aria-label="Azioni per ' + esc(g.name) + '">⋯</button>' : '') +
+        (canWrite() ? '<button type="button" class="gmenu-btn" data-menu="' + g.id + '" aria-haspopup="menu" aria-expanded="' + (S.menu === g.id) + '" aria-label="Actions for ' + esc(g.name) + '">⋯</button>' : '') +
       '</span><span class="gsum n">' + f(sum) + '</span>' +
-      (S.menu === g.id ? '<div class="gmenu" role="menu" aria-label="Azioni per ' + esc(g.name) + '">' +
-        '<button type="button" role="menuitem" data-add-cat="' + g.id + '">Aggiungi una categoria</button>' +
-        '<button type="button" role="menuitem" data-rename-group="' + g.id + '">Rinomina il gruppo</button>' +
-        '<hr><button type="button" role="menuitem" class="quiet" data-settings="1">Riordina o archivia… (Impostazioni del workspace)</button>' +
+      (S.menu === g.id ? '<div class="gmenu" role="menu" aria-label="Actions for ' + esc(g.name) + '">' +
+        '<button type="button" role="menuitem" data-add-cat="' + g.id + '">Add a category</button>' +
+        '<button type="button" role="menuitem" data-rename-group="' + g.id + '">Rename group</button>' +
+        '<hr><button type="button" role="menuitem" class="quiet" data-settings="1">Reorder or archive… (Workspace settings)</button>' +
       '</div>' : '') + '</div>';
     html += g.cats.map(catRow).join('');
     if (S.editing && S.editing.kind === 'cat' && S.editing.group === g.id) {
-      html += field('Nome della nuova categoria in «' + esc(g.name) + '»', '', 'Aggiungi');
+      html += field('Name of the new category in ' + esc(g.name), '', 'Add');
     }
     return html;
   }
@@ -214,11 +214,11 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
   function render() {
     var frame = document.getElementById('frame');
     frame.className = 'frame' + (S.width === 'phone' ? ' phone' : '');
-    var html = '<p class="note">(timeline, «Da fare», barra degli strumenti: invariati, vedi budget-month.html)</p>';
+    var html = '<p class="note">(timeline, “To do”, toolbar: unchanged, see budget-month.html)</p>';
     html += GROUPS.map(groupBlock).join('');
     if (canWrite()) {
-      html += S.editing && S.editing.kind === 'group' ? '<div class="add-group">' + field('Nome del nuovo gruppo', '', 'Aggiungi') + '</div>' :
-        '<div class="add-group"><button type="button" class="plain" data-add-group="1">+ Aggiungi un gruppo</button></div>';
+      html += S.editing && S.editing.kind === 'group' ? '<div class="add-group">' + field('Name of the new group', '', 'Add') + '</div>' :
+        '<div class="add-group"><button type="button" class="plain" data-add-group="1">+ Add a group</button></div>';
     }
     if (S.toast) {
       html += '<div class="toast" role="status">' + S.toast + '</div>';
@@ -234,39 +234,39 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
   function submit(value) {
     var name = value.trim();
     var e = S.editing;
-    if (!name) { S.error = 'Scrivi un nome.'; render(); return; }
+    if (!name) { S.error = 'Type a name.'; render(); return; }
     if (e.kind === 'cat') {
       var g = GROUPS.filter(function (x) { return x.id === e.group; })[0];
-      if (nameTaken(g.cats, name)) { S.error = 'C’è già una categoria con questo nome in questo gruppo.'; render(); return; }
+      if (nameTaken(g.cats, name)) { S.error = 'Another category in this group already has this name.'; render(); return; }
       g.cats.push({ id: 'n' + (nextId++), name: name, spent: 0, given: 0 });
       // Stays open for the next one: adding two or three in a row is the common case.
-      S.error = null; S.toast = '«' + esc(name) + '» aggiunta a «' + esc(g.name) + '».';
+      S.error = null; S.toast = '“' + esc(name) + '” added to “' + esc(g.name) + '”.';
       render();
       return;
     }
     if (e.kind === 'group') {
-      if (nameTaken(GROUPS, name)) { S.error = 'C’è già un gruppo con questo nome.'; render(); return; }
+      if (nameTaken(GROUPS, name)) { S.error = 'Another group already has this name.'; render(); return; }
       var ng = { id: 'n' + (nextId++), name: name, cats: [] };
       GROUPS.push(ng);
       // A new group is empty: go straight on to its first category.
-      S.editing = { kind: 'cat', group: ng.id }; S.error = null; S.toast = 'Gruppo «' + esc(name) + '» aggiunto: ora la sua prima categoria.';
+      S.editing = { kind: 'cat', group: ng.id }; S.error = null; S.toast = 'Group “' + esc(name) + '” added: now its first category.';
       render();
       return;
     }
     if (e.kind === 'renameGroup') {
-      if (nameTaken(GROUPS, name, e.group)) { S.error = 'C’è già un gruppo con questo nome.'; render(); return; }
+      if (nameTaken(GROUPS, name, e.group)) { S.error = 'Another group already has this name.'; render(); return; }
       GROUPS.forEach(function (x) { if (x.id === e.group) x.name = name; });
     }
     if (e.kind === 'renameCat') {
       GROUPS.forEach(function (x) {
         if (x.cats.some(function (c) { return c.id === e.cat; })) {
-          if (nameTaken(x.cats, name, e.cat)) { S.error = 'C’è già una categoria con questo nome in questo gruppo.'; }
+          if (nameTaken(x.cats, name, e.cat)) { S.error = 'Another category in this group already has this name.'; }
           else x.cats.forEach(function (c) { if (c.id === e.cat) c.name = name; });
         }
       });
       if (S.error) { render(); return; }
     }
-    S.toast = 'Rinominato in «' + esc(name) + '».';
+    S.toast = 'Renamed to “' + esc(name) + '”.';
     stopEditing();
   }
 
@@ -279,7 +279,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     if (t.dataset.renameCat) { startEditing({ kind: 'renameCat', cat: t.dataset.renameCat }); return; }
     if (t.dataset.addGroup) { startEditing({ kind: 'group' }); return; }
     if (t.dataset.cancel) { stopEditing(); return; }
-    if (t.dataset.settings) { alert('Porta a Impostazioni del workspace → Categorie, invariata: lì si riordina e si archivia.'); S.menu = null; render(); return; }
+    if (t.dataset.settings) { alert('Goes to Workspace settings → Categories, unchanged: reordering and archiving happen there.'); S.menu = null; render(); return; }
     if (t.dataset.open) { S.open = S.open === t.dataset.open ? null : t.dataset.open; S.editing = null; S.menu = null; render(); return; }
   });
   document.getElementById('main').addEventListener('submit', function (ev) {
