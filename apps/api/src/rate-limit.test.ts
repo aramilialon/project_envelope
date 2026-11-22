@@ -212,5 +212,19 @@ describe("rate limits", () => {
       // Other writes still go through.
       assert.equal((await app.fastify.inject({ method: "POST", url: "/workspaces", headers: asA, payload: {} })).statusCode, 400);
     });
+
+    it("counts a price file import (#83) toward the same import limit", async () => {
+      const app = appWith({ RATE_LIMIT_USER_IMPORT_MAX: "1" });
+      const asA = { authorization: `Bearer ${tokenA}` };
+      const statementUrl = `/workspaces/${randomUUID()}/accounts/${randomUUID()}/import`;
+      const pricesUrl = `/workspaces/${randomUUID()}/instruments/${randomUUID()}/prices/import`;
+      const csv = { ...asA, "content-type": "text/csv" };
+      assert.notEqual((await app.fastify.inject({ method: "POST", url: pricesUrl, headers: csv, payload: "2026-01-02,1" })).statusCode, 429);
+      assertTooManyRequests(await app.fastify.inject({ method: "POST", url: pricesUrl, headers: csv, payload: "2026-01-02,1" }));
+      assertTooManyRequests(await app.fastify.inject({ method: "POST", url: statementUrl, headers: asA, payload: {} }));
+      // Setting one price is an ordinary write, not an import.
+      const putUrl = `/workspaces/${randomUUID()}/instruments/${randomUUID()}/prices/2026-01-02`;
+      assert.notEqual((await app.fastify.inject({ method: "PUT", url: putUrl, headers: asA, payload: { closeE6: 1 } })).statusCode, 429);
+    });
   });
 });

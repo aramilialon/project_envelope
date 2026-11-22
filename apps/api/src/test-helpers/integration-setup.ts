@@ -1,6 +1,6 @@
 /**
  * The setup almost every route-level integration test repeated by hand: a real
- * PostgreSQL-backed app, migrated, with the app role logged in; a throwaway Keycloak realm; a
+ * PostgreSQL-backed app, migrated, with the app role logged in; a Keycloak user of the file's own in the run's throwaway realm (#639); a
  * Fastify app built against both; one workspace; a real token for a user the global
  * auth/user-mapper preHandlers create on their first authenticated request (`GET /me`, which
  * needs no membership of its own); and that user granted a role in the workspace.

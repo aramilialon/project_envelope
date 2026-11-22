@@ -21,7 +21,8 @@ What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain 
 but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
 settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
 from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
-[Private instruments](#private-instruments)).
+[Private instruments](#private-instruments)), and so did a workspace's own closing prices, typed or
+imported from a CSV file (#83, [Prices](#prices)); positions do not use them yet.
 
 ## Contents
 
@@ -30,6 +31,7 @@ from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1
 - [Workspace tax country](#workspace-tax-country)
 - [Brokerage accounts and their tax regime](#brokerage-accounts-and-their-tax-regime)
 - [Instruments](#instruments)
+- [Prices](#prices)
 - [Exchange rates](#exchange-rates)
 - [Portfolios](#portfolios)
 - [Trades](#trades)
@@ -85,10 +87,18 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 
 | Status | Body | When |
 | --- | --- | --- |
-| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, or a trade body the route cannot read: the codes below, each with its `details` |
+| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
 | 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
-| 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
+| 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
+
+**Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
+misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
+`currency` on its `PATCH`), is 400 `unknown_field` with `{ "field" }` naming it, checked before
+anything else, so nothing is written (#713; the trades since #594). A field inside a nested object
+or list is named by its path: `from.fees` in a trade's leg, `taxRegimes[1].regim` in a regime
+history. A body that is not a JSON object (an array, a string) is 400 `invalid_body` on those
+same routes. Closing an account takes no field: send no body, or `{}`.
 
 Names and free text have length limits (`apps/api/README.md`, "Length limits on names and free
 text"): a portfolio's `name` 100 characters, its `purpose` and a trade's `memo` 500; over the
@@ -188,6 +198,7 @@ for their regimes right away.
 | Error | Details |
 | --- | --- |
 | 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
+| 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -239,6 +250,7 @@ The answer (201) is the account; the regime is read with `GET …/tax-regimes`:
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` (`""` when none) | given on another account type, or outside an `IT` workspace |
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime": "administered" }` | `administered` or `managed` without `domesticWithholdingAgent: true` |
 | 400 `invalid_date` | `{ "value" }` | `taxRegimeValidFrom` is not a real date |
+| 400 `unknown_field` | `{ "field" }` | a key other than `name`, `type`, `currency`, `onBudget`, `startingBalanceCents` and the three above (#713) |
 
 ### The withholding-agent flag
 
@@ -256,6 +268,7 @@ checks them (below).
 | 400 `withholding_agent_already_set` | `{ "field": "domesticWithholdingAgent" }` |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "domestic_withholding_requires_agent" }`: the flag would break that trade, the earliest by date then id |
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` |
+| 400 `unknown_field` | `{ "field": "name" }`: any key but `domesticWithholdingAgent`; this `PATCH` renames nothing (#713) |
 
 ### The regime history
 
@@ -302,6 +315,7 @@ change, and changes start on 1 January).
 | 400 `tax_regime_required` | `{ "field": "taxRegime", "taxCountry": "IT" }`: `PUT` with an empty list in an `IT` workspace |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code (`domestic_withholding_requires_agent` too, on a first regime) |
 | 400 `invalid_date` | `{ "value" }` |
+| 400 `unknown_field` | `{ "field": "validfrom" }` or, in a `PUT` entry, `{ "field": "taxRegimes[1].regim" }`: a key the body or the entry does not take (#713) |
 
 ### Closing a brokerage account
 
@@ -315,6 +329,7 @@ it. Otherwise nothing is closed (#703, #729):
 | Error | Details | When |
 | --- | --- | --- |
 | 409 `account_not_empty` | `{ "balanceCents": 0, "laterRows": { "count": 1, "firstDate": "2027-04-01" }, "holdsPositions": true, "scheduled": { "count": 1, "scheduledTransactionId": "0b9e6c7a-3f1d-4e52-9a8b-6c2d1e4f7a90", "nextDueDate": "2027-02-15" } }`: the balance as of today, in the account's currency; the rows dated after today (transactions, and trades that move no cash), with the earliest one's date (`null` when none); whether a security is held today; the scheduled transactions on it, with the id and next due date of the one due first (earliest next due date, then lowest id; both `null` when `count` is 0, #741) | any of those is not empty |
+| 400 `unknown_field` | `{ "field": "closedAt" }` | any key in the body: closing takes none (#713) |
 | 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
 | 404 | | the account is not found, or is already closed |
 
@@ -432,6 +447,77 @@ catalog's, never conflict, so a private instrument may be named like a shared on
 A trade names a private instrument by its `instrumentId` like any other; in another workspace the
 same id is `unknown_instrument`.
 
+## Prices
+
+An instrument without automatic quotes (some government bonds, funds, a private instrument such as
+real estate) gets its closing prices from the workspace itself: typed one date at a time, or
+imported from a CSV file. Such a price is the workspace's own (`"origin": "own"`): no other
+workspace sees it, and it never changes a shared price fetched from a provider (`"origin":
+"shared"`), which every workspace reads. On a date with both, the workspace's own price is the one
+that values the instrument ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md),
+"Precedence"). Every path below starts with `/workspaces/:workspaceId/instruments/:instrumentId/prices`.
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to", "value" }`, as on `GET /fx-rates` |
+| `PUT …/prices/:date` `{ "closeE6" }` | `owner`, `editor` | 201 with the price when the date had no own price; 200 when it replaced another close, or already had this one (then nothing is written) |
+| `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `{ "error": "price not found" }` when the date has no own price, even if it has a shared one, which is never deleted |
+| `POST …/prices/import?locale=` with a `text/csv` body | `owner`, `editor` | 200 `{ "inserted", "replaced", "unchanged", "from", "to" }`: how many dates were new, had another close, or already had this one, and the first and last date of the file |
+
+A price object:
+
+```json
+{ "priceDate": "2026-03-31", "closeE6": 101500000, "source": "manual", "origin": "own" }
+```
+
+`closeE6` is the close as quoted × 10^6, like a trade's `priceE6`: a bond quoted in percent of its
+nominal has its close in percent too. It is a safe integer, zero or more. `source` is `manual` for a
+typed price, `csv` for an imported one and `provider` for a shared one. The instrument must be a
+shared one or one of the workspace's private instruments: another workspace's private instrument,
+an unknown or a malformed id answers 404 `{ "error": "instrument not found" }`, the same body as
+every other route's missing row.
+
+**The file.** Two columns, the date (`YYYY-MM-DD`) and the close, read in the locale given by
+`?locale=` (`en`, a dot for decimals, when left out; a tag of at most 35 characters, with no
+extension such as `-u-` and no private-use `-x-` part): a close with a comma, such as `"101,50"` in
+`it-IT`, is quoted as in any CSV file. A first line reading `date,close` is a header and is skipped;
+blank lines are skipped. The body is `content-type: text/csv`, at most 1 MiB and 20,000 rows, and an
+import counts toward the per-user file import limit (`apps/api/README.md`, "Rate limits").
+
+```csv
+date,close
+2026-03-30,101.25
+2026-03-31,101.5
+```
+
+The file is stored whole or not at all. The first line that breaks a rule refuses it with 400
+`{ "error": "invalid_price_file", "details": { "line", "column", "reason" } }`, the line counted
+from 1 with the header and blank lines, the column 1 for the date and 2 for the close. `reason` is
+one of `missing_column`, `extra_column`, `invalid_date` (not a real date, or a date after today,
+then with `"max": "<today>"` in `details` too), `duplicate_date`
+(a date an earlier line gave), `invalid_price_format`, `invalid_price` (negative, or beyond the safe
+range) and `no_rows` (no price in the file). Importing the same file again answers every date as
+`unchanged`. An imported price replaces the workspace's own price of the same date, typed or
+imported, when its close differs.
+
+**Dates.** A price is dated today or earlier in the workspace's time zone, with no lower limit: a
+price from 1850 is accepted, and a price dated before an instrument's first buy values nothing. A
+later date is 400 `invalid_date` with `{ "field": "date", "max": "<today>" }`; in a file, the
+line's `reason` is `invalid_date` with `max`.
+
+| Code | When |
+| --- | --- |
+| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` is not a real date (`{ "field", "value" }`) or is given twice (`{ "field" }`), or `to` is before `from` (`{ "field": "to", "value" }`) |
+| `invalid_price` | `closeE6` is missing, not an integer, negative or beyond the safe range |
+| `unknown_field`, `invalid_body` | a `PUT` body with another field than `closeE6`, or one that is not a JSON object |
+| `invalid_price_file` | a line of the file breaks a rule (above) |
+| `too_many_rows` | the file has more than 20,000 rows (`{ "max": 20000 }`) |
+| `invalid_locale` | `?locale=` is not a locale tag, is longer than 35 characters, or has an extension or private-use part (`{ "value" }`) |
+
+A body of another type than `text/csv` on the import answers 415. Each `PUT` or `DELETE` that
+changes a price writes one entry in the workspace's audit log, and each import that changes any
+price one summary entry. Prices are not synced from devices yet.
+
 ## Exchange rates
 
 The euro reference rates the European Central Bank publishes every working day, shared by every
@@ -497,6 +583,8 @@ accounts its trades are on, and one account can hold several portfolios.
   name.
 - A portfolio with trades cannot be deleted: 409 `portfolio_has_trades`; archive it instead.
 - A body with no name, or with nothing to change, is a plain 400.
+- Any other key (`archive`, `archivedAt`, `id`, `workspaceId`) is 400 `unknown_field` with
+  `{ "field" }`, on create and on `PATCH` alike, and nothing is written (#713).
 
 ## Trades
 
