@@ -446,9 +446,9 @@ that values the instrument ([ADR 0019](adr/0019-market-data-prices-rates-and-ret
 
 | Request | Who | Answer |
 | --- | --- | --- |
-| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both |
+| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to" }`, as on `GET /fx-rates` |
 | `PUT …/prices/:date` `{ "closeE6" }` | `owner`, `editor` | 201 with the price when the date had no own price; 200 when it replaced another close, or already had this one (then nothing is written) |
-| `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `price_not_found` when the date has no own price, even if it has a shared one, which is never deleted |
+| `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `{ "error": "price not found" }` when the date has no own price, even if it has a shared one, which is never deleted |
 | `POST …/prices/import?locale=` with a `text/csv` body | `owner`, `editor` | 200 `{ "inserted", "replaced", "unchanged", "from", "to" }`: how many dates were new, had another close, or already had this one, and the first and last date of the file |
 
 A price object:
@@ -461,11 +461,12 @@ A price object:
 nominal has its close in percent too. It is a safe integer, zero or more. `source` is `manual` for a
 typed price, `csv` for an imported one and `provider` for a shared one. The instrument must be a
 shared one or one of the workspace's private instruments: another workspace's private instrument,
-an unknown or a malformed id answers 404 `instrument_not_found` (`{ "error":
-"instrument_not_found" }`; a malformed id answers 404 too, before the route runs).
+an unknown or a malformed id answers 404 `{ "error": "instrument not found" }`, the same body as
+every other route's missing row.
 
 **The file.** Two columns, the date (`YYYY-MM-DD`) and the close, read in the locale given by
-`?locale=` (`en`, a dot for decimals, when left out): a close with a comma, such as `"101,50"` in
+`?locale=` (`en`, a dot for decimals, when left out; a tag of at most 35 characters, with no
+extension such as `-u-` and no private-use `-x-` part): a close with a comma, such as `"101,50"` in
 `it-IT`, is quoted as in any CSV file. A first line reading `date,close` is a header and is skipped;
 blank lines are skipped. The body is `content-type: text/csv`, at most 1 MiB and 20,000 rows, and an
 import counts toward the per-user file import limit (`apps/api/README.md`, "Rate limits").
@@ -479,24 +480,26 @@ date,close
 The file is stored whole or not at all. The first line that breaks a rule refuses it with 400
 `{ "error": "invalid_price_file", "details": { "line", "column", "reason" } }`, the line counted
 from 1 with the header and blank lines, the column 1 for the date and 2 for the close. `reason` is
-one of `missing_column`, `extra_column`, `invalid_date`, `price_date_in_future`, `duplicate_date`
+one of `missing_column`, `extra_column`, `invalid_date` (not a real date, or a date after today,
+then with `"max": "<today>"` in `details` too), `duplicate_date`
 (a date an earlier line gave), `invalid_price_format`, `invalid_price` (negative, or beyond the safe
 range) and `no_rows` (no price in the file). Importing the same file again answers every date as
 `unchanged`. An imported price replaces the workspace's own price of the same date, typed or
 imported, when its close differs.
 
-**Dates.** A price is dated today or earlier in the workspace's time zone; a later date is 400
-`price_date_in_future` with `{ "max": "<today>" }` (in a file, the `reason` of `invalid_price_file`).
+**Dates.** A price is dated today or earlier in the workspace's time zone, with no lower limit: a
+price from 1850 is accepted, and a price dated before an instrument's first buy values nothing. A
+later date is 400 `invalid_date` with `{ "field": "date", "max": "<today>" }`; in a file, the
+line's `reason` is `invalid_date` with `max`.
 
 | Code | When |
 | --- | --- |
-| `invalid_date` | the date in the path, or `from`/`to` (with `{ "field" }`), is not a real `YYYY-MM-DD` date |
-| `price_date_in_future` | the date is after today in the workspace's time zone |
+| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` (`{ "field", "value" }`) is not a real date, or `to` is before `from` (`field` is `to`) |
 | `invalid_price` | `closeE6` is missing, not an integer, negative or beyond the safe range |
 | `unknown_field`, `invalid_body` | a `PUT` body with another field than `closeE6`, or one that is not a JSON object |
 | `invalid_price_file` | a line of the file breaks a rule (above) |
 | `too_many_rows` | the file has more than 20,000 rows (`{ "max": 20000 }`) |
-| `invalid_locale` | `?locale=` is not a locale tag (`{ "value" }`) |
+| `invalid_locale` | `?locale=` is not a locale tag, is longer than 35 characters, or has an extension or private-use part (`{ "value" }`) |
 
 A body of another type than `text/csv` on the import answers 415. Each `PUT` or `DELETE` that
 changes a price writes one entry in the workspace's audit log, and each import that changes any
