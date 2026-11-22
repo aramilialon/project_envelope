@@ -340,4 +340,43 @@ describe("a category on a transaction of an off-budget account (#710)", () => {
     assert.ok(firedResult, "the schedule fired");
     assert.deepEqual(await splitsOf(firedResult.transaction.id), [[null, -400]]);
   });
+
+  it("keeps one memo from a schedule of several splits, chosen by a rule and not by the splits' stored order", async () => {
+    // Splits have random ids and no position: the memo kept is the largest split's that has one,
+    // the memo text first on a tie, whatever order the splits were given in.
+    const broker = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Second broker', 'brokerage', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    const fees = await superuserPool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) SELECT $1, group_id, 'Broker fees', 3 FROM categories WHERE id = $2 RETURNING id",
+      [workspaceId, categoryId],
+    );
+    const feesId = fees.rows[0]!.id;
+    const splits = [
+      { categoryId: feesId, amountCents: 1500 },
+      { categoryId: feesId, amountCents: 900, memo: "Stamp duty" },
+      { categoryId: feesId, amountCents: 900, memo: "Account fee" },
+      { categoryId: feesId, amountCents: 400, memo: "Custody" },
+    ];
+    for (const [index, order] of [splits, [...splits].reverse()].entries()) {
+      const created = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/scheduled-transactions`,
+        headers: auth,
+        payload: { accountId: broker.rows[0]!.id, nextDueDate: `2026-09-2${index + 2}`, recurEvery: 1, recurUnit: "month", payee: "Broker", splits: order },
+      });
+      assert.equal(created.statusCode, 201, created.body);
+      const recorded = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/scheduled-transactions/${created.json().id as string}/record`,
+        headers: auth,
+      });
+      assert.equal(recorded.statusCode, 201, recorded.body);
+      assert.deepEqual(
+        recorded.json().transaction.splits.map((s: { categoryId: string | null; amountCents: number; memo: string | null }) => [s.categoryId, s.amountCents, s.memo]),
+        [[null, -3700, "Account fee"]],
+      );
+    }
+  });
 });
