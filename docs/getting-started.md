@@ -31,7 +31,7 @@ The playbook in [`infra/ansible`](../infra/ansible/README.md) performs sections 
 
 ```bash
 # apt update && apt install -y ansible-core git
-# git clone https://github.com/YOUR-USER/envelope.git /root/envelope
+# git clone https://github.com/aramilialon/project_envelope.git /root/envelope
 # cd /root/envelope/infra/ansible
 # cp inventory.example.ini inventory.ini && cp vars.example.yml vars.yml && nano vars.yml
 # ansible-playbook site.yml
@@ -118,18 +118,24 @@ Members of the `docker` group are effectively root on the VM: keep the group lim
 
 ## 6. Get the code
 
-The repository is private, so the VM needs its own SSH key registered with the Git hosting service:
+The repository is public, so cloning it over HTTPS needs no account or key:
+
+```bash
+$ git clone https://github.com/aramilialon/project_envelope.git ~/envelope
+```
+
+To push branches from the VM (as a contributor with write access, or to a fork of your own), give the VM its own SSH key registered with GitHub instead:
 
 ```bash
 $ ssh-keygen -t ed25519 -C "dev@envelope-dev"
 $ cat ~/.ssh/id_ed25519.pub
 ```
 
-On GitHub, add the printed key under **Settings → SSH and GPG keys**, then:
+On GitHub, add the printed key under **Settings → SSH and GPG keys**, then point the clone at the SSH address (`git@github.com:aramilialon/project_envelope.git`, or your fork's):
 
 ```bash
 $ ssh -T git@github.com          # should greet you by user name
-$ git clone git@github.com:YOUR-USER/envelope.git ~/envelope
+$ cd ~/envelope && git remote set-url origin git@github.com:aramilialon/project_envelope.git
 ```
 
 ## 7. pnpm, dependencies and first tests

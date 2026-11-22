@@ -1,6 +1,6 @@
 # envelope
 
-**A self-hosted budget and investment app for households.** Budget the money you already have, keep your portfolios on the targets you chose, and keep your data on your own server.
+**A self-hosted budget and investment app for households.** Budget the money you already have and keep your data on your own server; keeping your portfolios on the targets you chose is in progress.
 
 `envelope` is for a household that wants its everyday budget and its investments in one place, on a server it runs itself. The budget works only with money that has already arrived; the portfolio side records your trades and, once allocation is built, shows how far each part of your portfolio is from the allocation you chose. Your financial data stays on your server: no tracking, no third-party scripts or fonts. It leaves only through features you turn on yourself, such as notifications on your devices.
 
@@ -89,7 +89,7 @@ To look around, load the demo workspace ([docs/getting-started.md](docs/getting-
 | --- | --- |
 | `packages/core` | Pure domain logic: money, months, budget month, credit cards, transaction aggregation. No network or database |
 | `apps/api` | The server: Fastify, PostgreSQL through plain SQL, Keycloak for sign-in |
-| `apps/web` | The browser app: Vite, React, a PWA shell so far |
+| `apps/web` | The web app (Vite, React, an installable PWA): the budget month, accounts and registers, targets, scheduled transactions, import and reconciliation, workspace settings |
 | `apps/` | Next: `mobile` (Expo) |
 | `infra/` | `docker-compose` for local development (PostgreSQL, Keycloak) and the Ansible playbook for the development machine |
 | `docs/` | Design document, getting started, how-to guides, decision records, glossary, interface mockups |
