@@ -400,6 +400,11 @@ button{cursor:pointer}
 .ph-acc2.closed > .open{color:var(--ink-2)}
 .ph-act{min-height:44px;min-width:44px;padding:0 4px;border:0;background:transparent;color:var(--pen);font-weight:600}
 .ph-act.bad-t{color:var(--red-text)}
+.ph-acc2{position:relative}
+.ph-more{font-size:20px;line-height:1;color:var(--ink-2)}
+.ph-menu{position:absolute;right:0;top:calc(100% - 6px);z-index:5;display:flex;flex-direction:column;min-width:180px;padding:6px;border:1px solid var(--rule);border-radius:12px;background:var(--paper);box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.ph-menu button{min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;font:inherit;font-weight:600;color:var(--red-text)}
+.ph-menu button:hover{background:var(--paper-2)}
 .acc-ask{display:flex;flex-direction:column;gap:8px;margin:6px 0 10px;padding:14px 16px;border-radius:12px;background:var(--paper-2);border:1px solid var(--rule)}
 .acc-ask p{margin:0;color:var(--ink-2)}
 .ph-in .acc-ask .btn{min-height:44px}
@@ -479,7 +484,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry. Also: “+ Add account” (its currency, and a starting balance with its date, for every type); the off-budget “Dollar savings” register, in US dollars, where a transfer has no account to pick; the closed “Old post office account”, read only until it is reopened; on the phone's accounts list, “Close” asks first (Prepaid card) or says why not yet, and a closed account can be reopened.</p>
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry. Also: “+ Add account” (its currency, and a starting balance with its date, for every type); the off-budget “Dollar savings” register, in US dollars, where a transfer has no account to pick; the closed “Old post office account”, read only until it is reopened; on the phone's accounts list, “Close account”, in each row's “…” menu, asks first (Prepaid card) or says why not yet (Visa), and a closed account can be reopened. The desktop sidebar stands in for the Accounts list here: a closed account is in no account panel or picker, only under “Closed”.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -878,7 +883,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function otherCurrencyHint() {
     var out = ACCOUNTS.filter(function (a) { return (a[4] || 'EUR') !== 'EUR'; });
-    return out.length ? '<span class="hint">Not listed, in another currency: ' + out.map(function (a) { return esc(a[1]) + ' (' + a[4] + ')'; }).join(', ') + '. A transfer moves money between accounts in the same currency.</span>' : '';
+    return out.map(function (a) { return '<span class="hint">' + esc(a[1]) + ' isn\'t listed: it\'s in ' + CUR_PLAIN[a[4]] + ', and a transfer stays in one currency.</span>'; }).join('');
   }
   function offBudgetIn() { var d = state.draft; return d.kind === 'transfer' && d.dir === 'in' && !!ACC[d.transfer] && !ACC[d.transfer].onBudget; }
   // Effect on the category's available money, the way the budget month would show it after saving.
@@ -1007,6 +1012,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var SYM = { EUR: '€', USD: '$', CHF: 'CHF', GBP: '£' };
   var CUR_NAME = { EUR: 'Euro (EUR)', USD: 'US dollar (USD)', CHF: 'Swiss franc (CHF)', GBP: 'Pound sterling (GBP)' };
   var CUR_LONG = { USD: 'US dollars (USD)', CHF: 'Swiss francs (CHF)', GBP: 'pounds sterling (GBP)' };
+  var CUR_PLAIN = { USD: 'US dollars', CHF: 'Swiss francs', GBP: 'pounds sterling' };
   var OTHER = {
     // An off-budget account in US dollars (#717): every amount in its own currency, its starting
     // balance a plain balance row with no category (#778), and no other account in USD to transfer with.
@@ -1016,8 +1022,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     ] },
     // A closed account (#705): its history stays, read only, until it is reopened.
     old: { id: 'old', name: 'Old post office account', currency: 'EUR', onBudget: true, closed: '2026-09-12', rows: [
-      { id: 'o1', date: '2026-01-15', payee: 'Starting balance', amount: 30000, cat: 'Unassigned', status: 'locked', start: true },
-      { id: 'o2', date: '2026-09-12', payee: 'Transfer', amount: -30000, transfer: 'To Checking', status: 'locked' }
+      { id: 'o1', date: '2026-01-15', payee: 'Starting balance', amount: 30000, cat: 'Unassigned', status: 'cleared', start: true },
+      { id: 'o2', date: '2026-09-12', payee: 'Transfer', amount: -30000, transfer: 'to Checking', status: 'cleared' }
     ] }
   };
   var O = { draft: null, view: null, done: null };
@@ -1028,6 +1034,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (!a.onBudget) return '';
     if (r.cat === 'Unassigned') return '<span class="kind">Inflow</span>Unassigned';
     return esc(r.cat || '');
+  }
+  // The same, as one line of text (the phone, the opened row): "Transfer to Checking", and
+  // "Inflow · Unassigned", so a kind and a category never read as one phrase.
+  function ocatText(a, r) {
+    if (r.transfer) return 'Transfer ' + r.transfer;
+    if (!a.onBudget) return '';
+    if (r.cat === 'Unassigned') return 'Inflow · Unassigned';
+    return r.cat || '';
   }
   function oRows(a) {
     var run = 0;
@@ -1061,7 +1075,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     oRows(a).forEach(function (x) {
       var r = x.r;
       if (r.date !== day) { day = r.date; var q = day.split('-'); html += '<div class="ph-day">' + (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2]))) + '</div>'; }
-      var sub = ocat(a, r).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      var sub = ocatText(a, r);
       var inner = '<span class="who"><b>' + esc(r.payee) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><span class="amt n' + (r.amount > 0 ? ' in' : '') + '">' + fc(r.amount, a.currency) + '</span>';
       html += '<div class="ph-tx">' + (closed ? '<button type="button" class="open" data-oopen="' + r.id + '">' + inner + '</button>' : '<div class="open">' + inner + '</div>') +
         '<span class="st ' + r.status + '" role="img" aria-label="' + STATUS_LABEL[r.status] + '">' + ICON[r.status] + '</span></div>';
@@ -1076,7 +1090,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var a = OTHER[O.view.acc], r = a.rows.filter(function (x) { return x.id === O.view.id; })[0];
     return '<button type="button" class="plain closer" data-oclose="1" aria-label="Close the transaction">× Close</button>' +
       '<div><span class="where">' + esc(a.name) + '</span><h4>' + esc(r.payee) + '</h4></div>' +
-      '<div class="sec" style="gap:6px"><span class="big n">' + fc(r.amount, a.currency) + '</span><span class="hint">' + dLabel(r.date) + ', 2026' + (ocat(a, r) ? ' · ' + ocat(a, r).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '') + '</span></div>' +
+      '<div class="sec" style="gap:6px"><span class="big n">' + fc(r.amount, a.currency) + '</span><span class="hint">' + dLabel(r.date) + ', 2026' + (ocatText(a, r) ? ' · ' + ocatText(a, r) : '') + '</span></div>' +
       '<div class="locknote">This account is closed, so its transactions can\'t be changed. Reopen the account to change one.</div>';
   }
   // A new transaction in the dollar account: amounts in its currency, and a transfer with no account to pick.
@@ -1088,20 +1102,25 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         return '<label><input type="radio" name="okind" value="' + k[0] + '" data-of="kind" id="okind-' + k[0] + '"' + (d.kind === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>' +
       '<div class="two"><div class="field"><label for="o-date">Date</label><input type="date" id="o-date" data-of="date" value="' + d.date + '"></div>' +
-      '<div class="field"><label for="o-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="o-amt" data-of="amt" value="' + esc(d.amt) + '" placeholder="0.00"><span>' + SYM[a.currency] + '</span></span></div></div>';
+      '<div class="field"><label for="o-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="o-amt" data-of="amt" value="' + esc(d.amt) + '" placeholder="0.00"' + (d.kind === 'transfer' ? ' disabled' : '') + '><span>' + SYM[a.currency] + '</span></span></div></div>';
     if (d.kind === 'transfer') {
+      // No account shares this currency: nothing to pick, and the amount and memo wait until the
+      // move is entered as an outflow (or an inflow) instead.
       h += '<div class="segs" role="radiogroup" aria-label="Direction">' + [['out', 'To another account'], ['in', 'From another account']].map(function (k) {
         return '<label><input type="radio" name="odir" value="' + k[0] + '" data-of="dir" id="odir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>' +
         '<div class="field"><span class="flabel">' + (d.dir === 'in' ? 'From account' : 'To account') + '</span>' +
-        '<p class="none-note" id="o-none">No other account is in ' + CUR_LONG[a.currency] + '. A transfer moves money between two accounts in the same currency: enter this move as an outflow in one account and an inflow in the other, each in its own currency.</p></div>';
+        '<p class="none-note" id="o-none">No other account is in ' + CUR_PLAIN[a.currency] + ', so there is nothing to transfer ' + (d.dir === 'in' ? 'from' : 'to') + '. ' +
+        (d.dir === 'in' ? 'To move money from an account in another currency, add an outflow there and an inflow here.' : 'To move money to an account in another currency, add an outflow here and an inflow there.') + '</p></div>';
     } else {
       h += '<div class="field"><label for="o-payee">Payee</label><input type="text" id="o-payee" data-of="payee" value="' + esc(d.payee) + '" autocomplete="off"></div>' +
         '<span class="hint">An off-budget account\'s transactions have no category.</span>';
     }
-    h += '<div class="field"><label for="o-memo">Memo</label><input type="text" id="o-memo" data-of="memo" value="' + esc(d.memo) + '"></div>' +
+    h += '<div class="field"><label for="o-memo">Memo</label><input type="text" id="o-memo" data-of="memo" value="' + esc(d.memo) + '"' + (d.kind === 'transfer' ? ' disabled' : '') + '></div>' +
       (d.errs.length ? '<div class="errs" role="alert">' + d.errs.map(esc).join('<br>') + '</div>' : '') +
-      '<div class="row-btns"><button type="button" class="btn primary" data-osave="1"' + (d.kind === 'transfer' ? ' aria-disabled="true" aria-describedby="o-none"' : '') + '>Add</button><button type="button" class="btn" data-oclose="1">Cancel</button></div>';
+      '<div class="row-btns">' + (d.kind === 'transfer'
+        ? '<button type="button" class="btn primary" data-oaskind="' + (d.dir === 'in' ? 'in' : 'out') + '" aria-describedby="o-none">' + (d.dir === 'in' ? 'Add as an inflow' : 'Add as an outflow') + '</button>'
+        : '<button type="button" class="btn primary" data-osave="1">Add</button>') + '<button type="button" class="btn" data-oclose="1">Cancel</button></div>';
     return h;
   }
   function oSave() {
@@ -1126,16 +1145,21 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var v = parseAmount(neg ? s.slice(1) : s);
     return v === null ? null : neg ? -v : v;
   }
+  // The date is the balance at the end of that day, from January 1, 1900 up to today in the
+  // workspace's time zone; a date after today is refused (#778).
+  var DATE_MIN = '1900-01-01';
   function addImpact() {
     var card = A.type === 'credit_card', v = signed(A.amt);
     if (!A.amt.trim()) return card ? 'Optional: without it, the card starts with no debt.' : 'Optional: without it, the account starts at zero.';
     if (v === null) return '';
     if (card) return 'It shows as debt to cover in the card\'s payment category.';
     if (!aOn()) return 'An off-budget account does not count toward “Unassigned”.';
-    // Income counts from its own date (#700): a date after today says when it comes in.
-    if (A.date > TODAY_ISO) return 'It comes into “Unassigned” on ' + dLabel(A.date) + '.';
-    return '“Unassigned” goes from ' + f(CAT[RTA_ID].avail) + ' to ' + f(CAT[RTA_ID].avail + v) + '.';
+    if (!A.date || A.date > TODAY_ISO || A.date < DATE_MIN) return ''; // refused when added
+    // On budget: income on "Unassigned" in its date's month, counting from that month on (a
+    // negative one, an overdraft, lowers it the same way); earlier months are unchanged.
+    return 'It comes into “Unassigned” in the month of its date. This month, “Unassigned” goes from ' + f(CAT[RTA_ID].avail) + ' to ' + f(CAT[RTA_ID].avail + v) + '.';
   }
+  function inv(id) { return A.err && A.errAt === id ? ' aria-invalid="true"' : ''; }
   function addFormHtml() {
     var on = aOn(), card = A.type === 'credit_card', cur = aCur();
     return '<button type="button" class="plain closer" data-addclose="1" aria-label="Close the form">× Close</button>' +
@@ -1145,26 +1169,33 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         return '<label class="opt"><input type="radio" name="a-type" value="' + t[0] + '" data-af="type" id="a-type-' + t[0] + '"' + (A.type === t[0] ? ' checked' : '') + ' aria-describedby="a-type-h-' + t[0] + '"><span><b>' + t[1] + '</b><small id="a-type-h-' + t[0] + '" aria-hidden="true">' + t[2] + '</small></span></label>';
       }).join('') + '</fieldset>' +
       (A.type === 'savings' ? '<label class="check"><input type="checkbox" data-af="on" id="a-on"' + (A.on ? ' checked' : '') + '> On budget</label>' : '') +
+      // The currency is chosen once: it never changes after the account is added (#717).
       '<div class="field"><label for="a-cur">Currency</label>' + (on
-        ? '<input type="text" id="a-cur" value="Euro (EUR)" readonly aria-describedby="a-cur-h"><span class="hint" id="a-cur-h">An on-budget account is in the workspace\'s currency.</span>'
+        ? '<input type="text" id="a-cur" value="Euro (EUR)" readonly aria-describedby="a-cur-h"><span class="hint" id="a-cur-h">An on-budget account uses the workspace\'s currency, euro.</span>'
         : '<select id="a-cur" data-af="cur" aria-describedby="a-cur-h">' + ['EUR', 'USD', 'CHF', 'GBP'].map(function (c) { return '<option value="' + c + '"' + (cur === c ? ' selected' : '') + '>' + CUR_NAME[c] + '</option>'; }).join('') + '</select>' +
-          '<span class="hint" id="a-cur-h">An off-budget account can be in another currency; its amounts are shown in it.</span>') + '</div>' +
-      '<div class="field"><label for="a-amt">' + (card ? 'How much do you currently owe on this card?' : 'Starting balance') + '</label>' +
-        '<span class="money-in"><input type="text" inputmode="decimal" id="a-amt" data-af="amt" value="' + esc(A.amt) + '" placeholder="0.00" aria-describedby="a-impact"><span>' + SYM[cur] + '</span></span></div>' +
-      '<div class="field"><label for="a-date">Date</label><input type="date" id="a-date" data-af="date" value="' + A.date + '" aria-describedby="a-impact"></div>' +
+          '<span class="hint" id="a-cur-h">An off-budget account can use any currency. It can\'t be changed later.</span>') + '</div>' +
+      '<div class="field"><label for="a-amt">' + (card ? 'How much do you owe on this card?' : A.type === 'brokerage' ? 'Cash balance' : 'Starting balance') + '</label>' +
+        '<span class="money-in"><input type="text" inputmode="decimal" id="a-amt" data-af="amt" value="' + esc(A.amt) + '" placeholder="0.00"' + inv('a-amt') + ' aria-describedby="' + (A.type === 'brokerage' ? 'a-amt-h ' : '') + 'a-impact' + (A.err && A.errAt === 'a-amt' ? ' a-err' : '') + '"><span>' + SYM[cur] + '</span></span>' +
+        (A.type === 'brokerage' ? '<span class="hint" id="a-amt-h">Only the cash; add the securities you hold as a transfer in.</span>' : '') + '</div>' +
+      '<div class="field"><label for="a-date">' + (card ? 'Owed on' : 'Balance on') + '</label><input type="date" id="a-date" data-af="date" value="' + A.date + '" min="' + DATE_MIN + '" max="' + TODAY_ISO + '"' + inv('a-date') + ' aria-describedby="a-date-h a-impact' + (A.err && A.errAt === 'a-date' ? ' a-err' : '') + '">' +
+        '<span class="hint" id="a-date-h">' + (card ? 'What you owed at the end of that day.' : 'The balance at the end of that day.') + ' Transactions after it go in the register, by hand or by import.</span></div>' +
       '<p class="hint" id="a-impact" aria-live="polite" style="margin:0">' + addImpact() + '</p>' +
-      (A.err ? '<div class="errs" role="alert">' + esc(A.err) + '</div>' : '') +
+      (A.err ? '<div class="errs" role="alert" id="a-err">' + esc(A.err) + '</div>' : '') +
       '<div class="row-btns"><button type="button" class="btn primary" data-addsave="1">Add account</button><button type="button" class="btn" data-addclose="1">Cancel</button></div>';
   }
   function addSave() {
     var v = A.amt.trim() ? signed(A.amt) : 0, card = A.type === 'credit_card';
-    if (!A.name.trim()) A.err = 'Give the account a name.';
+    // Each refusal states its rule first, then the fact that breaks it.
+    A.errAt = 'a-amt';
+    if (!A.name.trim()) { A.err = 'Give the account a name.'; A.errAt = 'a-name'; }
     else if (v === null) A.err = 'Enter a valid amount.';
-    else if (card && v < 0) A.err = 'Enter what you owe as an amount of zero or more.';
+    else if (card && v < 0) A.err = 'What you owe on a card has to be zero or more: a card that starts in credit can\'t be added yet.';
+    else if (!A.date || A.date > TODAY_ISO) { A.err = 'The date has to be today or earlier: ' + (A.date ? dLabel(A.date) + ' is after today.' : 'enter one.'); A.errAt = 'a-date'; }
+    else if (A.date < DATE_MIN) { A.err = 'The date has to be January 1, 1900 or later.'; A.errAt = 'a-date'; }
     else A.err = '';
-    if (A.err) { renderAll(); var e = el('a-name'); if (e && !A.name.trim()) e.focus(); return; }
+    if (A.err) { renderAll(); var e = el(A.errAt); if (e) e.focus(); return; }
     var on = aOn();
-    ADDED.push({ id: 'a' + (++seq), name: A.name.trim(), on: on, card: card, cur: aCur(), bal: A.date > TODAY_ISO ? 0 : card ? -v : v, pay: 0 });
+    ADDED.push({ id: 'a' + (++seq), name: A.name.trim(), on: on, card: card, cur: aCur(), bal: card ? -v : v, pay: 0 });
     addDone = 'Added ' + A.name.trim() + '.';
     var where = A.where; A = null; renderAll();
     var back = el(where === 'ph' ? 'ph-add' : 'add-acc-desk'); if (back) back.focus();
@@ -1183,22 +1214,29 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     { id: 'mutuo', name: 'Home mortgage', on: false, bal: -9630000 },
     { id: 'old', name: 'Old post office account', on: true, other: 'old' }
   ];
-  var phAsk = null, phRefused = null;
+  var phAsk = null, phRefused = null, phMenu = null;
   function allPh() { return PH_ACC.concat(ADDED); }
   function closedOf(x) { return x.other ? OTHER[x.other].closed : x.closed || null; }
   function balOf(x) { return x.open ? balances().total : x.other ? obal(OTHER[x.other]) : x.bal; }
   function askHtml(x) {
     return '<div class="acc-ask" role="group" aria-labelledby="ask-h-' + x.id + '"><b id="ask-h-' + x.id + '">Close ' + esc(x.name) + '?</b>' +
-      '<p>Its balance today is <span class="n">' + fc(0, x.cur) + '</span>, and no transaction is dated after today.</p>' +
+      '<p>' + esc(x.name) + ' is at <span class="n">' + fc(0, x.cur) + '</span>, with nothing dated after today.</p>' +
       '<p>A closed account takes no new transactions, transfers or trades. Its past transactions stay, and still count in the months they belong to. It can be reopened.</p>' +
-      (x.card ? '<p>Its payment category, ' + esc(x.name) + ', takes no more assignments and leaves the budget from September on; earlier months keep it.</p>' : '') +
-      '<div class="row-btns"><button type="button" class="btn bad primary" data-phconfirm="' + x.id + '">Close the account</button><button type="button" class="btn" data-phcancel="' + x.id + '">Cancel</button></div></div>';
+      (x.card ? '<p>Its payment category, ' + esc(x.name) + ', stays in September and earlier months, and leaves the budget from October.</p>' : '') +
+      '<div class="row-btns"><button type="button" class="btn bad primary" data-phconfirm="' + x.id + '">Close ' + esc(x.name) + '</button><button type="button" class="btn" data-phcancel="' + x.id + '">Cancel</button></div></div>';
   }
   function refusalHtml(x) {
-    var reasons = [], b = balOf(x);
-    if (b !== 0) reasons.push('Its balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
-    if (x.card && x.pay !== 0) reasons.push('Its payment category\'s available amount is <span class="n">' + fc(x.pay) + '</span>.');
-    return '<div class="hint bad acc-refusal" role="alert"><p>This account can\'t be closed yet. Right now:</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
+    // The rule first, then only the facts that break it (settings-first-run.html draws the same).
+    var reasons = [], b = balOf(x), intro;
+    if (x.card) {
+      intro = esc(x.name) + ' can\'t be closed yet: its balance and its payment category\'s Available both need to be <span class="n">' + fc(0) + '</span>, with nothing assigned to that category in a later month. Right now:';
+      if (b !== 0) reasons.push(esc(x.name) + '\'s balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
+      if (x.pay !== 0) reasons.push('Its payment category, ' + esc(x.name) + ', has <span class="n">' + fc(x.pay) + '</span> available.');
+    } else {
+      intro = 'This account can\'t be closed yet. Right now:';
+      if (b !== 0) reasons.push('Its balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
+    }
+    return '<div class="hint bad acc-refusal" role="alert"><p>' + intro + '</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
   }
   function phRow(x) {
     var closed = closedOf(x), bal = balOf(x), opens = x.open || x.other;
@@ -1206,8 +1244,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var inner = '<span class="nm">' + esc(x.name) + (sub ? '<small>' + sub + '</small>' : '') + '</span><span class="n' + (bal < 0 ? ' neg' : '') + '">' + fc(bal, x.cur) + (opens ? ' ›' : '') + '</span>';
     var main = x.open ? '<button type="button" class="open" data-phscreen="register">' + inner + '</button>'
       : x.other ? '<button type="button" class="open" data-phother="' + x.other + '">' + inner + '</button>' : '<div class="open">' + inner + '</div>';
+    // Reopen is one tap; closing sits behind the row's "…" menu (#705).
     var act = closed ? '<button type="button" class="ph-act" data-phreopen="' + x.id + '" aria-label="Reopen ' + esc(x.name) + '">Reopen</button>'
-      : '<button type="button" class="ph-act bad-t" data-phclose="' + x.id + '" aria-label="Close ' + esc(x.name) + '"' + (phAsk === x.id ? ' aria-expanded="true"' : '') + '>Close</button>';
+      : '<button type="button" class="ph-act ph-more" data-phmore="' + x.id + '" aria-label="More for ' + esc(x.name) + '" aria-expanded="' + (phMenu === x.id) + '" aria-controls="ph-menu-' + x.id + '">…</button>' +
+        (phMenu === x.id ? '<div class="ph-menu" id="ph-menu-' + x.id + '"><button type="button" data-phclose="' + x.id + '">Close account</button></div>' : '');
     return '<div class="ph-acc2' + (closed ? ' closed' : '') + '">' + main + act + '</div>' + (phAsk === x.id ? askHtml(x) : '') + (phRefused === x.id ? refusalHtml(x) : '');
   }
   function phAccountsHtml() {
@@ -1351,19 +1391,25 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.oopen) { O.draft = null; O.view = { acc: inPh ? ph.acc : state.acc, id: d.oopen, where: inPh ? 'ph' : 'desk' }; renderAll(); if (inPh) el('ph').scrollTop = 0; return; }
     if (d.oclose) { O.draft = null; O.view = null; return renderAll(); }
     if (d.osave) return oSave();
+    if (d.oaskind) { O.draft.kind = d.oaskind; O.draft.errs = []; renderAll(); var oam = el('o-amt'); if (oam) oam.focus(); return; }
     if (d.reopen) {
       var ra = OTHER[d.reopen]; ra.closed = null; O.view = null;
-      O.done = { acc: ra.id, text: ra.name + ' is open again: it takes new transactions.' };
+      O.done = { acc: ra.id, text: ra.name + ' is open again.' };
       renderAll(); var nb = document.querySelector((inPh ? '#view-phone ' : '#main-other ') + '[data-onew]'); if (nb) nb.focus(); return;
     }
     if (d.phclose) {
       var px = allPh().filter(function (x) { return x.id === d.phclose; })[0];
-      O.done = null; addDone = null;
-      if (balOf(px) !== 0 || (px.card && px.pay !== 0)) { phAsk = null; phRefused = px.id; return renderPhone(); }
-      phRefused = null; phAsk = phAsk === px.id ? null : px.id; renderPhone();
+      O.done = null; addDone = null; phMenu = null;
+      if (balOf(px) !== 0 || (px.card && px.pay !== 0)) { phAsk = null; phRefused = px.id; renderPhone(); var pm = document.querySelector('[data-phmore="' + px.id + '"]'); if (pm) pm.focus(); return; }
+      phRefused = null; phAsk = px.id; renderPhone();
       var pc = document.querySelector('[data-phcancel="' + px.id + '"]'); if (pc) pc.focus(); return;
     }
-    if (d.phcancel) { phAsk = null; renderPhone(); var pb = document.querySelector('[data-phclose="' + d.phcancel + '"]'); if (pb) pb.focus(); return; }
+    if (d.phmore) {
+      phMenu = phMenu === d.phmore ? null : d.phmore; phAsk = null; phRefused = null; renderPhone();
+      var mi = phMenu && document.querySelector('[data-phclose="' + phMenu + '"]'); if (mi) mi.focus(); else { var mb = document.querySelector('[data-phmore="' + d.phmore + '"]'); if (mb) mb.focus(); }
+      return;
+    }
+    if (d.phcancel) { phAsk = null; renderPhone(); var pb = document.querySelector('[data-phmore="' + d.phcancel + '"]'); if (pb) pb.focus(); return; }
     if (d.phconfirm) {
       var cx = allPh().filter(function (x) { return x.id === d.phconfirm; })[0];
       setClosed(cx, TODAY_ISO); phAsk = null; addDone = null; O.done = { acc: null, text: cx.name + ' is closed.' };
@@ -1371,8 +1417,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     }
     if (d.phreopen) {
       var rx = allPh().filter(function (x) { return x.id === d.phreopen; })[0];
-      setClosed(rx, null); phRefused = null; addDone = null; O.done = { acc: null, text: rx.name + ' is open again: it takes new transactions.' };
-      renderAll(); var cb2 = document.querySelector('[data-phclose="' + rx.id + '"]'); if (cb2) cb2.focus(); return;
+      setClosed(rx, null); phRefused = null; addDone = null; O.done = { acc: null, text: rx.card ? rx.name + ' is open again, and its payment category is back in the budget.' : rx.name + ' is open again.' };
+      renderAll(); var cb2 = document.querySelector('[data-phmore="' + rx.id + '"]'); if (cb2) cb2.focus(); return;
     }
     if (b.id === 'tab-desk') { if (state.where === 'ph') { state.draft = null; renderAll(); } return show('desk'); }
     if (b.id === 'tab-phone') { if (state.where === 'desk') { state.draft = null; state.sel = null; renderAll(); } return show('phone'); }
@@ -1418,7 +1464,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.qeacc) { qe.acc = d.qeacc; return renderPhone(); }
     if (d.qe === 'again') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
     if (d.qe === 'close') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; ph.screen = 'register'; return renderPhone(); }
-    if (d.phscreen) { ph.screen = d.phscreen; O.done = null; phAsk = null; phRefused = null; state.draft = null; if (d.phscreen === 'quick') qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
+    if (d.phscreen) { ph.screen = d.phscreen; O.done = null; phAsk = null; phRefused = null; phMenu = null; state.draft = null; if (d.phscreen === 'quick') qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
     if (d.phfilter) { ph.filter = d.phfilter; return renderPhone(); }
     if (d.phopen) { state.where = 'ph'; state.draft = draftFrom(TXS.filter(function (x) { return x.id === d.phopen; })[0]); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
     if (d.phnew) { state.where = 'ph'; state.draft = draftFrom(null); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
@@ -1474,7 +1520,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state.draft && !el('view-desk').hidden) { state.sel = null; state.draft = null; renderAll(); }
     if (e.key === 'Escape' && !el('view-desk').hidden && (A || O.draft || O.view)) { var wasAdd = !!A; A = null; O.draft = null; O.view = null; renderAll(); if (wasAdd) el('add-acc-desk').focus(); }
-    if (e.key === 'Escape' && phAsk) { var k = phAsk; phAsk = null; renderPhone(); var pk = document.querySelector('[data-phclose="' + k + '"]'); if (pk) pk.focus(); }
+    if (e.key === 'Escape' && (phAsk || phMenu)) { var k = phAsk || phMenu; phAsk = null; phMenu = null; renderPhone(); var pk = document.querySelector('[data-phmore="' + k + '"]'); if (pk) pk.focus(); }
   });
   if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) show('phone');
   renderAll();
