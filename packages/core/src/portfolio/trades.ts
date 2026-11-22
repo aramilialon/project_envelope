@@ -4,6 +4,8 @@
  *
  * - `tradeCashCents` is the cash a trade moves on its account, the amount of
  *   its cash leg (ADR 0012): positive is cash into the account.
+ * - `checkTradeFigures` checks a trade's quantity, price, dividend gross and
+ *   split ratio, before anything is computed from them (#600, #662).
  * - `checkTradeEntry` checks what the user typed against the instrument,
  *   before the history is replayed. The broker's figures are authoritative:
  *   no amount is ever compared with an estimate of it.
@@ -16,7 +18,8 @@ import { ValidationError } from "../errors.ts";
 import type { Cents } from "../money.ts";
 import { assertAmount, assertCents } from "../money.ts";
 import type { InstrumentType } from "./instrument.ts";
-import type { PositionTrade } from "./positions.ts";
+import type { PositionTrade, TradeType } from "./positions.ts";
+import { assertPrice, assertQuantity } from "./quantity.ts";
 import type { LocalDate } from "../month.ts";
 import type { TaxRegime, TaxRegimeEntry } from "./tax-regime.ts";
 import { regimeAt } from "./tax-regime.ts";
@@ -96,6 +99,80 @@ export function tradeCashCents(trade: TradeAmounts): Cents {
       return 0 - trade.feesCents;
     case "split":
       return 0;
+  }
+}
+
+/** The figures of a trade that `checkTradeFigures` checks, as the request gives them. */
+export interface TradeFigures {
+  readonly type: TradeType;
+  /** Units × 10^8: a buy's or a sale's units, or the units a transfer moves (positive). */
+  readonly quantity: number;
+  /** Price × 10^6 of a buy or a sale. */
+  readonly price: number;
+  /** A dividend's gross income. */
+  readonly grossCents: number;
+  readonly splitFrom: number | null;
+  readonly splitTo: number | null;
+}
+
+/**
+ * Checks the figures everything else about a trade is computed from, so that the first error
+ * names the figure actually wrong (#600, #662): the quantity first, then the price, before a
+ * buy's or a sale's gross is computed from the two; a dividend's gross and a split's ratio. Its
+ * caller runs it before anything that reads them: the gross computed from quantity × price, the
+ * amount signs and caps of `checkTradeEntry`, the replay.
+ *
+ * | Type | Rule |
+ * | --- | --- |
+ * | buy | quantity > 0, price > 0 |
+ * | sell | quantity > 0, price ≥ 0 (0 closes a worthless position) |
+ * | dividend | gross not 0 (a negative gross is left to `checkTradeEntry`) |
+ * | transfer | quantity > 0, the units moved |
+ * | split | `splitFrom` and `splitTo` positive integers |
+ *
+ * @throws ValidationError
+ *   - "invalid_quantity" (details: label, value) for a quantity that is not a safe integer;
+ *   - "invalid_trade" (details: field) for a buy's or a sale's quantity of 0 or less (`quantity`),
+ *     a transfer's (`quantityE8`), a buy's price of 0 (`priceE6`), a dividend's gross of 0
+ *     (`grossCents`), a split's ratio that is not two positive integers (`splitFrom`, `splitTo`);
+ *   - "invalid_price" (details: label, value) for a buy's or a sale's price that is negative or
+ *     not a safe integer.
+ */
+export function checkTradeFigures(trade: TradeFigures): void {
+  switch (trade.type) {
+    case "buy":
+    case "sell":
+      assertQuantity(trade.quantity);
+      if (trade.quantity <= 0) {
+        throw new ValidationError("invalid_trade", `a ${trade.type} needs a positive quantity`, { field: "quantity" });
+      }
+      assertPrice(trade.price);
+      if (trade.type === "buy" && trade.price === 0) {
+        throw new ValidationError("invalid_trade", "a buy needs a positive price", { field: "priceE6" });
+      }
+      return;
+    case "transfer":
+      assertQuantity(trade.quantity);
+      if (trade.quantity <= 0) {
+        throw new ValidationError("invalid_trade", "a transfer moves a positive quantity", { field: "quantityE8" });
+      }
+      return;
+    case "dividend":
+      if (trade.grossCents === 0) {
+        throw new ValidationError("invalid_trade", "a dividend needs a gross income", { field: "grossCents" });
+      }
+      return;
+    case "split":
+      for (const field of ["splitFrom", "splitTo"] as const) {
+        const value = trade[field];
+        if (value === null || !Number.isSafeInteger(value) || value <= 0) {
+          throw new ValidationError("invalid_trade", "a split needs a ratio of two positive integers", { field });
+        }
+      }
+      return;
+    case "fee":
+    case "tax":
+      return;
   }
 }
 

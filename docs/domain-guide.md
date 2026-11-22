@@ -736,6 +736,42 @@ Worked examples, each one a test in `packages/core`:
   instrument on that date without its own split row. An account that no longer holds the
   instrument on that date needs no row.
 
+##### What each trade needs
+
+The figures a trade is worked out from are never assumed: a buy or a sale needs its quantity and
+its price, a dividend its gross (#600). A field left out is refused, naming it, rather than read as
+0, so a buy can never leave a position at zero cost by accident.
+
+| Trade | Needs | Price or gross |
+| --- | --- | --- |
+| Buy | instrument, quantity above 0, price | above 0 |
+| Sale | instrument, quantity above 0, price | 0 or more: 0 closes a worthless position |
+| Dividend or coupon | instrument, gross | above 0 |
+| Fee | the fee | above 0 |
+| Tax | its kind, the amount | above 0; a gain tax adjustment any amount but 0 |
+| Transfer | instrument, the units moved above 0, a leg out, a leg in or both | — (a transfer in from outside the app carries its cost) |
+| Split | instrument, the ratio from:to, two positive whole numbers | — |
+
+The gross of a buy or a sale stays optional: left out, it is quantity × price × the price factor,
+rounded once half away from zero; given, it is the broker's figure.
+
+- **A buy at €0 is refused.** Buying 10 units at a price of 0 is refused, naming the price.
+- **Shares received for free** are a transfer in from outside the app, carrying the cost the tax
+  rules give them.
+- **Bonus shares** are a split: one free share for every ten held is a split of 10:11.
+- **A spin-off** is not handled. The closest is a transfer in of the new shares at a cost of 0.
+- **A worthless position is sold at €0.** 100 units bought for €1,200.00, then delisted, are sold
+  at a price of 0: the gross is €0.00, the cost removed €1,200.00, and the realized result
+  −€1,200.00.
+- **A dividend without its gross is refused**, naming the gross, and so is a dividend of €0.
+
+**The first error names what is actually wrong** (#662). A trade is checked in a fixed order: its
+shape (only its own fields, of the right kind), the fields it needs, its quantity, its price
+(a dividend's gross, a split's ratio), then the gross computed from them, the signs and limits of
+its amounts, and last the history it joins. A buy of −5 units is refused for its quantity, not for
+the negative amount that −5 × the price would give. A trade recorded before these rules, at a price
+of 0, is checked again only when its quantity, price or gross is changed.
+
 #### The cash a trade moves
 
 Every trade that moves money writes it on the brokerage account as one transaction, its cash leg
