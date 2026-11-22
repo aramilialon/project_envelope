@@ -11,6 +11,7 @@ import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbClient, type DbPool } from "../db/pool.ts";
 import { RequestInProgressError } from "../errors.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
+import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { valueFingerprint } from "./fingerprint.ts";
 import { claimIdempotencyKey, storeIdempotentReply, type IdempotencyClaimOutcome } from "./repository.ts";
 import { createIdempotencyKeysSweepHandler, sweepWorkspaceIdempotencyKeys } from "./sweep-job.ts";
@@ -33,11 +34,15 @@ describe("idempotency keys and assignment batches, as envelope_app (#559)", () =
   let userId: string;
   let categoryA: string;
 
+  let database: IsolatedDatabase | undefined;
+
+  // A database of its own (#519, #638): the sweep job deletes expired keys in every workspace there is.
   before(async () => {
-    superuserPool = createPool(databaseUrl);
+    database = await createIsolatedDatabase(databaseUrl);
+    superuserPool = createPool(database.databaseUrl);
     await runMigrations(superuserPool, DEFAULT_MIGRATIONS_DIR);
     await ensureAppRoleLogin(superuserPool);
-    appPool = createPool(appConnectionString(databaseUrl));
+    appPool = createPool(appConnectionString(database.databaseUrl));
 
     workspaceA = randomUUID();
     workspaceB = randomUUID();
@@ -62,10 +67,12 @@ describe("idempotency keys and assignment batches, as envelope_app (#559)", () =
   });
 
   after(async () => {
-    await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[workspaceA, workspaceB]]);
-    await superuserPool.query("DELETE FROM users WHERE id = $1", [userId]);
-    await appPool.end();
-    await superuserPool.end();
+    try {
+      await appPool?.end();
+      await superuserPool?.end();
+    } finally {
+      await database?.drop();
+    }
   });
 
   /** A connection of envelope_app in an open transaction on `workspaceId`, as a request has. */
