@@ -17,7 +17,8 @@ the [domain guide](domain-guide.md#portfolios-and-rebalancing); the decisions ar
 checked against a running server.
 
 What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain or net result
-(milestone 0.2.1); no exchange rates, so a trade's instrument must be in its account's currency;
+(milestone 0.2.1); exchange rates are stored ([Exchange rates](#exchange-rates), milestone 0.2.1)
+but nothing converts with them yet, so a trade's instrument must be in its account's currency;
 no private instruments (no ISIN and no ticker, milestone 0.2.1); no settlement date on a trade; no
 import of a broker's statement; and no field of a trade is synced from devices yet.
 
@@ -28,6 +29,7 @@ import of a broker's statement; and no field of a trade is synced from devices y
 - [Workspace tax country](#workspace-tax-country)
 - [Brokerage accounts and their tax regime](#brokerage-accounts-and-their-tax-regime)
 - [Instruments](#instruments)
+- [Exchange rates](#exchange-rates)
 - [Portfolios](#portfolios)
 - [Trades](#trades)
 - [Positions](#positions)
@@ -383,6 +385,37 @@ case, an exact ticker first, then by name. At most 20 rows:
 `{ "minLength": 2 }`. There is no endpoint that lists the whole catalog.
 
 `GET /instruments/:instrumentId` returns one row, or 404.
+
+## Exchange rates
+
+The euro reference rates the European Central Bank publishes every working day, shared by every
+workspace like the catalog. The server fetches them by itself (see apps/api/README.md,
+"Exchange rates"); the API only reads what is stored, and no request ever fetches anything.
+
+`GET /fx-rates?quote=USD&from=2026-11-01&to=2026-11-30` — any signed-in user, member of a
+workspace or not. `quote` is required; `from` and `to` are optional and both included. The rates of
+that currency, oldest first, exactly as published:
+
+```json
+{
+  "base": "EUR",
+  "quote": "USD",
+  "rates": [
+    { "date": "2026-11-19", "rateE10": 10992000000 },
+    { "date": "2026-11-20", "rateE10": 10990000000 }
+  ]
+}
+```
+
+`rateE10` is the units of `quote` for one euro × 10^10 (1.0990 dollars for one euro is
+`10990000000`), never inverted ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md)). A
+rate exists only for days the ECB publishes one: no weekends, no TARGET holidays. A currency with no
+stored rate answers an empty list.
+
+| Error | Details |
+| --- | --- |
+| 400 `invalid_currency` | `{ "currency" }`: missing, not a currency code in use (upper case), or `EUR` itself |
+| 400 `invalid_date` | `{ "field", "value" }`: `from` or `to` not a `YYYY-MM-DD` calendar date, or `to` before `from` (`field` is `to`) |
 
 ## Portfolios
 
