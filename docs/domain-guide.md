@@ -442,6 +442,9 @@ Where the app converts an amount from one currency to another, it follows these 
   two currencies that are not the euro, the amount goes through the euro, each currency at its own
   most recent rate, and the conversion's rate date is the older of the two. The rate between the
   two is never rounded or stored.
+- **Rates are kept only for currencies an account can be in**; the ECB history's withdrawn
+  currencies (Cypriot pound, old Turkish lira…) are checked and left out. A kept rate above
+  900,719.9254740991 per euro cannot be stored and stops the whole load (#85).
 - **A converted amount is rounded once, half away from zero, to the target currency's smallest
   unit** (cents for the euro and the dollar, whole yen for the yen). A security's value is first
   its amount in its own currency (quantity × price, rounded once to that currency's smallest
