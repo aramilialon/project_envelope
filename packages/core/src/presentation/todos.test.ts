@@ -60,9 +60,37 @@ describe("computeTodos", () => {
     assert.deepEqual(items, [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 1_500, reservationShortfallCents: 500 }]);
   });
 
-  it("a category overspent with a card gets no reservation-shortfall item either: money assigned there would go to the card first", () => {
-    const over = category({ categoryId: "groceries", creditOverspending: 1_000, available: -1_500, reserved: 500 });
-    assert.deepEqual(computeTodos(input({ categories: [over] })), []);
+  it("a category overspent with a card and short of its reservation asks both, and its card that much less (#731)", () => {
+    // Restaurants: nothing assigned, €30 on the Visa, €10 scheduled in cash. The Visa owes €30.
+    const restaurants = category({ categoryId: "restaurants", creditOverspending: 3_000, available: -4_000, reserved: 1_000 });
+    const visa = category({ categoryId: "visa", uncovered: 3_000, owed: 3_000, overspendingBy: [{ categoryId: "restaurants", amount: 3_000 }] });
+    assert.deepEqual(computeTodos(input({ categories: [restaurants], paymentCategories: [visa] })), [
+      { kind: "reservationShortfall", categoryId: "restaurants", amountCents: 4_000, cardSpendingCents: 3_000 },
+    ]);
+
+    // The Visa owes €50 in all: it still asks the €20 not asked on Restaurants, and says where the rest is asked.
+    const more = { ...visa, uncovered: 5_000, owed: 5_000 };
+    assert.deepEqual(computeTodos(input({ categories: [restaurants], paymentCategories: [more] })), [
+      { kind: "reservationShortfall", categoryId: "restaurants", amountCents: 4_000, cardSpendingCents: 3_000 },
+      { kind: "cardDebtUncovered", categoryId: "visa", amountCents: 2_000, askedOnCategories: [{ categoryId: "restaurants", amountCents: 3_000 }] },
+    ]);
+  });
+
+  it("cash, card spending and a reservation: one cash item for all three, and the card asks that much less (#731)", () => {
+    const groceries = category({ categoryId: "groceries", cashOverspending: 500, creditOverspending: 1_000, available: -2_000, reserved: 500 });
+    const visa = category({ categoryId: "visa", available: -100, cashOverspending: 100, uncovered: 1_500, owed: 1_500, overspendingBy: [{ categoryId: "groceries", amount: 1_000 }] });
+    assert.deepEqual(computeTodos(input({ categories: [groceries], paymentCategories: [visa] })), [
+      { kind: "cashOverspending", categoryId: "groceries", amountCents: 2_000, reservationShortfallCents: 500, cardSpendingCents: 1_000 },
+      { kind: "cashOverspending", categoryId: "visa", amountCents: 600, askedOnCategories: [{ categoryId: "groceries", amountCents: 1_000 }] },
+    ]);
+  });
+
+  it("a category overspent with a card and no reservation shortfall asks nothing: its card asks it", () => {
+    const over = category({ categoryId: "groceries", creditOverspending: 1_000, available: -1_000 });
+    const visa = category({ categoryId: "visa", uncovered: 1_000, owed: 1_000, overspendingBy: [{ categoryId: "groceries", amount: 1_000 }] });
+    assert.deepEqual(computeTodos(input({ categories: [over], paymentCategories: [visa] })), [
+      { kind: "cardDebtUncovered", categoryId: "visa", amountCents: 1_000 },
+    ]);
   });
 
   it("a reservation fully covered by the current balance needs nothing", () => {
@@ -71,7 +99,7 @@ describe("computeTodos", () => {
   });
 
   it("a credit card's own uncovered debt is its own item, on the payment category", () => {
-    const items = computeTodos(input({ paymentCategories: [category({ categoryId: "visa-payment", uncovered: 12_000 })] }));
+    const items = computeTodos(input({ paymentCategories: [category({ categoryId: "visa-payment", uncovered: 12_000, owed: 12_000 })] }));
     assert.deepEqual(items, [{ kind: "cardDebtUncovered", categoryId: "visa-payment", amountCents: 12_000 }]);
   });
 
@@ -135,8 +163,12 @@ describe("amountNeededToCover", () => {
     assert.equal(amountNeededToCover(category({ available: -3_000, creditOverspending: 3_000 })), 0);
   });
 
-  it("card overspending and a reservation: still nothing, money assigned there would go to the card first", () => {
-    assert.equal(amountNeededToCover(category({ available: -4_000, creditOverspending: 3_000, reserved: 1_000 })), 0);
+  it("card overspending and a reservation: both, since money assigned there covers the card spending first (#731)", () => {
+    assert.equal(amountNeededToCover(category({ available: -4_000, creditOverspending: 3_000, reserved: 1_000 })), 4_000);
+  });
+
+  it("cash, card overspending and a reservation: all three (#731)", () => {
+    assert.equal(amountNeededToCover(category({ available: -2_000, cashOverspending: 500, creditOverspending: 1_000, reserved: 500 })), 2_000);
   });
 
   it("a reservation shortfall, when there is no overspending", () => {

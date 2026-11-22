@@ -36,8 +36,31 @@ describe("Todo (#326)", () => {
   it("says when a cash overspending item also asks for what is scheduled (#728)", () => {
     const items: TodoItem[] = [{ kind: "cashOverspending", categoryId: "groceries", amountCents: 3_500, reservationShortfallCents: 3_000 }];
     renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" />);
-    expect(screen.getByText("overspent in cash and not enough for what is scheduled: cover it before the month ends")).toBeInTheDocument();
-    expect(screen.queryByText("overspent in cash: cover it before the month ends")).toBeNull();
+    expect(screen.getByText("overspent in cash and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money")).toBeInTheDocument();
+    expect(screen.queryByText("overspent in cash; if still uncovered when the month ends, it comes out of next month's unassigned money")).toBeNull();
+  });
+
+  it("says when a category asks its card spending with what is scheduled, and how much of a card's debt is asked there (#731)", () => {
+    const names = new Map([...categoryNameById, ["restaurants", "Restaurants"], ["visa", "Visa"], ["mc", "Mastercard"]]);
+    const items: TodoItem[] = [
+      { kind: "cashOverspending", categoryId: "groceries", amountCents: 2_000, reservationShortfallCents: 500, cardSpendingCents: 1_000 },
+      { kind: "reservationShortfall", categoryId: "restaurants", amountCents: 4_000, cardSpendingCents: 3_000 },
+      { kind: "cardDebtUncovered", categoryId: "visa", amountCents: 2_000, askedOnCategories: [{ categoryId: "restaurants", amountCents: 3_000 }] },
+      {
+        kind: "cashOverspending",
+        categoryId: "mc",
+        amountCents: 600,
+        askedOnCategories: [
+          { categoryId: "groceries", amountCents: 1_000 },
+          { categoryId: "restaurants", amountCents: 500 },
+        ],
+      },
+    ];
+    renderWithIntl(<Todo items={items} categoryNameById={names} money={money} locale="en" />);
+    expect(screen.getByText("overspent in cash and with a card, and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money")).toBeInTheDocument();
+    expect(screen.getByText("includes €30.00 spent with a card, covered first by money assigned here")).toBeInTheDocument();
+    expect(screen.getByText("€30.00 of the card's debt is included in what Restaurants still needs")).toBeInTheDocument();
+    expect(screen.getByText("€15.00 of the card's debt is included in what 2 categories still need")).toBeInTheDocument();
   });
 
   it("gives a reservation shortfall and uncovered card debt an amber dot", () => {
