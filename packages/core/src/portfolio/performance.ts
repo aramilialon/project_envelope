@@ -30,7 +30,9 @@
  * - **Returns**: the time-weighted return cut at every flow date and at each
  *   month end, and the money-weighted return, each over the month (a row) or
  *   over the whole range in one call (the totals), never by linking rounded
- *   figures. A month is always shorter than a year, so a row's returns are
+ *   figures. Both get the same cuts and test them for capital held: a month
+ *   (or a range) worth nothing at the end of every flow date and month end,
+ *   and at its start and end, has no return (`no_capital`), only its gain. A month is always shorter than a year, so a row's returns are
  *   the month's own figures; the totals' are yearly from a year on.
  *
  * Every amount is in the base currency's minor unit; anything that cannot be
@@ -386,7 +388,10 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
     }
     const startValue: Valuation = { date: start, valueCents: valueOf(start).valueCents };
     const endValue: Valuation = { date: end, valueCents: valueOf(end).valueCents };
-    const cuts = [...new Set([...dates, end])].sort().map((date) => ({ date, valueCents: valueOf(date).valueCents }));
+    // Cut at every flow date and every month end: the TWR links them, and both returns test them for capital held.
+    const monthEndCuts = monthEnds.filter((date) => date > start && date < end);
+    for (const date of monthEndCuts) missing.push(...valueOf(date).missing);
+    const cuts = [...new Set([...dates, ...monthEndCuts, end])].sort().map((date) => ({ date, valueCents: valueOf(date).valueCents }));
     // 0 − x, never −x: no income stays 0, not -0.
     const incomeCents = incomeFlowCents === null ? null : 0 - incomeFlowCents;
     let gainCents: Cents | null = null;
@@ -395,7 +400,7 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
       assertCents(gainCents, "gain");
     }
     const twr = returnFigure(timeWeightedReturn({ start: startValue, valuations: cuts, flows: periodFlows }));
-    const mwr = returnFigure(moneyWeightedReturn({ start: startValue, end: endValue, flows: periodFlows }));
+    const mwr = returnFigure(moneyWeightedReturn({ start: startValue, end: endValue, valuations: cuts, flows: periodFlows }));
     return { netContributionsCents, incomeCents, gainCents, twr, mwr, missing: distinctMissing(missing) };
   };
 

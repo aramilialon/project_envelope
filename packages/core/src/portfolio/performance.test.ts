@@ -453,7 +453,7 @@ describe("monthlyPerformance: why a return is unknown", () => {
     }
   });
 
-  it("a month after selling out, with only a fee and a dividend, has no capital and no solution", () => {
+  it("a month after selling out, with only a fee and a dividend, has no capital for either return", () => {
     // Domain expert, 2026-11-22: 10 units worth €1,000 on 31 August, sold for €1,010 on 10 September,
     // a €2 fee on 5 October and a €50 dividend on 20 October.
     const result = monthlyPerformance(
@@ -475,11 +475,135 @@ describe("monthlyPerformance: why a return is unknown", () => {
       [0, cents(2), cents(50), cents(48)],
     );
     assert.deepEqual([october?.twrE6, october?.twrUnknownReason], [null, "no_capital"]);
-    assert.deepEqual([october?.mwrE6, october?.mwrUnknownReason], [null, "no_solution"]);
+    // Nothing held at the end of any day October is valued on (#89): no_capital, no longer no_solution.
+    assert.deepEqual([october?.mwrE6, october?.mwrUnknownReason], [null, "no_capital"]);
     assert.equal(result.months[0]?.gainCents, cents(10));
     assert.equal(result.totals.twrE6, 10_000);
     assert.equal(result.totals.twrUnknownReason, null);
     assert.equal(result.totals.gainCents, cents(58));
+  });
+});
+
+describe("monthlyPerformance: nothing held (domain expert, #89)", () => {
+  const fee = (date: string, amount: number) => trade({ date, type: "fee", instrumentId: null, feesCents: cents(amount) });
+  const sell = (date: string, count: number, price: number, extra: Partial<PositionTrade> = {}) =>
+    trade({ date, type: "sell", instrumentId: ETF, quantity: units(count), price: e6(price), grossCents: cents(count * price), ...extra });
+  const figures = (row: { gainCents: number | null; twrE6: number | null; mwrE6: number | null; twrUnknownReason: string | null; mwrUnknownReason: string | null } | undefined) => [
+    row?.gainCents,
+    row?.twrE6,
+    row?.twrUnknownReason,
+    row?.mwrE6,
+    row?.mwrUnknownReason,
+  ];
+
+  it("a month with only a €5 fee shows a gain of −5.00 and no return, not −100%", () => {
+    const result = monthlyPerformance(input({ from: "2026-10", to: "2026-10", trades: [fee("2026-10-03", 5)] }));
+    assert.deepEqual(figures(result.months[0]), [cents(-5), null, "no_capital", null, "no_capital"]);
+    assert.deepEqual(figures(result.totals), [cents(-5), null, "no_capital", null, "no_capital"]);
+  });
+
+  it("a €5 fee and a €50 dividend with nothing held: +45.00 and no return, not +900%", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-10",
+        to: "2026-10",
+        trades: [
+          buy("2026-08-03", ETF, 10, 100),
+          sell("2026-09-10", 10, 101),
+          fee("2026-10-03", 5),
+          trade({ date: "2026-10-20", type: "dividend", instrumentId: ETF, grossCents: cents(50) }),
+        ],
+        priceCandidates: new Map([[ETF, prices({ "2026-08-03": 100 })]]),
+      }),
+    );
+    assert.deepEqual(figures(result.months[0]), [cents(45), null, "no_capital", null, "no_capital"]);
+  });
+
+  it("bought for €10,010 and sold for €9,980 on the same day: −30.00 and no return, not −100%", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-10",
+        to: "2026-10",
+        trades: [buy("2026-10-05", ETF, 100, 100, { feesCents: cents(10) }), sell("2026-10-05", 100, 99.9, { feesCents: cents(10) })],
+        priceCandidates: new Map([[ETF, prices({ "2026-10-05": 100 })]]),
+      }),
+    );
+    assert.deepEqual(figures(result.months[0]), [cents(-30), null, "no_capital", null, "no_capital"]);
+  });
+
+  it("bought for €10,000 on 5 October and sold for a net €10,100 on 20 October is held: 1.00% either way", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-10",
+        to: "2026-10",
+        trades: [buy("2026-10-05", ETF, 100, 100), sell("2026-10-20", 100, 101)],
+        priceCandidates: new Map([[ETF, prices({ "2026-10-05": 100 })]]),
+      }),
+    );
+    assert.deepEqual(figures(result.months[0]), [cents(100), 10_000, null, 10_000, null]);
+  });
+
+  it("a first buy today, €10,010 worth €10,000 this evening: −0.0999% for both, not −100%", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-11",
+        to: "2026-11",
+        today: "2026-11-15",
+        trades: [buy("2026-11-15", ETF, 100, 100, { feesCents: cents(10) })],
+        priceCandidates: new Map([[ETF, prices({ "2026-11-15": 100 })]]),
+      }),
+    );
+    assert.deepEqual(figures(result.months[0]), [cents(-10), -999, null, -999, null]);
+  });
+
+  it("held through 2024 for +10%, then nothing held through 2025: 10.00% a year for both, in either order", () => {
+    const heldFirst = monthlyPerformance(
+      input({
+        from: "2024-01",
+        to: "2025-12",
+        trades: [buy("2023-12-01", ETF, 100, 100), sell("2024-12-31", 100, 110)],
+        priceCandidates: new Map([[ETF, prices({ "2023-12-01": 100 })]]),
+      }),
+    );
+    assert.deepEqual(
+      [heldFirst.totals.gainCents, heldFirst.totals.twrE6, heldFirst.totals.twrAnnualized, heldFirst.totals.mwrE6, heldFirst.totals.mwrAnnualized],
+      [cents(1_000), 100_000, true, 100_000, true],
+    );
+    assert.deepEqual(figures(heldFirst.months[23]), [0, null, "no_capital", null, "no_capital"]);
+    const heldLast = monthlyPerformance(
+      input({
+        from: "2024-01",
+        to: "2025-12",
+        trades: [buy("2024-12-31", ETF, 100, 100)],
+        priceCandidates: new Map([[ETF, prices({ "2024-12-31": 100, "2025-12-31": 110 })]]),
+      }),
+    );
+    assert.deepEqual(
+      [heldLast.totals.gainCents, heldLast.totals.twrE6, heldLast.totals.twrAnnualized, heldLast.totals.mwrE6, heldLast.totals.mwrAnnualized],
+      [cents(1_000), 100_000, true, 100_000, true],
+    );
+  });
+
+  it("a €5 fee after the final sale: the range's MWR is about 0.95%, not no_solution, and the gain the months' sum", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-09",
+        to: "2026-11",
+        today: "2026-12-10",
+        trades: [buy("2026-09-01", ETF, 100, 100), sell("2026-09-30", 100, 101), fee("2026-10-15", 5)],
+        priceCandidates: new Map([[ETF, prices({ "2026-09-01": 100 })]]),
+      }),
+    );
+    // The figure returns.test.ts computes apart: −10,000 (1 + R) + 10,100 − 5 (1 + R)^(−15/29) = 0.
+    assert.deepEqual(figures(result.totals), [cents(95), 10_000, null, 9_502, null]);
+    assert.deepEqual(
+      result.months.map((row) => figures(row)),
+      [
+        [cents(100), 10_000, null, 10_000, null],
+        [cents(-5), null, "no_capital", null, "no_capital"],
+        [0, null, "no_capital", null, "no_capital"],
+      ],
+    );
   });
 });
 
