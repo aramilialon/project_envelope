@@ -27,10 +27,11 @@ from the months before M. M's unassigned money is the smallest of these figures.
 - money assigned ahead to a later month comes out of the month it was taken from;
 - but a later month's assignment paid for by that later month's own income is not blamed on M;
 - income dated after today counts nowhere until its date: it is expected income, not money
-  received. Spending dated after today does count against its category straight away, which errs
-  on the safe side. This holds for outflows only: money coming in with a category and dated after
-  today (a refund, a categorized transfer from the broker) counts in its category at once for now
-  (#668).
+  received. The same holds for every other amount coming in dated after today, split by split: a
+  refund, a categorized transfer in from the broker, the positive split of a receipt with a return
+  on it counts nowhere (not in its category, not in any month, and on a card it moves nothing
+  between the category and the card's payment category) until its date (#668). Spending dated
+  after today does count against its category straight away, which errs on the safe side.
 
 "From this month's money, assigned to later months" is later months' assignments that their own
 income does not pay for, charged to M; when it exceeds what M has, M's unassigned money is negative
@@ -52,6 +53,17 @@ income does not pay for, charged to M; when it exceeds what M has, M's unassigne
    €50 of groceries already entered for the 25th: November shows **€1,700** unassigned and
    Groceries €250 available. The €500 counts from the 27th on, in November and every later month,
    not before.
+6. €2,000 received in November, €300 assigned to Groceries and €100 to Household, and a €200
+   Groceries refund entered for 28 November: Groceries shows **€300** available until the 28th,
+   €500 from then on; unassigned money stays €1,600 throughout.
+7. A €100 receipt dated 25 November, split into €150 of Groceries and a €50 return to Household:
+   Groceries loses the €150 at once; Household gets the €50 only from the 25th.
+8. €2,000 received in November, €50 of it assigned to Groceries, €100 of groceries paid in cash
+   on 10 November and a €60 refund entered for the 28th: until the 28th, November closes with
+   Groceries at **−€50**, so December takes €50 of overspending from its unassigned money
+   (€1,900 instead of €1,950). From the 28th, November closes at +€10, December's Groceries
+   starts with €10 and its unassigned money is €1,950: money coming in dated after today changes
+   how past months close every day until its date.
 
 ### A category's own month
 
@@ -275,7 +287,8 @@ money goes; the off-budget leg never has a category.
   date on, so the form says on which day money dated after today comes into "Unassigned" rather
   than adding it now (#700). A real category can be chosen instead,
   for example to refill the envelope that funded the investment: it then goes into that category's
-  available, the same way a refund does (#598).
+  available, the same way a refund does (#598), and likewise only from its date on: the form says
+  on which day money dated after today comes into the category (#668).
 - **In from an off-budget account into an on-budget credit card:** it needs a real category, and is
   then read as a refund on the card. Without one it is refused (`card_income_not_supported`):
   income on a card is not modeled yet.
@@ -435,16 +448,19 @@ Across every feature above, one equation must always hold:
 unassigned money + every category's available + reserved + assigned to future months
   + this month's credit overspending
   = money in the on-budget cash accounts (cards excluded) at the end of the month,
-    less the income dated after today (not received yet)
+    less every positive split dated after today on those accounts (not received yet)
 ```
 
 that is, income received by the earlier of the end of the month and today, plus the activity up to
-the end of the month. It holds in every month, not only the current one.
+the end of the month, less the money coming in dated after today. "Every positive split" counts
+income (an inflow with no category), refunds and categorized transfers in from an off-budget
+account alike; a transfer between two on-budget accounts is not a split and stays in the balance.
+It holds in every month, not only the current one.
 
 So the money in the budget differs from today's on-budget balances ("Balances as of today") only by
-the transactions dated after today up to the end of the month: outflows and categorized inflows
-count in the budget straight away, while income (an inflow with no category, which becomes
-unassigned money) counts only once its date has come.
+the transactions dated after today up to the end of the month: spending counts in the budget
+straight away, while money coming in, with a category or without one, counts only once its date
+has come (#668).
 
 Every code path that moves money — assigning, spending, a transfer, a scheduled transaction firing,
 a card payment — has to keep this equation true, or the budget and the real accounts have quietly

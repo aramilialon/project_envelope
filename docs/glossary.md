@@ -9,7 +9,7 @@ What each term means, and its name in the code. How the interface writes it, in 
 | Unassigned | Money that has come in but is not assigned to a category yet | `unassigned` |
 | Category | An "envelope" of the budget: Groceries, Rent, Fun… | `categoryId` |
 | Assigned | Money put into a category for a month | `assigned`, `Assignment` |
-| Activity | Spending (negative) and refunds (positive) of a category in the month | `activity`, `Activity` |
+| Activity | Spending (negative) and refunds (positive) of a category in the month; a refund counts from its date on (#668) | `activity`, `Activity` |
 | Available | Carried over + assigned + activity; negative = overspent | `available` |
 | Carried over | Positive available balance from the previous month | `carriedOver` |
 | Cash overspending | The part of a negative category paid from cash accounts; taken from unassigned money the following month | `cashOverspending`, `overspentLastMonth` |

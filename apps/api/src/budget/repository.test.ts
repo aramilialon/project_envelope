@@ -468,4 +468,34 @@ describe("budget month repository: unassigned money counts only money already re
     assert.equal((await getBudgetMonth(pool, workspaceId, thisMonth)).unassigned, previous.thisMonth);
     assert.equal((await getBudgetMonth(pool, workspaceId, laterMonth)).unassigned, previous.laterMonth);
   });
+
+  it("a refund dated after the workspace's today counts nowhere until its date, while spending counts at once (#668)", async () => {
+    const group = await pool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Home', 1) RETURNING id",
+      [workspaceId],
+    );
+    const category = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Groceries', 1) RETURNING id",
+      [workspaceId, group.rows[0]!.id],
+    );
+    const groceries = category.rows[0]!.id;
+    const today = await getCurrentDate(pool, workspaceId);
+    const later = addDays(today, 3);
+    const laterMonth = later.slice(0, 7);
+    const available = async () =>
+      (await getBudgetMonth(pool, workspaceId, laterMonth)).categories.find((c) => c.categoryId === groceries)?.available;
+    const groceriesTx = (occurredAt: string, amountCents: number) =>
+      createTransaction(pool, { workspaceId, accountId: checkingAccountId, occurredAt, splits: [{ categoryId: groceries, amountCents }] });
+
+    await income(today, 100_000);
+    await groceriesTx(later, -3_000);
+    const spent = await available();
+    assert.ok(spent !== undefined && spent < 0, "spending dated after today counts at once");
+
+    await groceriesTx(later, 2_000);
+    assert.equal(await available(), spent, "the refund dated after today counts nowhere yet");
+
+    await groceriesTx(today, 1_000);
+    assert.equal(await available(), spent + 1_000, "a refund dated today counts");
+  });
 });
