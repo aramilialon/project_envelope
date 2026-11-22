@@ -381,6 +381,12 @@ describe("writes to a closed account (#729)", () => {
       );
     });
 
+    it("refuses a type-only edit as account_closed, with the trade's own type or another (#596)", async () => {
+      // Checked before the type is: neither "nothing to change" nor invalid_trade.
+      await assertRefused(() => inject("PATCH", `/trades/${sellId}`, { type: "sell" }));
+      await assertRefused(() => inject("PATCH", `/trades/${sellId}`, { type: "buy" }));
+    });
+
     it("still answers a sell beyond the holdings on an open account with insufficient_quantity (#741)", async () => {
       const before = await snapshot();
       const response = await inject("POST", "/trades", {

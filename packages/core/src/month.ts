@@ -119,3 +119,87 @@ export function advanceDate(date: LocalDate, every: number, unit: RecurUnit): Lo
   const newMonth = (totalMonths % 12) + 1;
   return toLocalDate(newYear, newMonth, Math.min(day, daysInCalendarMonth(newYear, newMonth)));
 }
+
+// --- Local days in a time zone ---------------------------------------------------
+
+const SECOND = 1_000;
+const HOUR = 3_600_000;
+
+const wallClockFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function wallClockFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = wallClockFormatters.get(timeZone);
+  if (formatter === undefined) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hourCycle: "h23",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      throw new ValidationError("invalid_time_zone", `"${timeZone}" is not a known IANA time zone`, { timeZone });
+    }
+    wallClockFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+/** The wall clock's reading at the instant `ms` in `timeZone`, read as if it were UTC, in ms. */
+function wallClockAt(ms: number, timeZone: string): number {
+  const parts: Partial<Record<Intl.DateTimeFormatPartTypes, number>> = {};
+  for (const part of wallClockFormatter(timeZone).formatToParts(new Date(ms))) {
+    if (part.type !== "literal") parts[part.type] = Number(part.value);
+  }
+  return Date.UTC(parts.year!, parts.month! - 1, parts.day!, parts.hour!, parts.minute!, parts.second!);
+}
+
+const startOfDayCache = new Map<string, string>();
+
+/**
+ * The first instant of the calendar date `date` in `timeZone`, as an ISO 8601 UTC timestamp: its
+ * local midnight ("2026-07-10" in Europe/Rome is "2026-07-09T22:00:00.000Z", in winter one hour
+ * later). Where the clocks skip midnight (a daylight saving change at 00:00), the day starts when
+ * they jump; where midnight comes twice (clocks going back across it), at the first one.
+ *
+ * @throws ValidationError "invalid_date" for a malformed date, "invalid_time_zone" for a time zone
+ *   the runtime does not know.
+ */
+export function startOfLocalDay(date: LocalDate, timeZone: string): string {
+  assertDate(date);
+  const key = `${timeZone} ${date}`;
+  const cached = startOfDayCache.get(key);
+  if (cached !== undefined) return cached;
+
+  // The wall clock's midnight read as UTC; every offset in use is within ±15 hours, and the offsets
+  // in force from a day and a half before to a day and a half after give every candidate instant.
+  const midnight = Date.parse(`${date}T00:00:00Z`);
+  const offsets = new Set<number>();
+  for (let hours = -36; hours <= 36; hours += 6) {
+    const probe = midnight + hours * HOUR;
+    offsets.add(wallClockAt(probe, timeZone) - probe);
+  }
+  const candidates = [...offsets].map((offset) => midnight - offset).sort((a, b) => a - b);
+  // An instant whose wall clock reads exactly midnight: the earliest one.
+  let start = candidates.find((instant) => wallClockAt(instant, timeZone) === midnight);
+  if (start === undefined) {
+    // Midnight does not exist on this date: the day starts at the jump, between the last candidate
+    // still on the day before and the first one already past midnight.
+    let high = candidates.find((instant) => wallClockAt(instant, timeZone) > midnight)!;
+    let low = candidates.filter((instant) => instant < high).at(-1)!;
+    while (high - low > SECOND) {
+      const middle = low + Math.floor((high - low) / 2 / SECOND) * SECOND;
+      if (wallClockAt(middle, timeZone) >= midnight) high = middle;
+      else low = middle;
+    }
+    start = high;
+  }
+  const iso = new Date(start).toISOString();
+  if (startOfDayCache.size >= 10_000) startOfDayCache.clear();
+  startOfDayCache.set(key, iso);
+  return iso;
+}

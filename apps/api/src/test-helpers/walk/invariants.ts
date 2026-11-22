@@ -255,10 +255,20 @@ function sortRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
-/** The oracle: every position of the workspace, replayed by the core from the model's trades. */
-export function oraclePositions(model: WorkspaceModel): Positions {
+/** Every position of the workspace as of `asOf`, replayed by the core from the model's trades. */
+export interface PositionsOracle {
+  readonly asOf: string;
+  readonly positions: Positions;
+}
+
+/**
+ * The oracle: every position of the workspace as of the walk's today, which the checks then ask
+ * the API for by name (`?asOf=`), so a walk running across midnight compares the same day (#719).
+ */
+export function oraclePositions(model: WorkspaceModel): PositionsOracle {
+  const asOf = walkToday();
   try {
-    return computePositions(model.positionTrades());
+    return { asOf, positions: computePositions(model.positionTrades(), { asOf }) };
   } catch (error) {
     if (isValidationError(error)) {
       fail(`the API accepted a trade history of ${model.persona} that the core refuses: ${error.code} ${show(error.details)}`);
@@ -267,12 +277,12 @@ export function oraclePositions(model: WorkspaceModel): Positions {
   }
 }
 
-export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity, oracle: Positions): Promise<PositionResponse> {
-  const response = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/positions`))) as PositionResponse;
+export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity, oracle: PositionsOracle): Promise<PositionResponse> {
+  const response = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/positions?asOf=${oracle.asOf}`))) as PositionResponse;
   const own: Positions = {
-    accounts: oracle.accounts.filter((row) => row.accountId === account.id),
+    accounts: oracle.positions.accounts.filter((row) => row.accountId === account.id),
     portfolios: [],
-    charges: oracle.charges.filter((charge) => charge.accountId === account.id),
+    charges: oracle.positions.charges.filter((charge) => charge.accountId === account.id),
   };
   expectEqual(
     { positions: sortRows(response.positions.map(actualPositionRow)), summaries: response.summaries.map(actualSummary) },
@@ -282,13 +292,13 @@ export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceM
   return response;
 }
 
-export async function checkPortfolioPositions(ctx: CheckContext, model: WorkspaceModel, portfolioHandle: string, oracle: Positions): Promise<PositionResponse> {
+export async function checkPortfolioPositions(ctx: CheckContext, model: WorkspaceModel, portfolioHandle: string, oracle: PositionsOracle): Promise<PositionResponse> {
   const { id } = model.portfolio(portfolioHandle);
-  const response = (await get(ctx, model, wsPath(model, `/portfolios/${id}/positions`))) as PositionResponse;
+  const response = (await get(ctx, model, wsPath(model, `/portfolios/${id}/positions?asOf=${oracle.asOf}`))) as PositionResponse;
   const own: Positions = {
     accounts: [],
-    portfolios: oracle.portfolios.filter((row) => row.portfolioId === id),
-    charges: oracle.charges.filter((charge) => charge.portfolioId === id),
+    portfolios: oracle.positions.portfolios.filter((row) => row.portfolioId === id),
+    charges: oracle.positions.charges.filter((charge) => charge.portfolioId === id),
   };
   expectEqual(
     { positions: sortRows(response.positions.map(actualPositionRow)), summaries: response.summaries.map(actualSummary) },

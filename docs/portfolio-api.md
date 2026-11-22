@@ -637,9 +637,12 @@ result to the cent (ADR 0011):
 1. `tradeDate`;
 2. on the same date, split rows first: a split applies at the start of its ex-date, so a sale of
    the new units that day comes after it;
-3. `occurredAt`, to the millisecond; a trade with no time counts as midnight UTC of its date
-   (in Europe/Rome, 01:00 or 02:00 local time, so a trade given an earlier local time sorts
-   before it);
+3. `occurredAt`, to the millisecond; a trade with no time counts as the start of its date in the
+   workspace's time zone (local midnight; the moment the clocks jump where a daylight saving
+   change skips midnight; the first midnight where the clocks go back across it and midnight
+   comes twice), so it comes before every timed trade of that date (#596). Some older trades
+   recorded without a time carry the time they were sorted at until now, so their order and every
+   amount stay as shown (migration 0038);
 4. `createdAt`, when the trade was recorded;
 5. `id`.
 
@@ -732,12 +735,17 @@ trade never changes: delete it and record another.
 
 | Error | When |
 | --- | --- |
-| plain 400 `"invalid trade: nothing to change"` | `{}`, or `type` alone |
-| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it), a different `type` sent with other fields (`field: "type"`), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
+| plain 400 `"invalid trade: nothing to change"` | `{}`, only `null` legs, or the trade's own `type` alone |
+| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it), a different `type`, alone or with other fields (`field: "type"`, #596), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
 | 400, the create codes | the edited trade breaks a rule, or the history no longer replays |
 | 404 | no trade of this workspace has this id |
+| 409 `account_closed` | a row of the group is on a closed account, or the edit moves one to a closed account |
 | 409 `reconciled` | a cash leg of the group is reconciled |
 | 409 `concurrent_change` | another request moved the trade to another instrument meanwhile; nothing was written, retry |
+
+The closed account and the reconciled cash leg are checked before anything else, `type` included:
+an edit sending only `type`, the trade's own or another, answers 409 `account_closed` or
+`reconciled` on such a trade, never "nothing to change" or `invalid_trade`.
 
 ### Deleting a trade
 
@@ -765,15 +773,23 @@ second trade. Split rows always get ids from the server.
 | `GET /workspaces/:workspaceId/portfolios/:portfolioId/positions` | any member | the portfolio's positions, an archived portfolio included |
 | `GET /workspaces/:workspaceId/accounts/:accountId/positions` | any member | the account's positions, across its portfolios |
 
-Positions are worked out from the trades on every request, never stored. Both answer:
+Positions are worked out from the trades on every request, never stored. They are **as of a
+date**, by default today in the workspace's time zone, the same day every balance is as of
+(#702, #719): only trades dated on or before it are replayed. Trades dated after today are left
+out of positions and cost basis, and are still listed by `GET …/trades`, so a sale recorded
+ahead, dated next year, leaves today's quantity, cost and totals as they are, as the brokerage
+account's cash leaves out its proceeds until that day. `?asOf=YYYY-MM-DD` asks for another date, past or future;
+a malformed one is 400 `invalid_date`. Both answer:
 
 ```json
-{ "positions": [ { … }, … ], "summaries": [ { … }, … ] }
+{ "asOf": "2026-11-21", "positions": [ { … }, … ], "summaries": [ { … }, … ] }
 ```
 
-- **`positions`**: one row per account and instrument the portfolio (or account) has ever had a
-  trade of, sorted by account then instrument id. A position sold out stays, with quantity 0, for
-  its totals.
+- **`asOf`**: the date the positions are as of.
+- **`positions`**: one row per account and instrument the portfolio (or account) has a trade of
+  dated on or before `asOf`, sorted by account then instrument id. A position sold out stays,
+  with quantity 0, for its totals. Trades dated after `asOf` are still listed by
+  `GET …/trades`.
 - **`summaries`**: one row per currency, the totals of every position plus the fees and taxes
   recorded without an instrument. Amounts in different currencies are never added together.
 
