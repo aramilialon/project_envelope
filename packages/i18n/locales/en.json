@@ -490,6 +490,7 @@
   "transactions.form.editTitle": "Edit transaction",
   "transactions.form.error": "We could not save this transaction.",
   "transactions.form.inflowHint.category": "The money comes into the budget: {category} goes from {from} to {to}.",
+  "transactions.form.inflowHint.categoryLater": "The money comes into {category} on {date}.",
   "transactions.form.inflowHint.unassigned": "The money comes into the budget: “Unassigned” goes from {from} to {to}.",
   "transactions.form.inflowHint.unassignedLater": "The money comes into “Unassigned” on {date}.",
   "transactions.form.invalidAmount": "Enter an amount greater than zero.",

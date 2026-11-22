@@ -85,8 +85,8 @@ function centsToInput(cents: number, locale: string, currency: string): string {
  * money leaves the budget or comes into an on-budget card, optional from an off-budget account
  * into a cash account, where "Unassigned" (no category: income to assign) comes first and is the
  * default, with a hint saying how much "Unassigned" (or the chosen category) goes from and to in
- * the month of the transfer's date. Editing an existing transfer leg is limited to its payee, memo,
- * cleared status and, on such an on-budget leg, its category (cleared back to "Unassigned" only
+ * the month of the transfer's date, or, dated after today, the day the money comes in. Editing
+ * an existing transfer leg is limited to its payee, memo, cleared status and, on such an on-budget leg, its category (cleared back to "Unassigned" only
  * where the rule allows it): the form sends a category change as the leg's one split with its
  * own amount, so the other leg is left alone; the amount and the other account are set only at
  * creation (the API would move the other leg's amount too, #547, but the mockup has no amount
@@ -172,7 +172,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
 
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
 
-  /** "The money comes into the budget: … goes from X to Y." (or, into "Unassigned" with a date after today, the day it comes in) — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
+  /** "The money comes into the budget: … goes from X to Y." (or, with a date after today, the day it comes into "Unassigned" or the category, #700, #668) — for a new transfer, or an edited leg whose category changes (the leg already counts where it is). */
   function inflowHint(): string | null {
     if (!moneyEntersBudget || (isEditing && categoryId === originalCategoryId)) {
       return null;
@@ -211,12 +211,20 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
         { from: money(change.fromCents), to: money(change.toCents) },
       );
     }
+    // Into a category too, money dated after today counts nowhere until its date (#668): the
+    // category stays as it is until then. Like "Unassigned" above, saying so needs no amounts.
+    const chosen = categories.find((c) => c.id === categoryId);
+    if (chosen && ISO_DATE.test(date) && !incomeReceived(date, today)) {
+      return intl.formatMessage(
+        { id: "transactions.form.inflowHint.categoryLater", defaultMessage: "The money comes into {category} on {date}." },
+        { category: chosen.name, date: shortDate(date, intl.locale) },
+      );
+    }
     const category = budgetMonth?.categories.find((c) => c.categoryId === categoryId);
     if (!category) {
       return null;
     }
-    // Categorized money counts by month (#668), whatever its day: no timing.
-    const change = availableAfterInflow(category.available, amount);
+    const change = availableAfterInflow(category.available, amount, { date, today });
     if (!change.received) {
       return null;
     }

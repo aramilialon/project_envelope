@@ -764,7 +764,7 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     expect(await screen.findByText("The money comes into “Unassigned” on Sep 2.")).toBeInTheDocument();
   });
 
-  it("keeps a chosen category's from and to for a later date: categorized money counts by month", async () => {
+  it("says the day money dated after today comes into a chosen category too, instead of adding it now (#668)", async () => {
     mockBudgetMonth();
     renderForm({ accounts: [CHECKING, BROKER] });
     chooseIncomingFromBroker();
@@ -772,7 +772,13 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     await screen.findByText("The money comes into “Unassigned” on Sep 15.");
 
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
-    expect(screen.getByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
+    expect(screen.getByText("The money comes into Groceries on Sep 15.")).toBeInTheDocument();
+    expect(screen.queryByText(/Groceries goes from/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Category")).toHaveAccessibleDescription("The money comes into Groceries on Sep 15.");
+
+    // Back to today: from and to again.
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-09-01" } });
+    expect(await screen.findByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
   });
 
   it("puts the money in a chosen category instead, with the hint following it", async () => {
@@ -869,7 +875,8 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     expect(screen.queryByText(/comes into the budget/)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
-    expect(await screen.findByText("The money comes into the budget: Groceries goes from €1,800.00 to €6,800.00.")).toBeInTheDocument();
+    // The leg is dated the 12th, after today (the 1st): Groceries gets it only then (#668).
+    expect(await screen.findByText("The money comes into Groceries on Sep 12.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>

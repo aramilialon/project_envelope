@@ -238,7 +238,7 @@ export function aggregateTransactions(
             { transactionId: t.id },
           );
         }
-        activity.push(withCard({ categoryId: split.categoryId, month, amount: split.amount }));
+        activity.push(withCard({ categoryId: split.categoryId, month, date: t.date, amount: split.amount }));
       }
       continue;
     }
@@ -261,7 +261,7 @@ export function aggregateTransactions(
       continue;
     }
 
-    activity.push(withCard({ categoryId: t.categoryId, month, amount: t.amount }));
+    activity.push(withCard({ categoryId: t.categoryId, month, date: t.date, amount: t.amount }));
   }
 
   return { income, activity, cardPayments, cardTransfers };
