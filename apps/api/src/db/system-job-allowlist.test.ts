@@ -7,8 +7,10 @@
  * The list is literal, not read from the code it guards, so a file can neither add itself nor
  * remove another one silently. Every non-test source file in `apps/api/src`, `apps/web/src`,
  * `packages` and `scripts` is searched for the setting's name as a string or after `SET` /
- * `SET LOCAL`, and for a `set_config` whose name is not a literal string, which could set it
- * without naming it. Migrations only read it (`app_is_system_job()`) and are not searched.
+ * `SET LOCAL`, and for a `set_config` whose first argument is anything but one plain literal
+ * name (a parameter, a template interpolation, a `||` concatenation), which could set it without
+ * naming it. Comment lines are left out of that second search. Migrations only read it
+ * (`app_is_system_job()`) and are not searched.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -44,11 +46,25 @@ async function sourceFiles(directory: string): Promise<string[]> {
     .filter((path) => !path.includes(`${"/"}node_modules${"/"}`));
 }
 
-async function filesMatching(pattern: RegExp): Promise<string[]> {
+/** The text without its comment lines (`//`, `/*`, ` * `, `--`, `#`), so a docstring quoting `set_config(…)` is not code. */
+function withoutCommentLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !/^\s*(?:\/\/|\/\*|\*|--|#)/.test(line))
+    .join("\n");
+}
+
+/**
+ * A `set_config(` call whose first argument is not one plain literal such as 'app.user_id'
+ * followed by a comma: `$1`, `${name}`, `'app.' || $1`, `'app.' + name`, a variable.
+ */
+const NON_LITERAL_SET_CONFIG = /set_config\((?!\s*'[a-z_]+\.[a-z_]+'\s*,)/i;
+
+async function filesMatching(pattern: RegExp, prepare: (text: string) => string = (text) => text): Promise<string[]> {
   const found: string[] = [];
   for (const directory of SEARCHED) {
     for (const path of await sourceFiles(join(REPOSITORY_ROOT, directory))) {
-      if (pattern.test(await readFile(path, "utf8"))) {
+      if (pattern.test(prepare(await readFile(path, "utf8")))) {
         found.push(relative(REPOSITORY_ROOT, path));
       }
     }
@@ -67,6 +83,24 @@ describe("app.is_system_job allowlist (ADR 0010, ADR 0019)", () => {
   });
 
   it("is not set through a set_config whose name is not a literal string, outside the files checked by hand", async () => {
-    assert.deepEqual(await filesMatching(/set_config\(\s*\$/), [...DYNAMIC_SET_CONFIG_ALLOWED].sort());
+    assert.deepEqual(await filesMatching(NON_LITERAL_SET_CONFIG, withoutCommentLines), [...DYNAMIC_SET_CONFIG_ALLOWED].sort());
+  });
+
+  it("counts as not literal a name passed as a parameter, interpolated, or concatenated in SQL or in code", () => {
+    for (const call of [
+      "SELECT set_config($1, 'true', true)",
+      "SELECT set_config(${name}, 'true', true)",
+      "SELECT set_config('app.' || $1, 'true', true)",
+      "SELECT set_config('app.is_' || 'system_job', 'true', true)",
+      "SELECT set_config('app.${flag}', 'true', true)",
+      "SELECT set_config( 'app.' + name, 'true', true)",
+      "SELECT SET_CONFIG(name, 'true', true)",
+    ]) {
+      assert.ok(NON_LITERAL_SET_CONFIG.test(call), call);
+    }
+    for (const call of ["SELECT set_config('app.workspace_id', $1, true)", "SELECT set_config( 'app.is_system_job' , 'true', true)"]) {
+      assert.ok(!NON_LITERAL_SET_CONFIG.test(call), call);
+    }
+    assert.equal(withoutCommentLines(" * the flag (`set_config(…, true)`)\n// set_config($1)\nquery()"), "query()");
   });
 });
