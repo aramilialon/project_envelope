@@ -37,7 +37,15 @@
  *    does not pay for it (`assignedInFuture` is the part that M's money pays).
  * 4. Spending on a credit card, as far as the category covers it, moves the
  *    same amount from the category to the card's payment category: the money
- *    is set aside to pay the card. A refund on the card moves it back.
+ *    is set aside to pay the card. A refund on the card moves it back. When a
+ *    category spent on more than one card and covers only part of it (#731),
+ *    the covered part goes first to the cards that still need money — whose
+ *    real balance at the end of the month is above what their payment category
+ *    holds so far (carried over, assigned, less payments, plus what earlier
+ *    categories moved in), each up to that need and to its own spending — then
+ *    to the others, each up to its own spending; cards in id order, categories
+ *    in `categoryIds` order. The part of each card's spending left uncovered is
+ *    that category's credit overspending on that card (`overspendingBy`).
  * 5. A card payment (a transfer from a cash account to the card) is spending
  *    of the payment category.
  * 6. A category still negative at the end of a month starts the next month at
@@ -59,11 +67,18 @@
  *    Reservations never carry over: they only ever apply to the month
  *    actually requested, not to the earlier months this function also closes
  *    out along the way.
- * 8. A transfer between two cards' payment categories (design.md, "Credit
- *    cards") moves money from the source into the destination, up to what the
- *    source actually holds — never pushing it negative. A part the source
- *    cannot cover is never cash overspending (nothing real moved): it only
- *    ever shows up as the source's own uncovered debt (`CardBalance`).
+ * 8. A transfer from one card to another (design.md, "Credit cards"; #732):
+ *    card B pays T of card A's debt, so B is charged T (the outflow leg) and A
+ *    is paid T (the inflow leg). Money follows the debt: what A's payment
+ *    category holds beyond what A still owes at the end of the month moves to
+ *    B's, moved = min(T, max(0, A.available − A.owed)), with A.available the
+ *    payment category's available before this transfer and A.owed signed (a
+ *    card in credit releases its credit too, rule 9). A part that does not
+ *    move is never cash overspending: it shows up only as B's uncovered debt,
+ *    derived from B's real balance (`CardBalance`). A month's transfers are
+ *    applied in date order, then id, each one reading the available the
+ *    earlier ones left. Money assigned to B is never moved on by the transfer,
+ *    so following the "To do" list once settles both cards.
  * 9. A card in credit (#660): when a card's real balance at the end of a month
  *    is negative (a refund after the card was paid), its payment category can
  *    be negative by up to that credit without it being overspending. With
@@ -167,16 +182,23 @@ export interface ScheduledItem {
 }
 
 /**
- * A transfer between two on-budget credit cards' own payment categories (design.md, "Credit
- * cards"): moves up to `amount`, capped at what the source payment category actually holds, into
- * the destination's. Unlike a `ScheduledItem`, this is a real recorded event, carrying its own
- * `month` and walked across months exactly like an `Assignment` or a `CardPayment`.
+ * A transfer between two on-budget credit cards (design.md, "Credit cards"; rule 8, #732): one card
+ * pays part of the other's debt. Money set aside moves from the payment category of the card that
+ * was paid to the one of the card that was charged, up to what the paid card holds beyond what it
+ * still owes. Unlike a `ScheduledItem`, this is a real recorded event, carrying its own `month` and
+ * walked across months exactly like an `Assignment` or a `CardPayment`.
  */
 export interface CardTransfer {
-  readonly sourcePaymentCategoryId: string;
-  readonly destinationPaymentCategoryId: string;
+  /** The card whose debt was paid (the transfer's inflow leg): money set aside leaves its payment category. */
+  readonly paidPaymentCategoryId: string;
+  /** The card that was charged (the outflow leg): it now owes the amount, and its payment category receives what moves. */
+  readonly chargedPaymentCategoryId: string;
   readonly month: Month;
-  /** Always positive: the amount requested, not necessarily the amount that actually moves. */
+  /** The transfer's day, in the workspace's time zone, inside `month`: a month's transfers apply in date order. */
+  readonly date: LocalDate;
+  /** A stable id (the outflow leg's transaction id): orders transfers dated the same day. */
+  readonly id: string;
+  /** Always positive: the amount transferred, not necessarily the amount of money set aside that moves. */
   readonly amount: Cents;
 }
 
@@ -250,9 +272,8 @@ export interface CategoryMonth {
    * Payment categories only (#355): which ordinary categories' credit overspending this month is
    * attributable to this specific card, and how much — `apps/web`'s own "the uncovered debt comes
    * from card spending beyond what was available" sentence names them. A category overspent
-   * across more than one card attributes to each in the same stable order `movedToPayment`
-   * already uses internally, each card absorbing up to its own outflow before the next one's own
-   * contributes — a presentational breakdown only, independent of `movedToPayment`/`uncovered`.
+   * across more than one card attributes to each card its own spending less what was covered on
+   * it (rule 4, #731), so the card named is the one whose spending is still uncovered.
    * Always present for a payment category (possibly empty), absent for an ordinary one.
    */
   readonly overspendingBy?: readonly { readonly categoryId: string; readonly amount: Cents }[];
@@ -381,15 +402,21 @@ function validate(input: BudgetInput, month: Month): void {
   }
   for (const item of input.cardTransfers ?? []) {
     assertMonth(item.month);
-    count(item.amount, "card transfer", { month: item.month, categoryId: item.sourcePaymentCategoryId });
+    assertDate(item.date);
+    count(item.amount, "card transfer", { month: item.month, categoryId: item.chargedPaymentCategoryId });
     if (item.amount <= 0) {
       throw new ValidationError("invalid_amount", "a card transfer's amount must be positive", {
         label: "card transfer",
         value: String(item.amount),
       });
     }
-    if (!payment.has(item.sourcePaymentCategoryId)) unknown(item.sourcePaymentCategoryId);
-    if (!payment.has(item.destinationPaymentCategoryId)) unknown(item.destinationPaymentCategoryId);
+    if (monthOf(item.date) !== item.month) {
+      throw new ValidationError("invalid_date", `card transfer dated "${item.date}" is not in its month "${item.month}"`, {
+        value: item.date,
+      });
+    }
+    if (!payment.has(item.paidPaymentCategoryId)) unknown(item.paidPaymentCategoryId);
+    if (!payment.has(item.chargedPaymentCategoryId)) unknown(item.chargedPaymentCategoryId);
   }
 }
 
@@ -401,9 +428,8 @@ interface MonthState {
 /**
  * Computes every payment category's figures for one month, including rule 8's card-to-card
  * transfers. A first pass settles each payment category's own carried/assigned/activity before
- * any transfer; a second pass applies this month's transfers in a stable order (source, then
- * destination), capping each one at the source's own remaining available so a source funding
- * several transfers in the same month runs out deterministically.
+ * any transfer; a second pass applies this month's transfers in date order, then id, each moving
+ * from the paid card's payment category what it holds beyond what that card still owes.
  */
 function computePaymentCategories(
   paymentIds: readonly string[],
@@ -428,19 +454,21 @@ function computePaymentCategories(
   });
   const availableById = new Map(pre.map((p): [string, Cents] => [p.id, p.available]));
 
+  // Rule 8 (#732): in date order, then id; each transfer reads the available the earlier ones left.
   const transferDelta = new Map<string, Cents>();
-  const transfers = [...(data.cardTransfersBy.get(m) ?? [])].sort((a, b) => {
-    if (a.sourcePaymentCategoryId !== b.sourcePaymentCategoryId) {
-      return a.sourcePaymentCategoryId < b.sourcePaymentCategoryId ? -1 : 1;
-    }
-    return a.destinationPaymentCategoryId < b.destinationPaymentCategoryId ? -1 : 1;
-  });
+  const transfers = [...(data.cardTransfersBy.get(m) ?? [])].sort((a, b) =>
+    a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
+  );
   for (const t of transfers) {
-    const remaining = availableById.get(t.sourcePaymentCategoryId) ?? 0;
-    const moved = Math.max(0, Math.min(t.amount, remaining));
-    availableById.set(t.sourcePaymentCategoryId, remaining - moved);
-    addTo(transferDelta, t.sourcePaymentCategoryId, -moved);
-    addTo(transferDelta, t.destinationPaymentCategoryId, moved);
+    const held = availableById.get(t.paidPaymentCategoryId) ?? 0;
+    // What the paid card still owes at the end of the month, signed; a card whose balance is not
+    // given counts as owing nothing, so only what its payment category holds can move.
+    const stillOwed = data.owedBy.get(t.paidPaymentCategoryId) ?? 0;
+    const moved = Math.min(t.amount, Math.max(0, held - stillOwed));
+    availableById.set(t.paidPaymentCategoryId, held - moved);
+    availableById.set(t.chargedPaymentCategoryId, (availableById.get(t.chargedPaymentCategoryId) ?? 0) + moved);
+    addTo(transferDelta, t.paidPaymentCategoryId, -moved);
+    addTo(transferDelta, t.chargedPaymentCategoryId, moved);
   }
 
   return pre.map((p): CategoryMonth => {
@@ -451,8 +479,8 @@ function computePaymentCategories(
     // Paying more than the payment category holds spends cash that had no job: cash
     // overspending — but only beyond the card's own credit (rule 9): a negative available down to
     // minus the credit is money the card holds, not cash gone. A card-to-card transfer never
-    // pushes `available` below zero (it is already capped above), so it never contributes to this
-    // on its own.
+    // takes `available` below what the paid card owes (it is capped above), so it never
+    // contributes to this on its own: below zero only down to the card's own credit.
     const credit = Math.max(0, -(owed ?? 0));
     return {
       categoryId: p.id,
@@ -502,6 +530,33 @@ function computeMonth(
   // #355: paymentCategoryId -> categoryId -> amount, built alongside movedToPayment below but
   // never read by it — a separate, presentational breakdown of creditOverspending by card.
   const overspendingByCard = new Map<string, Map<string, Cents>>();
+  // Rule 4 (#731): what each card still needs before any category's covered spending moves in —
+  // its real balance at the end of the month less what its payment category holds from carried,
+  // assigned and paid. Unknown (no `cardBalances` entry): without limit, so cards keep id order.
+  // What it still needs at any point is this less `movedToPayment` so far.
+  const needBefore = new Map<string, Cents>(
+    paymentIds.map((id): [string, Cents] => {
+      const owed = data.owedBy.get(id);
+      if (owed === undefined) return [id, Number.POSITIVE_INFINITY];
+      const held = (carried.get(id) ?? 0) + (data.assignedBy.get(key(id, m)) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
+      return [id, owed - held];
+    }),
+  );
+  const stillNeeds = (paymentId: string): Cents => Math.max(0, (needBefore.get(paymentId) ?? 0) - (movedToPayment.get(paymentId) ?? 0));
+
+  // Net credit card activity of each category, card by card, in a stable order. Every net refund
+  // goes back to its category before any coverage is shared out, so that a card's need already
+  // counts the refunds of categories that come later: otherwise money assigned to the card would
+  // shift an earlier category's coverage to another card, and following the "To do" list once
+  // would leave the card short.
+  const byCardOf = new Map<string, [string, Cents][]>();
+  for (const id of input.categoryIds) {
+    const byCard = [...(data.creditBy.get(key(id, m)) ?? new Map<string, Cents>())].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    byCardOf.set(id, byCard);
+    for (const [paymentId, net] of byCard) {
+      if (net > 0) addTo(movedToPayment, paymentId, -net); // Net refund: the money goes back to the category.
+    }
+  }
 
   const categories = input.categoryIds.map((id): CategoryMonth => {
     const carriedOver = carried.get(id) ?? 0;
@@ -510,42 +565,41 @@ function computeMonth(
     const available = carriedOver + assigned + activity;
     const overspent = Math.max(0, -available);
 
-    // Net credit card activity of this category, card by card, in a stable order.
-    const byCard = [...(data.creditBy.get(key(id, m)) ?? new Map<string, Cents>())].sort(([a], [b]) =>
-      a < b ? -1 : a > b ? 1 : 0,
-    );
+    const byCard = byCardOf.get(id) ?? [];
     let cardOutflow = 0;
-    for (const [paymentId, net] of byCard) {
-      if (net > 0) addTo(movedToPayment, paymentId, -net); // Net refund: the money goes back to the category.
-      else cardOutflow += -net;
-    }
+    for (const [, net] of byCard) if (net < 0) cardOutflow += -net;
 
     // Rule 6: overspending is attributed to card spending first.
     const creditOverspending = Math.min(overspent, cardOutflow);
     const cashOverspending = overspent - creditOverspending;
 
-    // #355: attribute creditOverspending to the specific card(s) it came from, in the same
-    // stable order, each card absorbing up to its own outflow before the next one's own
-    // contributes. Independent of the `movedToPayment` allocation below.
-    let remainingOverspending = creditOverspending;
+    // Rule 4 (#731): the covered part of card spending moves to the payment categories, first to
+    // the cards that still need money (each up to that need and its own spending), then to the
+    // others (each up to the rest of its own spending), cards in id order.
+    const coveredBy = new Map<string, Cents>();
+    let toCover = cardOutflow - creditOverspending;
+    for (const firstPass of [true, false]) {
+      for (const [paymentId, net] of byCard) {
+        if (net >= 0 || toCover === 0) continue;
+        const room = -net - (coveredBy.get(paymentId) ?? 0);
+        const covered = Math.min(room, toCover, firstPass ? stillNeeds(paymentId) : room);
+        if (covered <= 0) continue;
+        addTo(coveredBy, paymentId, covered);
+        addTo(movedToPayment, paymentId, covered);
+        toCover -= covered;
+      }
+    }
+
+    // #355, #731: a card's share of the category's credit overspending is its own spending less
+    // what was covered on it, so the card named is always the one whose spending is uncovered.
     for (const [paymentId, net] of byCard) {
-      if (net >= 0 || remainingOverspending === 0) continue;
-      const attributed = Math.min(-net, remainingOverspending);
-      remainingOverspending -= attributed;
+      if (net >= 0) continue;
+      const attributed = -net - (coveredBy.get(paymentId) ?? 0);
       if (attributed > 0) {
         const byCategory = overspendingByCard.get(paymentId) ?? new Map<string, Cents>();
         addTo(byCategory, id, attributed);
         overspendingByCard.set(paymentId, byCategory);
       }
-    }
-
-    // Rule 4: the covered part of card spending moves to the payment categories.
-    let toCover = cardOutflow - creditOverspending;
-    for (const [paymentId, net] of byCard) {
-      if (net >= 0 || toCover === 0) continue;
-      const covered = Math.min(-net, toCover);
-      addTo(movedToPayment, paymentId, covered);
-      toCover -= covered;
     }
 
     // Rule 7: a reservation is subtracted from the reported available, but never counted as

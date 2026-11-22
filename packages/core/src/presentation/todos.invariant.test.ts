@@ -155,9 +155,15 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       });
       const assignments = Array.from({ length: Math.floor(random() * 5) }, () => ({ categoryId: pick([...categoryIds, ...cards]), month: MONTH, amount: amount(30_000) }));
       const cardPayments = Array.from({ length: Math.floor(random() * 3) }, () => ({ paymentCategoryId: pick(cards), month: MONTH, amount: amount(60_000) }));
-      // A card-to-card transfer is recorded from its outflow leg: the source card is charged, the
-      // destination card is paid (`aggregateTransactions`).
-      const cardTransfers = random() < 0.3 ? [{ sourcePaymentCategoryId: "visa", destinationPaymentCategoryId: "mc", month: MONTH, amount: amount(10_000) }] : [];
+      // Up to two card-to-card transfers, either way: one card pays part of the other's debt, so
+      // it is charged and the other is paid (#732). Large enough that many move less than their
+      // amount (the paid card holds less than it still owes).
+      const cardTransfers = Array.from({ length: random() < 0.4 ? 1 + Math.floor(random() * 2) : 0 }, (_, i) => {
+        const charged = pick(cards);
+        const paid = charged === "visa" ? "mc" : "visa";
+        const day = String(1 + Math.floor(random() * 28)).padStart(2, "0");
+        return { paidPaymentCategoryId: paid, chargedPaymentCategoryId: charged, month: MONTH, date: `${MONTH}-${day}`, id: `t${i}`, amount: amount(40_000) };
+      });
       const scheduledItems = random() < 0.4 ? [{ categoryId: pick(categoryIds), amount: amount(20_000) }] : [];
       // The card's real balance: a starting balance (or a card in credit), plus what was spent on
       // it, less what was paid, plus what it was charged by a transfer to the other card.
@@ -167,7 +173,7 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
         const spent = activity.filter((a) => a.paymentCategoryId === card).reduce((sum, a) => sum - a.amount, 0);
         const paid = cardPayments.filter((p) => p.paymentCategoryId === card).reduce((sum, p) => sum + p.amount, 0);
         const transferred = cardTransfers.reduce(
-          (sum, t) => sum + (t.sourcePaymentCategoryId === card ? t.amount : 0) - (t.destinationPaymentCategoryId === card ? t.amount : 0),
+          (sum, t) => sum + (t.chargedPaymentCategoryId === card ? t.amount : 0) - (t.paidPaymentCategoryId === card ? t.amount : 0),
           0,
         );
         return { paymentCategoryId: card, transactions: owing(start + spent - paid + transferred, `${MONTH}-01`), hasStartingBalance: start > 0 };
@@ -197,28 +203,28 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       return Math.max(0, (c.owed ?? 0) - c.available);
     }
 
-    /**
-     * The whole list, from the budget month's own figures: every ordinary category's cash
-     * overspending, the reservation shortfall of the categories with no credit overspending, and
-     * each card's to cover. A category's credit overspending is never in it.
-     */
-    function expectedTotal(month: BudgetMonth): number {
-      const cash = month.categories.reduce((sum, c) => sum + c.cashOverspending, 0);
-      const reservations = month.categories.filter((c) => c.creditOverspending === 0).reduce((sum, c) => sum + shortfall(c), 0);
-      const cards = month.paymentCategories.reduce((sum, c) => sum + toCover(c), 0);
-      return cash + reservations + cards;
+    /** The card spending a category asks together with its reservation shortfall (#731), written out again. */
+    function cardSpendingAsked(c: CategoryMonth): number {
+      return c.creditOverspending > 0 && shortfall(c) > 0 ? c.creditOverspending : 0;
+    }
+
+    /** What is asked on ordinary categories instead of on `card` (#731), from its `overspendingBy`. */
+    function askedOnCategoriesFor(month: BudgetMonth, card: CategoryMonth): number {
+      return (card.overspendingBy ?? [])
+        .filter((p) => cardSpendingAsked(find(month.categories, p.categoryId)) > 0)
+        .reduce((sum, p) => sum + p.amount, 0);
     }
 
     /**
-     * Whether a card-to-card transfer in `input` moves less than its amount, because its source
-     * payment category holds less (rule 8). Money then assigned to the source is moved on by the
-     * transfer into the destination, so following the list once does not settle the source: a
-     * gap of rule 8, not of #728, reported separately. Those months are left out of the
-     * "settles every card" assertions below, and counted so that they stay a minority.
+     * The whole list, from the budget month's own figures: every ordinary category's cash
+     * overspending and reservation shortfall, the card spending of the categories that have both
+     * (#731), and each card's to cover less what those categories ask for it.
      */
-    function transferCapped(input: BudgetInput): boolean {
-      const withoutTransfers = computeBudgetMonth({ ...input, cardTransfers: [] }, MONTH);
-      return (input.cardTransfers ?? []).some((t) => find(withoutTransfers.paymentCategories, t.sourcePaymentCategoryId).available < t.amount);
+    function expectedTotal(month: BudgetMonth): number {
+      const cash = month.categories.reduce((sum, c) => sum + c.cashOverspending, 0);
+      const reservations = month.categories.reduce((sum, c) => sum + shortfall(c) + cardSpendingAsked(c), 0);
+      const cards = month.paymentCategories.reduce((sum, c) => sum + Math.max(0, toCover(c) - askedOnCategoriesFor(month, c)), 0);
+      return cash + reservations + cards;
     }
 
     function assertSettled(before: BudgetMonth, after: BudgetMonth, context: string): void {
@@ -230,14 +236,17 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       }
       for (const c of after.categories) {
         assert.equal(c.cashOverspending, 0, `${context}, category ${c.categoryId}`);
+        // #731: every reservation is funded, a category with card spending included.
+        assert.equal(shortfall(c), 0, `${context}, reservation of ${c.categoryId}`);
       }
       assert.deepEqual(coverItems(todosOf(after)), [], context);
     }
 
-    it("the list asks each category's own need and each card's to cover once, and following it settles every card", () => {
+    it("the list asks each category's own need and each card's to cover once, and following it once settles every card, every month", () => {
       const random = mulberry32(728);
-      let capped = 0;
+      let partialTransfers = 0;
       let settledWithTransfer = 0;
+      let cardSpendingWithReservation = 0;
       for (let run = 0; run < 500; run++) {
         const input = randomMonth(random);
         const month = computeBudgetMonth(input, MONTH);
@@ -251,35 +260,38 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
         assert.equal(total(items), expectedTotal(month), context);
 
         // Following every item, in one go: each card's payment category holds what it owes (or
-        // what it already held beyond that), no category is left overspent in cash, and the list
-        // asks for nothing more.
-        //
-        // Known gap (#728, left to the maintainer): a category with credit overspending never asks
-        // for its reservation shortfall, since money assigned to it would go to the card first
-        // (rule 4). After following the list, such a category still has credit overspending and
-        // its reservation is still short; the list asks nothing for it until the card part is
-        // gone. This test does not assert that shortfall away: it is simply not in the list.
+        // what it already held beyond that), no category is left overspent in cash or short of
+        // its reservation, and the list asks for nothing more. No month is skipped (#732).
         const followed = followTodos(input, month);
         const after = computeBudgetMonth(followed, MONTH);
         assert.equal(after.unassigned, month.unassigned - total(items), context);
-        if (transferCapped(input)) {
-          capped++;
-          continue;
-        }
-        for (const card of month.paymentCategories) {
-          const settled = find(after.paymentCategories, card.categoryId);
-          assert.equal(settled.available, Math.max(card.available, card.owed ?? 0), `${context}, card ${card.categoryId}`);
+        // Exactly what it owes, unless a category's card spending asked on it was more than the
+        // card had to cover (#731): that money then stays set aside for the card.
+        const askedBeyond = month.paymentCategories.some((card) => askedOnCategoriesFor(month, card) > toCover(card));
+        if (!askedBeyond) {
+          for (const card of month.paymentCategories) {
+            const settled = find(after.paymentCategories, card.categoryId);
+            assert.equal(settled.available, Math.max(card.available, card.owed ?? 0), `${context}, card ${card.categoryId}`);
+          }
         }
         assertSettled(month, after, context);
-        if ((input.cardTransfers ?? []).length > 0) settledWithTransfer++;
+        if (month.categories.some((c) => cardSpendingAsked(c) > 0)) cardSpendingWithReservation++;
+        if ((input.cardTransfers ?? []).length > 0) {
+          settledWithTransfer++;
+          // A transfer that moved less than its amount leaves the charged card something to cover.
+          if ((input.cardTransfers ?? []).some((t) => find(month.paymentCategories, t.chargedPaymentCategoryId).uncovered > 0)) partialTransfers++;
+        }
       }
-      assert.ok(capped < 150, `${capped} runs had a capped card-to-card transfer`);
-      assert.ok(settledWithTransfer > 20, `only ${settledWithTransfer} runs settled with a card-to-card transfer`);
+      assert.ok(settledWithTransfer > 100, `only ${settledWithTransfer} runs settled with a card-to-card transfer`);
+      assert.ok(partialTransfers > 30, `only ${partialTransfers} runs had a charged card left with something to cover`);
+      assert.ok(cardSpendingWithReservation > 20, `only ${cardSpendingWithReservation} runs asked card spending with a reservation`);
     });
 
     it("covering the categories' whole overspend first, then following the list, settles every card too", () => {
       const random = mulberry32(7280);
       let equalRuns = 0;
+      let withReservation = 0;
+      let askedBeyondRuns = 0;
       for (let run = 0; run < 500; run++) {
         const input = randomMonth(random);
         const month = computeBudgetMonth(input, MONTH);
@@ -298,29 +310,34 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
         for (const c of first.categories) {
           assert.equal(c.creditOverspending, 0, `${context}, category ${c.categoryId}`);
         }
-        const followed = followTodos(firstInput, first);
-        if (transferCapped(firstInput)) continue;
-        assertSettled(first, computeBudgetMonth(followed, MONTH), context);
+        assertSettled(first, computeBudgetMonth(followTodos(firstInput, first), MONTH), context);
 
-        // The total is the same either way when (a) no card received more from the categories
-        // than it had to cover, and (b) no category overspent with a card had a reservation
-        // shortfall (the known gap above: the direct order does not ask for it yet). Otherwise
-        // the category-first order asks for more, never less: the money a card gets beyond its
-        // to cover stays there, and the reservation is asked once the card part is gone.
+        // The total is the same either way, a reservation behind card spending included (#731),
+        // when no card received more from the categories than it had to cover. Otherwise the
+        // category-first order asks for more, never less: the money a card gets beyond its to
+        // cover stays there — unless the direct list itself asked a card's spending on a category
+        // beyond what that card had to cover: that money then stays on the card, or a transfer
+        // moves it on to the card that paid it (#732), so the direct list can ask more.
         const movedWithinToCover = month.paymentCategories.every(
           (card) => find(first.paymentCategories, card.categoryId).available - card.available <= toCover(card),
         );
-        const noShortfallBehindCard = month.categories.every((c) => c.creditOverspending === 0 || shortfall(c) === 0);
+        const askedBeyond = month.paymentCategories.some((card) => askedOnCategoriesFor(month, card) > toCover(card));
         const stepTotal = categoryStep.reduce((sum, a) => sum + a.amount, 0);
-        if (movedWithinToCover && noShortfallBehindCard) {
+        if (askedBeyond && (input.cardTransfers ?? []).length > 0) {
+          askedBeyondRuns++;
+        } else if (movedWithinToCover) {
           assert.equal(stepTotal + rest, direct, context);
           equalRuns++;
+          if (month.categories.some((c) => cardSpendingAsked(c) > 0)) withReservation++;
         } else {
           assert.ok(stepTotal + rest >= direct, context);
         }
       }
-      // The equal case is not vacuous.
+      // Kept a small minority, so that the comparison above still runs on most months.
+      assert.ok(askedBeyondRuns < 50, `${askedBeyondRuns} runs asked a card's spending beyond its to cover, with a transfer`);
+      // The equal case is not vacuous, and covers reservations behind card spending.
       assert.ok(equalRuns > 100, `only ${equalRuns} runs met the conditions`);
+      assert.ok(withReservation > 10, `only ${withReservation} equal runs had a reservation behind card spending`);
     });
   });
 });
