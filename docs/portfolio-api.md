@@ -870,7 +870,10 @@ A trade that moves money owns exactly one transaction on its own account, its **
   `occurredAt` as a date only (`YYYY-MM-DD`), while creating a transaction also takes a date with
   a time; a date with a time in a `PATCH` answers 400 `invalid_date`.
 - A brokerage account's balance is the transfers into and out of it plus its cash legs. Since the
-  account is off budget, a trade never changes the budget. The money reached the broker through a
+  account is off budget, a trade never changes the budget. A transaction recorded by hand on it
+  (not a transfer) takes no category either: a split with a `categoryId` answers 400
+  `category_not_allowed` with `details.field` `categoryId`, on create, on an edit with `splits`
+  and on an import row (#710). The money reached the broker through a
   transfer from an on-budget account, which asked for a category
   ([domain guide](domain-guide.md#the-cash-a-trade-moves)).
 - Money taken back out of the broker goes through `POST /workspaces/:workspaceId/transfers` too.

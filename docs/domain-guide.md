@@ -358,7 +358,9 @@ money goes; the off-budget leg never has a category.
   income on a card is not modeled yet.
 
 Transfers between two on-budget accounts, or between two off-budget accounts, never carry a
-category.
+category. Nor does any other transaction on an off-budget account (a fee, interest, a payment into
+the broker from outside the app): the budget never counts it, and a category given to one is
+refused (`category_not_allowed`, #710).
 
 This is how an investment is planned: the household gives the monthly amount to an "Investments"
 category, and the transfer to the broker spends it.
