@@ -38,10 +38,12 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 /**
  * Whether a value is an instant as the database writes it here, on a real date at a real time: a
  * "2026-02-30" that the pattern alone lets through would fail the query's `::timestamptz` cast.
- * The milliseconds are enough to check the calendar; the microseconds are only digits.
+ * The milliseconds are enough to check the calendar; the microseconds are only digits. Year 0000,
+ * which a JavaScript Date takes, does not exist for PostgreSQL (1 BC comes before 0001), whose
+ * cast would refuse it with its own error.
  */
 function isInstantText(value: unknown): value is string {
-  if (typeof value !== "string" || !INSTANT_TEXT.test(value)) {
+  if (typeof value !== "string" || !INSTANT_TEXT.test(value) || value.startsWith("0000")) {
     return false;
   }
   const date = new Date(`${value.slice(0, 23)}Z`);

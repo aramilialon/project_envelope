@@ -1,9 +1,12 @@
 /**
- * Certifies the cursor paging of an account's transactions (#560, milestone 0.2.1) against the
- * real process (ADR 0007): the actual server (main.ts) as a subprocess, driven over real HTTP
- * connections, not buildApp()+inject(). One case that succeeds (every page of an account, in
- * both orders, each row once) and one that must fail (a cursor of another account, and one that
- * does not decode, refused with `invalid_cursor`).
+ * Certifies 0.2.1 Price tracking & performance against the real process (ADR 0007: one file per
+ * milestone): the actual server (main.ts) as a subprocess, driven over real HTTP connections, not
+ * buildApp()+inject(). Each issue of the milestone that needs a smoke case adds a top-level
+ * `describe` of its own, with its own server, realm and workspace.
+ *
+ * Transaction paging (#560): one case that succeeds (every page of an account, in both orders,
+ * each row once) and one that must fail (a cursor of another account, and one that does not
+ * decode, refused with `invalid_cursor`).
  */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";

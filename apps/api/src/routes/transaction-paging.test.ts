@@ -274,6 +274,11 @@ describe("transaction paging", () => {
         { i: "not-a-uuid" },
         { i: undefined },
         { d: undefined },
+        // This very account, but named under another workspace the user is also a member of.
+        { w: otherWorkspaceId },
+        // Year 0000 passes a JavaScript Date but not PostgreSQL's timestamptz.
+        { o: "0000-01-01T00:00:00.000000Z" },
+        { c: "0000-01-01T00:00:00.000000Z" },
       ]) {
         await refuse(`?cursor=${encode({ ...payload, ...change })}`);
       }
