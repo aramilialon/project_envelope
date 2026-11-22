@@ -1,0 +1,4 @@
+Fixed
+
+- `apps/api`: positions and their cost basis are as of today in the workspace's time zone, like a brokerage account's cash (`#719`). A sale recorded ahead with a later date already emptied the position, and the accounts panel's "Net worth does not include securities" line disappeared while the account still held the units. Trades dated after today are now left out until their day; `?asOf=YYYY-MM-DD` on the positions endpoints asks for another date, and the answer says which date it is as of.
+- `apps/api`: a trade with no time sorts at the start of its date in the workspace's time zone, not at midnight UTC (`#596`). In Europe/Rome a sale timed between midnight and 01:00 (02:00 in summer) came before an untimed buy of the same day and was refused for lack of units. An edit sending only a different `type` is now refused with `invalid_trade` naming the field `type`, instead of "nothing to change".

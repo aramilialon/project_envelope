@@ -349,7 +349,7 @@ until the net worth converts them (#125; rules in "Converting between currencies
   (#125): only the cash in the brokerage account counts. Sending €10,000 to a broker in euros
   leaves the net worth unchanged (the money only moves between two accounts in the net worth);
   spending it on an ETF lowers the net worth by what the purchase cost, fees included. A line says
-  so whenever the workspace holds securities.
+  so whenever the workspace holds securities today (see "Positions as of today").
 
 **Example.** Base currency EUR: checking €5,000, an on-budget card −€500, a broker in euros holding
 €2,000 of cash and some ETFs, a broker in dollars holding $3,000 of cash. Net worth:
@@ -522,8 +522,19 @@ the average cost is `C ÷ Q`, computed only to be shown.
 statement, the same day the user enters — with a split first on its date, then by the time the
 trade occurred, by when it was recorded, and by id. A split is recorded on its ex-date (the day
 it takes effect), so a sale of the new units on that same day comes after it. Times are compared
-to the millisecond. Every trade of an instrument in the workspace is replayed together, because
-units moved between two accounts take their cost with them.
+to the millisecond; a trade with no time counts as the very start of its date in the workspace's
+time zone, before every trade of that date that has a time (#596). Every trade of an instrument in
+the workspace is replayed together, because units moved between two accounts take their cost with
+them.
+
+**Positions as of today.** Like a balance ("Balances as of today"), a position is as of a date,
+today in the workspace's time zone unless another is asked for: only the trades dated on or before
+it are replayed, and the cost basis follows the same rule (#719). Buy 10 units on November 1 for
+€1,000 and record ahead a sale of the 10 units dated March 3, 2028 for €1,500: today the account
+holds 10 units with a cost of €1,000 and no realized gain, and its cash leaves out the €1,500;
+from March 3, 2028 it holds 0 units and has realized €500. So an account's cash and its
+securities always describe the same day, and the net worth's line about securities shows while
+the account holds them today.
 
 **The average cost belongs to the account.** Every portfolio holding the instrument in the same
 account shares one average cost: portfolios split the account's *quantity*, not its cost. Moving
