@@ -9,6 +9,21 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 
 ## Awaiting review at 0.2.7 Portfolio MVP
 
+### 0.2.1
+
+- **#82** (2026-11-22, domain-expert): a price is the latest one dated on or before the date, the workspace's own winning a tie; prices and exchange rates have no maximum age, and the date used is returned with the value.
+- **#82** (2026-11-22, architect): `prices` has a nullable `workspace_id` (null for a shared provider price) and one Row-Level Security policy per command; shared rows are written only by a system job.
+- **#82** (2026-11-22, architect): system jobs write shared market data through `app_is_system_job()` and an allowlist test, not through a new database role.
+- **#82** (2026-11-22, architect): price precedence is resolved in `@envelope/core` (`resolvePrice`); SQL only loads the candidates.
+- **#84** (2026-11-22, architect): screens and endpoints read only stored prices and rates, never a provider.
+- **#85** (2026-11-22, architect): rates are stored as `rate_e10`, quote currency per 1 EUR as published, never inverted; other pairs are computed through the euro with one rounding.
+- **#85** (2026-11-22, architect): no XML dependency for the ECB file, and the built-in `fetch`.
+- **#87/#88** (2026-11-22, architect): returns are computed in floating point inside, output as an integer `returnE6`, never stored.
+- **#83** (2026-11-22, architect): prices are not a sync entity in 0.2.1; a future entity id is derived from (workspace, instrument, date).
+- **#83** (2026-11-22, architect): one audit entry per manual price write, one summary entry per CSV import.
+- **#89** (2026-11-22, architect): the performance range is capped at 120 months, computed on read, with no cache.
+- **#89** (2026-11-22, architect): #89 depends on #719.
+
 ### 0.2.0
 
 - **#701** (2026-11-21, coordinator alone, review it): a goal amount above the cap is refused with `amount_too_large`, like every other amount (ADR 0002, #651).
