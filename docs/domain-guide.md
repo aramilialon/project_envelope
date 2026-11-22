@@ -191,6 +191,28 @@ card, the card is paid €100 from checking, and then €30 of them are refunded
   and the payment category's −€30 is now cash overspending: the card asks **€30** to cover,
   Restaurants asks nothing. Left uncovered, January's unassigned money is €30 lower.
 
+**Wording for a card in credit** (#660). A card in credit has nothing to cover, but no money set
+aside covers anything either, so the payment category's detail never says the debt is "fully
+covered by money set aside": it says "The card is in credit by €30.00. Spending with the card uses
+it up; there is nothing to cover." When the payment category is negative beyond the credit (the
+€10 / €50 case below), the detail says how much was paid beyond what was set aside in all, how much
+of it is still on the card as credit, and what happens to the rest if it is still uncovered when the
+month ends, as a consequence and not an order: "The card was paid €50.00 more than was set aside;
+€10.00 of it is still on the card as credit. If the other €40.00 is still uncovered when the month
+ends, it comes out of next month's unassigned money." Its card debt list shows "Card's credit" on a
+line of its own, beside "Paid beyond what was set aside". "Fully covered by money set aside" is kept
+for a card that owes money.
+
+**Known gap: a card refund dated after today** (#660, #668). The card's balance at the end of the
+month counts every card transaction dated in the month, but the budget counts a card refund only
+from its own date (#668). Between today and a future-dated refund, the card's credit already
+includes the refund while the payment category does not yet show it, so the cash overspending reads
+lower than it will. Example: a card added owing €100 is paid €100 from checking with nothing set
+aside, and a €30 refund on the card is dated 25 November. On 22 November the card owes −€30 (€30 in
+credit) and the payment category is −€100, so the cash overspending reads **€70**; from 25 November
+the refund counts, the payment category is −€130, and the cash overspending is **€100**, the figure
+it settles on. This is accepted for now; no code works around it.
+
 **Two edge cases.**
 
 - *A card in credit.* The card owes −€10 (it was paid €10 more than its whole balance) and its
