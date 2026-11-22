@@ -2,6 +2,7 @@ import {
   aggregateTransactions,
   computeBudgetMonth,
   computeBudgetProblems,
+  isStartingBalanceSplit,
   UNASSIGNED,
   type Assignment,
   type BudgetAccount,
@@ -19,7 +20,7 @@ import { listCategories, listCategoryGroups, type CategoryGroupRecord, type Cate
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { getCurrentDate } from "../days-of-buffer/repository.ts";
 import { listReservationsForMonth } from "../scheduled-transactions/repository.ts";
-import { isStartingBalanceSplit, listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
+import { listTransactionsForWorkspace, type TransactionRecord } from "../transactions/repository.ts";
 
 export interface BudgetMonthCategory {
   readonly categoryId: string;
@@ -121,8 +122,8 @@ function toBudgetTransaction(transaction: TransactionRecord, accountByTransactio
  * feeds only the card's balance (`CardBalance.transactions`, read by core's
  * `owedAsOf`), never `aggregateTransactions`, which would otherwise reject it
  * (a payment category is never a valid `Activity.categoryId`). The
- * rule itself (`isStartingBalanceSplit`) lives in `transactions/repository.ts`,
- * shared with `listTransactionEventsForMonth`'s own exclusion of the same thing (#326).
+ * rule itself (`isStartingBalanceSplit`) lives in `@envelope/core`, shared with
+ * `listTransactionEventsForMonth`'s own exclusion of the same thing (#326, #659).
  */
 function isStartingBalance(transaction: TransactionRecord, paymentCategoryIdByAccountId: ReadonlyMap<string, string | null>): boolean {
   return isStartingBalanceSplit({
