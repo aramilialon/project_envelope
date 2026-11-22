@@ -1573,7 +1573,7 @@ button{cursor:pointer}
       // much of the card's debt is included in what categories still need, while there is any to cover.
       if (x.cash > 0 && x.c.payment) {
         var a = askedOn(byId, k), n = cardNeed(byId, k);
-        if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: f(x.cash) + ' paid beyond what was set aside; if still uncovered when the month ends, it comes out of next month\'s unassigned money.' + (x.uncovered > 0 ? ' Plus ' + f(x.uncovered) + ' of debt.' : ''), sub2: a.length && needOf(x) > 0 ? askedSub(a) : '', amount: n, cat: k });
+        if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: f(x.cash) + ' paid beyond what was set aside; if still uncovered when the month ends, it comes out of next month\'s unassigned money.' + (x.uncovered > 0 ? ' Plus ' + f(x.uncovered) + ' of debt.' : ''), sub2: a.length && needOf(x) > 0 ? askedSub(a) + '.' : '', amount: n, cat: k });
       }
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
