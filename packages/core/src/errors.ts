@@ -34,6 +34,7 @@ export type ValidationErrorCode =
   | "direct_reconciliation_not_allowed"
   | "invalid_recurrence"
   | "invalid_currency"
+  | "invalid_fx_rate"
   | "invalid_time_zone"
   | "brokerage_on_budget"
   | "account_currency_not_base"
