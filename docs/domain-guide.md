@@ -316,7 +316,7 @@ unassigned, €1,800 is in "Groceries" and €1,000 in "Rent"; "Investments" hol
 ### Each account in its own currency
 
 Every account keeps its own currency, and amounts in different currencies are never added together
-until exchange rates exist (#86, #652):
+until the net worth converts them (#125; rules in "Converting between currencies" below):
 
 - **On-budget accounts, cards included, are in the workspace's base currency.** The budget is one
   pot of money in one currency; an on-budget account in another one is refused
@@ -348,7 +348,8 @@ cannot be a transfer: checking records an outflow of €1,000 with a category (w
 household's choice), and the broker an inflow of $1,080. Checking now holds €4,000 and the broker
 $4,080, so the net worth drops to 4,000 − 500 + 2,000 = **€5,500**, and the note becomes "Not
 included: $4,080.00 (no exchange rates yet)". The euros reappear in the net worth, as dollars
-converted at a rate, only once exchange rates exist (#86).
+converted at the rate of the day (see "Converting between currencies"), once the net worth
+converts other currencies (#125).
 
 #### Converting between currencies
 
@@ -365,9 +366,10 @@ Where the app converts an amount from one currency to another, it follows these 
   most recent rate, and the conversion's rate date is the older of the two. The rate between the
   two is never rounded or stored.
 - **A converted amount is rounded once, half away from zero, to the target currency's smallest
-  unit** (cents for the euro and the dollar, whole yen for the yen). A security's value is
-  converted from its quantity and price directly, not from an amount already rounded in its own
-  currency.
+  unit** (cents for the euro and the dollar, whole yen for the yen). A security's value is first
+  its amount in its own currency (quantity × price, rounded once to that currency's smallest
+  unit), then converted like any other amount: 3 shares at $33.335 are $100.01, and at USD 2 that
+  is €50.01, the same on the position's line and in the total.
 - **Amounts in one currency are added up first, then converted once.** A sum does not depend on how
   its amounts are split; returns, which follow each flow of money on its own date, convert each one
   at the rate of its own date.
