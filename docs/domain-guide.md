@@ -433,8 +433,8 @@ securities); the app derives positions, current value and gains from them and fr
 historical prices, rather than asking the user to maintain a balance by hand. Two different
 "return" numbers answer two different questions:
 
-- **TWR** (time-weighted return) measures how good the *strategy* was, independent of when money
-  was added or removed; after the costs and taxes the trades record.
+- **TWR** (time-weighted return) measures how the holdings did, independent of when money was
+  added or removed, after the costs and taxes the trades record.
 - **MWR/XIRR** (money-weighted return) measures the *household's own result*, given exactly when
   their contributions happened — the number that answers "did my timing help or hurt me."
 
@@ -702,7 +702,11 @@ after the costs and taxes the trades record. It is computed truly time-weighted,
 Dietz approximation: the period is cut at the end of every day with a flow and at every month end,
 flows count at the end of their day, each sub-period's return is (V_b − F_b) ÷ V_a − 1 (V_a the
 value at its start, V_b at its end, F_b the flows of its last day), or V_b ÷ F_b − 1 for a
-sub-period that starts from nothing, and the sub-periods are linked: Π(1 + r) − 1.
+sub-period that starts from nothing, and the sub-periods are linked: Π(1 + r) − 1. Money that
+moves while the portfolio holds nothing (a dividend paid after the last sale, a fee before the first
+buy or after the last sale) is left out of the TWR, which measures the holdings; it counts in the
+money-weighted return and in the month's gain. Sold for a net 10,100 on 10 October from a value of
+10,000 at the end of September, with a dividend of 50 on 20 October, October's TWR is 1.00%.
 
 | Date | Event | Value | Sub-period |
 | --- | --- | --- | --- |
@@ -718,16 +722,30 @@ September, returned 1.50% in September; Modified Dietz would say 2.25%, and 4.50
 on 20 September, because it divides the gain by the money weighted by days held.
 
 **Money-weighted return (MWR, XIRR)** answers how the household's own money did, given exactly
-when it went in and out: the yearly rate, counted Actual/365, that brings the household's flows to
-zero (the opposite of the portfolio's flows, the value at the start paid in on the start date and
-the value at the end received on the end date). It is found by bisection between −99% and +1000% a
-year; no rate in that range, a total loss included, makes it unknown. €10,000 paid in on 1 January
-2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is 8.02% a year.
+when it went in and out: the rate that brings the household's flows to zero (the opposite of the
+portfolio's flows, the value at the start paid in on the start date and the value at the end
+received on the end date), each flow timed in calendar years from the first (see Periods). It is
+found by bisection, on the figure shown (the yearly rate from a year on, the period's own rate
+before), from just above −100% to +1000%; no rate in that range makes it unknown, and money never
+received back at all is exactly −100%. With flows that change sign several times there can be more
+than one such rate; the figure is the one bisection finds from those bounds, always the same for
+the same flows. €10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1
+January 2026 is 8.02% a year. The MWR assumes money stays invested at that rate, so when nothing is
+held at the end the period ends at the last money received: €10,000 paid in on 30 September,
+€10,100 back on 10 October and a €50 dividend on 20 October is 3.01% over the period, not 4.70% as
+it would be over the whole of October.
 
-**Periods.** A period of 365 days or more shows a yearly figure (the TWR as (1 + R)^(365 ÷ days) − 1);
-a shorter one shows the return over the period itself (the MWR as (1 + r)^(days ÷ 365) − 1), so
-€10,000 growing to €10,100 over 30 days is 1.00% either way. The days run from the first money in
-the portfolio. A return is shown to 0.01 percentage points.
+**Periods.** Time is counted in calendar years, not days ÷ 365: the whole anniversaries, plus the
+days since the last one over the days to the next (a 29 February anniversary is 28 February in a
+year that is not a leap year). 1 January to 1 July is 181/365 of a year in 2025 and 182/366 in
+2024. A period that reaches its first anniversary shows a yearly figure (the TWR as
+(1 + R)^(1 ÷ years) − 1): calendar 2024 at +10% is 10.00% a year, and 10,000 on 31 December 2022
+growing to 12,100 on 31 December 2024 is 10.00% a year; 1 January to 31 December 2024, 365 days,
+is still the period's own figure. A shorter period shows the return over the period itself, so
+€10,000 growing to €10,100 over 30 days is 1.00% either way. The TWR's period starts on its start
+date when the portfolio holds something then, otherwise on the first date it holds something; the
+MWR's on the household's first flow. The figure is `returnE6`, in millionths; the screen rounds
+`returnE6` to 0.01 percentage points, half to even.
 
 ### Target allocation and thresholds
 
