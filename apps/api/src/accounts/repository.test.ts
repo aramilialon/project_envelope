@@ -6,6 +6,7 @@ import { isValidationError } from "@envelope/core";
 
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbClient, type DbPool } from "../db/pool.ts";
+import { createTransaction, listTransactionsForAccount } from "../transactions/repository.ts";
 import { closeAccount, createAccount, isBrokerageOffBudgetViolation, listAccounts } from "./repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -112,6 +113,53 @@ describe("accounts repository", () => {
     assert.equal(rows.rows[0]?.status, "cleared");
     assert.equal(rows.rows[0]?.category_id, account.paymentCategoryId);
     assert.equal(Number(rows.rows[0]?.amount_cents), -120000);
+  });
+
+  it("a starting balance is dated at midnight of today in the workspace's time zone and comes before a purchase of the same day (#706)", async () => {
+    const account = await createAccount(pool, {
+      workspaceId,
+      name: "Card owing 500",
+      type: "credit_card",
+      currency: "EUR",
+      onBudget: true,
+      startingBalanceCents: -50_000,
+    });
+    const { rows: start } = await pool.query<{ day: string; today: string; at_midnight: boolean }>(
+      `SELECT to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS day,
+              to_char(now() AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS today,
+              (t.occurred_at AT TIME ZONE w.time_zone)::time = '00:00' AS at_midnight
+       FROM transactions t JOIN workspaces w ON w.id = t.workspace_id WHERE t.account_id = $1`,
+      [account.id],
+    );
+    assert.equal(start[0]?.day, start[0]?.today, "dated today in the workspace's time zone");
+    assert.equal(start[0]?.at_midnight, true);
+
+    const { rows: group } = await pool.query<{ id: string }>(
+      "INSERT INTO category_groups (workspace_id, name, sort_order) VALUES ($1, 'Everyday', 1) RETURNING id",
+      [workspaceId],
+    );
+    const { rows: groceries } = await pool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) VALUES ($1, $2, 'Groceries', 1) RETURNING id",
+      [workspaceId, group[0]!.id],
+    );
+    const categoryId = groceries[0]!.id;
+    await createTransaction(pool, {
+      workspaceId,
+      accountId: account.id,
+      occurredAt: start[0]!.day,
+      payee: "Grocer",
+      splits: [{ categoryId, amountCents: -4_567 }],
+    });
+
+    let balance = 0;
+    const register = (await listTransactionsForAccount(pool, workspaceId, account.id)).map((t) => {
+      balance += t.splits.reduce((sum, s) => sum + s.amountCents, 0);
+      return [t.payee, t.budgetDate, balance];
+    });
+    assert.deepEqual(register, [
+      ["Starting balance", start[0]!.day, -50_000],
+      ["Grocer", start[0]!.day, -54_567],
+    ]);
   });
 
   it("a zero starting balance creates no transaction", async () => {

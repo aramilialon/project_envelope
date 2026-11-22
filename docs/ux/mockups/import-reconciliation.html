@@ -3,10 +3,11 @@
   Interactive mockup of statement import (file, columns, check, done) and reconciliation.
   Reference for docs/design.md, "User interface". Open it in a browser; no build
   step, no dependencies except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself
-  self-hosts its fonts). The UI copy is the Italian translation; English stays
-  the source language of the app. Sample data is fictional.
+  self-hosts its fonts). The UI copy is English, the source language of the app (#622); the
+  Italian approved before that is at the commit recorded in docs/ux/README.md. Sample data is
+  fictional.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -363,7 +364,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <div class="wrap">
   <div class="strip">
     <p><b>envelope</b>, statement import and reconciliation mockup. The import can use the sample file or a CSV of your own (read in the browser, never sent anywhere). In the reconciliation, try typing a different statement balance.</p>
-    <div class="views" role="tablist" aria-label="Schermata">
+    <div class="views" role="tablist" aria-label="Screen">
       <button type="button" role="tab" id="tab-imp" aria-controls="view-imp" aria-selected="true">Import</button>
       <button type="button" role="tab" id="tab-rec" aria-controls="view-rec" aria-selected="false">Reconciliation</button>
     </div>
@@ -371,44 +372,44 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 
   <div class="scroller">
     <div class="desk one">
-        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button" aria-current="page">Conti</button><button type="button">Portafoglio</button></nav><button type="button" class="ws2">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
+        <header class="band2"><span class="brand2">envelope</span><nav class="tnav" aria-label="Main (mockup)"><button type="button">Budget</button><button type="button" aria-current="page">Accounts</button><button type="button">Portfolio</button></nav><button type="button" class="ws2">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button><button type="button" class="me2">Giorgio</button></header>
       <nav class="side" aria-label="Main (mockup)">
         <div class="brand">
           <b>envelope</b>
-          <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <button type="button" class="ws">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
         </div>
         <div class="nav">
           <button type="button">Budget</button>
-          <button type="button" aria-current="page">Conti</button>
-          <button type="button">Portafoglio</button>
+          <button type="button" aria-current="page">Accounts</button>
+          <button type="button">Portfolio</button>
         </div>
         <div class="ledger">
-          <h5>In budget</h5>
-          <div class="lr on"><span>Conto corrente</span><span class="dots"></span><span class="n">3.412,58</span></div>
-          <div class="lr"><span>Conto risparmio</span><span class="dots"></span><span class="n">8.000,00</span></div>
-          <div class="lr"><span>Contanti</span><span class="dots"></span><span class="n">85,40</span></div>
-          <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642,30</span></div>
+          <h5>On budget</h5>
+          <div class="lr on"><span>Checking</span><span class="dots"></span><span class="n">3,412.58</span></div>
+          <div class="lr"><span>Savings</span><span class="dots"></span><span class="n">8,000.00</span></div>
+          <div class="lr"><span>Cash</span><span class="dots"></span><span class="n">85.40</span></div>
+          <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642.30</span></div>
         </div>
         <div class="ledger">
-          <h5>Fuori budget</h5>
-          <div class="lr"><span>Broker ETF</span><span class="dots"></span><span class="n">42.180,00</span></div>
-          <div class="lr"><span>Mutuo casa</span><span class="dots"></span><span class="n neg">−96.300,00</span></div>
+          <h5>Off budget</h5>
+          <div class="lr"><span>ETF broker</span><span class="dots"></span><span class="n">42,180.00</span></div>
+          <div class="lr"><span>Home mortgage</span><span class="dots"></span><span class="n neg">−96,300.00</span></div>
         </div>
-        <button type="button" class="plain">+ Aggiungi conto</button>
-        <div class="me"><span>Giorgio</span><button type="button" class="plain">Impostazioni</button></div>
+        <button type="button" class="plain">+ Add account</button>
+        <div class="me"><span>Giorgio</span><button type="button" class="plain">Settings</button></div>
       </nav>
 
       <div class="main">
         <section id="view-imp" role="tabpanel" aria-labelledby="tab-imp">
-          <div class="crumb">Conto corrente › <b>Importa movimenti</b></div>
-          <h3 class="page-h">Importa l'estratto conto</h3>
+          <div class="crumb">Checking › <b>Import</b></div>
+          <h3 class="page-h">Import a bank statement</h3>
           <ol class="steps" id="steps"></ol>
           <div class="stage" id="stage"></div>
         </section>
         <section id="view-rec" role="tabpanel" aria-labelledby="tab-rec" hidden>
-          <div class="crumb">Conto corrente › <b>Riconcilia</b></div>
-          <h3 class="page-h">Riconcilia con la banca</h3>
-          <p class="hint" style="max-width:70ch;margin:10px 0 0">Confronta il saldo dell'estratto conto con quello verificato in envelope. Se tornano, le transazioni vengono bloccate: da quel momento il saldo fino a quella data non cambia più per errore.</p>
+          <div class="crumb">Checking › <b>Reconcile</b></div>
+          <h3 class="page-h">Reconcile with your bank</h3>
+          <p class="hint" style="max-width:70ch;margin:10px 0 0">Compare the bank statement's balance with what's cleared in envelope. If they match, the transactions get locked: the balance up to that date never changes again by mistake.</p>
           <div class="rec-grid" style="margin-top:22px" id="rec"></div>
         </section>
       </div>
@@ -418,45 +419,45 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 
 <script>
 (function () {
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); }
   function el(id) { return document.getElementById(id); }
-  var MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
-  function dLabel(iso) { var q = iso.split('-'); return Number(q[2]) + ' ' + MONTHS[Number(q[1]) - 1]; }
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function dLabel(iso) { var q = iso.split('-'); return MONTHS[Number(q[1]) - 1] + ' ' + Number(q[2]); }
 
   // ---- Data already in the register (same example as the register mockup)
   var REGISTER = [
-    ['2026-09-01', 'Banca, rata mutuo', -85000, 'locked'], ['2026-09-02', 'Operatore telefonico', -4500, 'locked'],
-    ['2026-09-05', 'Trasferimento verso Broker ETF', -50000, 'locked'], ['2026-09-09', 'Idraulico', -12000, 'cleared'],
-    ['2026-09-15', 'Pagamento della carta Visa', -45000, 'cleared'], ['2026-09-16', 'Fornitore energia', -9640, 'cleared'],
-    ['2026-09-17', 'Supermercato', -11205, 'cleared'], ['2026-09-18', 'Clinica veterinaria', -8500, 'cleared'],
-    ['2026-09-20', 'Grande magazzino', -6730, 'cleared'], ['2026-09-24', 'Supermercato', -8740, 'pending'],
-    ['2026-09-25', 'Stipendio', 265000, 'cleared']
+    ['2026-09-01', 'Bank, mortgage payment', -85000, 'locked'], ['2026-09-02', 'Phone provider', -4500, 'locked'],
+    ['2026-09-05', 'Transfer to ETF broker', -50000, 'locked'], ['2026-09-09', 'Plumber', -12000, 'cleared'],
+    ['2026-09-15', 'Visa card payment', -45000, 'cleared'], ['2026-09-16', 'Energy provider', -9640, 'cleared'],
+    ['2026-09-17', 'Supermarket', -11205, 'cleared'], ['2026-09-18', 'Vet clinic', -8500, 'cleared'],
+    ['2026-09-20', 'Department store', -6730, 'cleared'], ['2026-09-24', 'Supermarket', -8740, 'pending'],
+    ['2026-09-25', 'Salary', 265000, 'cleared']
   ].map(function (r, i) { return { id: 'r' + i, date: r[0], payee: r[1], amount: r[2], status: r[3] }; });
 
-  var CATS = [['', 'Scegli una categoria'], ['rta', 'Da assegnare'], ['spesa', 'Spesa alimentare'], ['farm', 'Farmacia e salute'], ['rist', 'Ristoranti'], ['carb', 'Carburante e trasporti'], ['banca', 'Spese bancarie'], ['hobby', 'Hobby'], ['xfer:cont', 'Trasferimento verso Contanti']];
-  var RULES = [[/SUPERMERCATO/, 'Supermercato', 'spesa'], [/FARMACIA/, 'Farmacia', 'farm'], [/PRELIEVO/, 'Prelievo bancomat', 'xfer:cont'], [/STIPENDIO/, 'Stipendio', 'rta'], [/COMMISSION/, 'Banca', ''], [/LUCA/, 'Luca Bianchi', '']];
+  var CATS = [['', 'Choose a category'], ['rta', 'Income'], ['spesa', 'Groceries'], ['farm', 'Pharmacy and health'], ['rist', 'Restaurants'], ['carb', 'Fuel and transport'], ['banca', 'Bank fees'], ['hobby', 'Hobbies'], ['xfer:cont', 'Transfer to Cash']];
+  var RULES = [[/SUPERMARKET/, 'Supermarket', 'spesa'], [/PHARMACY/, 'Pharmacy', 'farm'], [/ATM WITHDRAWAL/, 'ATM withdrawal', 'xfer:cont'], [/SALARY/, 'Salary', 'rta'], [/MAINTENANCE FEE/, 'Bank', ''], [/LUCA/, 'Luca Bianchi', '']];
 
-  var SAMPLE = 'Data;Data valuta;Descrizione;Importo;Saldo\n' + [
-    '01/09/2026;01/09/2026;ADDEBITO RATA MUTUO N. 0042;-850,00;2.325,73',
-    '02/09/2026;02/09/2026;ADDEBITO SDD OPERATORE TELEFONICO;-45,00;2.280,73',
-    '05/09/2026;05/09/2026;BONIFICO A BROKER ETF VERSAMENTO;-500,00;1.780,73',
-    '09/09/2026;09/09/2026;BONIFICO A IDRAULICO PERDITA LAVELLO;-120,00;1.660,73',
-    '15/09/2026;15/09/2026;SALDO CARTA VISA ESTRATTO AGOSTO;-450,00;1.210,73',
-    '16/09/2026;16/09/2026;ADDEBITO SDD FORNITORE ENERGIA;-96,40;1.114,33',
-    '17/09/2026;17/09/2026;PAGAMENTO POS SUPERMERCATO 17/09;-112,05;1.002,28',
-    '18/09/2026;18/09/2026;PAGAMENTO POS CLINICA VETERINARIA;-85,00;917,28',
-    '20/09/2026;20/09/2026;PAGAMENTO POS GRANDE MAGAZZINO;-67,30;849,98',
-    '22/09/2026;22/09/2026;PRELIEVO BANCOMAT ATM 1234;-100,00;749,98',
-    '23/09/2026;24/09/2026;PAGAMENTO POS SUPERMERCATO 23/09;-87,40;662,58',
-    '25/09/2026;25/09/2026;STIPENDIO SETTEMBRE;2.650,00;3.312,58',
-    '26/09/2026;26/09/2026;PAGAMENTO POS FARMACIA;-18,90;3.293,68',
-    '26/09/2026;30/09/2026;COMMISSIONI TENUTA CONTO;-2,50;3.291,18',
-    '26/09/2026;26/09/2026;BONIFICO DA LUCA BIANCHI RIMBORSO CENA;30,00;3.321,18'
+  var SAMPLE = 'Date;Value date;Description;Amount;Balance\n' + [
+    '01/09/2026;01/09/2026;MORTGAGE PAYMENT DEBIT NO. 0042;-850,00;2.325,73',
+    '02/09/2026;02/09/2026;DIRECT DEBIT PHONE PROVIDER;-45,00;2.280,73',
+    '05/09/2026;05/09/2026;TRANSFER TO ETF BROKER CONTRIBUTION;-500,00;1.780,73',
+    '09/09/2026;09/09/2026;TRANSFER TO PLUMBER SINK LEAK;-120,00;1.660,73',
+    '15/09/2026;15/09/2026;VISA CARD BALANCE AUGUST STATEMENT;-450,00;1.210,73',
+    '16/09/2026;16/09/2026;DIRECT DEBIT ENERGY PROVIDER;-96,40;1.114,33',
+    '17/09/2026;17/09/2026;POS PAYMENT SUPERMARKET 17/09;-112,05;1.002,28',
+    '18/09/2026;18/09/2026;POS PAYMENT VET CLINIC;-85,00;917,28',
+    '20/09/2026;20/09/2026;POS PAYMENT DEPARTMENT STORE;-67,30;849,98',
+    '22/09/2026;22/09/2026;ATM WITHDRAWAL 1234;-100,00;749,98',
+    '23/09/2026;24/09/2026;POS PAYMENT SUPERMARKET 23/09;-87,40;662,58',
+    '25/09/2026;25/09/2026;SALARY SEPTEMBER;2.650,00;3.312,58',
+    '26/09/2026;26/09/2026;POS PAYMENT PHARMACY;-18,90;3.293,68',
+    '26/09/2026;30/09/2026;ACCOUNT MAINTENANCE FEE;-2,50;3.291,18',
+    '26/09/2026;26/09/2026;TRANSFER FROM LUCA BIANCHI DINNER REFUND;30,00;3.321,18'
   ].join('\n');
 
-  var ROLES = [['', 'Ignora'], ['date', 'Data'], ['desc', 'Descrizione'], ['amount', 'Importo'], ['out', 'Uscita'], ['in', 'Entrata'], ['memo', 'Nota']];
+  var ROLES = [['', 'Ignore'], ['date', 'Date'], ['desc', 'Description'], ['amount', 'Amount'], ['out', 'Outflow'], ['in', 'Inflow'], ['memo', 'Memo']];
   var imp = { step: 1, name: '', rows: [], header: true, roles: [], datefmt: 'dmy', dec: 'comma', remember: true, review: [], result: null, dragover: false };
 
   function splitLine(line, sep) {
@@ -506,9 +507,9 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
   function mappingErrors() {
     var r = imp.roles, errs = [];
-    if (r.indexOf('date') < 0) errs.push('Indica la colonna con la data.');
-    if (r.indexOf('desc') < 0) errs.push('Indica la colonna con la descrizione.');
-    if (r.indexOf('amount') < 0 && (r.indexOf('out') < 0 || r.indexOf('in') < 0)) errs.push('Indica la colonna dell’importo, oppure le due colonne uscita ed entrata.');
+    if (r.indexOf('date') < 0) errs.push('Pick the date column.');
+    if (r.indexOf('desc') < 0) errs.push('Pick the description column.');
+    if (r.indexOf('amount') < 0 && (r.indexOf('out') < 0 || r.indexOf('in') < 0)) errs.push('Pick the amount column, or both an outflow and an inflow column.');
     return errs;
   }
   function dataRows() { return imp.header ? imp.rows.slice(1) : imp.rows; }
@@ -521,7 +522,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var amount = r.indexOf('amount') >= 0 ? parseNum(get('amount')) : (parseNum(get('in')) || 0) - Math.abs(parseNum(get('out')) || 0);
       var desc = get('desc');
       var row = { i: i, date: date, desc: desc, amount: amount, memo: get('memo'), payee: '', cat: '', status: 'new', include: true, match: null, error: null };
-      if (!date || amount === null) { row.error = !date ? 'Data non riconosciuta' : 'Importo non riconosciuto'; row.include = false; return row; }
+      if (!date || amount === null) { row.error = !date ? 'Date not recognized' : 'Amount not recognized'; row.include = false; return row; }
       // Duplicate detection: same amount, dates at most 3 days apart, not matched yet.
       var m = REGISTER.filter(function (t) { return !used[t.id] && t.amount === amount && daysApart(t.date, date) <= 3; })[0];
       if (m) {
@@ -531,14 +532,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         return row;
       }
       var rule = RULES.filter(function (x) { return x[0].test(desc.toUpperCase()); })[0];
-      row.payee = rule ? rule[1] : desc.replace(/^(PAGAMENTO POS|ADDEBITO SDD|BONIFICO (A|DA))\s+/i, '').toLowerCase().replace(/(^|\s)\S/g, function (x) { return x.toUpperCase(); });
+      row.payee = rule ? rule[1] : desc.replace(/^(POS PAYMENT|DIRECT DEBIT|TRANSFER (TO|FROM))\s+/i, '').toLowerCase().replace(/(^|\s)\S/g, function (x) { return x.toUpperCase(); });
       row.cat = rule ? rule[2] : '';
       if (!row.cat) row.status = 'need';
       return row;
     });
   }
   function stepsHtml() {
-    var S = ['File', 'Colonne', 'Controllo', 'Fatto'];
+    var S = ['File', 'Columns', 'Check', 'Done'];
     return S.map(function (s, k) {
       var n = k + 1, cls = n < imp.step ? 'done' : n === imp.step ? 'now' : '';
       return '<li class="' + cls + '"' + (n === imp.step ? ' aria-current="step"' : '') + '><span class="num">' + (n < imp.step ? '✓' : n) + '</span>' + s + '</li>';
@@ -548,63 +549,63 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     el('steps').innerHTML = stepsHtml();
     var h = '';
     if (imp.step === 1) {
-      h = '<label class="drop' + (imp.dragover ? ' over' : '') + '" id="drop" for="file-in"><b>Trascina qui l’estratto conto</b>' +
-        '<span class="hint">CSV, OFX, QIF o CAMT.053, così come lo scarichi dall’home banking. Il file viene letto e non viene conservato.</span>' +
-        '<span class="btn" style="display:inline-flex;align-items:center">Scegli un file</span></label>' +
+      h = '<label class="drop' + (imp.dragover ? ' over' : '') + '" id="drop" for="file-in"><b>Drop your bank statement here</b>' +
+        '<span class="hint">CSV, OFX, QIF or CAMT.053, just as you download it from your bank. The file is read and never stored.</span>' +
+        '<span class="btn" style="display:inline-flex;align-items:center">Choose a file</span></label>' +
         '<input type="file" id="file-in" class="file-in" accept=".csv,.txt,.ofx,.qif,.xml">' +
-        '<div class="or">oppure</div>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-sample="1">Usa il file d’esempio (movimenti-settembre.csv)</button>' +
-        '<span class="hint">In questo bozzetto si leggono solo i CSV; OFX, QIF e CAMT.053 non hanno bisogno della mappatura delle colonne.</span></div>';
+        '<div class="or">or</div>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-sample="1">Use the sample file (september-transactions.csv)</button>' +
+        '<span class="hint">In this mockup only CSV files are read; OFX, QIF and CAMT.053 need no column mapping.</span></div>';
     } else if (imp.step === 2) {
       var errs = mappingErrors();
       var cols = imp.rows[0].length;
-      h = '<p style="margin:0">File <b>' + esc(imp.name) + '</b>: ' + dataRows().length + ' righe. Dimmi cosa contiene ogni colonna; le colonne che non servono si ignorano.</p>' +
+      h = '<p style="margin:0">File <b>' + esc(imp.name) + '</b>: ' + dataRows().length + ' rows. Tell us what each column holds; a column you don\'t need can be ignored.</p>' +
         '<div class="opts">' +
-        '<label class="check"><input type="checkbox" data-imp="header"' + (imp.header ? ' checked' : '') + '> La prima riga contiene i nomi delle colonne</label>' +
-        '<div class="field"><label for="datefmt">Formato delle date</label><select id="datefmt" data-imp="datefmt"><option value="dmy"' + (imp.datefmt === 'dmy' ? ' selected' : '') + '>gg/mm/aaaa</option><option value="ymd"' + (imp.datefmt === 'ymd' ? ' selected' : '') + '>aaaa-mm-gg</option></select></div>' +
-        '<div class="field"><label for="dec">Separatore dei decimali</label><select id="dec" data-imp="dec"><option value="comma"' + (imp.dec === 'comma' ? ' selected' : '') + '>virgola (1.234,56)</option><option value="dot"' + (imp.dec === 'dot' ? ' selected' : '') + '>punto (1,234.56)</option></select></div></div>' +
+        '<label class="check"><input type="checkbox" data-imp="header"' + (imp.header ? ' checked' : '') + '> The first row holds column names</label>' +
+        '<div class="field"><label for="datefmt">Date format</label><select id="datefmt" data-imp="datefmt"><option value="dmy"' + (imp.datefmt === 'dmy' ? ' selected' : '') + '>DD/MM/YYYY</option><option value="ymd"' + (imp.datefmt === 'ymd' ? ' selected' : '') + '>YYYY-MM-DD</option></select></div>' +
+        '<div class="field"><label for="dec">Decimal separator</label><select id="dec" data-imp="dec"><option value="comma"' + (imp.dec === 'comma' ? ' selected' : '') + '>comma (1.234,56)</option><option value="dot"' + (imp.dec === 'dot' ? ' selected' : '') + '>dot (1,234.56)</option></select></div></div>' +
         '<div class="mapwrap"><table class="map"><thead><tr>';
       for (var c = 0; c < cols; c++) {
-        h += '<th><label class="sr" for="role-' + c + '">Colonna ' + (c + 1) + '</label><select id="role-' + c + '" data-role="' + c + '">' +
+        h += '<th><label class="sr" for="role-' + c + '">Column ' + (c + 1) + '</label><select id="role-' + c + '" data-role="' + c + '">' +
           ROLES.map(function (r) { return '<option value="' + r[0] + '"' + (imp.roles[c] === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; }).join('') + '</select>' +
           (imp.header ? '<div class="raw">' + esc(imp.rows[0][c] || '') + '</div>' : '') + '</th>';
       }
       h += '</tr></thead><tbody>' + dataRows().slice(0, 6).map(function (row) {
         return '<tr>' + row.map(function (v, k) { return '<td class="' + (imp.roles[k] ? '' : 'muted') + '">' + esc(v) + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table></div>' +
-        (errs.length ? '<div class="hint bad" role="alert">' + errs.map(esc).join(' ') + '</div>' : '<div class="ok">Colonne a posto.</div>') +
-        '<label class="check"><input type="checkbox" data-imp="remember"' + (imp.remember ? ' checked' : '') + '> Ricorda queste impostazioni per il Conto corrente</label>' +
-        '<div class="row-btns"><button type="button" class="btn" data-go="1">Indietro</button><button type="button" class="btn primary" data-go="3"' + (errs.length ? ' disabled' : '') + '>Continua</button></div>';
+        (errs.length ? '<div class="hint bad" role="alert">' + errs.map(esc).join(' ') + '</div>' : '<div class="ok">Columns look good.</div>') +
+        '<label class="check"><input type="checkbox" data-imp="remember"' + (imp.remember ? ' checked' : '') + '> Remember these settings for Checking</label>' +
+        '<div class="row-btns"><button type="button" class="btn" data-go="1">Back</button><button type="button" class="btn primary" data-go="3"' + (errs.length ? ' disabled' : '') + '>Continue</button></div>';
     } else if (imp.step === 3) {
       var cnt = { new: 0, need: 0, dup: 0, upd: 0, err: 0 }, add = 0;
       imp.review.forEach(function (r) { if (r.error) cnt.err++; else cnt[r.status]++; if (r.include) add++; });
       var missing = imp.review.filter(function (r) { return r.include && !r.cat; }).length;
-      h = '<div class="sum"><div><small>Righe</small><b class="n">' + imp.review.length + '</b></div><div><small>Già nel registro</small><b class="n">' + (cnt.dup + cnt.upd) + '</b></div>' +
-        '<div><small>Nuove</small><b class="n">' + (cnt.new + cnt.need) + '</b></div><div><small>Senza categoria</small><b class="n" style="color:' + (missing ? 'var(--warn)' : 'inherit') + '">' + missing + '</b></div></div>' +
-        '<p class="hint" style="margin:0;max-width:75ch">Le righe già presenti nel registro (stesso importo, date entro 3 giorni) non vengono importate di nuovo; quelle ancora in attesa diventano verificate. Le nuove si possono correggere prima di importarle; una riga senza categoria resta da categorizzare nel registro.</p>' +
-        '<div><div class="ihead icols"><span></span><span>Data</span><span>Dalla banca</span><span>Beneficiario</span><span>Categoria</span><span class="r">Importo</span></div>' +
+      h = '<div class="sum"><div><small>Rows</small><b class="n">' + imp.review.length + '</b></div><div><small>Already in the register</small><b class="n">' + (cnt.dup + cnt.upd) + '</b></div>' +
+        '<div><small>New</small><b class="n">' + (cnt.new + cnt.need) + '</b></div><div><small>Still need a category</small><b class="n" style="color:' + (missing ? 'var(--warn)' : 'inherit') + '">' + missing + '</b></div></div>' +
+        '<p class="hint" style="margin:0;max-width:75ch">Rows already in the register (same amount, dates within 3 days) are not imported again; a pending one becomes cleared. A new row needs a category, or to be marked as income or a transfer, before it can be imported — one without it stays staged, to confirm later.</p>' +
+        '<div><div class="ihead icols"><span></span><span>Date</span><span>From the bank</span><span>Payee</span><span>Category</span><span class="r">Amount</span></div>' +
         imp.review.map(function (r) {
           var badge = r.error ? '<span class="badge need">' + esc(r.error) + '</span>' :
-            r.status === 'dup' ? '<span class="badge dup">Già presente</span>' : r.status === 'upd' ? '<span class="badge upd">In attesa → verificata</span>' :
-            r.status === 'need' && !r.cat ? '<span class="badge need">Da categorizzare</span>' : '<span class="badge new">Nuova</span>';
+            r.status === 'dup' ? '<span class="badge dup">Already there</span>' : r.status === 'upd' ? '<span class="badge upd">Pending → cleared</span>' :
+            r.status === 'need' && !r.cat ? '<span class="badge need">Needs a category</span>' : '<span class="badge new">New</span>';
           var dup = r.status === 'dup' || r.status === 'upd';
           return '<div class="irow icols' + (r.include ? '' : ' skip') + '">' +
-            '<input type="checkbox" aria-label="Importa la riga del ' + (r.date ? dLabel(r.date) : '') + '" data-inc="' + r.i + '"' + (r.include ? ' checked' : '') + (r.error ? ' disabled' : '') + ' style="accent-color:var(--pen);width:16px;height:16px">' +
+            '<input type="checkbox" aria-label="Import this row" data-inc="' + r.i + '"' + (r.include ? ' checked' : '') + (r.error ? ' disabled' : '') + ' style="accent-color:var(--pen);width:16px;height:16px">' +
             '<span class="n">' + (r.date ? dLabel(r.date) : '–') + '</span>' +
             '<span><span class="raw" title="' + esc(r.desc) + '">' + esc(r.desc) + '</span>' + badge + '</span>' +
-            (dup ? '<span>' + esc(r.payee) + '</span><span class="hint">nel registro dal ' + dLabel(r.match.date) + '</span>'
-              : '<span><label class="sr" for="py-' + r.i + '">Beneficiario</label><input type="text" id="py-' + r.i + '" data-py="' + r.i + '" value="' + esc(r.payee) + '"' + (r.error ? ' disabled' : '') + '></span>' +
-                '<span><label class="sr" for="ct-' + r.i + '">Categoria</label><select id="ct-' + r.i + '" data-ct="' + r.i + '"' + (r.error ? ' disabled' : '') + '>' + CATS.map(function (c) { return '<option value="' + c[0] + '"' + (r.cat === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select></span>') +
+            (dup ? '<span>' + esc(r.payee) + '</span><span class="hint">in the register on ' + dLabel(r.match.date) + '</span>'
+              : '<span><label class="sr" for="py-' + r.i + '">Payee</label><input type="text" id="py-' + r.i + '" data-py="' + r.i + '" value="' + esc(r.payee) + '"' + (r.error ? ' disabled' : '') + '></span>' +
+                '<span><label class="sr" for="ct-' + r.i + '">Category</label><select id="ct-' + r.i + '" data-ct="' + r.i + '"' + (r.error ? ' disabled' : '') + '>' + CATS.map(function (c) { return '<option value="' + c[0] + '"' + (r.cat === c[0] ? ' selected' : '') + '>' + c[1] + '</option>'; }).join('') + '</select></span>') +
             '<span class="r n">' + (r.amount === null ? '' : f(r.amount)) + '</span></div>';
         }).join('') + '</div>' +
-        '<div class="row-btns"><button type="button" class="btn" data-go="2">Indietro</button><button type="button" class="btn primary" data-go="4"' + (add || cnt.upd ? '' : ' disabled') + '>Importa ' + add + (add === 1 ? ' transazione' : ' transazioni') + (cnt.upd ? ' e verifica ' + cnt.upd : '') + '</button></div>';
+        '<div class="row-btns"><button type="button" class="btn" data-go="2">Back</button><button type="button" class="btn primary" data-go="4"' + (add || cnt.upd ? '' : ' disabled') + '>Import ' + add + (add === 1 ? ' transaction' : ' transactions') + '</button></div>';
     } else {
       var res = imp.result;
-      h = '<div class="done-box"><h4>Import completato</h4>' +
-        '<p style="margin:0">' + res.added + (res.added === 1 ? ' transazione aggiunta' : ' transazioni aggiunte') + ' come verificate' + (res.updated ? ', ' + res.updated + ' già presente segnata come verificata' : '') + ', ' + res.skipped + ' righe già presenti saltate.</p>' +
-        (res.uncat ? '<p class="hint warn" style="margin:0;color:var(--warn);font-weight:600">' + res.uncat + (res.uncat === 1 ? ' transazione è' : ' transazioni sono') + ' senza categoria: le trovi nel registro con il filtro "Da categorizzare".</p>' : '') +
-        '<p class="hint" style="margin:0">Il saldo del file (' + f(res.bankBalance) + ') e quello del Conto corrente ' + (res.bankBalance === res.appBalance ? 'coincidono.' : 'differiscono di ' + f(res.bankBalance - res.appBalance) + ': controlla con la riconciliazione.') + '</p>' +
-        '<div class="row-btns"><button type="button" class="btn primary" data-torec="1">Riconcilia ora</button><button type="button" class="btn" data-go="1">Importa un altro file</button></div></div>';
+      h = '<div class="done-box"><h4>Import complete</h4>' +
+        '<p style="margin:0">' + res.added + (res.added === 1 ? ' transaction' : ' transactions') + ' added as cleared' + (res.updated ? ', ' + res.updated + ' already there marked cleared' : '') + '.</p>' +
+        (res.uncat ? '<p class="hint warn" style="margin:0;color:var(--warn);font-weight:600">' + res.uncat + (res.uncat === 1 ? ' row is' : ' rows are') + ' still waiting for a category, income or transfer.</p>' : '') +
+        '<p class="hint" style="margin:0">' + (res.bankBalance === res.appBalance ? 'The statement\'s closing balance matches the account.' : 'The statement\'s closing balance differs from the account by ' + f(res.bankBalance - res.appBalance) + ': check with reconciliation.') + '</p>' +
+        '<div class="row-btns"><button type="button" class="btn primary" data-torec="1">Reconcile now</button><button type="button" class="btn" data-go="1">Import another file</button></div></div>';
     }
     el('stage').innerHTML = h;
   }
@@ -617,7 +618,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       REGISTER.push({ id: 'n' + r.i, date: r.date, payee: r.payee || r.desc, amount: r.amount, status: 'cleared' });
       added++; if (!r.cat) uncat++;
     });
-    var balCol = imp.header ? imp.rows[0].map(function (x) { return x.toLowerCase(); }).indexOf('saldo') : -1;
+    var balCol = imp.header ? imp.rows[0].map(function (x) { return x.toLowerCase(); }).indexOf('balance') : -1;
     var last = dataRows()[dataRows().length - 1];
     var bank = balCol >= 0 ? parseNum(last[balCol]) : null;
     imp.result = { added: added, updated: updated, skipped: skipped, uncat: uncat, bankBalance: bank === null ? appBalance() : bank, appBalance: appBalance() };
@@ -627,17 +628,17 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   // ---- Reconciliation
   var LAST_REC = 178073, OPENING = 317573;
   function appBalance() { return OPENING + REGISTER.reduce(function (s, t) { return s + t.amount; }, 0); }
-  function amountStr(c) { return (c / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function amountStr(c) { return (c / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function parseMoney(str) {
-    var clean = String(str).trim().replace(/\s|€/g, '').replace(/\./g, '').replace(',', '.').replace('−', '-');
+    var clean = String(str).trim().replace(/\s|€/g, '').replace(/,/g, '').replace('−', '-');
     if (!/^-?\d+(\.\d{1,2})?$/.test(clean)) return null;
     return Math.round(Number(clean) * 100);
   }
-  var rec = { statement: '3.412,58', date: '2026-09-26', off: {}, locked: false };
+  var rec = { statement: '3,412.58', date: '2026-09-26', off: {}, locked: false };
   function renderRec() {
     if (rec.locked) {
-      el('rec').innerHTML = '<div class="done-box" style="grid-column:1 / -1"><h4>Riconciliazione fatta</h4><p style="margin:0">' + rec.locked + ' transazioni bloccate. Il saldo riconciliato al ' + dLabel(rec.date) + ' è ' + f(parseMoney(rec.statement)) + '.</p>' +
-        '<div class="row-btns"><button type="button" class="btn" data-recreset="1">Rifai il bozzetto da capo</button></div></div>';
+      el('rec').innerHTML = '<div class="done-box" style="grid-column:1 / -1"><h4>Reconciliation complete</h4><p style="margin:0">' + rec.locked + (rec.locked === 1 ? ' transaction' : ' transactions') + ' locked. The reconciled balance on ' + dLabel(rec.date) + ' is ' + f(parseMoney(rec.statement)) + '.</p>' +
+        '<div class="row-btns"><button type="button" class="btn" data-recreset="1">Start the mockup over</button></div></div>';
       return;
     }
     var open = REGISTER.filter(function (t) { return t.status !== 'locked'; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
@@ -651,28 +652,28 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (diff) {
       var p = pending.filter(function (t) { return t.amount === diff; })[0];
       var u = cleared.filter(function (t) { return rec.off[t.id] && t.amount === diff; })[0];
-      if (p) clue = { t: p, text: 'La differenza è uguale a <b>' + esc(p.payee) + '</b> del ' + dLabel(p.date) + ' (' + f(p.amount) + '), ancora in attesa: forse la banca l’ha già registrata.', btn: 'Segnala come verificata' };
-      else if (u) clue = { t: u, text: 'La differenza è uguale a <b>' + esc(u.payee) + '</b> del ' + dLabel(u.date) + ', che hai tolto dal conteggio.', btn: 'Rimettila nel conteggio' };
+      if (p) clue = { t: p, text: 'The difference equals <b>' + esc(p.payee) + '</b> from ' + dLabel(p.date) + ' (' + f(p.amount) + '), still pending: maybe the bank already recorded it.', btn: 'Mark it as cleared' };
+      else if (u) clue = { t: u, text: 'The difference equals <b>' + esc(u.payee) + '</b> from ' + dLabel(u.date) + ', which you removed from the tally.', btn: 'Put it back in the tally' };
     }
     function line(t, isPending) {
       var off = isPending || rec.off[t.id];
       return '<label class="rl' + (off ? ' off' : '') + (clue && clue.t === t ? ' hl' : '') + '"><input type="checkbox" data-rt="' + t.id + '"' + (off ? '' : ' checked') + (isPending ? ' data-pending="1"' : '') + '>' +
         '<span class="n">' + dLabel(t.date) + '</span><span>' + esc(t.payee) + '</span><span class="n r" style="padding-right:10px">' + f(t.amount) + '</span></label>';
     }
-    var left = '<div class="rlist"><div class="sec"><h5><span>Verificate dopo l’ultima riconciliazione</span><span class="n">' + cleared.length + '</span></h5>' +
-      '<p class="hint" style="margin:0 0 6px">Togli la spunta a quelle che non compaiono sull’estratto conto.</p>' + cleared.map(function (t) { return line(t, false); }).join('') + '</div>' +
-      (pending.length ? '<div class="sec" style="margin-top:18px"><h5><span>In attesa</span><span class="n">' + pending.length + '</span></h5><p class="hint" style="margin:0 0 6px">Non entrano nel conteggio finché non le spunti come verificate.</p>' + pending.map(function (t) { return line(t, true); }).join('') + '</div>' : '') + '</div>';
-    var right = '<aside class="recon" aria-label="Conteggio">' +
-      '<div class="two" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px"><div class="field"><label for="st-amt">Saldo sull’estratto</label><span class="money-in"><input type="text" inputmode="decimal" id="st-amt" value="' + esc(rec.statement) + '"><span>€</span></span></div>' +
-      '<div class="field"><label for="st-date">Alla data</label><input type="date" id="st-date" value="' + rec.date + '"></div></div>' +
-      '<div class="sec"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Riconciliato il 5 set</span><span class="dots"></span><span class="n">' + f(LAST_REC) + '</span></div>' +
-      '<div class="qa" style="cursor:default;color:var(--ink-2)"><span>Verificate spuntate</span><span class="dots"></span><span class="n">' + f(ticked - LAST_REC) + '</span></div>' +
-      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>Saldo verificato</span><span class="dots"></span><span class="n">' + f(ticked) + '</span></div></div>' +
-      '<div class="diff"><span>Differenza</span><b class="n ' + (diff === 0 ? 'zero' : 'bad') + '" aria-live="polite">' + (diff === null ? '–' : f(diff)) + '</b></div>' +
-      (stmt === null ? '<span class="hint bad">Scrivi il saldo come sull’estratto, per esempio 3.412,58.</span>' :
-        diff === 0 ? '<span class="ok">Tutto torna.</span><button type="button" class="btn primary" data-lock="1">Blocca ' + cleared.filter(function (t) { return !rec.off[t.id]; }).length + ' transazioni</button>' :
-        (clue ? '<div class="clue">' + clue.text + '<div style="margin-top:8px"><button type="button" class="btn" data-clue="' + clue.t.id + '">' + clue.btn + '</button></div></div>' : '<div class="clue">Controlla le transazioni una per una sull’estratto. Se la differenza è reale (per esempio una commissione dimenticata), aggiungila come transazione.</div>') +
-        '<button type="button" class="btn" data-adjust="1">Aggiungi una rettifica di ' + f(diff) + '</button>') +
+    var left = '<div class="rlist"><div class="sec"><h5><span>Cleared since the last reconciliation</span><span class="n">' + cleared.length + '</span></h5>' +
+      '<p class="hint" style="margin:0 0 6px">Untick any that the statement does not show.</p>' + cleared.map(function (t) { return line(t, false); }).join('') + '</div>' +
+      (pending.length ? '<div class="sec" style="margin-top:18px"><h5><span>Pending</span><span class="n">' + pending.length + '</span></h5><p class="hint" style="margin:0 0 6px">These don\'t count until you tick them as cleared.</p>' + pending.map(function (t) { return line(t, true); }).join('') + '</div>' : '') + '</div>';
+    var right = '<aside class="recon" aria-label="Tally">' +
+      '<div class="two" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px"><div class="field"><label for="st-amt">Statement balance</label><span class="money-in"><input type="text" inputmode="decimal" id="st-amt" value="' + esc(rec.statement) + '"><span>€</span></span></div>' +
+      '<div class="field"><label for="st-date">As of</label><input type="date" id="st-date" value="' + rec.date + '"></div></div>' +
+      '<div class="sec"><div class="qa" style="cursor:default;color:var(--ink-2)"><span>Last reconciled balance</span><span class="dots"></span><span class="n">' + f(LAST_REC) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink-2)"><span>Ticked cleared transactions</span><span class="dots"></span><span class="n">' + f(ticked - LAST_REC) + '</span></div>' +
+      '<div class="qa" style="cursor:default;color:var(--ink);font-weight:600"><span>Cleared balance</span><span class="dots"></span><span class="n">' + f(ticked) + '</span></div></div>' +
+      '<div class="diff"><span>Difference</span><b class="n ' + (diff === 0 ? 'zero' : 'bad') + '" aria-live="polite">' + (diff === null ? '–' : f(diff)) + '</b></div>' +
+      (stmt === null ? '<span class="hint bad">Enter the amount as shown on your statement, for example 1,234.56.</span>' :
+        diff === 0 ? '<span class="ok">Everything matches.</span><button type="button" class="btn primary" data-lock="1">Lock ' + (function (n) { return n + (n === 1 ? ' transaction' : ' transactions'); })(cleared.filter(function (t) { return !rec.off[t.id]; }).length) + '</button>' :
+        (clue ? '<div class="clue">' + clue.text + '<div style="margin-top:8px"><button type="button" class="btn" data-clue="' + clue.t.id + '">' + clue.btn + '</button></div></div>' : '<div class="clue">Check the transactions one by one against the statement. If the difference is real (for example a forgotten fee), add it as a transaction.</div>') +
+        '<button type="button" class="btn" data-adjust="1">Add an adjustment of ' + f(diff) + '</button>') +
       '</aside>';
     el('rec').innerHTML = left + right;
   }
@@ -689,7 +690,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var d = b.dataset;
     if (b.id === 'tab-imp') return show('imp');
     if (b.id === 'tab-rec') { renderRec(); return show('rec'); }
-    if (d.sample) return load('movimenti-settembre.csv', SAMPLE);
+    if (d.sample) return load('september-transactions.csv', SAMPLE);
     if (d.go) {
       var n = Number(d.go);
       if (n === 3) buildReview();
@@ -705,7 +706,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     }
     if (d.adjust) {
       var ticked = LAST_REC + REGISTER.filter(function (x) { return x.status === 'cleared' && !rec.off[x.id]; }).reduce(function (s, x) { return s + x.amount; }, 0);
-      REGISTER.push({ id: 'adj', date: rec.date, payee: 'Rettifica di riconciliazione', amount: parseMoney(rec.statement) - ticked, status: 'cleared' });
+      REGISTER.push({ id: 'adj', date: rec.date, payee: 'Reconciliation adjustment', amount: parseMoney(rec.statement) - ticked, status: 'cleared' });
       return renderRec();
     }
     if (d.lock) {

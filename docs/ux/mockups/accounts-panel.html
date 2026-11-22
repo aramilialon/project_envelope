@@ -7,9 +7,10 @@
   takes no space at all when hidden, and never assumes it is open in any other mockup's own layout.
   Reference for docs/design.md once agreed. Open it in a browser; no build step, no dependencies
   except the Bricolage Grotesque and Figtree fonts from Google Fonts (the app itself self-hosts).
-  UI copy is the Italian translation; English stays the source language of the app.
+  UI copy is English, the app's source language; the Italian approved before #622 is kept at the
+  commit recorded in docs/ux/README.md.
 -->
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -138,37 +139,37 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     <div class="desk" id="desk">
       <header class="band">
         <div class="bt">
-          <button type="button" class="panel-toggle" id="panel-toggle" aria-pressed="false" aria-expanded="false" aria-controls="accl" aria-label="Mostra i conti">
+          <button type="button" class="panel-toggle" id="panel-toggle" aria-pressed="false" aria-expanded="false" aria-controls="accl" aria-label="Show accounts">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path></svg>
           </button>
           <span class="brand">envelope</span>
-          <nav class="tnav" aria-label="Main (mockup)"><button type="button" id="nav-budget" aria-current="page">Budget</button><button type="button" id="nav-accounts">Conti</button><button type="button">Portafoglio</button></nav>
-          <button type="button" class="ws">Famiglia <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <nav class="tnav" aria-label="Main (mockup)"><button type="button" id="nav-budget" aria-current="page">Budget</button><button type="button" id="nav-accounts">Accounts</button><button type="button">Portfolio</button></nav>
+          <button type="button" class="ws">Family <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <button type="button" class="me">Giorgio</button>
         </div>
       </header>
 
-      <aside class="accl" id="accl" aria-label="Conti" hidden>
+      <aside class="accl" id="accl" aria-label="Accounts" hidden>
         <div class="accl-head" style="position:relative">
-          <button type="button" class="plain accl-close" id="accl-close">× Chiudi</button>
-          <div class="where">Conti</div>
-          <h4>Patrimonio netto</h4>
+          <button type="button" class="plain accl-close" id="accl-close">× Close</button>
+          <div class="where">Accounts</div>
+          <h4>Net worth</h4>
           <span class="big n" id="accl-net"></span>
         </div>
         <div class="accl-sec">
-          <h5>In budget</h5>
+          <h5>On budget</h5>
           <div id="accl-onbudget"></div>
         </div>
         <div class="accl-sec">
-          <h5>Carte di credito</h5>
+          <h5>Credit cards</h5>
           <div id="accl-cards"></div>
         </div>
         <div class="accl-sec">
-          <h5>Fuori budget</h5>
+          <h5>Off budget</h5>
           <div id="accl-offbudget"></div>
         </div>
         <div class="accl-foot">
-          <a class="plain" href="#" id="accl-full">Vai alla schermata Conti →</a>
+          <a class="plain" href="#" id="accl-full">Go to the Accounts screen →</a>
         </div>
       </aside>
 
@@ -179,25 +180,25 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
 
 <script>
 (function () {
-  var nf = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' });
+  var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
   function f(c) { return nf.format(c / 100).replace('-', '−'); }
 
   // Sample data — the same household as docs/ux/mockups/budget-month.html.
   var ACCOUNTS = [
-    { id: 'cc', name: 'Conto corrente', type: 'checking', onBudget: true, bal: 341258 },
-    { id: 'risp', name: 'Conto risparmio', type: 'savings', onBudget: true, bal: 800000 },
-    { id: 'cont', name: 'Contanti', type: 'cash', onBudget: true, bal: 8540 },
-    { id: 'broker', name: 'Broker ETF', type: 'savings', onBudget: false, bal: 2150000 },
+    { id: 'cc', name: 'Checking', type: 'checking', onBudget: true, bal: 341258 },
+    { id: 'risp', name: 'Savings', type: 'savings', onBudget: true, bal: 800000 },
+    { id: 'cont', name: 'Cash', type: 'cash', onBudget: true, bal: 8540 },
+    { id: 'broker', name: 'ETF broker', type: 'savings', onBudget: false, bal: 2150000 },
     { id: 'visa', name: 'Visa', type: 'credit_card', onBudget: true, card: true, bal: -64230 },
     { id: 'mc', name: 'Mastercard', type: 'credit_card', onBudget: true, card: true, bal: -120000 }
   ];
   var REGISTERS = {
-    cc: [['24 set', 'Supermercato', -8740], ['19 set', 'Mercato rionale', -2350], ['17 set', 'Supermercato', -11205], ['16 set', 'Fornitore energia', -9640]],
-    risp: [['1 set', 'Trasferimento da Conto corrente', 50000]],
-    cont: [['10 set', 'Panificio', -1480]],
-    broker: [['5 set', 'Versamento dal conto corrente', 50000]],
-    visa: [['21 set', 'Trattoria', -6400], ['14 set', 'Pizzeria', -4250], ['12 set', 'Distributore', -8830]],
-    mc: [['25 set', 'Saldo iniziale', -120000]]
+    cc: [['Sep 24', 'Supermarket', -8740], ['Sep 19', 'Local market', -2350], ['Sep 17', 'Supermarket', -11205], ['Sep 16', 'Energy provider', -9640]],
+    risp: [['Sep 1', 'From Checking', 50000]],
+    cont: [['Sep 10', 'Bakery', -1480]],
+    broker: [['Sep 5', 'From Checking', 50000]],
+    visa: [['Sep 21', 'Trattoria', -6400], ['Sep 14', 'Pizzeria', -4250], ['Sep 12', 'Gas station', -8830]],
+    mc: [['Sep 25', 'Starting balance', -120000]]
   };
 
   var state = { panelOpen: false, view: 'budget' };
@@ -210,7 +211,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
   function accountRow(a) {
     var current = state.view === a.id;
     return '<button type="button" class="acc-row" data-acc="' + a.id + '"' + (current ? ' aria-current="true"' : '') + '>' +
-      '<span class="cn"><b>' + a.name + '</b>' + (a.onBudget === false ? '<small>fuori budget</small>' : '') + '</span>' +
+      '<span class="cn"><b>' + a.name + '</b>' + (a.onBudget === false ? '<small>off budget</small>' : '') + '</span>' +
       '<span class="n' + (a.bal < 0 ? ' neg' : '') + '">' + f(a.bal) + '</span></button>';
   }
 
@@ -224,12 +225,12 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
   function renderBudgetPlaceholder() {
     return '' +
       '<div class="over">' +
-        '<div class="time"><h5>Settembre, giorno per giorno</h5><p class="t-note">(la timeline vera resta invariata — qui solo per contesto)</p></div>' +
-        '<div class="todo"><h5>Da fare</h5><p class="t-note">Niente da sistemare questo mese.</p></div>' +
+        '<div class="time"><h5>September, day by day</h5><p class="t-note">(the real timeline stays as it is — here only for context)</p></div>' +
+        '<div class="todo"><h5>To do</h5><p class="t-note">Nothing to fix this month.</p></div>' +
       '</div>' +
-      '<div class="bgr"><span class="gname">Casa e bollette</span><span class="gsum n">' + f(21850) + '</span></div>' +
-      '<div class="brow"><span class="cn"><b>Rata del mutuo</b><span class="spent">850,00 € spesi di 850,00 €</span></span><span class="bar"><span class="tr"><span class="sp" style="width:100%"></span></span></span><span class="r"><span class="amt-cell zero n">0,00 €</span></span></div>' +
-      '<div class="brow"><span class="cn"><b>Luce e gas</b><span class="spent">96,40 € spesi di 120,00 €</span></span><span class="bar"><span class="tr"><span class="sp" style="width:80%"></span></span></span><span class="r"><span class="amt-cell n">35,60 €</span></span></div>';
+      '<div class="bgr"><span class="gname">Home and bills</span><span class="gsum n">' + f(21850) + '</span></div>' +
+      '<div class="brow"><span class="cn"><b>Mortgage payment</b><span class="spent">€850.00 spent of €850.00</span></span><span class="bar"><span class="tr"><span class="sp" style="width:100%"></span></span></span><span class="r"><span class="amt-cell zero n">€0.00</span></span></div>' +
+      '<div class="brow"><span class="cn"><b>Electricity and gas</b><span class="spent">€96.40 spent of €120.00</span></span><span class="bar"><span class="tr"><span class="sp" style="width:80%"></span></span></span><span class="r"><span class="amt-cell n">€35.60</span></span></div>';
   }
 
   function renderRegisterPlaceholder(a) {
@@ -237,10 +238,10 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
       return '<div class="reg-row"><small>' + r[0] + '</small><span>' + r[1] + '</span><span class="n' + (r[2] < 0 ? ' neg' : '') + '" style="color:' + (r[2] < 0 ? 'var(--red-text)' : 'inherit') + '">' + f(r[2]) + '</span></div>';
     }).join('');
     return '' +
-      '<div class="acc-head"><div><h3>' + a.name + '</h3><p class="sub">' + (a.onBudget ? 'Conto in budget' : 'Conto fuori budget') + (a.card ? ' · carta di credito' : '') + '</p></div>' +
-        '<div class="acc-bal"><small>Saldo</small><span class="big n' + (a.bal < 0 ? ' neg' : '') + '">' + f(a.bal) + '</span>' +
-        '<div class="acc-facts"><span>Verificato <b class="n">' + f(a.bal) + '</b></span></div></div></div>' +
-      '<div class="reg-list">' + (rows || '<p style="color:var(--muted);padding:14px 0">Nessuna transazione d’esempio.</p>') + '</div>';
+      '<div class="acc-head"><div><h3>' + a.name + '</h3><p class="sub">' + (a.onBudget ? 'On-budget account' : 'Off-budget account') + (a.card ? ' · credit card' : '') + '</p></div>' +
+        '<div class="acc-bal"><small>Balance</small><span class="big n' + (a.bal < 0 ? ' neg' : '') + '">' + f(a.bal) + '</span>' +
+        '<div class="acc-facts"><span>Cleared <b class="n">' + f(a.bal) + '</b></span></div></div></div>' +
+      '<div class="reg-list">' + (rows || '<p style="color:var(--muted);padding:14px 0">No sample transactions.</p>') + '</div>';
   }
 
   function renderMain() {
@@ -263,7 +264,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     accl.hidden = !state.panelOpen;
     toggle.setAttribute('aria-pressed', String(state.panelOpen));
     toggle.setAttribute('aria-expanded', String(state.panelOpen));
-    toggle.setAttribute('aria-label', state.panelOpen ? 'Nascondi i conti' : 'Mostra i conti');
+    toggle.setAttribute('aria-label', state.panelOpen ? 'Hide accounts' : 'Show accounts');
     desk.style.gridTemplateColumns = state.panelOpen ? '300px minmax(0,1fr)' : 'minmax(0,1fr)';
   }
 
@@ -289,7 +290,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     if (state.panelOpen) renderPanel();
   });
   document.getElementById('nav-accounts').addEventListener('click', function () {
-    alert('Nel mockup reale porterebbe alla schermata Conti dedicata, invariata da #323 — questo pannello è un accesso rapido in più, non la sostituisce.');
+    alert('In the real app this goes to the dedicated Accounts screen, unchanged since #323 — this panel is one more shortcut, not a replacement for it.');
   });
   document.getElementById('accl-full').addEventListener('click', function (event) {
     event.preventDefault();

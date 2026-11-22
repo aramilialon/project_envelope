@@ -25,7 +25,7 @@
   ansible.builtin.git:
     repo: "{{ project_repo }}"
     dest: "{{ project_dir }}"
-    key_file: "/home/{{ dev_user }}/.ssh/id_ed25519"
+    key_file: "{{ ('/home/' ~ dev_user ~ '/.ssh/id_ed25519') if project_generate_ssh_key | bool else omit }}"
     accept_newhostkey: true
     # Never overwrite local work: after the first clone, updates are `git pull`.
     update: false
