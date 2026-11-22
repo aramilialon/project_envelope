@@ -12,6 +12,7 @@
 import { assertAmount, assertCents, assertDate, ValidationError } from "@envelope/core";
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { isUuid } from "../ids.ts";
 import { createTransaction, getTransaction, listTransactionsForAccount, type TransactionRecord } from "../transactions/repository.ts";
 
 export interface ReconciliationRecord {
@@ -146,6 +147,18 @@ export async function reconcileAccount(db: DbPool | DbClient, workspaceId: strin
   assertDate(input.date);
   assertCents(input.statementBalanceCents, "statementBalance");
 
+  // The ticked rows are locked before they are read (#554), in id order as `updateTransaction` and
+  // `deleteTransaction` lock theirs, so an edit or a delete of one either commits first and is seen
+  // here (a date moved past the statement date, a new amount, a deleted row) or waits for this
+  // reconciliation and then sees the row reconciled. A malformed id locks nothing and is refused below.
+  const tickedUuids = input.tickedTransactionIds.filter(isUuid);
+  if (tickedUuids.length > 0) {
+    await db.query(
+      "SELECT id FROM transactions WHERE workspace_id = $1 AND account_id = $2 AND id = ANY($3::uuid[]) ORDER BY id FOR UPDATE",
+      [workspaceId, input.accountId, tickedUuids],
+    );
+  }
+
   const transactions = await listTransactionsForAccount(db, workspaceId, input.accountId);
   const eligibleCleared = transactions.filter((t) => t.status === "cleared" && t.budgetDate <= input.date);
   const eligibleClearedIds = new Set(eligibleCleared.map((t) => t.id));
@@ -227,11 +240,21 @@ async function complete(
   const reconciliation = toReconciliationRecord(row);
 
   if (tickedTransactionIds.length > 0) {
-    await db.query("UPDATE transactions SET status = 'reconciled', reconciliation_id = $1 WHERE id = ANY($2) AND workspace_id = $3", [
-      reconciliation.id,
-      tickedTransactionIds,
-      workspaceId,
-    ]);
+    // A backstop (#554): every ticked row is locked and was found cleared on this account after the
+    // lock, so each one is marked here; one that is not refuses the whole reconciliation.
+    const { rows: marked } = await db.query<{ id: string }>(
+      `UPDATE transactions SET status = 'reconciled', reconciliation_id = $1
+       WHERE id = ANY($2) AND workspace_id = $3 AND account_id = $4 AND status = 'cleared'
+       RETURNING id`,
+      [reconciliation.id, tickedTransactionIds, workspaceId, input.accountId],
+    );
+    const markedIds = new Set(marked.map((row) => row.id));
+    const unmarkedId = tickedTransactionIds.find((id) => !markedIds.has(id));
+    if (unmarkedId !== undefined) {
+      throw new ValidationError("unknown_transaction", `"${unmarkedId}" is not an eligible cleared transaction of this account`, {
+        transactionId: unmarkedId,
+      });
+    }
   }
 
   return { outcome: "reconciled", reconciliation };
@@ -247,8 +270,9 @@ export async function unlockReconciledTransaction(
   transactionId: string,
   userId: string | null,
 ): Promise<TransactionRecord | "not_found" | "not_reconciled"> {
+  // Locked (#554), so two unlocks, or an unlock and an edit, of the same row run one after the other.
   const { rows } = await db.query<{ id: string; status: string; reconciliation_id: string | null }>(
-    "SELECT id, status, reconciliation_id FROM transactions WHERE id = $1 AND workspace_id = $2",
+    "SELECT id, status, reconciliation_id FROM transactions WHERE id = $1 AND workspace_id = $2 FOR UPDATE",
     [transactionId, workspaceId],
   );
   const existing = rows[0];

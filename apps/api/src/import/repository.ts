@@ -291,6 +291,24 @@ export async function confirmStagedTransactions(
   decisions: readonly StagedTransactionDecision[],
 ): Promise<ConfirmationOutcome[]> {
   const outcomes: ConfirmationOutcome[] = [];
+  // The existing transactions this confirmation clears (each row matched as a duplicate, and a
+  // transfer's other leg) are locked up front, in id order (#554), as `updateTransaction` and a
+  // reconciliation lock theirs: locked one by one in the order of the decisions, they could
+  // deadlock with a reconciliation ticking the same rows.
+  const stagedIds = decisions.map((decision) => decision.stagedTransactionId).filter(isUuid);
+  if (stagedIds.length > 0) {
+    await db.query(
+      `WITH matched AS (
+         SELECT t.id, t.transfer_id FROM transactions t
+         JOIN staged_transactions s ON s.workspace_id = t.workspace_id AND s.duplicate_of = t.id
+         WHERE s.workspace_id = $1 AND s.account_id = $2 AND s.id = ANY($3::uuid[])
+       )
+       SELECT id FROM transactions
+       WHERE workspace_id = $1 AND (id IN (SELECT id FROM matched) OR id IN (SELECT transfer_id FROM matched))
+       ORDER BY id FOR UPDATE`,
+      [workspaceId, accountId, stagedIds],
+    );
+  }
   for (const decision of decisions) {
     // A malformed id names no staged row: reported like any other unknown one (#512).
     if (!isUuid(decision.stagedTransactionId)) {
