@@ -91,10 +91,18 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 
 | Status | Body | When |
 | --- | --- | --- |
-| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, or a trade body the route cannot read: the codes below, each with its `details` |
+| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
 | 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
 | 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
+
+**Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
+misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
+`currency` on its `PATCH`), is 400 `unknown_field` with `{ "field" }` naming it, checked before
+anything else, so nothing is written (#713; the trades since #594). A field inside a nested object
+or list is named by its path: `from.fees` in a trade's leg, `taxRegimes[1].regim` in a regime
+history. A body that is not a JSON object (an array, a string) is 400 `invalid_body` on those
+same routes. Closing an account takes no field: send no body, or `{}`.
 
 Names and free text have length limits (`apps/api/README.md`, "Length limits on names and free
 text"): a portfolio's `name` 100 characters, its `purpose` and a trade's `memo` 500; over the
@@ -194,6 +202,7 @@ for their regimes right away.
 | Error | Details |
 | --- | --- |
 | 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
+| 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -245,6 +254,7 @@ The answer (201) is the account; the regime is read with `GET …/tax-regimes`:
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` (`""` when none) | given on another account type, or outside an `IT` workspace |
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime": "administered" }` | `administered` or `managed` without `domesticWithholdingAgent: true` |
 | 400 `invalid_date` | `{ "value" }` | `taxRegimeValidFrom` is not a real date |
+| 400 `unknown_field` | `{ "field" }` | a key other than `name`, `type`, `currency`, `onBudget`, `startingBalanceCents` and the three above (#713) |
 
 ### The withholding-agent flag
 
@@ -262,6 +272,7 @@ checks them (below).
 | 400 `withholding_agent_already_set` | `{ "field": "domesticWithholdingAgent" }` |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "domestic_withholding_requires_agent" }`: the flag would break that trade, the earliest by date then id |
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` |
+| 400 `unknown_field` | `{ "field": "name" }`: any key but `domesticWithholdingAgent`; this `PATCH` renames nothing (#713) |
 
 ### The regime history
 
@@ -308,6 +319,7 @@ change, and changes start on 1 January).
 | 400 `tax_regime_required` | `{ "field": "taxRegime", "taxCountry": "IT" }`: `PUT` with an empty list in an `IT` workspace |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code (`domestic_withholding_requires_agent` too, on a first regime) |
 | 400 `invalid_date` | `{ "value" }` |
+| 400 `unknown_field` | `{ "field": "validfrom" }` or, in a `PUT` entry, `{ "field": "taxRegimes[1].regim" }`: a key the body or the entry does not take (#713) |
 
 ### Closing a brokerage account
 
@@ -321,6 +333,7 @@ it. Otherwise nothing is closed (#703, #729):
 | Error | Details | When |
 | --- | --- | --- |
 | 409 `account_not_empty` | `{ "balanceCents": 0, "laterRows": { "count": 1, "firstDate": "2027-04-01" }, "holdsPositions": true, "scheduled": { "count": 1, "scheduledTransactionId": "0b9e6c7a-3f1d-4e52-9a8b-6c2d1e4f7a90", "nextDueDate": "2027-02-15" } }`: the balance as of today, in the account's currency; the rows dated after today (transactions, and trades that move no cash), with the earliest one's date (`null` when none); whether a security is held today; the scheduled transactions on it, with the id and next due date of the one due first (earliest next due date, then lowest id; both `null` when `count` is 0, #741) | any of those is not empty |
+| 400 `unknown_field` | `{ "field": "closedAt" }` | any key in the body: closing takes none (#713) |
 | 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
 | 404 | | the account is not found, or is already closed |
 
@@ -574,6 +587,8 @@ accounts its trades are on, and one account can hold several portfolios.
   name.
 - A portfolio with trades cannot be deleted: 409 `portfolio_has_trades`; archive it instead.
 - A body with no name, or with nothing to change, is a plain 400.
+- Any other key (`archive`, `archivedAt`, `id`, `workspaceId`) is 400 `unknown_field` with
+  `{ "field" }`, on create and on `PATCH` alike, and nothing is written (#713).
 
 ## Trades
 
