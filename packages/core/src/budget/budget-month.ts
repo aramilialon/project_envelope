@@ -14,7 +14,11 @@
  *    month M and every month N from M on, let
  *      cum(N) = income dated up to the earlier of (the end of N, today)
  *               − everything assigned to months up to N
- *               − cash overspending of the months before M.
+ *               − cash overspending of the months before M,
+ *    where a month N after M counts only its positive income: negative income
+ *    (money going out of Unassigned, such as an overdraft recorded there)
+ *    counts from its own month on, like cash overspending, and is never
+ *    charged to earlier months (#782).
  *    Unassigned money in M is the smallest cum(N), N from M to the latest
  *    month with any data: M's money already assigned ahead to a later month
  *    is gone from M (rule 3), but a later month's assignment paid for by that
@@ -688,11 +692,17 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
 
   // 5. Unassigned money (rule 1): the smallest cum(N) for N from the requested month to the
   // latest one with data, where cum(N) = income received by the end of N (and by today) −
-  // everything assigned up to N − cash overspending of the months before the requested one. A
-  // later month's own unresolved overspending stays a separate concern (#489).
+  // everything assigned up to N − cash overspending of the months before the requested one, a
+  // month after the requested one counting only its positive income (#782). A later month's own
+  // unresolved overspending, and its own negative income, stay that month's concern (#489).
   const receivedBy = new Map<Month, Cents>();
+  // #782: a later month counts only its positive income; its negative income counts from its own
+  // month on and is never charged to an earlier one.
+  const laterReceivedBy = new Map<Month, Cents>();
   for (const item of input.income) {
-    if (incomeReceived(item.date ?? `${item.month}-01`, input.today)) addTo(receivedBy, item.month, item.amount);
+    if (!incomeReceived(item.date ?? `${item.month}-01`, input.today)) continue;
+    addTo(receivedBy, item.month, item.amount);
+    if (item.amount > 0) addTo(laterReceivedBy, item.month, item.amount);
   }
   const assignedByMonth = new Map<Month, Cents>();
   for (const a of input.assignments) addTo(assignedByMonth, a.month, a.amount);
@@ -703,7 +713,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   const cumulativeInMonth = cumulative;
   let unassigned = cumulative;
   for (let m = shiftMonth(month, 1); compareMonths(m, lastMonth) <= 0; m = shiftMonth(m, 1)) {
-    cumulative += (receivedBy.get(m) ?? 0) - (assignedByMonth.get(m) ?? 0);
+    cumulative += (laterReceivedBy.get(m) ?? 0) - (assignedByMonth.get(m) ?? 0);
     if (cumulative < unassigned) unassigned = cumulative;
   }
   const assignedInFuture = cumulativeInMonth - unassigned;

@@ -390,8 +390,8 @@ describe("budget invariant with accounts and credit cards", () => {
       for (let i = 0; i < 40; i++) {
         const d = date();
         switch (Math.floor(random() * 9)) {
-          case 0: // income
-            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: UNASSIGNED });
+          case 0: // income, or now and then money going out of Unassigned (negative income, #782)
+            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000) * pick([1, 1, 1, 1, -1]), categoryId: UNASSIGNED });
             break;
           case 1: // cash spending or refund
             add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(60000) * pick([-1, -1, -1, 1]), categoryId: pick(categoryIds) });
