@@ -4,6 +4,7 @@
  * only `ValidationError`s with a stable `code` (ADR 0004).
  */
 import { ValidationError } from "../errors.ts";
+import { isKnownCurrency } from "../money.ts";
 import { PRICE_FACTOR_ONE, toPriceFactor, type PriceFactor } from "./quantity.ts";
 
 /**
@@ -232,9 +233,13 @@ function normalizeType(value: string): InstrumentType {
   return type;
 }
 
+/**
+ * The same list as a workspace's and an account's currency (#595): "XYZ" or a withdrawn code
+ * would be stored, though no account could ever trade it.
+ */
 function normalizeCurrency(value: string): string {
   const currency = value.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) {
+  if (!isKnownCurrency(currency)) {
     throw new ValidationError("invalid_currency", `"${value}" is not a known currency code`, { currency: value });
   }
   return currency;
