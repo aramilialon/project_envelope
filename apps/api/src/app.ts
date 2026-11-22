@@ -16,6 +16,7 @@ import { registerBudgetRoutes } from "./routes/budget.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerDaysOfBufferRoutes } from "./routes/days-of-buffer.ts";
 import { registerDeviceTokensRoutes } from "./routes/device-tokens.ts";
+import { registerFxRatesRoutes } from "./routes/fx-rates.ts";
 import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerImportRoutes } from "./routes/import.ts";
@@ -107,6 +108,7 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   if (vapidPublicKey) {
     registerDeviceTokensRoutes(fastify, pool, vapidPublicKey);
   }
+  registerFxRatesRoutes(fastify, pool);
   registerGoalsRoutes(fastify, pool);
   registerImportRoutes(fastify, pool);
   registerInstrumentsRoutes(fastify, pool);

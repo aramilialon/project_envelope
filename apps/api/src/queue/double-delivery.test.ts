@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { after, before, describe, it } from "node:test";
 
+import { createEcbProvider } from "../market-data/ecb-provider.ts";
+import { createFxRatesFetchHandler } from "../market-data/fx-rates-job.ts";
 import { createScheduledTransaction, listScheduledTransactions } from "../scheduled-transactions/repository.ts";
 import { createScheduledTransactionsFireHandler } from "../scheduled-transactions/fire-job.ts";
 import { createTransaction } from "../transactions/repository.ts";
@@ -13,7 +16,7 @@ import type { PushDrivers } from "../notifications/repository.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { assertEveryJobTypeCovered, assertSingleDelivery, defineDoubleDeliveryCase, type DoubleDeliveryCase } from "./double-delivery.ts";
-import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./job-types.ts";
+import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB, FX_RATES_FETCH_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./job-types.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -135,7 +138,29 @@ describe("double-delivery harness (#37)", () => {
       },
     });
 
-    cases = [budgetRecomputeCase, scheduledTransactionsFireCase];
+    // The exchange rates fetch (#85) writes shared rows, the same on every delivery, so counting
+    // rows cannot tell one delivery from two: its effect is the fetch itself, counted at the
+    // fixture provider (a repeat delivery must not reach the network again).
+    let fxFetches = 0;
+    const fxRatesFetchCase = defineDoubleDeliveryCase({
+      jobType: FX_RATES_FETCH_JOB,
+      data: {},
+      handler: createFxRatesFetchHandler({
+        enabled: true,
+        provider: createEcbProvider({
+          fetchFile: async () => {
+            fxFetches++;
+            return readFile(new URL("../market-data/fixtures/ecb-hist.xml", import.meta.url), "utf8");
+          },
+        }),
+        log: { info: () => {}, warn: () => {} },
+      }),
+      async countEffects() {
+        return fxFetches;
+      },
+    });
+
+    cases = [budgetRecomputeCase, scheduledTransactionsFireCase, fxRatesFetchCase];
   });
 
   after(async () => {
