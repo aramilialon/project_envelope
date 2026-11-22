@@ -59,6 +59,7 @@ export {
   applyTradeChanges,
   computePositions,
   derivedResults,
+  positionsAsOfDates,
   summarizeByAccount,
   summarizeByPortfolio,
   validatePositionHistory,
