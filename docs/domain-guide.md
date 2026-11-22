@@ -451,8 +451,8 @@ Where the app converts an amount from one currency to another, it follows these 
   unit), then converted like any other amount: 3 shares at $33.335 are $100.01, and at USD 2 that
   is €50.01, the same on the position's line and in the total.
 - **Amounts in one currency are added up first, then converted once.** A sum does not depend on how
-  its amounts are split; returns, which follow each flow of money on its own date, convert each one
-  at the rate of its own date.
+  its amounts are split; returns convert the flows of each date, added up per currency and kind,
+  at that date's rate.
 
 **Examples.** With rates for 20 November 2026 of USD 1.0812, JPY 162.53 and GBP 0.8450 per euro:
 $1,080.00 is €998.89; ¥10,000 is €61.53; £1,000.00 is $1,279.53 (1,000 × 1.0812 ÷ 0.8450). The
@@ -927,6 +927,35 @@ the previous month's value − net contributions + income, exact to the cent) an
 The figures over several months come from one calculation over the whole range, never from the
 rounded monthly figures linked together. In the example above, September's gain is 12,300 −
 10,000 − 2,000 = 300 and October's 12,100 − 12,300 − 0 + 50 = −150.
+
+- **Before anything is held**, a month is worth 0 and its gain is 0; its returns are unknown,
+  since there is nothing to measure.
+- **A missing price or rate** makes the value unknown, never a partial sum of the positions that
+  have one, and every figure that needs it unknown too; the app lists what is missing, with the
+  earliest date that lacks it.
+- **The current month** is valued at the end of today; trades dated after today are not counted
+  yet.
+- **Flows in another currency**: the amounts of one date and one currency are added up,
+  contributions and income apart, then converted once at that date's rate. Two fees of $0.01 on the
+  same day, at USD 1.6, are $0.02, converted once to €0.01, not €0.01 each (€0.02).
+
+A worked example in two currencies, base currency euro: a euro ETF in a euro account and a dollar
+stock in a dollar account, in one portfolio.
+
+| Date | Event | ETF price | Stock price | USD per € | Value (€) |
+| --- | --- | --- | --- | --- | --- |
+| 3 Aug | Buy 100 ETF at €100 | 100 | | | 10,000.00 |
+| 31 Aug | | 100 | | | 10,000.00 |
+| 10 Sep | Buy 10 stock at $200 + $5 fees: flow $2,005 = €1,604 | 105 | 200 | 1.25 | 10,500 + 1,600 = 12,100.00 |
+| 30 Sep | | 106 | 210 | 1.20 | 10,600 + 1,750 = 12,350.00 |
+| 15 Oct | Dividend $25 − $5 withheld: flow −$20 = −€16 | (106) | (210) | 1.25 | 10,600 + 1,680 = 12,280.00 |
+| 31 Oct (Sat) | | 104 | 220 (30 Oct) | 1.10 (30 Oct) | 10,400 + 2,000 = 12,400.00 |
+
+September: net contributions 1,604, gain 12,350 − 10,000 − 1,604 = 746, TWR
+(12,100 − 1,604) ÷ 10,000 × 12,350 ÷ 12,100 − 1 = 7.1286%, MWR 6.7465%. October: income 16, gain
+12,400 − 12,350 − 0 + 16 = 66, TWR 12,296 ÷ 12,350 × 12,400 ÷ 12,280 − 1 = 0.5357%, MWR 0.5348%.
+The two months: gain 812 (746 + 66), TWR 7.7025% and MWR 7.1673%, each from one calculation over
+both months.
 
 ### Target allocation and thresholds
 

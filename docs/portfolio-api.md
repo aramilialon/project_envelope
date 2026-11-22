@@ -94,7 +94,7 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 | 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
 | 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
-| 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
+| 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
 
 **Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
 misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
@@ -1122,6 +1122,8 @@ the costs and taxes the trades record.
       "gainCents": 1500,
       "twrE6": 14925,
       "mwrE6": 14925,
+      "twrUnknownReason": null,
+      "mwrUnknownReason": null,
       "oldestPriceDate": "2026-09-30",
       "oldestRateDate": null,
       "missing": []
@@ -1140,6 +1142,8 @@ the costs and taxes the trades record.
     "twrAnnualized": false,
     "mwrE6": 36416,
     "mwrAnnualized": false,
+    "twrUnknownReason": null,
+    "mwrUnknownReason": null,
     "missing": []
   }
 }
@@ -1151,13 +1155,14 @@ A month:
 | --- | --- |
 | `valuationDate` | the date the month is valued at: its last day, or today in the workspace's time zone for the current month |
 | `valueCents` | the value of the securities the portfolio holds at the end of `valuationDate`: each position's quantity × its latest price on or before that date × price factor, rounded once in the instrument's currency, then the amounts of each currency added up and converted once at that date's rate. The cash of the trades belongs to the brokerage account and is not part of it. A position sold out needs no price |
-| `netContributionsCents` | money put into the portfolio (+) or taken out (−) in the month, dividends and coupons apart: a buy counts everything it cost (gross, fees, transaction tax, accrued interest, less domestic withholding credited), a sale its net proceeds, a fee or a tax its amount, a transfer of securities their market value on its date (never their cost) plus its fees. Each trade's amount is converted at its own date's rate |
+| `netContributionsCents` | money put into the portfolio (+) or taken out (−) in the month, dividends and coupons apart: a buy counts everything it cost (gross, fees, transaction tax, accrued interest, less domestic withholding credited), a sale its net proceeds, a fee or a tax its amount, a transfer of securities their market value on its date (never their cost) plus its fees. The amounts of one date and one currency are added up, contributions and income apart, then converted once at that date's rate |
 | `incomeCents` | the net cash of the month's dividends and coupons, as a positive amount, converted the same way |
 | `gainCents` | `valueCents` − the previous month's value − `netContributionsCents` + `incomeCents`, exact to the cent |
 | `twrE6` | the month's time-weighted return, in millionths (`14925` is 1.4925%): how the holdings did, whatever money was added or taken out, cut at the end of every day with a trade |
 | `mwrE6` | the month's money-weighted return, in millionths: how the household's own money did, given when it went in and out |
+| `twrUnknownReason`, `mwrUnknownReason` | why `twrE6` or `mwrE6` is null, and null when it is known: `missing_value` when a value or a flow it needs is unknown (see `missing`); `no_capital` when there is nothing to measure (the portfolio held nothing, or a stretch ends with more taken out than it held); `no_solution` (money-weighted only) when no rate from just above −100% to +1000% balances the flows, as in a month with only a fee and a dividend after everything was sold |
 | `oldestPriceDate`, `oldestRateDate` | the oldest price and the oldest exchange rate `valueCents` used: prices and rates have no maximum age, so a screen can show how old they are. Null when none was needed, or when the value is unknown |
-| `missing` | what an unknown figure lacks, each once: `{ "instrumentId", "reason": "no_price" }` for a security held (or transferred) with no price on or before the date, `{ "instrumentId", "reason": "no_rate", "currency" }` for an amount whose currency (or the base currency) has no rate on or before it. `instrumentId` is null for a fee or tax recorded without an instrument |
+| `missing` | what an unknown figure lacks, each once: `{ "instrumentId", "reason": "no_price", "date" }` for a security held (or transferred) with no price on or before the date, `{ "instrumentId", "reason": "no_rate", "currency", "date" }` for an amount whose currency (or the base currency) has no rate on or before it. `date` is the earliest date, among those the figure needed (the start of the month, each trade date, the valuation date), that lacks it: a price or a rate dated on or before it fills the gap. `instrumentId` is null for a fee or tax recorded without an instrument |
 
 **Unknown is null, never 0.** A held position with no price, or a currency with no rate, makes
 the value null, never a sum of the rest, and every figure that needs it null too (the gain, the
@@ -1166,9 +1171,11 @@ nothing to measure: a month in which the portfolio held nothing, or one that end
 out than it held. A month before the first trade is worth 0, with returns null.
 
 **The totals** run from the end of the month before `from` (`startDate`, `startValueCents`) to
-the end of the last month (`endDate`, `endValueCents`): the sums of the months' contributions,
-income and gain, and the two returns over the whole range, each computed in one go from the same
-values and flows, never by linking the rounded monthly figures. A range that reaches a year
+the end of the last month (`endDate`, `endValueCents`): the contributions, income and gain over
+the whole range, from the start value, the end value and every flow in between; equal to the sum
+of the months' figures whenever every month's figure is known. The two returns over the whole
+range are each computed in one go from the same values and flows, never by linking the rounded
+monthly figures; `twrUnknownReason` and `mwrUnknownReason` say why one is null, as for a month. A range that reaches a year
 (`startDate` to `endDate`) gives yearly returns (`twrAnnualized`, `mwrAnnualized` true); a shorter
 one gives the return over the range itself. Both flags are null when their return is.
 
