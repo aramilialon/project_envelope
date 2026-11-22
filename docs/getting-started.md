@@ -31,7 +31,7 @@ The playbook in [`infra/ansible`](../infra/ansible/README.md) performs sections 
 
 ```bash
 # apt update && apt install -y ansible-core git
-# git clone https://github.com/YOUR-USER/envelope.git /root/envelope
+# git clone https://github.com/aramilialon/project_envelope.git /root/envelope
 # cd /root/envelope/infra/ansible
 # cp inventory.example.ini inventory.ini && cp vars.example.yml vars.yml && nano vars.yml
 # ansible-playbook site.yml
@@ -118,18 +118,24 @@ Members of the `docker` group are effectively root on the VM: keep the group lim
 
 ## 6. Get the code
 
-The repository is private, so the VM needs its own SSH key registered with the Git hosting service:
+The repository is public, so cloning it over HTTPS needs no account or key:
+
+```bash
+$ git clone https://github.com/aramilialon/project_envelope.git ~/envelope
+```
+
+To push branches from the VM (as a contributor with write access, or to a fork of your own), give the VM its own SSH key registered with GitHub instead:
 
 ```bash
 $ ssh-keygen -t ed25519 -C "dev@envelope-dev"
 $ cat ~/.ssh/id_ed25519.pub
 ```
 
-On GitHub, add the printed key under **Settings → SSH and GPG keys**, then:
+On GitHub, add the printed key under **Settings → SSH and GPG keys**, then point the clone at the SSH address (`git@github.com:aramilialon/project_envelope.git`, or your fork's):
 
 ```bash
 $ ssh -T git@github.com          # should greet you by user name
-$ git clone git@github.com:YOUR-USER/envelope.git ~/envelope
+$ cd ~/envelope && git remote set-url origin git@github.com:aramilialon/project_envelope.git
 ```
 
 ## 7. pnpm, dependencies and first tests
@@ -254,7 +260,7 @@ $ cp .env.example .env
 $ pnpm --filter @envelope/web dev
 ```
 
-Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in then lands back on the placeholder screen, which reports whether it can reach the API. If it cannot, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
+Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in the first time shows that you belong to no workspace yet: choose "Create a workspace" (name, currency, time zone; the currency cannot be changed later). To see a filled-in budget first instead, load the demo workspace (section 13) and sign in as its "demo" user (the password is `DEMO_USER_PASSWORD`). If the app cannot reach the API, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
 
 Browsing from your laptop rather than the VM itself needs all three services tunneled, not just Keycloak's own admin console from section 8 — the web app's own origin, the API it talks to, and Keycloak for the sign-in redirect:
 
@@ -267,6 +273,15 @@ Keep that session open and browse to `http://localhost:5173` on the laptop, same
 Letting another device sign in directly over the network instead (section 8's own alternative) needs `VITE_API_URL` and `VITE_KEYCLOAK_ISSUER` in this app's own `.env` changed to `https://<that address>:3443` and `https://<that address>:8443/realms/envelope`, then that other device browses straight to `https://<that address>/` — no tunnel, no `localhost`, on any of the devices involved, your own included, and the mkcert CA (section 8) installed there first or the browser refuses the certificate.
 
 See [`apps/web/README.md`](../apps/web/README.md) for the rest.
+
+## Your first budget
+
+Once you are in a workspace of your own:
+
+1. Add the accounts your money is in (Accounts → "+ Add account"). For a bank or cash account, open its register and record today's balance as a "New transaction": kind "Inflow", dated today, category left on "Unassigned". On a budget account that money goes to "Unassigned"; on an off-budget account it only sets the balance. A credit card asks how much you owe on it now.
+2. Add groups and categories from the budget itself ("+ Add a group").
+3. Press "Assign" and give the money in "Unassigned" to your categories until it reaches zero.
+4. From then on, import your bank statements from an account's register ("Import") instead of typing each transaction. Import only transactions dated after the day of the balance you recorded: earlier ones are already in it (a card's in its starting balance), and importing them would count them twice.
 
 ## 11. Editing the code
 
@@ -301,7 +316,9 @@ The repository's **Actions** tab on GitHub shows the CI run for every push and p
 
 With `apps/api` running (section 9), `scripts/README.md` has a seed script that fills a
 "Demo" workspace with realistic data through the real API — useful to have something to look at
-without building it up by hand through the web app.
+without building it up by hand through the web app. The workspace belongs to the seed's own "demo"
+Keycloak user: sign in as "demo" with the password in `DEMO_USER_PASSWORD` to see it (`scripts/README.md`,
+"Running locally").
 
 ## 14. A disposable environment (optional)
 

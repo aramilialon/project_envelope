@@ -27,10 +27,12 @@ fnm_version: latest
 
 # --- Project ------------------------------------------------------------
 # Generate an SSH key for the dev user, to register on the Git hosting service.
-project_generate_ssh_key: true
-# Leave empty on the first run. Once the key is registered, set the URL and run
-# the playbook again with `--tags project` to clone the repository.
-project_repo: ""
+# Only needed to push over SSH, or to clone from an SSH URL below.
+project_generate_ssh_key: false
+# The public repository clones over HTTPS with no key. An SSH URL
+# (git@github.com:...) needs project_generate_ssh_key and the key registered
+# first; leave empty to skip the clone.
+project_repo: "https://github.com/aramilialon/project_envelope.git"
 project_dir: "/home/{{ dev_user }}/envelope"
 # Run `pnpm install --frozen-lockfile` right after the first clone (needs pnpm-lock.yaml).
 # Later runs never touch the working copy: run `pnpm install` yourself after `git pull`.
