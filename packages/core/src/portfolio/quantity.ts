@@ -17,7 +17,8 @@
  * easily go beyond 2^53, where JavaScript numbers stop being exact, so every
  * product and quotient here is computed with BigInt and converted back to a
  * checked safe integer. Nothing outside this module multiplies or divides
- * scaled values.
+ * scaled values, except `market-data/fx.ts`, which converts the same products
+ * into another currency with this module's rounding helper.
  *
  * Each conversion rounds by exactly one rule (ADR 0011, "Rounding"):
  * - quantity × price → amount: half away from zero, once, at the end;
@@ -290,8 +291,11 @@ function abs(value: bigint): bigint {
   return value < 0n ? -value : value;
 }
 
-/** n ÷ d rounded half away from zero; d must be positive. */
-function divideHalfAwayFromZero(n: bigint, d: bigint): bigint {
+/**
+ * n ÷ d rounded half away from zero; d must be positive. Internal to the core
+ * (also used by `market-data/fx.ts`): not exported from the package.
+ */
+export function divideHalfAwayFromZero(n: bigint, d: bigint): bigint {
   const quotient = n / d; // BigInt division truncates toward zero
   const remainder = n % d;
   if (2n * abs(remainder) >= d) return quotient + (n < 0n ? -1n : 1n);
@@ -308,8 +312,8 @@ function divideHalfEven(n: bigint, d: bigint): bigint {
   return quotient;
 }
 
-/** A BigInt result as a number, or null if it is beyond the safe range. */
-function safeNumber(value: bigint): number | null {
+/** A BigInt result as a number, or null if it is beyond the safe range. Internal to the core. */
+export function safeNumber(value: bigint): number | null {
   const asNumber = Number(value);
   return Number.isSafeInteger(asNumber) && BigInt(asNumber) === value ? asNumber : null;
 }

@@ -78,6 +78,8 @@ export type {
 export { moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn, yearFraction } from "./portfolio/returns.ts";
 export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/external-flows.ts";
 export { externalFlows } from "./portfolio/external-flows.ts";
+export type { AmountInCurrency, Conversion, FxRate, FxRateTable, RateOnDate } from "./market-data/fx.ts";
+export { convertAmount, convertSum, FX_BASE_CURRENCY, FX_RATE_DECIMALS, fxRateTable, rateOn, valueIn } from "./market-data/fx.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
