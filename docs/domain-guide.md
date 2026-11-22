@@ -900,13 +900,17 @@ portfolio's flows, the value at the start paid in on the start date and the valu
 received on the end date), each flow timed in calendar years from the first (see Periods). It is
 found by bisection, on the figure shown (the yearly rate from a year on, the period's own rate
 before), from just above −100% to +1000%; no rate in that range makes it unknown, and money never
-received back at all is exactly −100%. With flows that change sign several times there can be more
-than one such rate; the figure is the one bisection finds from those bounds, always the same for
-the same flows. €10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1
-January 2026 is 8.02% a year. The MWR assumes money stays invested at that rate, so when nothing is
-held at the end the period ends at the last money received: €10,000 paid in on 30 September,
-€10,100 back on 10 October and a €50 dividend on 20 October is 3.01% over the period, not 4.70% as
-it would be over the whole of October.
+received back at all (nothing received after it was paid in) is exactly −100%. With flows that
+change sign several times there can be more than one such rate; the figure is the one nearest 0.
+€10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is
+8.02% a year. The MWR assumes money stays invested at that rate, so the period ends at the last
+money received, and a payment after it, such as a fee after the final sale, is discounted back to
+it: €10,000 paid in on 30 September, €10,100 back on 10 October and a €50 dividend on 20 October,
+with nothing held at the end, is 3.01% over the period, not 4.70% as it would be over the whole of
+October. Bought for €10,000 on 1 September, sold for a net €10,100 on 30 September, with a €5 fee
+on 15 October, is about 0.95% over the period. A period of no length (a first buy on the end date
+itself) is the value at the end ÷ the money put in − 1, the same as the TWR: bought for €10,010
+including fees and worth €10,000 that evening is −0.10%, not −100%.
 
 **Periods.** Time is counted in calendar years, not days ÷ 365: the whole anniversaries, plus the
 days since the last one over the days to the next (a 29 February anniversary is 28 February in a
@@ -915,10 +919,24 @@ year that is not a leap year). 1 January to 1 July is 181/365 of a year in 2025 
 (1 + R)^(1 ÷ years) − 1): calendar 2024 at +10% is 10.00% a year, and 10,000 on 31 December 2022
 growing to 12,100 on 31 December 2024 is 10.00% a year; 1 January to 31 December 2024, 365 days,
 is still the period's own figure. A shorter period shows the return over the period itself, so
-€10,000 growing to €10,100 over 30 days is 1.00% either way. The TWR's period starts on its start
-date when the portfolio holds something then, otherwise on the first date it holds something; the
-MWR's on the household's first flow. The figure is `returnE6`, in millionths; the screen rounds
-`returnE6` to 0.01 percentage points, half to even.
+€10,000 growing to €10,100 over 30 days is 1.00% either way. The TWR's clock runs only while
+something is held: from the start date, or the first day ending with a value above 0, to the day
+the value is back to 0, stretch by stretch, the years added up. Held through 2024 for +10% and
+empty through 2025 is 10.00% a year over the two years, as is empty through 2024 and held through
+2025 for +10%. The MWR's clock runs from the household's first flow to the last money received.
+The figure is `returnE6`, in millionths; the screen rounds `returnE6` to 0.01 percentage points,
+half to even.
+
+**Nothing held.** A return measures money that was invested; a period in which the portfolio is
+worth nothing at the end of every day it is valued on (its start, every day with a flow, every
+month end, its end) has no return, time-weighted or money-weighted (`no_capital`), and shows only
+its gain. A month with only a €5 fee has a gain of −5.00 and no return; one with a €5 fee and a
+€50 dividend, +45.00 and no return (not +900%); a position bought for €10,010 and sold for €9,980
+on the same day, −30.00 and no return. Bought for €10,000 on 5 October and sold for a net €10,100
+on 20 October is held, 1.00% either way. A position that was worth something and ends at 0 is a
+total loss, −100%. No other percentage takes the place of a missing return: the gain already
+includes every cost, and dividing it by the previous value or by the money put in is undefined or
+−100% in exactly these months.
 
 **Month by month** (#89). Each month is valued at the end of its last day, the current month at
 the end of today in the workspace's time zone, and shows its value, its net contributions (every
@@ -930,6 +948,9 @@ rounded monthly figures linked together. In the example above, September's gain 
 
 - **Before anything is held**, a month is worth 0 and its gain is 0; its returns are unknown,
   since there is nothing to measure.
+- **A month with nothing held** shows its value (0), its contributions, its income and its gain,
+  and no returns. Over a range, the gain is the sum of the months' gains; the TWR leaves out the
+  money that moves while nothing is held, the MWR counts it, as the household paid or received it.
 - **A missing price or rate** makes the value unknown, never a partial sum of the positions that
   have one, and every figure that needs it unknown too; the app lists what is missing, with the
   earliest date that lacks it.
