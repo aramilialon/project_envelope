@@ -401,10 +401,12 @@ button{cursor:pointer}
 .ph-act{min-height:44px;min-width:44px;padding:0 4px;border:0;background:transparent;color:var(--pen);font-weight:600}
 .ph-act.bad-t{color:var(--red-text)}
 .ph-acc2{position:relative}
-.ph-more{font-size:20px;line-height:1;color:var(--ink-2)}
-.ph-menu{position:absolute;right:0;top:calc(100% - 6px);z-index:5;display:flex;flex-direction:column;min-width:180px;padding:6px;border:1px solid var(--rule);border-radius:12px;background:var(--paper);box-shadow:0 8px 24px rgba(0,0,0,.14)}
-.ph-menu button{min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;font:inherit;font-weight:600;color:var(--red-text)}
-.ph-menu button:hover{background:var(--paper-2)}
+/* The row's "⋯" menu: budget-categories.html's .gmenu-btn and .gmenu, phone sized (#705). */
+.gmenu-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.gmenu-btn:hover,.gmenu-btn[aria-expanded="true"]{background:var(--rule-soft);color:var(--ink)}
+.gmenu{position:absolute;top:calc(100% - 4px);right:0;z-index:5;min-width:200px;padding:6px;border:1px solid var(--rule-strong);border-radius:12px;background:var(--paper)}
+.gmenu button{display:block;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;white-space:nowrap;font:inherit;color:var(--ink)}
+.gmenu button:hover,.gmenu button:focus-visible{background:var(--paper-2)}
 .acc-ask{display:flex;flex-direction:column;gap:8px;margin:6px 0 10px;padding:14px 16px;border-radius:12px;background:var(--paper-2);border:1px solid var(--rule)}
 .acc-ask p{margin:0;color:var(--ink-2)}
 .ph-in .acc-ask .btn{min-height:44px}
@@ -484,7 +486,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry. Also: “+ Add account” (its currency, and a starting balance with its date, for every type); the off-budget “Dollar savings” register, in US dollars, where a transfer has no account to pick; the closed “Old post office account”, read only until it is reopened; on the phone's accounts list, “Close account”, in each row's “…” menu, asks first (Prepaid card) or says why not yet (Visa), and a closed account can be reopened. The desktop sidebar stands in for the Accounts list here: a closed account is in no account panel or picker, only under “Closed”.</p>
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry. Also: “+ Add account” (its currency, and a starting balance with its date, for every type); the off-budget “Dollar savings” register, in US dollars, where a transfer has no account to pick; the closed “Old post office account”, read only until it is reopened; on the phone's accounts list, “Close account”, in each row's “⋯” menu, asks first (Prepaid card) or says why not yet (Visa), and a closed account can be reopened. The desktop sidebar stands in for the Accounts list here: a closed account is in no account panel or picker, only under “Closed”.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -659,6 +661,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (t.cat === RTA_ID) return '<span class="kind">Inflow</span>Unassigned';
     return esc(CAT[t.cat].name);
   }
+  // The same as one line of plain text (the phone, a title, the opened row): the kind and the rest
+  // joined by " · ", "Inflow · Unassigned", "Transfer · To ETF broker".
+  function catPlain(t) {
+    return catText(t).replace(/^<span class="kind">([^<]*)<\/span>/, '$1 · ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
   function matches(t) {
     if (state.filter === 'pending' && t.status !== 'pending') return false;
     if (state.filter === 'cleared' && t.status !== 'cleared') return false;
@@ -822,7 +829,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<button type="button" class="open" data-open="' + t.id + '" aria-label="Open ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
         '<span class="cell n">' + dLabel(t.date) + '</span>' +
         '<span class="cell"><b style="font-weight:500">' + esc(t.payee) + '</b>' + (t.memo ? '<small>' + esc(t.memo) + '</small>' : '') + '</span>' +
-        '<span class="cell" title="' + esc(catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) + '">' + catText(t) + '</span>' +
+        '<span class="cell" title="' + esc(catPlain(t)) + '">' + catText(t) + '</span>' +
         '<span class="cell r n">' + (t.amount < 0 ? plainN(-t.amount) : '') + '</span>' +
         '<span class="cell r n">' + (t.amount > 0 ? plainN(t.amount) : '') + '</span>' +
         '<span class="cell r n">' + plainN(r.bal) + '</span></button>';
@@ -920,7 +927,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var t = TXS.filter(function (x) { return x.id === d.id; })[0];
       return '<button type="button" class="plain closer" data-close="1">× Close</button>' +
         '<div><span class="where">Reconciled transaction</span><h4>' + esc(t.payee) + '</h4></div>' +
-        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
+        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catPlain(t) + '</span></div>' +
         '<div class="locknote">It is part of the September 5 reconciliation, when the account\'s balance was compared with the bank\'s. It is locked so that comparison stays intact; once unlocked, changing it changes a balance the bank already confirmed.</div>' +
         '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Unlock</button></div>';
     }
@@ -1023,7 +1030,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     // A closed account (#705): its history stays, read only, until it is reopened.
     old: { id: 'old', name: 'Old post office account', currency: 'EUR', onBudget: true, closed: '2026-09-12', rows: [
       { id: 'o1', date: '2026-01-15', payee: 'Starting balance', amount: 30000, cat: 'Unassigned', status: 'cleared', start: true },
-      { id: 'o2', date: '2026-09-12', payee: 'Transfer', amount: -30000, transfer: 'to Checking', status: 'cleared' }
+      { id: 'o2', date: '2026-09-12', payee: 'Transfer', amount: -30000, transfer: 'To Checking', status: 'cleared' }
     ] }
   };
   var O = { draft: null, view: null, done: null };
@@ -1035,10 +1042,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (r.cat === 'Unassigned') return '<span class="kind">Inflow</span>Unassigned';
     return esc(r.cat || '');
   }
-  // The same, as one line of text (the phone, the opened row): "Transfer to Checking", and
+  // The same, as one line of text (the phone, the opened row): "Transfer · To Checking", and
   // "Inflow · Unassigned", so a kind and a category never read as one phrase.
   function ocatText(a, r) {
-    if (r.transfer) return 'Transfer ' + r.transfer;
+    if (r.transfer) return 'Transfer · ' + r.transfer;
     if (!a.onBudget) return '';
     if (r.cat === 'Unassigned') return 'Inflow · Unassigned';
     return r.cat || '';
@@ -1102,10 +1109,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         return '<label><input type="radio" name="okind" value="' + k[0] + '" data-of="kind" id="okind-' + k[0] + '"' + (d.kind === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>' +
       '<div class="two"><div class="field"><label for="o-date">Date</label><input type="date" id="o-date" data-of="date" value="' + d.date + '"></div>' +
-      '<div class="field"><label for="o-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="o-amt" data-of="amt" value="' + esc(d.amt) + '" placeholder="0.00"' + (d.kind === 'transfer' ? ' disabled' : '') + '><span>' + SYM[a.currency] + '</span></span></div></div>';
+      (d.kind === 'transfer' ? '' : '<div class="field"><label for="o-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="o-amt" data-of="amt" value="' + esc(d.amt) + '" placeholder="0.00"><span>' + SYM[a.currency] + '</span></span></div>') + '</div>';
     if (d.kind === 'transfer') {
-      // No account shares this currency: nothing to pick, and the amount and memo wait until the
-      // move is entered as an outflow (or an inflow) instead.
+      // No account shares this currency: nothing to pick, and no amount or memo (hidden, not
+      // disabled) until the move is entered as an outflow (or an inflow) instead.
       h += '<div class="segs" role="radiogroup" aria-label="Direction">' + [['out', 'To another account'], ['in', 'From another account']].map(function (k) {
         return '<label><input type="radio" name="odir" value="' + k[0] + '" data-of="dir" id="odir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>' +
@@ -1116,10 +1123,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       h += '<div class="field"><label for="o-payee">Payee</label><input type="text" id="o-payee" data-of="payee" value="' + esc(d.payee) + '" autocomplete="off"></div>' +
         '<span class="hint">An off-budget account\'s transactions have no category.</span>';
     }
-    h += '<div class="field"><label for="o-memo">Memo</label><input type="text" id="o-memo" data-of="memo" value="' + esc(d.memo) + '"' + (d.kind === 'transfer' ? ' disabled' : '') + '></div>' +
+    h += (d.kind === 'transfer' ? '' : '<div class="field"><label for="o-memo">Memo</label><input type="text" id="o-memo" data-of="memo" value="' + esc(d.memo) + '"></div>') +
       (d.errs.length ? '<div class="errs" role="alert">' + d.errs.map(esc).join('<br>') + '</div>' : '') +
       '<div class="row-btns">' + (d.kind === 'transfer'
-        ? '<button type="button" class="btn primary" data-oaskind="' + (d.dir === 'in' ? 'in' : 'out') + '" aria-describedby="o-none">' + (d.dir === 'in' ? 'Add as an inflow' : 'Add as an outflow') + '</button>'
+        ? '<button type="button" class="btn primary" data-oaskind="' + (d.dir === 'in' ? 'in' : 'out') + '" aria-describedby="o-none">' + (d.dir === 'in' ? 'Enter as an inflow' : 'Enter as an outflow') + '</button>'
         : '<button type="button" class="btn primary" data-osave="1">Add</button>') + '<button type="button" class="btn" data-oclose="1">Cancel</button></div>';
     return h;
   }
@@ -1152,7 +1159,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var card = A.type === 'credit_card', v = signed(A.amt);
     if (!A.amt.trim()) return card ? 'Optional: without it, the card starts with no debt.' : 'Optional: without it, the account starts at zero.';
     if (v === null) return '';
-    if (card) return 'It shows as debt to cover in the card\'s payment category.';
+    if (card) return v < 0 ? '' : 'It shows as debt to cover in the card\'s payment category.'; // a card in credit is refused when added
     if (!aOn()) return 'An off-budget account does not count toward “Unassigned”.';
     if (!A.date || A.date > TODAY_ISO || A.date < DATE_MIN) return ''; // refused when added
     // On budget: income on "Unassigned" in its date's month, counting from that month on (a
@@ -1229,11 +1236,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     // The rule first, then only the facts that break it (settings-first-run.html draws the same).
     var reasons = [], b = balOf(x), intro;
     if (x.card) {
-      intro = esc(x.name) + ' can\'t be closed yet: its balance and its payment category\'s Available both need to be <span class="n">' + fc(0) + '</span>, with nothing assigned to that category in a later month. Right now:';
+      intro = esc(x.name) + ' can\'t be closed yet: it has to be empty, today and later, and its payment category has to have <span class="n">' + fc(0) + '</span> available, with nothing assigned to it in a later month. Right now:';
       if (b !== 0) reasons.push(esc(x.name) + '\'s balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
       if (x.pay !== 0) reasons.push('Its payment category, ' + esc(x.name) + ', has <span class="n">' + fc(x.pay) + '</span> available.');
     } else {
-      intro = 'This account can\'t be closed yet. Right now:';
+      intro = esc(x.name) + ' can\'t be closed yet: it has to be empty, today and later. Right now:';
       if (b !== 0) reasons.push('Its balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
     }
     return '<div class="hint bad acc-refusal" role="alert"><p>' + intro + '</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
@@ -1244,10 +1251,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var inner = '<span class="nm">' + esc(x.name) + (sub ? '<small>' + sub + '</small>' : '') + '</span><span class="n' + (bal < 0 ? ' neg' : '') + '">' + fc(bal, x.cur) + (opens ? ' ›' : '') + '</span>';
     var main = x.open ? '<button type="button" class="open" data-phscreen="register">' + inner + '</button>'
       : x.other ? '<button type="button" class="open" data-phother="' + x.other + '">' + inner + '</button>' : '<div class="open">' + inner + '</div>';
-    // Reopen is one tap; closing sits behind the row's "…" menu (#705).
-    var act = closed ? '<button type="button" class="ph-act" data-phreopen="' + x.id + '" aria-label="Reopen ' + esc(x.name) + '">Reopen</button>'
-      : '<button type="button" class="ph-act ph-more" data-phmore="' + x.id + '" aria-label="More for ' + esc(x.name) + '" aria-expanded="' + (phMenu === x.id) + '" aria-controls="ph-menu-' + x.id + '">…</button>' +
-        (phMenu === x.id ? '<div class="ph-menu" id="ph-menu-' + x.id + '"><button type="button" data-phclose="' + x.id + '">Close account</button></div>' : '');
+    // Reopen is one tap; closing sits behind the row's "⋯" menu (#705).
+    var act = closed ? '<button type="button" class="ph-act" data-phreopen="' + x.id + '">Reopen<span class="sr"> ' + esc(x.name) + '</span></button>'
+      : '<button type="button" class="gmenu-btn" data-phmore="' + x.id + '" aria-haspopup="menu" aria-label="Actions for ' + esc(x.name) + '" aria-expanded="' + (phMenu === x.id) + '">⋯</button>' +
+        (phMenu === x.id ? '<div class="gmenu" role="menu" aria-label="Actions for ' + esc(x.name) + '"><button type="button" role="menuitem" data-phclose="' + x.id + '">Close account</button></div>' : '');
     return '<div class="ph-acc2' + (closed ? ' closed' : '') + '">' + main + act + '</div>' + (phAsk === x.id ? askHtml(x) : '') + (phRefused === x.id ? refusalHtml(x) : '');
   }
   function phAccountsHtml() {
@@ -1341,7 +1348,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><h3>Later</h3><p>Dated after today: not in today\'s balance.</p></div>'; }
       var laterEnd = isLater(t) && ++laterShown === laterTotal;
       if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === TODAY_ISO ? 'Today' : (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
-      var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      var sub = catPlain(t);
       html += '<div class="ph-tx' + (laterEnd ? ' later-end' : '') + '"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
         '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
         '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': change status') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';

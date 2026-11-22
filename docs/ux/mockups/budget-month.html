@@ -1318,8 +1318,10 @@ button{cursor:pointer}
         (o.total ? ': <b class="n">' + f(o.inT) + '</b> is already within a target' + (o.total - o.inT > 0 ? ', and <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> is left to assign by hand' : '') : '') +
         '. When October opens, the month summary starts from this list.</p>' + o.rows + '</div>' +
       // #744: everything due after next month, with its next date, each one openable. The heading
-      // names the month it follows ("After October"); "Later" is the register's word for rows
-      // dated after today (packages/i18n/glossary.md).
+      // names the month it follows ("After October"), computed from the month on screen: the month
+      // after it, as Intl's long standalone month name (lowercase inside the heading in Italian,
+      // Spanish and French). "Later" is the register's word for rows dated after today
+      // (packages/i18n/glossary.md). With nothing due, the section says "None." and has no note.
       '<div class="sec"><h5>After ' + monthName(CUR + 1 - 2026 * 12) + '</h5>' + (later.length ? later.map(function (s) { return schedRow(s, true); }).join('') +
         '<p class="explain" style="font-size:13px">Each one reserves money in its category from the first day of its own month.</p>' : '<span style="color:var(--muted)">None.</span>') + '</div>' +
       (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ New scheduled transaction</button>');

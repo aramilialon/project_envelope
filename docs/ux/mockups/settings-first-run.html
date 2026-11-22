@@ -500,7 +500,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       { name: 'Store card', type: 'Credit card', on: true, bal: 0, card: true, pay: -1000, later: { amount: 5000, month: 'October' } },
       { name: 'ETF broker', type: 'Brokerage', on: false, bal: 4218000 },
       { name: 'Home mortgage', type: 'Mortgage', on: false, bal: -9630000 },
-      { name: 'Old post office account', type: 'Checking', on: true, bal: 0, closed: 'Sep 12, 2026' }
+      { name: 'Old post office account', type: 'Checking', on: true, bal: 0, closed: 'Sep 12' }
     ],
     // #705: the account whose close is being confirmed, or refused, and the last close or reopen.
     accAsk: null, accRefused: null, accDone: null,
@@ -642,11 +642,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         // A closed account's "On budget" is plain text, not a disabled select: nothing about it can change.
         var budget = closed ? '<span class="ro-val">' + (a.on ? 'On budget' : 'Off budget') + '</span>'
           : '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro ? ' disabled' : '') + '><option value="1"' + (a.on ? ' selected' : '') + '>On budget</option><option value="0"' + (a.on ? '' : ' selected') + '>Off budget</option></select></span>';
+        // A closing date in the current year shows no year ("closed on Sep 12"); one in another year does.
         var html = '<div class="accl"><span><b style="font-weight:600' + (closed ? ';color:var(--muted)' : '') + '">' + esc(a.name) + '</b><small>' + esc(a.type) + ' · ' + (closed ? 'closed on ' + a.closed : '<span class="n">' + fmt(a.bal) + '</span> today') + '</small></span>' +
           budget +
           '<span class="hint">' + (closed ? 'still counts in past months' : a.on ? 'counts toward “Unassigned”' : 'only in net worth') + '</span>' +
-          (ro ? '<span></span>' : closed ? '<button type="button" class="plain" data-accreopen="' + k + '" aria-label="Reopen ' + esc(a.name) + '">Reopen</button>'
-            : '<button type="button" class="plain danger" data-accclose="' + k + '" aria-label="Close ' + esc(a.name) + '"' + (S.accAsk === k ? ' aria-expanded="true"' : '') + '>Close account</button>') + '</div>';
+          (ro ? '<span></span>' : closed ? '<button type="button" class="plain" data-accreopen="' + k + '">Reopen<span class="sr"> ' + esc(a.name) + '</span></button>'
+            : '<button type="button" class="plain" data-accclose="' + k + '" aria-expanded="' + (S.accAsk === k) + '">Close account<span class="sr">, ' + esc(a.name) + '</span></button>') + '</div>';
         // #705: closing asks first, under the row: the balance today and that nothing is dated after
         // today (the two figures #703 refuses on, both zero here), and what closing does. A card's
         // payment category stays in the month of the closing and earlier ones, and leaves the
@@ -664,12 +665,12 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         if (S.accRefused === k) {
           var reasons = [], intro;
           if (a.card) {
-            intro = esc(a.name) + ' can\'t be closed yet: its balance and its payment category\'s Available both need to be <span class="n">' + fmt(0) + '</span>, with nothing assigned to that category in a later month. Right now:';
+            intro = esc(a.name) + ' can\'t be closed yet: it has to be empty, today and later, and its payment category has to have <span class="n">' + fmt(0) + '</span> available, with nothing assigned to it in a later month. Right now:';
             if (a.bal !== 0) reasons.push(esc(a.name) + '\'s balance today is <span class="n">' + fmt(a.bal) + '</span>.');
             if (a.pay !== 0) reasons.push('Its payment category, ' + esc(a.name) + ', has <span class="n">' + fmt(a.pay) + '</span> available.');
             if (a.later) reasons.push('Its payment category, ' + esc(a.name) + ', has <span class="n">' + fmt(a.later.amount) + '</span> assigned in ' + a.later.month + '.');
           } else {
-            intro = 'This account can\'t be closed yet. Right now:';
+            intro = esc(a.name) + ' can\'t be closed yet: it has to be empty, today and later. Right now:';
             if (a.bal !== 0) reasons.push('Its balance today is <span class="n">' + fmt(a.bal) + '</span>.');
           }
           html += '<div class="hint bad acc-refusal" role="alert"><p>' + intro + '</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
@@ -785,7 +786,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.acccancel) { var ck = d.acccancel; S.accAsk = null; renderWs(); var cl = document.querySelector('[data-accclose="' + ck + '"]'); if (cl) cl.focus(); return; }
     if (d.accconfirm) {
       var ok = S.accounts[Number(d.accconfirm)];
-      ok.closed = 'Sep 25, 2026'; S.accAsk = null; S.accDone = ok.name + ' is closed.';
+      ok.closed = 'Sep 25'; S.accAsk = null; S.accDone = ok.name + ' is closed.';
       renderWs(); var re = document.querySelector('[data-accreopen="' + d.accconfirm + '"]'); if (re) re.focus(); return;
     }
     if (d.accreopen) {
