@@ -5,7 +5,7 @@ import { describe, it } from "node:test";
 import { ValidationError } from "@envelope/core";
 import Fastify from "fastify";
 
-import { AccountClosedError, LOG_REDACT_PATHS, registerErrorHandler, toErrorReply, TooManyRequestsError } from "./errors.ts";
+import { AccountClosedError, LOG_REDACT_PATHS, registerErrorHandler, strictBody, toErrorReply, TooManyRequestsError } from "./errors.ts";
 import { ID_PARAM_NAMES, isUuid } from "./ids.ts";
 
 describe("registerErrorHandler's logging (#512)", () => {
@@ -88,6 +88,17 @@ describe("toErrorReply (#512)", () => {
   it("maps invalid input syntax to 400 invalid_input", () => {
     const reply = toErrorReply(databaseError("22P02", 'invalid input syntax for type uuid: "nope"'));
     assert.deepEqual(reply, { statusCode: 400, body: { error: "invalid_input" } });
+  });
+
+  it("maps a date PostgreSQL cannot read, or one that does not exist, to 400 invalid_date (#655)", () => {
+    assert.deepEqual(toErrorReply(databaseError("22007", 'invalid input syntax for type timestamp: "not-a-date"')), {
+      statusCode: 400,
+      body: { error: "invalid_date" },
+    });
+    assert.deepEqual(toErrorReply(databaseError("22008", 'date/time field value out of range: "2026-02-30"')), {
+      statusCode: 400,
+      body: { error: "invalid_date" },
+    });
   });
 
   it("maps insufficient privilege and a Row-Level Security refusal to 403 forbidden", () => {
@@ -200,6 +211,33 @@ describe("isUuid (#512)", () => {
   it("refuses anything else", () => {
     for (const value of ["", "nope", "0b6f1c2e-3a4d-4e5f-8a9b-0c1d2e3f4a5", "0b6f1c2e3a4d4e5f8a9b0c1d2e3f4a5b", " 0b6f1c2e-3a4d-4e5f-8a9b-0c1d2e3f4a5b", 42, null, undefined]) {
       assert.equal(isUuid(value), false, String(value));
+    }
+  });
+});
+
+describe("strictBody (#655)", () => {
+  const allowed = new Set(["payee", "memo"]);
+
+  it("returns the fields of a body that holds only allowed keys, and {} for no body", () => {
+    assert.deepEqual(strictBody({ payee: "Shop" }, allowed), { payee: "Shop" });
+    assert.deepEqual(strictBody({}, allowed), {});
+    assert.deepEqual(strictBody(undefined, allowed), {});
+  });
+
+  it("refuses the first key that is not allowed with unknown_field, naming it", () => {
+    assert.throws(
+      () => strictBody({ payee: "Shop", accountId: "x", other: 1 }, allowed),
+      (error: unknown) => error instanceof ValidationError && error.code === "unknown_field" && error.details.field === "accountId",
+    );
+  });
+
+  it("refuses a body that is not a JSON object with invalid_body", () => {
+    for (const body of [null, [], ["payee"], "payee", 42, true]) {
+      assert.throws(
+        () => strictBody(body, allowed),
+        (error: unknown) => error instanceof ValidationError && error.code === "invalid_body",
+        JSON.stringify(body),
+      );
     }
   });
 });

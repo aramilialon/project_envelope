@@ -1,10 +1,10 @@
-import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+import { assertDate, MAX_FREE_TEXT_LENGTH, ValidationError } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong, sendIfValidationError, type TextFieldCheck } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
@@ -18,6 +18,14 @@ import {
 import { requireAccountOfWorkspace } from "./account-ownership.ts";
 
 const STATUSES: readonly TransactionStatus[] = ["pending", "cleared", "reconciled"];
+
+/** Every field a `PATCH` of a transaction takes (#655); anything else is a 400 `unknown_field`. */
+const PATCH_KEYS: ReadonlySet<string> = new Set(["payee", "memo", "status", "splits", "amountCents", "occurredAt"]);
+
+/** A field of the right name but the wrong type or value: a 400 `invalid_field` naming it (#655). */
+function invalidField(field: string): ValidationError {
+  return new ValidationError("invalid_field", `${field} has the wrong type or value`, { field });
+}
 
 function parseSplits(body: Record<string, unknown>): SplitInput[] | undefined {
   const raw = body.splits;
@@ -80,7 +88,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   const base = "/workspaces/:workspaceId/accounts/:accountId/transactions";
 
   // Creating or listing names the account in its path, which must belong to the workspace (#512);
-  // editing or deleting looks the transaction itself up in the workspace.
+  // editing or deleting looks the transaction itself up in the workspace, and answers 404 when it
+  // is not on the account the path names (#655).
   app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace] }, async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
@@ -90,6 +99,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       await reply.code(400).send({ error: "invalid transaction: occurredAt and a non-empty splits array are required" });
       return;
     }
+    // A real "YYYY-MM-DD" date (#655): "2026-02-30" or "2026-1-5" is a 400 `invalid_date`.
+    assertDate(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
@@ -135,9 +146,27 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     return { transactions };
   });
 
+  // A strict body (#655): a field the edit would otherwise drop without a word (an unknown or
+  // misspelt key, `accountId`, an id) is a 400 `unknown_field`; a field of the wrong type, or a
+  // status that is none of the three, a 400 `invalid_field`; a date that does not exist, `invalid_date`.
   app.patch(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
-    const { transactionId } = request.params as { transactionId: string };
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const { accountId, transactionId } = request.params as { accountId: string; transactionId: string };
+    const body = strictBody(request.body, PATCH_KEYS);
+    for (const field of ["payee", "memo", "occurredAt"] as const) {
+      if (body[field] !== undefined && typeof body[field] !== "string") {
+        throw invalidField(field);
+      }
+    }
+    if (body.amountCents !== undefined && typeof body.amountCents !== "number") {
+      throw invalidField("amountCents");
+    }
+    if (body.status !== undefined && !STATUSES.includes(body.status as TransactionStatus)) {
+      throw invalidField("status");
+    }
+    const occurredAt = body.occurredAt as string | undefined;
+    if (occurredAt !== undefined) {
+      assertDate(occurredAt);
+    }
     const splits = body.splits === undefined ? undefined : parseSplits(body);
     if (body.splits !== undefined && !splits) {
       await reply.code(400).send({ error: "splits, when given, must be a non-empty array" });
@@ -146,9 +175,6 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, splits))) {
       return;
     }
-    const status = typeof body.status === "string" && STATUSES.includes(body.status as TransactionStatus)
-      ? (body.status as TransactionStatus)
-      : undefined;
 
     if (splits) {
       const categories = await listCategories(request.db!, request.workspace!.id);
@@ -161,13 +187,20 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     }
 
     try {
-      const result = await updateTransaction(request.db!, request.workspace!.id, transactionId, {
-        ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
-        ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
-        ...(status ? { status } : {}),
-        ...(splits ? { splits } : {}),
-        ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
-      });
+      const result = await updateTransaction(
+        request.db!,
+        request.workspace!.id,
+        transactionId,
+        {
+          ...(typeof body.payee === "string" ? { payee: body.payee } : {}),
+          ...(typeof body.memo === "string" ? { memo: body.memo } : {}),
+          ...(body.status !== undefined ? { status: body.status as TransactionStatus } : {}),
+          ...(splits ? { splits } : {}),
+          ...(typeof body.amountCents === "number" ? { amountCents: body.amountCents } : {}),
+          ...(occurredAt !== undefined ? { occurredAt } : {}),
+        },
+        accountId,
+      );
       if (result === "not_found") {
         await reply.code(404).send({ error: "transaction not found" });
         return;
@@ -177,7 +210,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         return;
       }
       if (result === "trade_owned") {
-        await sendTradeOwned(reply, "its amount comes from the trade; edit the trade instead");
+        await sendTradeOwned(reply, "its amount and date come from the trade; edit the trade instead");
         return;
       }
       return result;
@@ -190,8 +223,8 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   });
 
   app.delete(`${base}/:transactionId`, { preHandler: writePreHandler }, async (request, reply) => {
-    const { transactionId } = request.params as { transactionId: string };
-    const result = await deleteTransaction(request.db!, request.workspace!.id, transactionId, request.userId!);
+    const { accountId, transactionId } = request.params as { accountId: string; transactionId: string };
+    const result = await deleteTransaction(request.db!, request.workspace!.id, transactionId, request.userId!, accountId);
     if (result === "not_found") {
       await reply.code(404).send({ error: "transaction not found" });
       return;
@@ -219,6 +252,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       });
       return;
     }
+    assertDate(occurredAt);
     if (await sendIfTextTooLong(reply, transactionTextChecks(body, undefined))) {
       return;
     }

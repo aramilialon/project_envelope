@@ -1,4 +1,4 @@
-import { assertTextLength, isValidationError, type ValidationError } from "@envelope/core";
+import { assertTextLength, isValidationError, ValidationError } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 /**
@@ -50,6 +50,30 @@ export async function sendIfTextTooLong(reply: FastifyReply, checks: readonly Te
   return false;
 }
 
+/**
+ * A strict request body (#655, #713): the body as a record of fields, refusing what a route would
+ * otherwise drop without a word. A missing body reads as `{}`.
+ *
+ * @throws ValidationError `invalid_body` for a body that is not a JSON object (an array, a string,
+ *   a number, `null`), and `unknown_field` with `details.field` for the first key that is not in
+ *   `allowed`: a misspelt field, or one the request cannot change (an id, the account). Either is
+ *   a 400 through `sendIfValidationError` or the global error handler.
+ */
+export function strictBody(body: unknown, allowed: ReadonlySet<string>): Record<string, unknown> {
+  if (body === undefined) {
+    return {};
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new ValidationError("invalid_body", "the body must be a JSON object");
+  }
+  const fields = body as Record<string, unknown>;
+  const unknown = Object.keys(fields).find((key) => !allowed.has(key));
+  if (unknown !== undefined) {
+    throw new ValidationError("unknown_field", `"${unknown}" is not a field of this request`, { field: unknown });
+  }
+  return fields;
+}
+
 /** What the global error handler answers: a status and a body that never carries an error's own message. */
 export interface ErrorReply {
   readonly statusCode: number;
@@ -90,6 +114,9 @@ const FOREIGN_KEY_VIOLATION = "23503";
 const INVALID_TEXT_REPRESENTATION = "22P02";
 const INSUFFICIENT_PRIVILEGE = "42501";
 const CHECK_VIOLATION = "23514";
+/** A date or time PostgreSQL cannot read ("not-a-date") or one that does not exist ("2026-02-30"). */
+const INVALID_DATETIME_FORMAT = "22007";
+const DATETIME_FIELD_OVERFLOW = "22008";
 
 /**
  * The constraint migration 0033's trigger names when it refuses a write to a closed account (#729,
@@ -171,6 +198,11 @@ export function toErrorReply(error: unknown): ErrorReply {
     }
     if (sqlState === INVALID_TEXT_REPRESENTATION) {
       return { statusCode: 400, body: { error: "invalid_input" } };
+    }
+    // The safety net behind the routes' own date checks (#655): a date that reached a query
+    // unchecked is the request's fault, not the server's.
+    if (sqlState === INVALID_DATETIME_FORMAT || sqlState === DATETIME_FIELD_OVERFLOW) {
+      return { statusCode: 400, body: { error: "invalid_date" } };
     }
     if (sqlState === INSUFFICIENT_PRIVILEGE || isRowLevelSecurityViolation(error)) {
       return { statusCode: 403, body: { error: "forbidden" } };
