@@ -2,7 +2,7 @@
 
 All notable changes to envelope are listed here, newest first. Versions follow semantic versioning: 1.0.0 marks the whole product (budget, portfolio, mobile and everything else in `docs/design.md`), so every 0.x.y release is still pre-1.0 by design, however usable a given 0.x.0 milestone group already is on its own. A new minor version (0.x.0) starts a milestone group (Budget, Portfolio, Mobile, ...); each patch release (0.x.y) closes one milestone within that group.
 
-Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed**.
+Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed**. Changes not released yet are one file each in [`changes/unreleased/`](changes/unreleased/README.md), compiled into this file at each release.
 
 ## [Unreleased]
 

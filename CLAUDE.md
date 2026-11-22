@@ -27,7 +27,8 @@ Guidance for Claude Code when working in this repository. Read [docs/design.md](
 | `infra/Caddyfile` | TLS termination (mkcert), the only process reachable from the LAN, fronting the web app, the API and Keycloak alike (docs/getting-started.md, "Letting another device on your own network sign in too") |
 | `infra/ansible` | Playbook that prepares a Debian 13 development machine |
 | `docs/` | Design document, getting started, how-to guides, ADRs, glossary, interface mockups (`docs/ux/mockups/`), the agent team's memory (`docs/team/`) |
-| `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, Git hooks, a demo data seed, and disposable environments for exploratory and e2e runs (`scripts/explore-env/`); see `scripts/README.md` |
+| `changes/unreleased/` | One changelog fragment per user-visible change, compiled into `CHANGELOG.md` at release ([its README](changes/unreleased/README.md)) |
+| `scripts/` | GitHub setup (labels, milestones, ruleset), the Keycloak realm bootstrap, the changelog release, Git hooks, a demo data seed, and disposable environments for exploratory and e2e runs (`scripts/explore-env/`); see `scripts/README.md` |
 
 ## Commands
 
@@ -71,7 +72,7 @@ Every change reaches `main` through a pull request that the maintainer reviews a
 - Commit messages in English, first line `<type>(<scope>): <description>` in imperative mood, and `Refs #<issue>` in the body. Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `build`, `perf`, `revert`; scopes: `core`, `api`, `web`, `mobile`, `infra`, `deps` (optional); `!` after the type or scope marks a breaking change. The `commit-msg` hook rejects other formats.
 - The pull request title follows the same format: with "Squash and merge" it becomes the commit message on `main`, and CI checks it.
 - When the work is done and tested: push the branch, open a pull request with `gh pr create` filling in the template (`Closes #<issue>`). Once the GitHub Actions CI run on that pull request has completed successfully, merge it (squash) and report the link; do not merge before CI finishes.
-- Update `CHANGELOG.md` under "Unreleased" for user-visible changes.
+- For user-visible changes, add a changelog fragment, `changes/unreleased/<issue>-<slug>.md` (format in [changes/unreleased/README.md](changes/unreleased/README.md)), instead of editing `CHANGELOG.md`; the `integrator` compiles the fragments into `CHANGELOG.md` at release.
 - Releases (tags, GitHub releases): the coordinator decides, on its own, that a release goes out once every step of "Releasing a milestone" has passed (exploratory run, security alerts); the `integrator` then executes it (changelog pull request, tag, GitHub release, closing the milestone). A release that closes a roadmap phase (the "… MVP" milestones and `1.0.0`) waits for the maintainer's own test first.
 
 ## Current focus: backend MVP

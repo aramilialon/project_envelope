@@ -1,3 +1,4 @@
-# Two branches that both add entries under "Unreleased" merge without a conflict (#737);
-# changelog fragments replace this later (#738).
+# Two branches that both add entries under "Unreleased" merge without a conflict (#737).
+# Changelog fragments (changes/unreleased/, #738) replace those entries; remove this line once
+# no open branch writes "Unreleased" entries in CHANGELOG.md any more.
 CHANGELOG.md merge=union

@@ -189,6 +189,20 @@ $ cd scripts
 $ pnpm screenshots:mockups
 ```
 
+## Changelog release
+
+`changelog-release.ts` compiles the changelog fragments in [`changes/unreleased/`](../changes/unreleased/README.md) into `CHANGELOG.md` at release time (#738; step 4 of [Releasing a milestone](../docs/how-to/work-with-issues-and-pull-requests.md#releasing-a-milestone)):
+
+```bash
+pnpm --filter @envelope/scripts changelog:release 0.2.1                    # dated today, in UTC
+pnpm --filter @envelope/scripts changelog:release 0.2.1 --date 2026-11-30
+pnpm --filter @envelope/scripts changelog:check                            # validates the fragments only
+```
+
+It adds `## [0.2.1] - <date>` right below the empty `## [Unreleased]` heading, with the entries grouped under Added, Changed, Fixed and Removed (in that order, each by issue number). Entries a branch still wrote directly under "Unreleased" come first in their section and leave the heading empty. Then it deletes the fragments it compiled, keeping the README. A malformed fragment, a version the changelog already has, or nothing to release stops it before it writes anything. Commit `CHANGELOG.md` and `changes/unreleased/` together.
+
+The rules are in `lib/changelog.ts`, tested with the script in `lib/changelog.test.ts`; that test also validates the repository's own fragments, so `pnpm test` (and CI) refuses a malformed one.
+
 ## Disposable environments
 
 `explore-env/` brings up a throwaway, isolated copy of the whole app for exploratory runs and for
@@ -413,6 +427,8 @@ first use.
 | `seed-demo.ts` | The demo data seed (above) |
 | `screenshot-demo.ts` | Regenerates the real-app reference screenshots from the seeded "Demo" workspace (above) |
 | `screenshot-mockups.ts` | Renders the mockup reference screenshots and the README's mixed images (above) |
+| `changelog-release.ts` | Compiles the changelog fragments into `CHANGELOG.md` at release (above) |
+| `lib/changelog.ts` | The fragment format and the release section it builds (`lib/changelog.test.ts`) |
 | `lib/env.ts` | `requireEnv`: fails fast on a missing variable; `assertSafeToRun`: refuses `NODE_ENV=production` or any given URL that is not local, naming which one (`lib/env.test.ts`) |
 | `lib/keycloak.ts` | `ensureDemoUser`/`signInAsDemoUser`: the persistent demo user and the browser-free PKCE handshake; `keycloakTargetFromEnv`: the realm and web origin (`KEYCLOAK_REALM`, `WEB_URL`), refusing a realm that is neither `envelope` nor a disposable one (`lib/keycloak.test.ts`) |
 | `lib/api.ts` | `Api`: a thin authenticated `fetch` wrapper against `apps/api` — no generated client exists yet |

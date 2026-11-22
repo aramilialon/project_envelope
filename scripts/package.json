@@ -2,7 +2,7 @@
   "name": "@envelope/scripts",
   "version": "0.0.0",
   "private": true,
-  "description": "Development scripts: Keycloak realm bootstrap, GitHub setup, demo data seed, disposable environments",
+  "description": "Development scripts: Keycloak realm bootstrap, GitHub setup, demo data seed, disposable environments, changelog release",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -13,6 +13,8 @@
     "explore:down": "node --env-file-if-exists=.env explore-env/cli.ts down",
     "explore:sweep": "node --env-file-if-exists=.env explore-env/cli.ts sweep",
     "explore:agents": "node explore-env/explorer-agents.ts",
+    "changelog:check": "node changelog-release.ts --check",
+    "changelog:release": "node changelog-release.ts",
     "test": "node --test \"lib/**/*.test.ts\" \"explore-env/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
