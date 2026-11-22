@@ -202,7 +202,7 @@
   "import.check.column.date": "Data",
   "import.check.column.description": "Dalla banca",
   "import.check.hint": "Le righe già presenti nel registro (stesso importo, date entro 3 giorni) non vengono importate di nuovo; quelle ancora in attesa diventano verificate. Una riga nuova ha bisogno di una categoria, o di essere segnata come entrata o trasferimento, prima di poter essere importata — senza, resta in sospeso, da confermare più avanti.",
-  "import.check.hintOffBudget": "Le righe già presenti nel registro (stesso importo, date entro 3 giorni) non vengono importate di nuovo; quelle ancora in attesa diventano verificate. Questo conto è fuori budget, quindi una riga nuova non ha categoria: se è un trasferimento, segnala come tale.",
+  "import.check.hintOffBudget": "Le righe già presenti nel registro (stesso importo, date entro 3 giorni) non vengono importate di nuovo; quelle ancora in attesa diventano verificate. Questo conto è fuori budget, quindi una riga nuova non ha categoria: se è un trasferimento, indicalo come tale.",
   "import.check.includeRow": "Importa questa riga",
   "import.check.income": "Da assegnare",
   "import.check.missing": "Senza categoria",
