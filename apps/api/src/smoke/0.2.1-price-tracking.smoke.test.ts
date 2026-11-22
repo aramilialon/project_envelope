@@ -1,6 +1,10 @@
 /**
- * Certifies 0.2.1 Market data against the real process (ADR 0007): the actual server (main.ts) as
- * a subprocess, driven over real HTTP connections, not buildApp()+inject().
+ * Certifies milestone 0.2.1 (Price tracking & performance) against the real process (ADR 0007):
+ * the actual server (main.ts) as a subprocess, driven over real HTTP connections, not
+ * buildApp()+inject(). One file for the milestone; each part of it has its own top-level
+ * `describe`.
+ *
+ * Market data and monthly performance:
  *
  * 1. With fetching off (`MARKET_DATA_FETCH_ENABLED=false`): a household's portfolio of a shared
  *    euro ETF priced by hand (`PUT .../prices/:date`) and a private pension fund priced from a CSV
@@ -74,7 +78,7 @@ interface Performance {
   readonly totals: Record<string, unknown>;
 }
 
-describe("smoke: 0.2.1 Market data, against the real process", () => {
+describe("smoke: 0.2.1 market data and monthly performance, against the real process", () => {
   let database: IsolatedDatabase;
   let superuserPool: DbPool;
   let realm: KeycloakTestRealm;
