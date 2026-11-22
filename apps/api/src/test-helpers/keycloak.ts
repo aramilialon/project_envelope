@@ -1,16 +1,26 @@
 /**
- * Provisions a throwaway Keycloak realm for integration tests, through the
- * admin REST API: a realm whose access tokens live a minute (long enough for a
- * slow test on a loaded machine, #519), two clients with different audiences, a
- * third client with the matching audience whose tokens live only
- * `SHORT_LIVED_TOKEN_SECONDS` (for the tests that wait for a token to expire, on
- * purpose), and one user. Nothing here is meant for anything but tests: the
- * realm is deleted in `teardown()`. The admin token lives a minute too, so every
- * admin call made after the setup (a new user, the teardown) asks for a fresh one:
- * a test file that runs longer, such as the random walk (#80), would otherwise
- * get 401 from them.
+ * Keycloak for integration tests, through the admin REST API. A test run has one throwaway
+ * realm (#639): `keycloak-global-setup.ts` creates it before the first test file starts and
+ * deletes it after the last one ends, and `setUpKeycloakTestRealm()` gives each file a user of
+ * its own in it. A file run on its own, without that global setup (`node --test <file>`),
+ * creates a realm of its own instead and deletes it in `teardown()`.
+ *
+ * The realm's access tokens live a minute (long enough for a slow test on a loaded machine,
+ * #519). It has two clients with different audiences, a third client with the matching audience
+ * whose tokens live only `SHORT_LIVED_TOKEN_SECONDS` (for the tests that wait for a token to
+ * expire, on purpose), and the users the files create. Every file of a run shares the realm, so
+ * no test changes anything realm-wide (its settings, clients, keys); a test changes only the
+ * users it created. The admin token lives a minute too, so every admin call made after the setup
+ * (a new user, the teardown) asks for a fresh one: a test file that runs longer, such as the
+ * random walk (#80), would otherwise get 401 from them.
+ *
+ * A realm's name says which process created it, on which host, and when (`testRealmName`), so a
+ * run that crashed or was killed before it could delete its realm does not leave it there for
+ * long: every global setup first deletes the test realms whose process is gone, or that are
+ * older than `LEFTOVER_REALM_AGE_MS` (`sweepLeftoverTestRealms`).
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { decodeJwt } from "jose";
@@ -21,6 +31,15 @@ const MISMATCHED_AUDIENCE = "some-other-api";
 const ACCESS_TOKEN_LIFESPAN_SECONDS = 60;
 /** How long a token from `getShortLivedUserToken()` lives. */
 export const SHORT_LIVED_TOKEN_SECONDS = 2;
+
+/** The environment variable through which the global setup hands the run's realm to every test file. */
+export const RUN_REALM_ENV = "ENVELOPE_TEST_KEYCLOAK_REALM";
+/** A test realm older than this is deleted by the next sweep, whichever process created it: no run lasts this long. */
+export const LEFTOVER_REALM_AGE_MS = 6 * 60 * 60 * 1000;
+
+const TEST_REALM_PATTERN = /^envelope-test-run-([0-9a-f]{8})-([1-9][0-9]*)-([0-9a-z]+)-[0-9a-f]{8}$/;
+/** The name the helper gave every realm, one per test file, before #639: it says neither who created it nor when. */
+const PER_FILE_REALM_PATTERN = /^envelope-test-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface KeycloakTestRealm {
   readonly issuer: string;
@@ -34,6 +53,7 @@ export interface KeycloakTestRealm {
   /** A brand-new user whose token can be fetched again, for a run that outlives one token (the random walk, #80). */
   createUser(): Promise<KeycloakTestUser>;
   updateUserEmail(email: string): Promise<void>;
+  /** Deletes the realm if this file created it; the run's shared realm is left to the global teardown. */
   teardown(): Promise<void>;
 }
 
@@ -42,35 +62,39 @@ export interface KeycloakTestUser {
   getToken(): Promise<string>;
 }
 
-export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
-  const adminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
-  if (!adminPassword) {
-    throw new Error(
-      "Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) to run the Keycloak integration tests",
-    );
-  }
+/** A realm the helper created: its name, and the secret of its three clients. */
+export interface TestRealmCredentials {
+  readonly realm: string;
+  readonly clientSecret: string;
+}
 
-  const adminToken = await getAdminToken(adminPassword);
-  const realm = `envelope-test-${randomUUID()}`;
-  const clientSecret = randomUUID();
-  // Unique per realm: apps/api's own users.email is UNIQUE, and every test realm otherwise
-  // mapped to the same "test-user@example.com", colliding across test files and runs.
+/**
+ * Gives the calling test file a user of its own in the run's realm, or, when the file runs
+ * without the global setup, a realm of its own with that user in it.
+ */
+export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
+  const adminPassword = requireAdminPassword();
+  const runRealm = readRunRealm();
+  const { realm, clientSecret } = runRealm ?? (await createTestRealm(adminPassword));
+  // Unique per file: apps/api's own users.email is UNIQUE, and the files of a run share the realm.
   const username = `test-user-${randomUUID()}`;
   const password = randomUUID();
+  let userId: string;
+  try {
+    userId = await createUser(await getAdminToken(adminPassword), realm, username, password);
+  } catch (error) {
+    if (!runRealm) {
+      await deleteTestRealm(adminPassword, realm);
+    }
+    throw error;
+  }
 
-  await adminRequest(adminToken, "POST", "/admin/realms", {
-    realm,
-    enabled: true,
-    sslRequired: "none",
-    accessTokenLifespan: ACCESS_TOKEN_LIFESPAN_SECONDS,
-  });
-
-  await createClientWithAudience(adminToken, realm, "envelope-api", clientSecret, MATCHING_AUDIENCE);
-  await createClientWithAudience(adminToken, realm, "envelope-other", clientSecret, MISMATCHED_AUDIENCE);
-  await createClientWithAudience(adminToken, realm, "envelope-api-short-lived", clientSecret, MATCHING_AUDIENCE, {
-    "access.token.lifespan": String(SHORT_LIVED_TOKEN_SECONDS),
-  });
-  const userId = await createUser(adminToken, realm, username, password);
+  const newUser = async (): Promise<{ username: string; password: string }> => {
+    const otherUsername = `test-user-${randomUUID()}`;
+    const otherPassword = randomUUID();
+    await createUser(await getAdminToken(adminPassword), realm, otherUsername, otherPassword);
+    return { username: otherUsername, password: otherPassword };
+  };
 
   return {
     issuer: `${KEYCLOAK_URL}/realms/${realm}`,
@@ -79,24 +103,161 @@ export async function setUpKeycloakTestRealm(): Promise<KeycloakTestRealm> {
     getShortLivedUserToken: () => getUserAccessToken(realm, "envelope-api-short-lived", clientSecret, username, password),
     getTokenWithMismatchedAudience: () => getUserAccessToken(realm, "envelope-other", clientSecret, username, password),
     getTokenForNewUser: async () => {
-      const otherUsername = `test-user-${randomUUID()}`;
-      const otherPassword = randomUUID();
-      await createUser(await getAdminToken(adminPassword), realm, otherUsername, otherPassword);
-      return getUserAccessToken(realm, "envelope-api", clientSecret, otherUsername, otherPassword);
+      const other = await newUser();
+      return getUserAccessToken(realm, "envelope-api", clientSecret, other.username, other.password);
     },
     createUser: async () => {
-      const otherUsername = `test-user-${randomUUID()}`;
-      const otherPassword = randomUUID();
-      await createUser(await getAdminToken(adminPassword), realm, otherUsername, otherPassword);
-      return { getToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, otherUsername, otherPassword) };
+      const other = await newUser();
+      return { getToken: () => getUserAccessToken(realm, "envelope-api", clientSecret, other.username, other.password) };
     },
     updateUserEmail: async (email: string) => {
       await adminRequest(await getAdminToken(adminPassword), "PUT", `/admin/realms/${realm}/users/${userId}`, { email });
     },
     teardown: async () => {
-      await adminRequest(await getAdminToken(adminPassword), "DELETE", `/admin/realms/${realm}`);
+      // The run's realm outlives this file: the other files of the run still use it.
+      if (!runRealm) {
+        await deleteTestRealm(adminPassword, realm);
+      }
     },
   };
+}
+
+/**
+ * Creates a test realm with its three clients and no user, named after this process
+ * (`testRealmName`). A realm left half-made by a failed setup is deleted before the error is
+ * thrown again.
+ */
+export async function createTestRealm(adminPassword: string, realm = testRealmName()): Promise<TestRealmCredentials> {
+  const adminToken = await getAdminToken(adminPassword);
+  const clientSecret = randomUUID();
+
+  await adminRequest(adminToken, "POST", "/admin/realms", {
+    realm,
+    enabled: true,
+    sslRequired: "none",
+    accessTokenLifespan: ACCESS_TOKEN_LIFESPAN_SECONDS,
+  });
+  try {
+    await createClientWithAudience(adminToken, realm, "envelope-api", clientSecret, MATCHING_AUDIENCE);
+    await createClientWithAudience(adminToken, realm, "envelope-other", clientSecret, MISMATCHED_AUDIENCE);
+    await createClientWithAudience(adminToken, realm, "envelope-api-short-lived", clientSecret, MATCHING_AUDIENCE, {
+      "access.token.lifespan": String(SHORT_LIVED_TOKEN_SECONDS),
+    });
+  } catch (error) {
+    await deleteTestRealm(adminPassword, realm);
+    throw error;
+  }
+  return { realm, clientSecret };
+}
+
+/** Deletes a test realm; one already gone (deleted by another run's sweep) counts as deleted. */
+export async function deleteTestRealm(adminPassword: string, realm: string): Promise<void> {
+  await adminRequest(await getAdminToken(adminPassword), "DELETE", `/admin/realms/${encodeURIComponent(realm)}`, undefined, {
+    acceptNotFound: true,
+  });
+}
+
+/** The run's realm the global setup handed down through `RUN_REALM_ENV`, or `undefined` for a file run on its own. */
+export function readRunRealm(env: NodeJS.ProcessEnv = process.env): TestRealmCredentials | undefined {
+  const value = env[RUN_REALM_ENV];
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+  const parsed = JSON.parse(value) as Partial<TestRealmCredentials>;
+  if (typeof parsed.realm !== "string" || typeof parsed.clientSecret !== "string" || !TEST_REALM_PATTERN.test(parsed.realm)) {
+    throw new Error(`${RUN_REALM_ENV} does not name a test realm`);
+  }
+  return { realm: parsed.realm, clientSecret: parsed.clientSecret };
+}
+
+/**
+ * `envelope-test-run-<host>-<pid>-<start>-<random>`: the first 8 hex digits of the SHA-256 of the
+ * host name, the creating process's id, its start time in milliseconds in base 36, and 8 random
+ * hex digits.
+ */
+export function testRealmName(pid = process.pid, startedAt = Date.now(), host = hostTag()): string {
+  return `envelope-test-run-${host}-${pid}-${startedAt.toString(36)}-${randomUUID().slice(0, 8)}`;
+}
+
+/** Who created a test realm and when, read back from its name; `undefined` for any other name. */
+export function parseTestRealmName(realm: string): { host: string; pid: number; startedAt: number } | undefined {
+  const match = TEST_REALM_PATTERN.exec(realm);
+  if (!match) {
+    return undefined;
+  }
+  const [, host = "", pid = "", startedAt = ""] = match;
+  return { host, pid: Number(pid), startedAt: parseInt(startedAt, 36) };
+}
+
+export function hostTag(name = hostname()): string {
+  return createHash("sha256").update(name).digest("hex").slice(0, 8);
+}
+
+export interface SweepContext {
+  readonly now: number;
+  readonly host: string;
+  readonly isProcessAlive: (pid: number) => boolean;
+}
+
+/**
+ * What a sweep does with a realm: `delete` a test realm whose process on this host is gone, or
+ * that is older than `LEFTOVER_REALM_AGE_MS`; `check-age` for a realm named by the helper before
+ * #639, whose name says neither, so its age is read from its users; `keep` anything else,
+ * another run's live realm and every realm that is not a test realm.
+ */
+export function judgeRealm(realm: string, context: SweepContext): "keep" | "delete" | "check-age" {
+  if (PER_FILE_REALM_PATTERN.test(realm)) {
+    return "check-age";
+  }
+  const origin = parseTestRealmName(realm);
+  if (!origin) {
+    return "keep";
+  }
+  if (context.now - origin.startedAt > LEFTOVER_REALM_AGE_MS) {
+    return "delete";
+  }
+  return origin.host === context.host && !context.isProcessAlive(origin.pid) ? "delete" : "keep";
+}
+
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: the process exists, it only belongs to another user.
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Deletes the test realms a crashed or killed run left behind (`judgeRealm`), and returns their
+ * names. A realm named before #639 is deleted once one of its users is older than
+ * `LEFTOVER_REALM_AGE_MS`; one with no user is kept, since it may be a setup still in progress.
+ */
+export async function sweepLeftoverTestRealms(
+  adminPassword: string,
+  context: SweepContext = { now: Date.now(), host: hostTag(), isProcessAlive },
+): Promise<string[]> {
+  const adminToken = await getAdminToken(adminPassword);
+  const response = await adminRequest(adminToken, "GET", "/admin/realms?briefRepresentation=true");
+  const realms = ((await response.json()) as { realm: string }[]).map(({ realm }) => realm);
+  const deleted: string[] = [];
+  for (const realm of realms) {
+    let verdict = judgeRealm(realm, context);
+    if (verdict === "check-age") {
+      const users = await adminRequest(adminToken, "GET", `/admin/realms/${realm}/users?first=0&max=1`, undefined, {
+        acceptNotFound: true,
+      });
+      const [user] = users.status === 404 ? [] : ((await users.json()) as { createdTimestamp?: number }[]);
+      const createdAt = user?.createdTimestamp;
+      verdict = createdAt !== undefined && context.now - createdAt > LEFTOVER_REALM_AGE_MS ? "delete" : "keep";
+    }
+    if (verdict === "delete") {
+      await deleteTestRealm(adminPassword, realm);
+      deleted.push(realm);
+    }
+  }
+  return deleted;
 }
 
 /**
@@ -112,6 +273,16 @@ export async function waitUntilExpired(token: string): Promise<void> {
   if (remainingMs > 0) {
     await sleep(remainingMs);
   }
+}
+
+function requireAdminPassword(): string {
+  const adminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      "Set KEYCLOAK_ADMIN_PASSWORD (the value from infra/.env) to run the Keycloak integration tests",
+    );
+  }
+  return adminPassword;
 }
 
 async function getAdminToken(adminPassword: string): Promise<string> {
@@ -159,6 +330,7 @@ async function adminRequest(
   method: string,
   path: string,
   body?: unknown,
+  { acceptNotFound = false }: { acceptNotFound?: boolean } = {},
 ): Promise<Response> {
   const response = await fetchRetryingServerErrors(`${KEYCLOAK_URL}${path}`, {
     method,
@@ -168,6 +340,10 @@ async function adminRequest(
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+  if (acceptNotFound && response.status === 404) {
+    await response.body?.cancel();
+    return response;
+  }
   if (!response.ok) {
     throw new Error(`${method} ${path} responded ${response.status}: ${await response.text()}`);
   }
