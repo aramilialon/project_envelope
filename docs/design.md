@@ -364,7 +364,7 @@ The queue module prevents duplicate effects by itself, without relying on whoeve
     - push notifications use the job id as notification id, so the phone replaces a duplicate instead of showing it twice;
     - the state of each delivery (pending, sent) is recorded, and a retry resumes only from unconfirmed deliveries.
 4. **Mandatory double-delivery test.** The shared suite runs every job type twice with the same data and checks that the database and simulated external effects are identical to a single run. A job without this test fails CI.
-5. **Cleanup.** Rows in `processed_jobs` are deleted after 30 days, well beyond the maximum retry window.
+5. **Cleanup.** Rows in `processed_jobs` are deleted after 30 days, well beyond the maximum retry window, by each delivery in a statement of its own before the job's transaction, so a slow handler never holds other deliveries' cleanup up (#85).
 
 ### Code quality
 
@@ -385,7 +385,7 @@ The app handles personal financial data, so security is designed in from the sta
 - **Dependencies.** Automated dependency updates, vulnerability scanning in CI, signed Docker images.
 - **Backup and restore.** Daily backups with point-in-time recovery; periodic restore tests, not just backups.
 - **Responsible disclosure.** A SECURITY.md file, a dedicated address and stated response times.
-- **Outbound requests.** The server sends user data out only through features a user turns on (Web Push, encrypted for the device). The one request it makes by itself is for public market data: the ECB's euro reference rates file (#85), fetched at startup and twice every working day with a plain HTTPS GET that carries no cookie, token, query or anything about the server, its users or their data; the ECB sees only the server's public address and the time. The address is fixed (`MARKET_DATA_ECB_URL` lets an administrator point it at a mirror, HTTPS only), no redirect is followed, and the answer is refused unless it is XML within 32 MB. `MARKET_DATA_FETCH_ENABLED=false` turns it off; rates are then loaded from a downloaded file (`apps/api/README.md`, "Exchange rates").
+- **Outbound requests.** User data leaves the server only through features a user turns on (Web Push, encrypted for the device). The server makes one request of its own, on by default (maintainer decision), and it carries no user data: the ECB's public euro reference rates file (#85), fetched at startup and twice every working day with a plain HTTPS GET with no cookie, token or query. The ECB sees the server's public address (for a server at home, the household's address), the time, and the HTTP client's generic name; nothing else about the server, its users or their data. The address is the ECB's unless an administrator points `MARKET_DATA_ECB_URL` at a mirror (HTTPS, or plain HTTP only to the machine itself, for tests); no redirect is followed, and the answer is refused unless it is XML within 32 MiB. `MARKET_DATA_FETCH_ENABLED=false` turns it off; rates are then loaded from a downloaded file (`apps/api/README.md`, "Exchange rates").
 
 ### End-to-end encryption: a future, optional module
 
@@ -595,7 +595,7 @@ How it is built ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md)):
 
 - **One interface.** A provider (`apps/api/src/market-data/provider.ts`) implements what it can fetch: prices, exchange rates, or neither. `MARKET_DATA_PRICE_PROVIDER` picks the price provider; `manual`, which fetches nothing, is the only one so far, so prices come from manual entry and CSV (#84, #83). An unknown name stops the server at startup.
 - **Fetched by jobs, read from the database.** A provider is called only by a queue job, which writes shared rows. Screens and endpoints read only what is stored and never call a provider, so a slow or unreachable source never slows a request.
-- **ECB exchange rates** (#85). The `fx-rates-fetch` job runs at startup and at 15:30 and 21:30 UTC on working days (the ECB publishes around 16:00 Central European Time); it loads the full history the first time and the last 90 days afterwards, updates a rate the ECB revised and logs it, and leaves the rest untouched. The file is parsed by the core with no XML library and refused as a whole when anything in it is malformed. Only the currencies still in use are stored. `GET /fx-rates` reads them.
+- **ECB exchange rates** (#85). The `fx-rates-fetch` job runs at startup (unless the newest stored day is today or yesterday, UTC) and at 15:30 and 21:30 UTC on working days (the ECB publishes around 16:00 Central European Time); it loads the full history the first time and the last 90 days afterwards, updates a rate the ECB revised and logs it, and leaves the rest untouched. The file is parsed by the core with no XML library and refused as a whole when anything in it is malformed. Only the currencies still in use are stored. `GET /fx-rates` reads them.
 - **Outbound requests can be turned off.** `MARKET_DATA_FETCH_ENABLED`, on by default (maintainer decision), turns every outbound market-data request off; rates are then loaded from a downloaded file with `pnpm --filter @envelope/api fx-rates:import <file>`. See "Security, privacy and GDPR" for what the request sends.
 
 ### Regulatory aspects

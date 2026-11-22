@@ -18,6 +18,8 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#84** (2026-11-22, architect): screens and endpoints read only stored prices and rates, never a provider.
 - **#85** (2026-11-22, architect): rates are stored as `rate_e10`, quote currency per 1 EUR as published, never inverted; other pairs are computed through the euro with one rounding.
 - **#85** (2026-11-22, architect): no XML dependency for the ECB file, and the built-in `fetch`.
+- **#85** (2026-11-22, domain-expert): the ECB parser checks every entry's syntax and leaves out currencies `isKnownCurrency` refuses (withdrawn ISO 4217 codes, e.g. TRL beyond the ×10^10 safe range), naming them in `skippedCurrencies`; a kept currency out of range still refuses the whole file.
+- **#85** (2026-11-22, security-reviewer): the README states the one request the server makes by itself (ECB rates, on by default — maintainer decision) and the switch that turns it off.
 - **#87/#88** (2026-11-22, architect): returns are computed in floating point inside, output as an integer `returnE6`, never stored.
 - **#83** (2026-11-22, architect): prices are not a sync entity in 0.2.1; a future entity id is derived from (workspace, instrument, date).
 - **#83** (2026-11-22, architect): one audit entry per manual price write, one summary entry per CSV import.
