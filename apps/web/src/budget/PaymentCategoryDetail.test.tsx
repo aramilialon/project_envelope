@@ -37,6 +37,7 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(row("Paid beyond what was set aside")).toHaveTextContent("€254.33");
     expect(row("Paid beyond what was set aside").querySelector(".warnl")).toBeNull();
     expect(row("To cover")).toHaveTextContent("€500.00");
+    expect(screen.queryByText("Card's credit")).not.toBeInTheDocument();
     expect(screen.queryByText(/[-−]€/)).not.toBeInTheDocument(); // "Set aside to pay the card" too
 
     fireEvent.click(screen.getByRole("button", { name: "Assign €500.00 from unassigned money" }));
@@ -77,11 +78,31 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(screen.queryByRole("button", { name: /Assign/ })).not.toBeInTheDocument();
   });
 
+  it("a card in credit with nothing to cover says it is in credit, never 'fully covered by money set aside' (#660)", () => {
+    renderDetail({ available: -3_000, cashOverspending: 0, uncovered: 0, owed: -3_000 });
+
+    const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
+    expect(sentences).toEqual(["The card is in credit by €30.00. Spending with the card uses it up; there is nothing to cover."]);
+    expect(screen.queryByText(/fully covered/)).not.toBeInTheDocument();
+  });
+
+  it("a card in credit with money set aside too still says it is in credit (#660)", () => {
+    renderDetail({ available: 2_000, cashOverspending: 0, uncovered: 0, owed: -1_000 });
+
+    expect(screen.getByText("The card is in credit by €10.00. Spending with the card uses it up; there is nothing to cover.")).toBeInTheDocument();
+    expect(screen.queryByText(/fully covered/)).not.toBeInTheDocument();
+  });
+
   it("a card in credit by €10 with its payment category at −€50: €40.00 paid beyond and to cover (#660)", () => {
     renderDetail({ available: -5_000, cashOverspending: 4_000, uncovered: 0, owed: -1_000 });
 
+    const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
+    expect(sentences).toEqual([
+      "The card was paid €50.00 more than was set aside; €10.00 of it is still on the card as credit. If the other €40.00 is still uncovered when the month ends, it comes out of next month's unassigned money.",
+    ]);
     const row = (label: string) => screen.getByText(label).closest(".qa")!;
     expect(row("Paid beyond what was set aside")).toHaveTextContent("€40.00");
+    expect(row("Card's credit")).toHaveTextContent("€10.00");
     expect(row("To cover")).toHaveTextContent("€40.00");
     expect(screen.getByRole("button", { name: "Assign €40.00 from unassigned money" })).toBeInTheDocument();
   });

@@ -71,6 +71,9 @@ export default function PaymentCategoryDetail({
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
   const debt = cardDebt({ available, cashOverspending, uncovered, ...(owed !== undefined ? { owed } : {}) });
   const covered = debt.toCover <= 0;
+  /** The card's credit, when it has one (#660): what the card owes the user, `-owed`. */
+  const credit = Math.max(0, -debt.owed);
+  const inCredit = credit > 0;
 
   /**
    * The sentences above the debt (#699): what was paid beyond what was set aside first, when the
@@ -79,6 +82,19 @@ export default function PaymentCategoryDetail({
    */
   function explanation(): readonly string[] {
     if (covered) {
+      // A card in credit has nothing to cover, but nothing set aside covers anything either: it
+      // must not read "fully covered by money set aside" (#660).
+      if (inCredit) {
+        return [
+          intl.formatMessage(
+            {
+              id: "budget.payment.inCredit",
+              defaultMessage: "The card is in credit by {credit}. Spending with the card uses it up; there is nothing to cover.",
+            },
+            { credit: money(credit) },
+          ),
+        ];
+      }
       return [
         intl.formatMessage({
           id: "budget.payment.covered",
@@ -88,7 +104,20 @@ export default function PaymentCategoryDetail({
     }
     const sentences: string[] = [];
     const paidBeyond = debt.paidBeyondSetAside > 0;
-    if (paidBeyond) {
+    if (paidBeyond && inCredit) {
+      // Part of what was paid beyond is still on the card as its credit; only the rest is to
+      // cover (#660). The consequence is stated, not given as an order (#771).
+      sentences.push(
+        intl.formatMessage(
+          {
+            id: "budget.payment.paidBeyondInCreditExplanation",
+            defaultMessage:
+              "The card was paid {paidBeyondTotal} more than was set aside; {credit} of it is still on the card as credit. If the other {paidBeyond} is still uncovered when the month ends, it comes out of next month's unassigned money.",
+          },
+          { paidBeyondTotal: money(-available), credit: money(credit), paidBeyond: money(debt.paidBeyondSetAside) },
+        ),
+      );
+    } else if (paidBeyond) {
       sentences.push(
         intl.formatMessage(
           {
@@ -179,6 +208,13 @@ export default function PaymentCategoryDetail({
               <span>{intl.formatMessage({ id: "budget.payment.paidBeyondSetAside", defaultMessage: "Paid beyond what was set aside" })}</span>
               <span className="dots" />
               <span className="n">{money(debt.paidBeyondSetAside)}</span>
+            </div>
+          )}
+          {inCredit && (
+            <div className="qa static">
+              <span>{intl.formatMessage({ id: "budget.payment.cardCredit", defaultMessage: "Card's credit" })}</span>
+              <span className="dots" />
+              <span className="n">{money(credit)}</span>
             </div>
           )}
           <div className="qa static">
