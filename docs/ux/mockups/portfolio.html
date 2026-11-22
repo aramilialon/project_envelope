@@ -571,7 +571,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   }
 
   // Monthly history: portfolio value and cumulative net contributions (cents).
-  var MONTHS = ['Oct 25', 'Nov 25', 'Dec 25', 'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26', 'Jun 26', 'Jul 26', 'Aug 26', 'Sep 26'];
+  var MONTHS = ['Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026'];
   var VALUES = [3490000, 3580000, 3610000, 3695000, 3720000, 3640000, 3790000, 3880000, 3960000, 4030000, 4105000, 4218000];
   var CONTRIB = MONTHS.map(function (m, i) { return 3400000 + i * 50000; });
   function monthlyReturns() {
@@ -677,7 +677,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       '<label class="check" style="min-height:40px"><input type="checkbox" data-frac="1"' + (S.fractional ? ' checked' : '') + '> Fractional units</label></div>' +
       '<div><div class="card-h"><span>To get back to your targets:</span><span class="n" style="text-transform:none;letter-spacing:0;font-stretch:100%">To invest ' + f(p.contrib) + ' (contribution + ' + f(CASH) + ' cash)</span></div>' +
       '<table class="t"><thead><tr><th>Item</th><th class="r">Target</th><th class="r">Current</th><th>Trade</th><th class="r">Amount</th><th class="r">After</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="hint" style="margin:8px 0 0">' + f(p.left) + ' stays in cash. ' + (S.mode === 'contrib' ? 'No sales: new money goes to the items below their target, in proportion to how much each is missing.' : S.mode === 'full' ? 'Buys and sells to bring every item back to its target.' : 'Brings the items outside their threshold back only to the edge of the band: fewer trades, lower costs.') + ' Trades below the minimum are skipped.</p></div>' +
+      '<p class="hint" style="margin:8px 0 0">' + f(p.left) + ' stays in cash. ' + (S.mode === 'contrib' ? 'No sales: new money goes to the items below their target, in proportion to how much each is missing.' : S.mode === 'full' ? 'Buys and sells to bring every item back to its target.' : 'Brings the items outside their threshold back only to the edge of the band, with fewer trades.') + ' Trades below the minimum are skipped.</p></div>' +
       '<div class="row-btns"><button type="button" class="btn primary" data-trade="1">Record a trade you made</button><span class="hint">envelope does not place orders: trades are placed with your broker and recorded here with the real prices.</span></div>';
   }
 
@@ -729,7 +729,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var st = status(), outs = st.filter(function (x) { return x.out; });
     if (S.phScreen === 'check') {
       var saved = S.mode; S.mode = 'contrib'; var p = plan(); S.mode = saved;
-      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portfolio</button><span class="hint">Notification of October 1</span><h3>October check</h3>' +
+      return '<div class="ph-card"><button type="button" class="ph-back" data-phs="home" style="align-self:flex-start">\u2039 Portfolio</button><span class="hint">October 1 notification</span><h3>October check</h3>' +
         '<p style="margin:0">' + (outs.length ? outs.length + (outs.length === 1 ? ' item is' : ' items are') + ' outside the threshold.' : 'Every item is within its threshold.') + '</p>' +
         st.map(function (x) { return '<div class="ph-item"><span><b style="font-weight:600">' + esc(x.it.name) + '</b><small>target ' + pct(x.t, 0) + ' · threshold ' + pct(x.band[0]) + '–' + pct(x.band[1]) + '</small></span><span class="n" style="font-weight:700;' + (x.out ? 'color:var(--warn)' : '') + '">' + pct(x.w) + '</span></div>'; }).join('') +
         '<h5 style="margin:8px 0 0;font-size:12px;font-weight:600;font-stretch:78%;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)">To get back to your targets, with a contribution of ' + f(parseAmount(S.contribStr) || 0) + ':</h5>' +

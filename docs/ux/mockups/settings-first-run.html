@@ -486,8 +486,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       ['approve', 'Imported transactions to check', 'After each import', [false, true, false]],
       ['portfolio', 'Monthly portfolio check', 'On the first of the month, if something is past its threshold', [true, false, true]]
     ],
-    devices: [['Giorgio’s iPhone', 'envelope app · last active today'], ['Chrome on Mac', 'Browser · last active now']],
-    myWorkspaces: [['Family', 'owner', '3 members'], ['Personal', 'owner', 'only you'], ['Beach house', 'editor', '4 members, Anna’s']]
+    devices: [['Giorgio\'s iPhone', 'envelope app · last active today'], ['Chrome on Mac', 'Browser · last active now']],
+    myWorkspaces: [['Family', 'owner', '3 members'], ['Personal', 'owner', 'only you'], ['Beach house', 'editor', '4 members, Anna\'s']]
   };
 
   function applyTheme() {
@@ -522,7 +522,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<div class="field"><span style="font-weight:600">Language</span>' + segs('lang', p.lang, [['it', 'Italiano'], ['en', 'English']]) + '</div>' +
         '<div class="field"><label for="p-locale">Date and number format</label><select id="p-locale" data-set="locale">' + LOCALES.map(function (l) { return '<option value="' + l[0] + '"' + (p.locale === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
         '<div class="sample" aria-live="polite">' + esc(sample()) + '</div></div>' +
-        '<div class="field"><label for="p-zone">Your time zone</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Used to show you times and notifications. Which month an expense belongs to is decided by the workspace’s time zone, the same for everyone.</span></div>' +
+        '<div class="field"><label for="p-zone">Your time zone</label><select id="p-zone" data-set="zone">' + ZONES.map(function (z) { return '<option' + (p.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Used to show you times and notifications. Which month an expense belongs to is decided by the workspace\'s time zone, the same for everyone.</span></div>' +
         '<div class="field"><span style="font-weight:600">Theme</span>' + segs('theme', p.theme, [['system', 'Same as the system'], ['light', 'Light'], ['dark', 'Dark']]) + '<span class="hint">Applies right away.</span></div>' +
         '<div class="row-btns"><button type="button" class="btn primary" data-save="prefs">Save</button>' + savedNote('prefs') + '</div>';
     } else if (S.acc === 'notifications') {
@@ -538,7 +538,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
           return '<div class="dev"><span>' + esc(d[0]) + '<small>' + esc(d[1]) + '</small></span><button type="button" class="plain danger" data-rmdev="' + k + '">Disconnect</button></div>';
         }).join('') + '</div>';
     } else if (S.acc === 'security') {
-      out += h('Sign-in and security', 'Sign-in is handled by your envelope’s authentication service. Here you see its status; changes are made on its account page.') +
+      out += h('Sign-in and security', 'Sign-in is handled by your envelope\'s authentication service. Here you see its status; changes are made on its account page.') +
         '<div><div class="kc"><span>Email<small>giorgio@example.org · verified</small></span><button type="button" class="btn">Change</button></div>' +
         '<div class="kc"><span>Password<small>changed 3 months ago</small></span><button type="button" class="btn">Change</button></div>' +
         '<div class="kc"><span>Two-step verification <span class="st-ok">on</span><small>authenticator app</small></span><button type="button" class="btn">Manage</button></div>' +
@@ -575,7 +575,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<div class="field"><label for="w-name">Name</label><input type="text" id="w-name" data-set="wname" value="' + esc(w.name) + '"' + dis + '></div>' +
         '<div class="field"><label for="w-cur">Currency</label><input type="text" id="w-cur" value="Euro (EUR)" readonly><span class="hint">Chosen when the workspace is created, and never changed: accounts in other currencies are converted into it.</span></div>' +
         '<div class="field"><label for="w-zone">Workspace time zone</label><select id="w-zone" data-set="wzone"' + dis + '>' + ZONES.map(function (z) { return '<option' + (w.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select>' +
-        '<span class="hint">Decides which day and month an expense belongs to, the same for every member, even when travelling: an expense at 11 PM on September 30 in New York counts in September.</span></div>' +
+        '<span class="hint">Decides which day and month an expense belongs to, the same for every member, even when traveling: an expense at 11 PM on September 30 in New York counts in September.</span></div>' +
         (ro ? '' : '<div class="row-btns"><button type="button" class="btn primary" data-save="general">Save</button>' + savedNote('general') + '</div>');
     } else if (S.ws === 'members') {
       var owners = S.members.filter(function (m) { return m.role === 'owner'; }).length;
@@ -595,7 +595,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<div class="block"><h4>What each role can do</h4><div class="roles"><b>Owner</b><span>Everything, including these settings, the members, exporting and deleting the workspace.</span>' +
         '<b>Can edit</b><span>Accounts, transactions, budget, targets, portfolios and categories.</span><b>Read only</b><span>Sees everything and gets notifications, but changes nothing.</span></div></div>';
     } else if (S.ws === 'categories') {
-      out += h('Categories', 'The budget’s groups and categories. Rename by typing over the name; an archived category leaves the budget but stays on past transactions.') +
+      out += h('Categories', 'The budget\'s groups and categories. Rename by typing over the name; an archived category leaves the budget but stays on past transactions.') +
         '<div>' + S.groups.map(function (g, gi) {
           return '<div class="cg"><div class="cg-h"><span style="flex:1">' + esc(g.name) + '</span>' +
             (ro ? '' : '<button type="button" class="ib" data-gmove="' + gi + ':-1" aria-label="Move ' + esc(g.name) + ' up"' + (gi === 0 ? ' disabled' : '') + '>↑</button>' +
@@ -611,7 +611,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         }).join('') + '</div>' +
         (ro ? '' : '<div class="row-btns"><button type="button" class="btn" data-gadd="1">+ Add a group</button></div>');
     } else if (S.ws === 'accounts') {
-      out += h('Accounts', 'The workspace’s accounts. A real account belongs to one workspace only, so it is never counted twice.') +
+      out += h('Accounts', 'The workspace\'s accounts. A real account belongs to one workspace only, so it is never counted twice.') +
         '<div>' + S.accounts.map(function (a, k) {
           return '<div class="accl"><span><b style="font-weight:600' + (a[3] ? ';color:var(--muted)' : '') + '">' + esc(a[0]) + '</b><small>' + esc(a[1]) + (a[3] ? ' · closed' : '') + '</small></span>' +
             '<span><label class="sr" for="ab-' + k + '">Budget</label><select id="ab-' + k + '" data-accbud="' + k + '"' + (ro || a[3] ? ' disabled' : '') + '><option value="1"' + (a[2] ? ' selected' : '') + '>On budget</option><option value="0"' + (a[2] ? '' : ' selected') + '>Off budget</option></select></span>' +
@@ -619,7 +619,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
             (ro ? '<span></span>' : '<button type="button" class="plain' + (a[3] ? '' : ' danger') + '" data-accclose="' + k + '">' + (a[3] ? 'Reopen' : 'Close') + '</button>') + '</div>';
         }).join('') + '</div><p class="hint" style="margin:0">An account can be closed when its balance is zero: it stays in the history and no longer shows in the budget.</p>';
     } else {
-      out += h('Data', 'A workspace’s data belongs to the people who use it.') +
+      out += h('Data', 'A workspace\'s data belongs to the people who use it.') +
         '<div class="block"><h4>Export</h4><p class="hint" style="margin:0">The whole workspace: accounts, transactions, budget, targets and portfolios, in a file you can read and import again.</p>' +
         '<div class="row-btns"><button type="button" class="btn"' + dis + '>Export as JSON</button><button type="button" class="btn"' + dis + '>Export transactions as CSV</button></div></div>' +
         '<div class="block danger-zone"><h4>Delete the workspace</h4><p class="hint" style="margin:0">Permanently deletes the workspace and all its data, for every member.</p>' +
@@ -652,10 +652,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<div class="field"><label for="o-cur">Currency</label><select id="o-cur"><option>Euro (EUR)</option><option>Swiss franc (CHF)</option><option>Pound sterling (GBP)</option><option>US dollar (USD)</option></select><span class="hint">Chosen now, and never changed later.</span></div>' +
         '<div class="field"><label for="o-zone">Time zone</label><select id="o-zone" data-o="zone">' + ZONES.map(function (z) { return '<option' + (O.zone === z ? ' selected' : '') + '>' + z + '</option>'; }).join('') + '</select><span class="hint">Decides which month a transaction belongs to, the same for every member.</span></div>';
     } else if (O.step === 3) {
-      h += '<h2>Add your first account</h2><p>Type today’s balance, as your bank shows it. Credit cards and other accounts can be added later.</p>' +
+      h += '<h2>Add your first account</h2><p>Type today\'s balance, as your bank shows it. Credit cards and other accounts can be added later.</p>' +
         '<div class="types" role="radiogroup" aria-label="Account type">' + TYPES.map(function (t) { return '<label class="tp"><input type="radio" name="otype" value="' + t[0] + '" data-o="type"' + (O.type === t[0] ? ' checked' : '') + '><span><b>' + t[1] + '</b><small>' + t[2] + '</small></span></label>'; }).join('') + '</div>' +
         '<div class="field"><label for="o-acc">Name</label><input type="text" id="o-acc" data-o="acc" value="' + esc(O.acc) + '"></div>' +
-        '<div class="field"><label for="o-bal">Today’s balance</label><span class="money-in"><input type="text" inputmode="decimal" id="o-bal" data-o="balStr" value="' + esc(O.balStr) + '" placeholder="0.00"><span>€</span></span>' +
+        '<div class="field"><label for="o-bal">Today\'s balance</label><span class="money-in"><input type="text" inputmode="decimal" id="o-bal" data-o="balStr" value="' + esc(O.balStr) + '" placeholder="0.00"><span>€</span></span>' +
         (O.type === 'offbudget' ? '<span class="hint">An off-budget account does not count toward “Unassigned”.</span>' : '<span class="hint">This amount becomes “Unassigned” right away.</span>') + '</div>' +
         (O.err ? '<div class="hint bad" role="alert">' + esc(O.err) + '</div>' : '');
     } else if (O.step === 4) {
@@ -668,7 +668,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var bal = parseAmount(O.balStr) || 0;
       var rta = O.type === 'offbudget' ? 0 : bal;
       h += '<h2>All set</h2><p>The <b>' + esc(O.ws) + '</b> workspace has the <b>' + esc(O.acc) + '</b> account and ' + Object.keys(O.cats).filter(function (k) { return O.cats[k]; }).length + ' categories.</p>' +
-        '<div class="bigsum"><span style="font-weight:600">Unassigned</span><b class="n">' + fmt(rta) + '</b><span class="hint">' + (rta > 0 ? 'Next step: spread it across your categories, starting with this month’s expenses.' : 'When income reaches an on-budget account, you find it here.') + '</span></div>';
+        '<div class="bigsum"><span style="font-weight:600">Unassigned</span><b class="n">' + fmt(rta) + '</b><span class="hint">' + (rta > 0 ? 'Next step: spread it across your categories, starting with this month\'s expenses.' : 'When income reaches an on-budget account, you find it here.') + '</span></div>';
     }
     h += '<div class="onb-nav">' + (O.step > 1 && O.step < 5 ? '<button type="button" class="btn" data-onb="back">Back</button>' : '<span></span>') +
       (O.step < 5 ? '<button type="button" class="btn primary" data-onb="next">' + (O.step === 4 ? 'Create the budget' : 'Continue') + '</button>' : '<span class="row-btns"><button type="button" class="btn" data-onb="restart">Restart the mockup</button><button type="button" class="btn primary">Go to the budget and assign</button></span>') + '</div>';

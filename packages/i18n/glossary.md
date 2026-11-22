@@ -41,6 +41,7 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 
 | Language | Quotation marks | Apostrophe | Other |
 | --- | --- | --- | --- |
+| English | “ ” (*“Unassigned”*), as most of `en.json` writes them | The straight ' (U+0027), as in `en.json` | A negative amount takes the ASCII hyphen-minus that `Intl` writes; no catalog ever writes U+2212 (−). American spelling (*traveling*). |
 | Italian | « » with no inner spaces (*«Da assegnare»*) | ’ (U+2019) | Never the straight ' in a string. |
 | German | „ “ (*„Nicht zugewiesen“*) | ’ | Nouns capitalized; a label that is an adjective or participle starts with a capital (*Verfügbar*). |
 | Spanish | « » with no inner spaces | ’ | Opening ¿ and ¡ where a question or exclamation occurs (the English has almost none). |

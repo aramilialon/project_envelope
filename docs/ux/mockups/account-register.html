@@ -886,7 +886,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       return '<button type="button" class="plain closer" data-close="1">× Close</button>' +
         '<div><span class="where">Reconciled transaction</span><h4>' + esc(t.payee) + '</h4></div>' +
         '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
-        '<div class="locknote">It is part of the September 5 reconciliation, when the account\'s balance was compared with the bank\'s. It is locked so that comparison stays intact; unlocking it changes a balance the bank already confirmed.</div>' +
+        '<div class="locknote">It is part of the September 5 reconciliation, when the account\'s balance was compared with the bank\'s. It is locked so that comparison stays intact; once unlocked, changing it changes a balance the bank already confirmed.</div>' +
         '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Unlock</button></div>';
     }
     var kinds = [['out', 'Outflow'], ['in', 'Inflow'], ['transfer', 'Transfer']];
