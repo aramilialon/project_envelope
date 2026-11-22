@@ -1,6 +1,7 @@
 // Entry point of @envelope/core: everything the apps are allowed to use.
 export type { ValidationErrorCode, ValidationErrorDetail } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
+export { isAssignedCountryCode, ISO_3166_1_ALPHA2_CODES } from "./country.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
   assertAmount,
