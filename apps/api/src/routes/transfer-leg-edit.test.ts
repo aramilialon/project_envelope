@@ -421,6 +421,22 @@ describe("editing one leg of a transfer (#547)", () => {
       assert.deepEqual(await reread(destination), destination);
     });
 
+    it("leaves both legs of a transfer created at a time alone, its time included, when their own date is sent back", async () => {
+      // A create takes an instant; an edit compares the budget date, not the stored time (#655).
+      const source = await account("Source at a time 655", true);
+      const destination = await account("Destination at a time 655", true);
+      const legs = await transfer(source, destination, 640, { occurredAt: `${MONTH}-10T15:30:00`, status: "cleared" });
+      assert.equal(legs.source.budgetDate, `${MONTH}-10`);
+      // Not a write to the other leg, so its account being closed does not refuse it.
+      await superuserPool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [destination]);
+
+      const edited = await patchLeg(legs.source, { occurredAt: `${MONTH}-10`, memo: "Same day, at a time" });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(edited.body.occurredAt, legs.source.occurredAt, "the leg keeps its time");
+      assert.equal(edited.body.status, "cleared");
+      assert.deepEqual(await reread(legs.destination), legs.destination);
+    });
+
     it("refuses a new date with 409 when the other leg is reconciled, and moves neither leg", async () => {
       const { source, destination } = await transfer(checkingId, savingsId, 410);
       await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = $1", [destination.id]);

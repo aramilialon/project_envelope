@@ -764,6 +764,8 @@ async function classifyTransferLeg(
  * A new category with the same amount leaves the other leg, and its status, alone.
  *
  * @throws ValidationError `invalid_date` for an `occurredAt` that is not a real "YYYY-MM-DD" date.
+ * @throws UnknownCategoryError when `splits` name a category the workspace does not have, after the
+ *   path-account and closed-account checks (#655).
  */
 export async function updateTransaction(
   db: DbPool | DbClient,
@@ -807,7 +809,9 @@ export async function updateTransaction(
   let movesPartnerDate = false;
   if (patch.occurredAt !== undefined) {
     const { rows } = await db.query<{ id: string; unchanged: boolean }>(
-      `SELECT t.id, t.occurred_at = ($3::date::timestamp AT TIME ZONE w.time_zone) AS unchanged
+      // The budget date, not the stored instant: a transaction created at a time (create takes an
+      // instant) whose own date is sent back has not moved, and keeps its time and its other leg's status.
+      `SELECT t.id, to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') = $3 AS unchanged
        FROM transactions t JOIN workspaces w ON w.id = t.workspace_id
        WHERE t.workspace_id = $1 AND t.id = ANY($2)`,
       [workspaceId, [existing.id, ...(existing.transferId === null ? [] : [existing.transferId])], patch.occurredAt],
@@ -835,6 +839,14 @@ export async function updateTransaction(
     throw new ValidationError("amount_needs_splits", "a transaction with several splits takes a new amount only with its splits", {
       splitCount: existing.splits.length,
     });
+  }
+  if (patch.splits !== undefined) {
+    // After the path-account and closed-account checks (#655), so an unknown category never hides
+    // a 404 or an `account_closed`.
+    const unknownCategoryId = await findUnknownCategoryId(db, workspaceId, patch.splits);
+    if (unknownCategoryId !== undefined) {
+      throw new UnknownCategoryError(unknownCategoryId);
+    }
   }
   if (requestedSplits !== undefined) {
     validateSplits(requestedSplits, patch.amountCents);
@@ -940,6 +952,31 @@ export async function updateTransaction(
     throw new Error("updateTransaction: the transaction just updated was not found");
   }
   return record;
+}
+
+/** An edit refused, before anything is written, because a split names `categoryId`, which is no category of the workspace. */
+export class UnknownCategoryError extends Error {
+  readonly categoryId: string;
+
+  constructor(categoryId: string) {
+    super(`categoryId "${categoryId}" does not name a category of this workspace`);
+    this.name = "UnknownCategoryError";
+    this.categoryId = categoryId;
+  }
+}
+
+/** The first split's `categoryId` that names no category of this workspace (archived ones count as known), if any. */
+async function findUnknownCategoryId(db: DbPool | DbClient, workspaceId: string, splits: readonly SplitInput[]): Promise<string | undefined> {
+  const named = splits.map((split) => split.categoryId).filter((id): id is string => id !== null);
+  if (named.length === 0) {
+    return undefined;
+  }
+  const { rows } = await db.query<{ id: string }>("SELECT id FROM categories WHERE workspace_id = $1 AND id = ANY($2::uuid[])", [
+    workspaceId,
+    named.filter(isUuid),
+  ]);
+  const known = new Set(rows.map((row) => row.id));
+  return named.find((id) => !known.has(id));
 }
 
 /** Dates a transaction at midnight of `date` ("YYYY-MM-DD") in the workspace's time zone, as `insertTransactionRow` does. */

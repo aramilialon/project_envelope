@@ -11,6 +11,7 @@ import {
   createTransfer,
   deleteTransaction,
   listTransactionsForAccount,
+  UnknownCategoryError,
   updateTransaction,
   type SplitInput,
   type TransactionStatus,
@@ -199,17 +200,9 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       return;
     }
 
-    if (splits) {
-      const categories = await listCategories(request.db!, request.workspace!.id);
-      const categoryIds = new Set(categories.map((c) => c.id));
-      const unknownCategoryId = findUnknownCategoryId(categoryIds, splits);
-      if (unknownCategoryId) {
-        await reply.code(400).send({ error: `categoryId "${unknownCategoryId}" does not name a category of this workspace` });
-        return;
-      }
-    }
-
     try {
+      // The unknown-category check runs in the repository, after the path-account and
+      // closed-account checks (#655).
       const result = await updateTransaction(
         request.db!,
         request.workspace!.id,
@@ -238,6 +231,10 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
       }
       return result;
     } catch (error) {
+      if (error instanceof UnknownCategoryError) {
+        await reply.code(400).send({ error: error.message });
+        return;
+      }
       if (await sendIfValidationError(reply, error)) {
         return;
       }

@@ -185,6 +185,38 @@ describe("editing a transaction: strict body, amount and date (#655)", () => {
       assert.equal(deleted.status, 404);
       assert.deepEqual(await reread(transaction), before);
     });
+
+    it("answers 404 through an account that does not hold the transaction before refusing an unknown category", async () => {
+      const transaction = await create(checkingId, { occurredAt: "2026-10-05", splits: [{ categoryId: groceriesId, amountCents: -700 }] });
+      const before = await reread(transaction);
+
+      const edited = await patch(transaction, { splits: [{ categoryId: "00000000-0000-4000-8000-000000000655", amountCents: -700 }] }, savingsId);
+      assert.equal(edited.status, 404, JSON.stringify(edited.body));
+      assert.deepEqual(await reread(transaction), before);
+    });
+  });
+
+  describe("an unknown category", () => {
+    const unknown = "00000000-0000-4000-8000-000000000655";
+
+    it("is refused with 400 naming it, through the transaction's own open account", async () => {
+      const transaction = await create(checkingId, { occurredAt: "2026-10-05", splits: [{ categoryId: groceriesId, amountCents: -700 }] });
+      for (const categoryId of [unknown, "not-a-uuid"]) {
+        const refused = await assertRefused(transaction, { splits: [{ categoryId, amountCents: -700 }] }, 400, `categoryId "${categoryId}" does not name a category of this workspace`);
+        assert.equal(refused.details, undefined);
+      }
+    });
+
+    it("answers account_closed first on a closed account's transaction", async () => {
+      const { rows } = await superuserPool.query<{ id: string }>(
+        "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Closed 655', 'checking', 'EUR') RETURNING id",
+        [workspaceId],
+      );
+      const transaction = await create(rows[0]!.id, { occurredAt: "2026-10-05", splits: [{ categoryId: groceriesId, amountCents: -700 }] });
+      await superuserPool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [rows[0]!.id]);
+
+      await assertRefused(transaction, { splits: [{ categoryId: unknown, amountCents: -700 }] }, 409, "account_closed");
+    });
   });
 
   describe("a new amount alone", () => {
