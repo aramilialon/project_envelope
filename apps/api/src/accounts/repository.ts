@@ -412,6 +412,14 @@ async function findOrCreatePaymentCategoryGroup(db: DbPool | DbClient, workspace
   return group.id;
 }
 
+/**
+ * The card's "Starting balance" transaction, dated at midnight of today in the workspace's time
+ * zone: the start of the day it is created on, the same instant a transaction dated today is
+ * stored at (`transactions/repository.ts`, `insertTransactionRow`). Every list orders by
+ * `occurred_at, created_at`, and this row is created with the card, before anything else on it, so
+ * it comes first on its day and a purchase dated the same day runs from the debt it starts with
+ * (#706). Rows written before #706 carried `now()` instead; migration 0037 moves them.
+ */
 async function createStartingBalanceTransaction(
   db: DbPool | DbClient,
   workspaceId: string,
@@ -421,7 +429,8 @@ async function createStartingBalanceTransaction(
 ): Promise<void> {
   const { rows } = await db.query<{ id: string }>(
     `INSERT INTO transactions (workspace_id, account_id, occurred_at, payee, status)
-     VALUES ($1, $2, now(), 'Starting balance', 'cleared')
+     SELECT $1, $2, (now() AT TIME ZONE w.time_zone)::date::timestamp AT TIME ZONE w.time_zone, 'Starting balance', 'cleared'
+     FROM workspaces w WHERE w.id = $1
      RETURNING id`,
     [workspaceId, accountId],
   );

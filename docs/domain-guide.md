@@ -217,6 +217,12 @@ once: its "covered" part would move money from the payment category into itself 
 and the category would restart at zero at the end of the month, making the debt disappear instead
 of staying visible as `uncovered`.
 
+The starting balance is the debt the card already had when it was added, so it comes first on that
+day: it is dated at midnight, in the workspace's time zone, of the day the card is added. A card
+added owing €500 with a €45.67 purchase dated the same day reads €500.00 owed after the starting
+balance, then €545.67 after the purchase — never €45.67 for the purchase, as if the card owed
+nothing yet.
+
 **Paying down one card from another.** A transfer from card A's payment category to card B's moves
 only what A's own payment category actually holds. Whatever is left over stays as A's own uncovered
 debt — it does not quietly move to B, the same rule ordinary card overspending already follows.
