@@ -58,6 +58,7 @@
       "Bash(git tag -a v*)",
       "Bash(git push origin v*)",
       "Bash(gh release create v*)",
+      "mcp__installer-sandbox__run",
       "WebSearch",
       "WebFetch(domain:data.iana.org)",
       "WebFetch(domain:www.iana.org)",

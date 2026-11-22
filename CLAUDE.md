@@ -59,7 +59,7 @@ cd infra && docker compose up -d      # PostgreSQL and Keycloak (needs infra/.en
 
 ## Agent team
 
-The main session coordinates a team of role agents defined in `.claude/agents/` (developer, translator, architect, domain expert, UX reviewer, product marketer, QA, security reviewer, integrator, scribe, explorer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). Decisions are taken on the recommendation of the role that owns each question and logged for the maintainer's review at the phase deadlines; a few still go to the maintainer first (that guide, "Coordinator's working rules").
+The main session coordinates a team of role agents defined in `.claude/agents/` (developer, translator, architect, domain expert, UX reviewer, product marketer, QA, security reviewer, integrator, scribe, explorer, installer). When to call each one, and how an issue moves through them, is in [docs/how-to/work-with-the-agent-team.md](docs/how-to/work-with-the-agent-team.md). Decisions are taken on the recommendation of the role that owns each question and logged for the maintainer's review at the phase deadlines; a few still go to the maintainer first (that guide, "Coordinator's working rules").
 
 Team memory: [docs/team/](docs/team/) holds the decisions awaiting the maintainer's review and the team's lessons; read both before coordinating.
 

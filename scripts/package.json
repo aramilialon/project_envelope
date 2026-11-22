@@ -13,9 +13,12 @@
     "explore:down": "node --env-file-if-exists=.env explore-env/cli.ts down",
     "explore:sweep": "node --env-file-if-exists=.env explore-env/cli.ts sweep",
     "explore:agents": "node explore-env/explorer-agents.ts",
+    "install:up": "node install-env/cli.ts up",
+    "install:down": "node install-env/cli.ts down",
+    "install:status": "node install-env/cli.ts status",
     "changelog:check": "node changelog-release.ts --check",
     "changelog:release": "node changelog-release.ts",
-    "test": "node --test \"lib/**/*.test.ts\" \"explore-env/**/*.test.ts\"",
+    "test": "node --test \"lib/**/*.test.ts\" \"explore-env/**/*.test.ts\" \"install-env/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
