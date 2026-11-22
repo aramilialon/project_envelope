@@ -374,6 +374,9 @@ describe("performance route (#89)", () => {
       ["from=1903-06&to=1903-05", { error: "invalid_month", details: { field: "to", value: "1903-05" } }],
       [`from=1903-06&to=${next}`, { error: "invalid_month", details: { field: "to", value: next, max: month } }],
       ["from=1903-01&to=1913-01", { error: "range_too_long", details: { months: 121, max: 120 } }],
+      // A repeated parameter is one malformed month, not the first or the last one sent.
+      ["from=1903-01&from=1903-02&to=1903-06", { error: "invalid_month", details: { field: "from", value: "1903-01,1903-02" } }],
+      ["from=1903-01&to=1903-05&to=1903-06", { error: "invalid_month", details: { field: "to", value: "1903-05,1903-06" } }],
     ];
     for (const [query, expected] of cases) {
       const response = await get(`/portfolios/${portfolioId}/performance?${query}`);
@@ -386,7 +389,10 @@ describe("performance route (#89)", () => {
   });
 
   it("values the current month at today in the workspace's time zone", async () => {
+    // UTC+14 and UTC−12: at any moment at least one of them is on another date than UTC, so a
+    // "today" taken in UTC fails one of the two whatever the hour of the run.
     const portfolioId = await portfolio();
+    const { rows: saved } = await superuserPool.query<{ time_zone: string }>("SELECT time_zone FROM workspaces WHERE id = $1", [workspaceA]);
     const today = async (): Promise<string> => {
       const { rows } = await superuserPool.query<{ today: string }>(
         "SELECT to_char(now() AT TIME ZONE time_zone, 'YYYY-MM-DD') AS today FROM workspaces WHERE id = $1",
@@ -394,12 +400,19 @@ describe("performance route (#89)", () => {
       );
       return rows[0]!.today;
     };
-    const first = await today();
-    const body = await performance(portfolioId, first.slice(0, 7), first.slice(0, 7));
-    const afterwards = await today();
-    // The endpoint reads "today" itself: it falls between the two readings around the request.
-    const valuationDate = body.months[0]!.valuationDate;
-    assert.ok(first <= valuationDate && valuationDate <= afterwards, `${first} <= ${valuationDate} <= ${afterwards}`);
-    assert.equal(body.months[0]?.valueCents, 0);
+    try {
+      for (const timeZone of ["Pacific/Kiritimati", "Etc/GMT+12"]) {
+        await superuserPool.query("UPDATE workspaces SET time_zone = $1 WHERE id = $2", [timeZone, workspaceA]);
+        const first = await today();
+        const body = await performance(portfolioId, first.slice(0, 7), first.slice(0, 7));
+        const afterwards = await today();
+        // The endpoint reads "today" itself: it falls between the two readings around the request.
+        const valuationDate = body.months[0]!.valuationDate;
+        assert.ok(first <= valuationDate && valuationDate <= afterwards, `${timeZone}: ${first} <= ${valuationDate} <= ${afterwards}`);
+        assert.equal(body.months[0]?.valueCents, 0);
+      }
+    } finally {
+      await superuserPool.query("UPDATE workspaces SET time_zone = $1 WHERE id = $2", [saved[0]!.time_zone, workspaceA]);
+    }
   });
 });
