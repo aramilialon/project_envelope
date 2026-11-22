@@ -220,3 +220,27 @@ describe("a card in credit is not cash overspending (#660)", () => {
     assert.equal(card.cashOverspending, 0);
   });
 });
+
+describe("a card's balance from before the first month with any other data (#660)", () => {
+  it("a card added in September owing €500, with nothing else until October: October owes €500, all of it uncovered", () => {
+    // The starting balance is the only thing dated before October, so the computation starts in
+    // October and the running balance must begin with it.
+    const CARD = "visa-payment";
+    const month = computeBudgetMonth(
+      {
+        categoryIds: ["groceries"],
+        paymentCategoryIds: [CARD],
+        income: [{ month: "2026-10", date: "2026-10-01", amount: 100_000 }],
+        assignments: [],
+        activity: [],
+        cardBalances: [{ paymentCategoryId: CARD, transactions: [{ date: "2026-09-25", amount: -50_000 }] }],
+        today: "2026-10-31",
+      },
+      "2026-10",
+    );
+    const card = find(month.paymentCategories, CARD);
+    assert.equal(card.owed, 50_000);
+    assert.equal(card.uncovered, 50_000);
+    assert.equal(card.cashOverspending, 0);
+  });
+});
