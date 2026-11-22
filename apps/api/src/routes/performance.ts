@@ -14,9 +14,9 @@ import { getPortfolio } from "../portfolios/repository.ts";
  * and never fetching anything.
  *
  * Each month: its value at its last day (the current month's today, in the workspace's time
- * zone), net contributions, income, gain, the time- and money-weighted returns in millionths, the
- * oldest price and rate dates used, and what is `missing` when a figure is unknown (null, never
- * 0); then the same figures over the whole range (`totals`). Every amount is in the workspace's
+ * zone), net contributions, income, gain, the time- and money-weighted returns in millionths and
+ * why each is unknown when it is, the oldest price and rate dates used, and what is `missing`
+ * (each with the earliest date that lacks it) when a figure is unknown (null, never 0); then the same figures over the whole range (`totals`). Every amount is in the workspace's
  * base currency.
  *
  * Refusals: 404 "portfolio not found" for another workspace's, an unknown or a malformed id (the

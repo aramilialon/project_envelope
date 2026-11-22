@@ -61,6 +61,8 @@ interface MonthRow {
   readonly gainCents: number | null;
   readonly twrE6: number | null;
   readonly mwrE6: number | null;
+  readonly twrUnknownReason: string | null;
+  readonly mwrUnknownReason: string | null;
   readonly oldestPriceDate: string | null;
   readonly oldestRateDate: string | null;
   readonly missing: readonly Record<string, unknown>[];
@@ -239,6 +241,8 @@ describe("smoke: 0.2.1 Market data, against the real process", () => {
       twrAnnualized: false,
       mwrE6: 36_416,
       mwrAnnualized: false,
+      twrUnknownReason: null,
+      mwrUnknownReason: null,
       missing: [],
     });
 
@@ -259,7 +263,8 @@ describe("smoke: 0.2.1 Market data, against the real process", () => {
     const [november] = (await performance("2026-11", "2026-11")).months;
     assert.equal(november?.valueCents, null);
     assert.equal(november?.netContributionsCents, null);
-    assert.deepEqual(november?.missing, [{ instrumentId: stockId, reason: "no_rate", currency: "USD" }]);
+    assert.deepEqual(november?.missing, [{ instrumentId: stockId, reason: "no_rate", currency: "USD", date: "2026-11-20" }]);
+    assert.deepEqual([november?.twrUnknownReason, november?.mwrUnknownReason], ["missing_value", "missing_value"]);
   });
 
   it("with fetching on: the startup job stores the ECB rates, and the dollar holding is valued", async () => {

@@ -25,9 +25,11 @@ interface MonthBody {
   readonly gainCents: number | null;
   readonly twrE6: number | null;
   readonly mwrE6: number | null;
+  readonly twrUnknownReason: string | null;
+  readonly mwrUnknownReason: string | null;
   readonly oldestPriceDate: string | null;
   readonly oldestRateDate: string | null;
-  readonly missing: { instrumentId: string | null; reason: string; currency?: string }[];
+  readonly missing: { instrumentId: string | null; reason: string; currency?: string; date: string }[];
 }
 
 interface PerformanceBody {
@@ -226,10 +228,10 @@ describe("performance route (#89)", () => {
       ],
     );
     assert.deepEqual(
-      body.months.map((row) => [row.twrE6, row.mwrE6, row.oldestPriceDate, row.oldestRateDate, row.missing]),
+      body.months.map((row) => [row.twrE6, row.mwrE6, row.twrUnknownReason, row.mwrUnknownReason, row.oldestPriceDate, row.oldestRateDate, row.missing]),
       [
-        [71_286, 67_465, "1903-09-30", "1903-09-30", []],
-        [5_357, 5_348, "1903-10-30", "1903-10-30", []],
+        [71_286, 67_465, null, null, "1903-09-30", "1903-09-30", []],
+        [5_357, 5_348, null, null, "1903-10-30", "1903-10-30", []],
       ],
     );
     assert.deepEqual(body.totals, {
@@ -244,8 +246,19 @@ describe("performance route (#89)", () => {
       twrAnnualized: false,
       mwrE6: 71_673,
       mwrAnnualized: false,
+      twrUnknownReason: null,
+      mwrUnknownReason: null,
       missing: [],
     });
+  });
+
+  it("says why the returns of a month before anything was held are unknown", async () => {
+    const { portfolioId } = await referencePortfolio();
+    const [row] = (await performance(portfolioId, "1903-07", "1903-07")).months;
+    assert.deepEqual(
+      [row?.valueCents, row?.gainCents, row?.twrE6, row?.twrUnknownReason, row?.mwrE6, row?.mwrUnknownReason],
+      [0, 0, null, "no_capital", null, "no_capital"],
+    );
   });
 
   it("gives an unpriced instrument's month a null value and a missing entry, never a partial sum", async () => {
@@ -257,11 +270,18 @@ describe("performance route (#89)", () => {
     await trade({ type: "buy", accountId: broker, portfolioId, instrumentId: unpriced, tradeDate: "1903-03-05", quantityE8: units(1), priceE6: price(50) });
     await sharedPrice(priced, "1903-03-02", 10);
 
-    const [row] = (await performance(portfolioId, "1903-03", "1903-03")).months;
+    const body = await performance(portfolioId, "1903-03", "1903-04");
+    const [row, april] = body.months;
     assert.equal(row?.valueCents, null);
     assert.equal(row?.gainCents, null);
     assert.equal(row?.twrE6, null);
-    assert.deepEqual(row?.missing, [{ instrumentId: unpriced, reason: "no_price" }]);
+    assert.deepEqual([row?.twrUnknownReason, row?.mwrUnknownReason], ["missing_value", "missing_value"]);
+    // Each entry carries the earliest date its figure needed and lacked: March's from the buy,
+    // April's from its start, the end of March.
+    assert.deepEqual(row?.missing, [{ instrumentId: unpriced, reason: "no_price", date: "1903-03-05" }]);
+    assert.deepEqual(april?.missing, [{ instrumentId: unpriced, reason: "no_price", date: "1903-03-31" }]);
+    assert.deepEqual(body.totals.missing, [{ instrumentId: unpriced, reason: "no_price", date: "1903-03-05" }]);
+    assert.equal(body.totals.twrUnknownReason, "missing_value");
   });
 
   it("names the currency of a value with no rate", async () => {
@@ -274,7 +294,7 @@ describe("performance route (#89)", () => {
     const [row] = (await performance(portfolioId, "1903-04", "1903-04")).months;
     assert.equal(row?.valueCents, null);
     assert.equal(row?.netContributionsCents, null);
-    assert.deepEqual(row?.missing, [{ instrumentId: yen, reason: "no_rate", currency: "JPY" }]);
+    assert.deepEqual(row?.missing, [{ instrumentId: yen, reason: "no_rate", currency: "JPY", date: "1903-04-01" }]);
   });
 
   it("values with the workspace's own price over a shared one of the same date", async () => {
