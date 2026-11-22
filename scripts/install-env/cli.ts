@@ -15,6 +15,7 @@ import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { chmodSync, existsSync, rmSync, statfsSync, writeFileSync } from "node:fs";
 
 import {
+  BRIDGE,
   CONTAINER,
   FIREWALL_SCRIPT,
   FIREWALL_UNIT,
@@ -23,10 +24,12 @@ import {
   firewallUnit,
   IMAGE,
   IMAGE_DIR,
+  isSandboxNetwork,
   LABEL,
   MIN_FREE_BYTES,
   NETWORK,
   networkCreateArgs,
+  NETWORK_INSPECT_FORMAT,
   sandboxRunArgs,
   USERS,
   VOLUMES,
@@ -76,6 +79,13 @@ function up(): void {
   console.log(`Building ${IMAGE}…`);
   must("docker", ["build", "--quiet", "--label", LABEL, "--tag", IMAGE, IMAGE_DIR]);
   if (run("docker", ["network", "inspect", NETWORK]).status !== 0) must("docker", networkCreateArgs());
+  const network = must("docker", ["network", "inspect", "--format", NETWORK_INSPECT_FORMAT, NETWORK]);
+  if (!isSandboxNetwork(network)) {
+    throw new Error(
+      `The network ${NETWORK} exists but is not the sandbox's (bridge and label "${network.trim()}", expected "${BRIDGE} 1"): ` +
+        "the firewall would not cover it. Remove it (docker network rm) and run up again.",
+    );
+  }
   for (const volume of Object.keys(VOLUMES)) must("docker", ["volume", "create", "--label", LABEL, volume]);
   must("docker", sandboxRunArgs());
 
@@ -111,10 +121,23 @@ function down(): void {
   console.log("The installer sandbox, its volumes, network and image are gone.");
 }
 
+/** The size of each of the sandbox's volumes, as `docker system df -v` reports it; empty when there is none. */
+function volumeSizes(): string {
+  const listed = run("docker", ["system", "df", "-v", "--format", "{{json .Volumes}}"]);
+  if (listed.status !== 0) return "unknown";
+  const volumes = JSON.parse(listed.stdout || "[]") as { Name?: string; Labels?: string; Size?: string }[] | null;
+  return (volumes ?? [])
+    .filter((volume) => volume.Name !== undefined && volume.Name in VOLUMES && (volume.Labels ?? "").split(",").includes(LABEL))
+    .map((volume) => `${volume.Name} ${volume.Size ?? "?"}`)
+    .join(", ");
+}
+
 function status(): void {
   const container = run("docker", ["inspect", "--type", "container", "--format", "{{.State.Status}} (started {{.State.StartedAt}})", CONTAINER]);
   console.log(`container: ${container.status === 0 ? container.stdout.trim() : "none"}`);
   console.log(`volumes:   ${must("docker", ["volume", "ls", "--quiet", "--filter", `label=${LABEL}`]).split("\n").filter(Boolean).join(", ") || "none"}`);
+  const sizes = volumeSizes();
+  if (sizes !== "") console.log(`disk:      ${sizes} (run down right after a run)`);
   console.log(`network:   ${must("docker", ["network", "ls", "--quiet", "--filter", `label=${LABEL}`]).trim() ? NETWORK : "none"}`);
   console.log(`firewall:  ${firewallActive() ? "active" : "not active"}`);
 }

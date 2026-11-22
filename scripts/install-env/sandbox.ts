@@ -58,6 +58,17 @@ export function networkCreateArgs(): string[] {
   return ["network", "create", "--driver", "bridge", "--label", LABEL, "--opt", `com.docker.network.bridge.name=${BRIDGE}`, NETWORK];
 }
 
+/** What `docker network inspect` prints with this format: the bridge's name, then the installer label. */
+export const NETWORK_INSPECT_FORMAT = `{{index .Options "com.docker.network.bridge.name"}} {{index .Labels "${LABEL_KEY}"}}`;
+
+/**
+ * Whether an existing network is the sandbox's own: the firewall matches the bridge by name, so a
+ * network called NETWORK on another bridge would leave the sandbox unprotected.
+ */
+export function isSandboxNetwork(inspected: string): boolean {
+  return inspected.trim() === `${BRIDGE} 1`;
+}
+
 // --- Host firewall -------------------------------------------------------------------------------
 
 /** The private ranges the sandbox may not reach (maintainer's decision, #777); the internet stays open. */

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
 import { type Exec, type ExecResult, handleMessage, isStartupNoise, MAX_TIMEOUT_S, OUTPUT_LIMIT, runArgs, runTool, type Sandbox, stderrFilter } from "./sandbox-mcp.ts";
-import { BLOCKED_RANGES, BRIDGE, CONTAINER, firewallScript, LABEL, networkCreateArgs, REPO_ROOT, sandboxRunArgs, transcriptPath } from "./sandbox.ts";
+import { BLOCKED_RANGES, BRIDGE, CONTAINER, firewallScript, isSandboxNetwork, LABEL, NETWORK, networkCreateArgs, REPO_ROOT, sandboxRunArgs, transcriptPath } from "./sandbox.ts";
 
 const SERVER = "installer-sandbox";
 const TOOL = `mcp__${SERVER}__run`;
@@ -26,13 +26,35 @@ function fakeDocker(inspect: ExecResult, run: ExecResult = { code: 0, output: "o
   return { calls, records, sandbox };
 }
 
-const RUNNING_LABELLED: ExecResult = { code: 0, output: "true 1\n", timedOut: false };
+const RUNNING_LABELLED: ExecResult = { code: 0, output: `true|1|${NETWORK} \n`, timedOut: false };
 
 describe("installer agent (one sandbox tool)", () => {
   it("gives the installer the sandbox's run tool and nothing else", () => {
     const definition = readFileSync(path.join(REPO_ROOT, ".claude", "agents", "installer.md"), "utf8");
     assert.equal(/^tools: (.*)$/m.exec(definition)?.[1], TOOL);
     assert.match(definition, /^name: installer$/m);
+  });
+
+  it("keeps the sandbox tool from every other agent: qa lists it, the rest list tools without it or disallow it", () => {
+    const dir = path.join(REPO_ROOT, ".claude", "agents");
+    const files = readdirSync(dir).filter((file) => file.endsWith(".md"));
+    assert.ok(files.length > 2);
+    for (const file of files) {
+      const frontmatter = /^---\n([\s\S]*?)\n---/.exec(readFileSync(path.join(dir, file), "utf8"))?.[1] ?? "";
+      const list = (key: string) => {
+        const value = new RegExp(`^${key}: (.*)$`, "m").exec(frontmatter)?.[1];
+        return value === undefined ? undefined : value.split(",").map((tool) => tool.trim());
+      };
+      const tools = list("tools");
+      const disallowed = list("disallowedTools") ?? [];
+      if (file === "installer.md") continue;
+      if (file === "qa.md") {
+        assert.ok(tools?.includes(TOOL), "qa replays installer findings through the sandbox tool");
+        continue;
+      }
+      if (tools === undefined) assert.ok(disallowed.includes(TOOL), `${file} has no tools list and does not disallow ${TOOL}`);
+      else assert.ok(!tools.includes(TOOL) && !tools.some((tool) => tool.startsWith(`mcp__${SERVER}`)), `${file} lists the sandbox tool`);
+    }
   });
 
   it("starts the sandbox server from .mcp.json and allows only its run tool", () => {
@@ -77,6 +99,15 @@ describe("installer sandbox container", () => {
     assert.ok(!args.includes("host"));
   });
 
+  it("reuses an existing network only when it has the firewalled bridge and the label", () => {
+    assert.ok(isSandboxNetwork(`${BRIDGE} 1\n`));
+    assert.ok(!isSandboxNetwork(" 1\n"), "default bridge name");
+    assert.ok(!isSandboxNetwork("br-other 1\n"));
+    assert.ok(!isSandboxNetwork(`${BRIDGE} \n`), "no label");
+    const cli = readFileSync(path.join(REPO_ROOT, "scripts", "install-env", "cli.ts"), "utf8");
+    assert.match(cli, /if \(!isSandboxNetwork\(network\)\)/, "up checks the network before starting the container");
+  });
+
   it("is labelled, limited and on its own bridge", () => {
     assert.ok(args.includes("--cgroupns=private"));
     assert.equal(args[args.indexOf("--label") + 1], LABEL);
@@ -100,7 +131,7 @@ describe("installer sandbox container", () => {
 
 describe("installer sandbox MCP server", () => {
   it("refuses a container without the installer label, and runs nothing", async () => {
-    const docker = fakeDocker({ code: 0, output: "true \n", timedOut: false });
+    const docker = fakeDocker({ code: 0, output: `true||${NETWORK} \n`, timedOut: false });
     const result = await runTool(docker.sandbox, { command: "id", user: "root" });
     assert.equal(result.isError, true);
     assert.match(result.content[0]?.text ?? "", /not the installer sandbox/);
@@ -111,9 +142,19 @@ describe("installer sandbox MCP server", () => {
   it("refuses when the container is missing or stopped", async () => {
     const missing = fakeDocker({ code: 1, output: "Error: No such container", timedOut: false });
     assert.match((await runTool(missing.sandbox, { command: "id", user: "dev" })).content[0]?.text ?? "", /does not exist/);
-    const stopped = fakeDocker({ code: 0, output: "false 1\n", timedOut: false });
+    const stopped = fakeDocker({ code: 0, output: "false|1|\n", timedOut: false });
     assert.match((await runTool(stopped.sandbox, { command: "id", user: "dev" })).content[0]?.text ?? "", /not running/);
     assert.equal(missing.calls.length + stopped.calls.length, 2);
+  });
+
+  it("refuses a container attached to another network, or to more than its own", async () => {
+    for (const networks of ["bridge ", `${NETWORK} bridge `, ""]) {
+      const docker = fakeDocker({ code: 0, output: `true|1|${networks}\n`, timedOut: false });
+      const result = await runTool(docker.sandbox, { command: "id", user: "root" });
+      assert.equal(result.isError, true, networks);
+      assert.match(result.content[0]?.text ?? "", /not only to envelope-installer-net/);
+      assert.equal(docker.calls.length, 1, networks);
+    }
   });
 
   it("runs only docker exec in the sandbox, as the chosen user, with a capped timeout", async () => {

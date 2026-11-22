@@ -22,7 +22,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-import { CONTAINER, LABEL_KEY, type SandboxUser, transcriptPath, USERS } from "./sandbox.ts";
+import { CONTAINER, LABEL_KEY, NETWORK, type SandboxUser, transcriptPath, USERS } from "./sandbox.ts";
 
 export const TOOL_NAME = "run";
 export const DEFAULT_TIMEOUT_S = 600;
@@ -119,13 +119,22 @@ export function runArgs(input: RunInput): string[] {
   return ["exec", "-i", "-u", input.user, "-w", HOMES[input.user], CONTAINER, "timeout", "-k", String(KILL_GRACE_S), String(input.timeout_s), "bash", "-lic", input.command];
 }
 
-/** Refuses unless the sandbox container exists, runs and carries the installer label. */
+export const INSPECT_FORMAT = `{{.State.Running}}|{{index .Config.Labels "${LABEL_KEY}"}}|{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}`;
+
+/**
+ * Refuses unless the sandbox container exists, runs, carries the installer label and is attached
+ * to the sandbox's network and no other (the host firewall covers that network's bridge only).
+ */
 export async function checkSandbox(exec: Exec): Promise<string | null> {
-  const inspected = await exec(["inspect", "--type", "container", "--format", `{{.State.Running}} {{index .Config.Labels "${LABEL_KEY}"}}`, CONTAINER], 30_000);
+  const inspected = await exec(["inspect", "--type", "container", "--format", INSPECT_FORMAT, CONTAINER], 30_000);
   if (inspected.code !== 0) return `The sandbox container ${CONTAINER} does not exist. Ask the coordinator to bring it up.`;
-  const [running, label] = inspected.output.trim().split(" ");
+  const [running, label, networks = ""] = inspected.output.trim().split("|");
   if (label !== "1") return `The container ${CONTAINER} is not the installer sandbox (label ${LABEL_KEY}=1 missing); refusing to run in it.`;
   if (running !== "true") return `The sandbox container ${CONTAINER} is not running. Ask the coordinator to bring it up.`;
+  const attached = networks.split(" ").filter(Boolean);
+  if (attached.length !== 1 || attached[0] !== NETWORK) {
+    return `The container ${CONTAINER} is attached to ${attached.join(", ") || "no network"}, not only to ${NETWORK}; refusing to run in it.`;
+  }
   return null;
 }
 
@@ -216,6 +225,10 @@ function main(): void {
       message = JSON.parse(line) as Request;
     } catch {
       send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+      return;
+    }
+    if (typeof message !== "object" || message === null || Array.isArray(message)) {
+      send({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "Invalid Request" } });
       return;
     }
     handleMessage(sandbox, message).then(send, (error: unknown) =>
