@@ -900,7 +900,7 @@ portfolio's flows, the value at the start paid in on the start date and the valu
 received on the end date), each flow timed in calendar years from the first (see Periods). It is
 found by bisection, on the figure shown (the yearly rate from a year on, the period's own rate
 before), from just above −100% to +1000%; no rate in that range makes it unknown, and money never
-received back at all (nothing received after it was paid in) is exactly −100%. With flows that
+received back at all (nothing received after the clock starts) is exactly −100%. With flows that
 change sign several times there can be more than one such rate; the figure is the one nearest 0.
 €10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is
 8.02% a year. The MWR assumes money stays invested at that rate, so the period ends at the last
@@ -908,9 +908,11 @@ money received, and a payment after it, such as a fee after the final sale, is d
 it: €10,000 paid in on 30 September, €10,100 back on 10 October and a €50 dividend on 20 October,
 with nothing held at the end, is 3.01% over the period, not 4.70% as it would be over the whole of
 October. Bought for €10,000 on 1 September, sold for a net €10,100 on 30 September, with a €5 fee
-on 15 October, is about 0.95% over the period. A period of no length (a first buy on the end date
-itself) is the value at the end ÷ the money put in − 1, the same as the TWR: bought for €10,010
-including fees and worth €10,000 that evening is −0.10%, not −100%.
+on 15 October, is about 0.95% over the period. A period of no length (the first day anything is
+held is the end date itself) is the value at the end ÷ the money put in − 1, any money paid or
+received while nothing was held included: bought for €10,010 including fees and worth €10,000 that
+evening is −0.10%, not −100%; with a €5 fee paid earlier in the month while nothing was held it is
+−0.15%, while the TWR stays −0.10%.
 
 **Periods.** Time is counted in calendar years, not days ÷ 365: the whole anniversaries, plus the
 days since the last one over the days to the next (a 29 February anniversary is 28 February in a
@@ -923,7 +925,10 @@ is still the period's own figure. A shorter period shows the return over the per
 something is held: from the start date, or the first day ending with a value above 0, to the day
 the value is back to 0, stretch by stretch, the years added up. Held through 2024 for +10% and
 empty through 2025 is 10.00% a year over the two years, as is empty through 2024 and held through
-2025 for +10%. The MWR's clock runs from the household's first flow to the last money received.
+2025 for +10%. The MWR's clock runs from the start date, or the first day ending with a value
+above 0, to the last money received; money paid or received before it is carried forward to it, and
+money after it discounted back. A €50 dividend on 3 September while nothing is held, €10,000 paid
+in on 10 September and €10,100 at the end of the month is 1.51%, not 2.04%.
 The figure is `returnE6`, in millionths; the screen rounds `returnE6` to 0.01 percentage points,
 half to even.
 
@@ -946,10 +951,9 @@ The figures over several months come from one calculation over the whole range, 
 rounded monthly figures linked together. In the example above, September's gain is 12,300 −
 10,000 − 2,000 = 300 and October's 12,100 − 12,300 − 0 + 50 = −150.
 
-- **Before anything is held**, a month is worth 0 and its gain is 0; its returns are unknown,
-  since there is nothing to measure.
-- **A month with nothing held** shows its value (0), its contributions, its income and its gain,
-  and no returns. Over a range, the gain is the sum of the months' gains; the TWR leaves out the
+- **A month with nothing held**, before the first buy or after the last sale, shows its value
+  (0), its contributions, its income and its gain (0 when nothing moved), and no returns, since
+  there is nothing to measure. Over a range, the gain is the sum of the months' gains; the TWR leaves out the
   money that moves while nothing is held, the MWR counts it, as the household paid or received it.
 - **A missing price or rate** makes the value unknown, never a partial sum of the positions that
   have one, and every figure that needs it unknown too; the app lists what is missing, with the
