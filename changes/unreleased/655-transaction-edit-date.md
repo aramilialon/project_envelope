@@ -1,0 +1,3 @@
+Added
+
+- `apps/api`: a transaction's date can be edited (`#655`): `PATCH .../accounts/:accountId/transactions/:transactionId` takes `occurredAt` (`YYYY-MM-DD`, a date only, while creating a transaction still takes a date or an instant), dated at midnight in the workspace's time zone as on create, so the transaction moves to the budget month of its new date. Both legs of a transfer move together, and a cleared other leg goes back to uncleared. A trade's cash leg keeps the trade's date (409 `trade_owned_transaction`). `amountCents` alone now changes the amount of a transaction that has one split, keeping its category and memo (the other leg of a transfer follows); on one with several splits it is refused with `amount_needs_splits` until the splits come with it.
