@@ -66,6 +66,18 @@ export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/pri
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
 export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
 export { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
+export type {
+  ExternalFlow,
+  MoneyWeightedInput,
+  RateOutcome,
+  ReturnOutcome,
+  TimeWeightedInput,
+  UnknownReturnReason,
+  Valuation,
+} from "./portfolio/returns.ts";
+export { DAYS_PER_YEAR, moneyWeightedRate, moneyWeightedReturn, timeWeightedRate, timeWeightedReturn } from "./portfolio/returns.ts";
+export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/external-flows.ts";
+export { externalFlows } from "./portfolio/external-flows.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
 export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
