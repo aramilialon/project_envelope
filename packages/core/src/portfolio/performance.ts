@@ -7,7 +7,7 @@
  * The rules (domain expert, 2026-11-22):
  *
  * - **Value** on a date: the portfolio's positions from its trades dated on or
- *   before it (`computePositions` with `asOf`), each at its latest price on
+ *   before it (`positionsAsOfDates`: one replay for every date), each at its latest price on
  *   or before the date (`resolvePrice`: on the same date the workspace's own
  *   price wins over the shared one), quantity × price × price factor rounded
  *   once in the instrument's currency, added up per currency, then converted
@@ -47,12 +47,12 @@ import type { LocalDate, Month } from "../month.ts";
 import { assertDate, assertMonth, monthOf, monthRange, shiftMonth } from "../month.ts";
 import type { ExternalFlowKind } from "./external-flows.ts";
 import { externalFlows } from "./external-flows.ts";
-import type { PositionTrade } from "./positions.ts";
-import { computePositions } from "./positions.ts";
+import type { Positions, PositionTrade } from "./positions.ts";
+import { positionsAsOfDates } from "./positions.ts";
 import type { PriceCandidate, ResolvedPrice } from "./prices.ts";
 import { priceSeriesAt, resolvePrice } from "./prices.ts";
 import { amountOf } from "./quantity.ts";
-import type { ExternalFlow, ReturnOutcome, Valuation } from "./returns.ts";
+import type { ExternalFlow, ReturnOutcome, UnknownReturnReason, Valuation } from "./returns.ts";
 import { moneyWeightedReturn, timeWeightedReturn } from "./returns.ts";
 
 /** The longest range one request covers: ten years of months. */
@@ -74,6 +74,8 @@ export interface MissingInput {
   readonly reason: MissingReason;
   /** Only for `no_rate`: the currency with no rate on or before the date. */
   readonly currency?: CurrencyCode;
+  /** The earliest date, among those the figure needed, that lacks the price or the rate. */
+  readonly date: LocalDate;
 }
 
 /** The figures of one month, every amount in the base currency's minor unit. */
@@ -93,6 +95,10 @@ export interface MonthPerformance {
   readonly twrE6: number | null;
   /** The month's money-weighted return in millionths; null when unknown. */
   readonly mwrE6: number | null;
+  /** Why `twrE6` is null; null when it is known. */
+  readonly twrUnknownReason: UnknownReturnReason | null;
+  /** Why `mwrE6` is null; null when it is known. */
+  readonly mwrUnknownReason: UnknownReturnReason | null;
   /** The oldest price date used for `valueCents`; null when no position needed a price or the value is unknown. */
   readonly oldestPriceDate: LocalDate | null;
   /** The oldest rate date used for `valueCents`; null when no conversion needed a rate or the value is unknown. */
@@ -116,6 +122,8 @@ export interface PerformanceTotals {
   readonly twrAnnualized: boolean | null;
   readonly mwrE6: number | null;
   readonly mwrAnnualized: boolean | null;
+  readonly twrUnknownReason: UnknownReturnReason | null;
+  readonly mwrUnknownReason: UnknownReturnReason | null;
   readonly missing: readonly MissingInput[];
 }
 
@@ -234,15 +242,19 @@ function missingKey(entry: MissingInput): string {
   return JSON.stringify([entry.instrumentId ?? "", entry.reason, entry.currency ?? ""]);
 }
 
-/** Each entry once, sorted by instrument (null first), reason, then currency. */
+/** Each entry once, at its earliest date, sorted by instrument (null first), reason, then currency. */
 function distinctMissing(entries: readonly MissingInput[]): MissingInput[] {
   const byKey = new Map<string, MissingInput>();
-  for (const entry of entries) byKey.set(missingKey(entry), entry);
+  for (const entry of entries) {
+    const key = missingKey(entry);
+    const known = byKey.get(key);
+    if (known === undefined || entry.date < known.date) byKey.set(key, entry);
+  }
   return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, entry]) => entry);
 }
 
-function noRate(instrumentId: string | null, currency: CurrencyCode): MissingInput {
-  return { instrumentId, reason: "no_rate", currency };
+function noRate(instrumentId: string | null, currency: CurrencyCode, date: LocalDate): MissingInput {
+  return { instrumentId, reason: "no_rate", currency, date };
 }
 
 /**
@@ -253,8 +265,16 @@ function lackingCurrency(currencies: readonly CurrencyCode[], from: CurrencyCode
   return currencies.includes(from) ? from : target;
 }
 
-function knownReturn(outcome: ReturnOutcome): { returnE6: number | null; annualized: boolean | null } {
-  return outcome.status === "known" ? { returnE6: outcome.returnE6, annualized: outcome.annualized } : { returnE6: null, annualized: null };
+interface ReturnFigure {
+  readonly returnE6: number | null;
+  readonly annualized: boolean | null;
+  readonly unknownReason: UnknownReturnReason | null;
+}
+
+function returnFigure(outcome: ReturnOutcome): ReturnFigure {
+  return outcome.status === "known"
+    ? { returnE6: outcome.returnE6, annualized: outcome.annualized, unknownReason: null }
+    : { returnE6: null, annualized: null, unknownReason: outcome.reason };
 }
 
 /**
@@ -263,7 +283,7 @@ function knownReturn(outcome: ReturnOutcome): { returnE6: number | null; annuali
  *
  * @throws ValidationError the refusals of `assertPerformanceRange`;
  *   "invalid_currency" for a base currency not in use; "invalid_fx_rate",
- *   "duplicate_price" and the replay's errors (`computePositions`) for
+ *   "duplicate_price" and the replay's errors (`positionsAsOfDates`) for
  *   malformed stored data; "currency_mismatch" (details: tradeId) for a trade
  *   whose currency is not its instrument's.
  */
@@ -305,7 +325,7 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
   for (const flow of flows) {
     const trade = tradeById.get(flow.tradeId) as PositionTrade;
     if (flow.amountCents === null) {
-      transferPriceMissing.push({ date: flow.date, entry: { instrumentId: trade.instrumentId, reason: "no_price" } });
+      transferPriceMissing.push({ date: flow.date, entry: { instrumentId: trade.instrumentId, reason: "no_price", date: flow.date } });
     }
     let byKey = buckets.get(flow.date);
     if (byKey === undefined) {
@@ -334,7 +354,7 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
           converted = conversion.cents;
         } else {
           const currency = lackingCurrency(conversion.currencies, bucket.currency, baseCurrency);
-          for (const trade of bucket.trades) missing.push(noRate(trade.instrumentId, currency));
+          for (const trade of bucket.trades) missing.push(noRate(trade.instrumentId, currency, date));
         }
       }
       if (bucket.kind === "income") incomeFlowCents = plus(incomeFlowCents, converted, "income");
@@ -374,8 +394,8 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
       gainCents = endValue.valueCents - startValue.valueCents - netContributionsCents + incomeCents;
       assertCents(gainCents, "gain");
     }
-    const twr = knownReturn(timeWeightedReturn({ start: startValue, valuations: cuts, flows: periodFlows }));
-    const mwr = knownReturn(moneyWeightedReturn({ start: startValue, end: endValue, flows: periodFlows }));
+    const twr = returnFigure(timeWeightedReturn({ start: startValue, valuations: cuts, flows: periodFlows }));
+    const mwr = returnFigure(moneyWeightedReturn({ start: startValue, end: endValue, flows: periodFlows }));
     return { netContributionsCents, incomeCents, gainCents, twr, mwr, missing: distinctMissing(missing) };
   };
 
@@ -393,6 +413,8 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
       gainCents: figures.gainCents,
       twrE6: figures.twr.returnE6,
       mwrE6: figures.mwr.returnE6,
+      twrUnknownReason: figures.twr.unknownReason,
+      mwrUnknownReason: figures.mwr.unknownReason,
       oldestPriceDate: value.oldestPriceDate,
       oldestRateDate: value.oldestRateDate,
       missing: figures.missing,
@@ -417,6 +439,8 @@ export function monthlyPerformance(input: MonthlyPerformanceInput): PortfolioPer
       twrAnnualized: whole.twr.annualized,
       mwrE6: whole.mwr.returnE6,
       mwrAnnualized: whole.mwr.annualized,
+      twrUnknownReason: whole.twr.unknownReason,
+      mwrUnknownReason: whole.mwr.unknownReason,
       missing: whole.missing,
     },
   };
@@ -435,9 +459,10 @@ function valueAt(
   for (const instrumentId of instrumentCurrency.keys()) {
     series.set(instrumentId, priceSeriesAt(priceCandidates.get(instrumentId) ?? [], dates));
   }
+  const positions = positionsAsOfDates(trades, dates);
   const result = new Map<LocalDate, DateValue>();
   dates.forEach((date, index) => {
-    const held = computePositions(trades, { asOf: date }).portfolios.filter(
+    const held = (positions.get(date) as Positions).portfolios.filter(
       (position) => position.portfolioId === portfolioId && position.quantity !== 0,
     );
     const missing: MissingInput[] = [];
@@ -446,7 +471,7 @@ function valueAt(
     for (const position of held) {
       const price = series.get(position.instrumentId)?.[index] ?? null;
       if (price === null) {
-        missing.push({ instrumentId: position.instrumentId, reason: "no_price" });
+        missing.push({ instrumentId: position.instrumentId, reason: "no_price", date });
         continue;
       }
       oldestPriceDate = olderDate(oldestPriceDate, price.priceDate);
@@ -460,7 +485,7 @@ function valueAt(
     if (conversion.status === "unknown") {
       for (const amount of amounts) {
         if (amount.currency === baseCurrency) continue;
-        missing.push(noRate(amount.instrumentId, lackingCurrency(conversion.currencies, amount.currency, baseCurrency)));
+        missing.push(noRate(amount.instrumentId, lackingCurrency(conversion.currencies, amount.currency, baseCurrency), date));
       }
     }
     const known = missing.length === 0 && conversion.status === "known";

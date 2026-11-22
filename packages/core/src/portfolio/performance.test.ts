@@ -222,9 +222,31 @@ describe("monthlyPerformance: unknown values", () => {
     assert.equal(row?.mwrE6, null);
     assert.equal(row?.oldestPriceDate, null);
     assert.equal(row?.netContributionsCents, cents(250), "the buy's own cash is known");
-    assert.deepEqual(row?.missing, [{ instrumentId: "unpriced", reason: "no_price" }]);
+    assert.deepEqual(row?.missing, [{ instrumentId: "unpriced", reason: "no_price", date: "2026-09-10" }]);
+    assert.equal(row?.twrUnknownReason, "missing_value");
+    assert.equal(row?.mwrUnknownReason, "missing_value");
     assert.equal(result.totals.startValueCents, cents(10_000));
     assert.equal(result.totals.endValueCents, null);
+    assert.equal(result.totals.twrUnknownReason, "missing_value");
+    assert.equal(result.totals.mwrUnknownReason, "missing_value");
+  });
+
+  it("dates each missing entry at the earliest date, among those its figure needed, that lacks it", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-09",
+        to: "2026-11",
+        trades: [buy("2026-08-03", ETF, 100, 100), buy("2026-09-10", "unpriced", 5, 50)],
+        priceCandidates: new Map([
+          [ETF, prices({ "2026-08-03": 100 })],
+          ["unpriced", prices({ "2026-11-02": 60 })],
+        ]),
+      }),
+    );
+    const dates = result.months.map((row) => row.missing.map((entry) => entry.date));
+    // September from its buy; October from its start, the end of September; November is priced.
+    assert.deepEqual(dates, [["2026-09-10"], ["2026-09-30"], ["2026-10-31"]]);
+    assert.deepEqual(result.totals.missing, [{ instrumentId: "unpriced", reason: "no_price", date: "2026-09-10" }]);
   });
 
   it("a position sold out needs no price", () => {
@@ -251,15 +273,15 @@ describe("monthlyPerformance: unknown values", () => {
     assert.equal(september?.valueCents, null);
     assert.equal(september?.netContributionsCents, null, "the dollar buy cannot be converted");
     assert.equal(september?.gainCents, null);
-    assert.deepEqual(september?.missing, [{ instrumentId: STOCK, reason: "no_rate", currency: "USD" }]);
+    assert.deepEqual(september?.missing, [{ instrumentId: STOCK, reason: "no_rate", currency: "USD", date: "2026-09-10" }]);
     assert.equal(result.totals.startValueCents, cents(10_000), "the euro holding needs no rate");
   });
 
   it("a base currency with no rate names the base currency", () => {
     const result = monthlyPerformance({ ...reference(), baseCurrency: "GBP" });
     assert.deepEqual(result.months[0]?.missing, [
-      { instrumentId: ETF, reason: "no_rate", currency: "GBP" },
-      { instrumentId: STOCK, reason: "no_rate", currency: "GBP" },
+      { instrumentId: ETF, reason: "no_rate", currency: "GBP", date: "2026-08-31" },
+      { instrumentId: STOCK, reason: "no_rate", currency: "GBP", date: "2026-09-10" },
     ]);
   });
 
@@ -277,7 +299,7 @@ describe("monthlyPerformance: unknown values", () => {
     );
     assert.equal(result.months[0]?.valueCents, cents(100));
     assert.equal(result.months[0]?.netContributionsCents, null);
-    assert.deepEqual(result.months[0]?.missing, [{ instrumentId: null, reason: "no_rate", currency: "USD" }]);
+    assert.deepEqual(result.months[0]?.missing, [{ instrumentId: null, reason: "no_rate", currency: "USD", date: "2026-09-05" }]);
   });
 
   it("an unknown flow makes the sum unknown whether it comes first or last", () => {
@@ -358,7 +380,7 @@ describe("monthlyPerformance: prices", () => {
     assert.equal(unpriced.months[0]?.valueCents, cents(1_010));
     assert.equal(unpriced.months[0]?.netContributionsCents, null);
     assert.equal(unpriced.months[0]?.gainCents, null);
-    assert.deepEqual(unpriced.months[0]?.missing, [{ instrumentId: ETF, reason: "no_price" }]);
+    assert.deepEqual(unpriced.months[0]?.missing, [{ instrumentId: ETF, reason: "no_price", date: "2026-09-10" }]);
   });
 
   it("counts only the portfolio's own trades and positions", () => {
@@ -372,6 +394,92 @@ describe("monthlyPerformance: prices", () => {
     );
     assert.equal(result.months[0]?.valueCents, cents(1_000));
     assert.equal(result.months[0]?.netContributionsCents, 0);
+  });
+});
+
+describe("monthlyPerformance: flows of one date", () => {
+  it("adds up the amounts of one date and one currency, then converts them once", () => {
+    // $0.01 + $0.01 at 1.6 dollars per euro: $0.02 is €0.0125, so €0.01; each cent apart would give €0.02.
+    const fee = () => trade({ date: "2026-09-05", type: "fee", instrumentId: null, accountId: "account-usd", currency: "USD", feesCents: 1 });
+    const result = monthlyPerformance(
+      input({ from: "2026-09", to: "2026-09", trades: [fee(), fee()], fxRates: [usd("2026-09-05", 1.6)] }),
+    );
+    assert.equal(result.months[0]?.netContributionsCents, 1);
+  });
+
+  it("keeps a buy and a dividend of the same currency and date apart", () => {
+    const result = monthlyPerformance(
+      input({
+        from: "2026-09",
+        to: "2026-09",
+        trades: [
+          buy("2026-08-03", ETF, 10, 100),
+          buy("2026-09-10", ETF, 10, 100),
+          trade({ date: "2026-09-10", type: "dividend", instrumentId: ETF, grossCents: cents(50) }),
+        ],
+        priceCandidates: new Map([[ETF, prices({ "2026-08-03": 100 })]]),
+      }),
+    );
+    assert.equal(result.months[0]?.netContributionsCents, cents(1_000), "not €950");
+    assert.equal(result.months[0]?.incomeCents, cents(50));
+    assert.equal(result.months[0]?.gainCents, cents(50));
+  });
+
+  it("a transfer between two accounts of the same portfolio nets to its fees", () => {
+    const when = { date: "2026-09-10", type: "transfer", instrumentId: ETF } as const;
+    const result = monthlyPerformance(
+      input({
+        from: "2026-09",
+        to: "2026-09",
+        trades: [
+          buy("2026-08-03", ETF, 10, 100),
+          trade({ ...when, id: "out", quantity: -units(4) as Quantity, transferTradeId: "in", feesCents: 300 }),
+          trade({ ...when, id: "in", accountId: "account-eur-2", quantity: units(4), transferTradeId: "out", feesCents: 200 }),
+        ],
+        priceCandidates: new Map([[ETF, prices({ "2026-08-03": 100, "2026-09-10": 110 })]]),
+      }),
+    );
+    assert.equal(result.months[0]?.netContributionsCents, 500);
+    assert.equal(result.months[0]?.valueCents, cents(1_100));
+    assert.equal(result.months[0]?.gainCents, cents(100) - 500);
+  });
+});
+
+describe("monthlyPerformance: why a return is unknown", () => {
+  it("names no reason when both returns are known", () => {
+    const result = monthlyPerformance(reference());
+    for (const row of [...result.months, result.totals]) {
+      assert.deepEqual([row.twrUnknownReason, row.mwrUnknownReason], [null, null]);
+    }
+  });
+
+  it("a month after selling out, with only a fee and a dividend, has no capital and no solution", () => {
+    // Domain expert, 2026-11-22: 10 units worth €1,000 on 31 August, sold for €1,010 on 10 September,
+    // a €2 fee on 5 October and a €50 dividend on 20 October.
+    const result = monthlyPerformance(
+      input({
+        from: "2026-09",
+        to: "2026-10",
+        trades: [
+          buy("2026-08-03", ETF, 10, 100),
+          trade({ date: "2026-09-10", type: "sell", instrumentId: ETF, quantity: units(10), price: e6(101), grossCents: cents(1_010) }),
+          trade({ date: "2026-10-05", type: "fee", instrumentId: null, feesCents: cents(2) }),
+          trade({ date: "2026-10-20", type: "dividend", instrumentId: ETF, grossCents: cents(50) }),
+        ],
+        priceCandidates: new Map([[ETF, prices({ "2026-08-03": 100 })]]),
+      }),
+    );
+    const october = result.months[1];
+    assert.deepEqual(
+      [october?.valueCents, october?.netContributionsCents, october?.incomeCents, october?.gainCents],
+      [0, cents(2), cents(50), cents(48)],
+    );
+    assert.deepEqual([october?.twrE6, october?.twrUnknownReason], [null, "no_capital"]);
+    assert.deepEqual([october?.mwrE6, october?.mwrUnknownReason], [null, "no_solution"]);
+    assert.equal(result.months[0]?.gainCents, cents(10));
+    assert.equal(result.totals.twrE6, 10_000);
+    assert.equal(result.totals.twrUnknownReason, null);
+    assert.equal(result.totals.gainCents, cents(58));
   });
 });
 
@@ -399,6 +507,8 @@ describe("monthlyPerformance: dates", () => {
       [result.months[0]?.valueCents, result.months[0]?.gainCents, result.months[0]?.twrE6, result.months[0]?.mwrE6],
       [0, 0, null, null],
     );
+    assert.equal(result.months[0]?.twrUnknownReason, "no_capital");
+    assert.equal(result.months[0]?.mwrUnknownReason, "no_capital");
   });
 
   it("a first buy within the month starts the TWR from nothing", () => {
