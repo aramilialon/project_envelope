@@ -536,6 +536,14 @@ from March 3, 2028 it holds 0 units and has realized €500. So an account's cas
 securities always describe the same day, and the net worth's line about securities shows while
 the account holds them today.
 
+Its totals (realized gains, dividends and coupons, fees, taxes) are cumulative from the first trade
+up to and including that date. A trade on the date itself counts, one the day after does not.
+
+**Example.** Buy 4 units at €10 on 2026-01-05, sell 1 at €12 on 2026-02-10 and 1 at €13 on
+2026-02-11, with no fees. As of 2026-02-10 the account holds 3 units with a cost of €30 (3 × the
+average cost of €10) and has realized €2 (12 − 10); the sale of the 11th shows from that day on,
+with 2 units, a cost of €20 and €5 realized in total.
+
 **The average cost belongs to the account.** Every portfolio holding the instrument in the same
 account shares one average cost: portfolios split the account's *quantity*, not its cost. Moving
 units between two portfolios of the same account moves quantity only and never changes the
