@@ -67,7 +67,7 @@ The portfolio and the phone screens come from the mockups, in English (the portf
 | 0.2.x | Prices, allocation and rebalancing | In progress |
 | 0.2.8 | AI assistants through a local, read-only MCP server ([ADR 0014](docs/adr/0014-assistant-access-through-mcp.md)) | Planned |
 | 0.3.x | Mobile app | Planned |
-| 0.4.0 | Self-hosting packaging: Docker images, a production install guide, Keycloak in production mode with multi-factor authentication, rate limiting, backups | Planned |
+| 0.4.0 | Self-hosting packaging: Docker images, a production install guide, Keycloak in production mode with multi-factor authentication, backups | Planned |
 | 0.4.1 – 0.4.2 | Remote assistant access over the internet, assistant drafts confirmed in the app | Planned |
 
 The complete roadmap, including what comes after 1.0.0, is in the [design document](docs/design.md#roadmap); changes are listed in the [changelog](CHANGELOG.md).

@@ -260,7 +260,7 @@ $ cp .env.example .env
 $ pnpm --filter @envelope/web dev
 ```
 
-Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in the first time shows that you belong to no workspace yet: choose "Create a workspace" (name, currency, time zone; the currency cannot be changed later). To see a filled-in budget first instead, load the demo workspace (section 13) and pick "Demo". If the app cannot reach the API, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
+Browse to `http://localhost:5173`: it redirects straight to Keycloak to sign in (`#49`). Self-registration is disabled (`scripts/keycloak/bootstrap.sh`), so create a user once, from the Keycloak admin console (the SSH tunnel from section 8) under *Users → Add user* in the `envelope` realm, with a password set under its *Credentials* tab — turn off "Temporary" there for a development account you will keep reusing, or leave it on to be asked to change it on first sign-in. Signing in the first time shows that you belong to no workspace yet: choose "Create a workspace" (name, currency, time zone; the currency cannot be changed later). To see a filled-in budget first instead, load the demo workspace (section 13) and sign in as its "demo" user (the password is `DEMO_USER_PASSWORD`). If the app cannot reach the API, check that `apps/api`'s own `WEB_ORIGIN` (its `.env`) matches this app's own origin — they already default to the same port, so this only matters if either one changed.
 
 Browsing from your laptop rather than the VM itself needs all three services tunneled, not just Keycloak's own admin console from section 8 — the web app's own origin, the API it talks to, and Keycloak for the sign-in redirect:
 
@@ -278,10 +278,10 @@ See [`apps/web/README.md`](../apps/web/README.md) for the rest.
 
 Once you are in a workspace of your own:
 
-1. Add the accounts your money is in, with today's balance (Accounts → Add account). A credit card asks how much you owe on it now.
+1. Add the accounts your money is in (Accounts → "+ Add account"). For a bank or cash account, open its register and record today's balance as a "New transaction": kind "Inflow", dated today, category left on "Unassigned". On a budget account that money goes to "Unassigned"; on an off-budget account it only sets the balance. A credit card asks how much you owe on it now.
 2. Add groups and categories from the budget itself ("+ Add a group").
 3. Press "Assign" and give the money in "Unassigned" to your categories until it reaches zero.
-4. From then on, import your bank statements from an account's register ("Import") instead of typing each transaction. Transactions from before you added the account are already in its starting balance.
+4. From then on, import your bank statements from an account's register ("Import") instead of typing each transaction. Import only transactions dated after the day of the balance you recorded: earlier ones are already in it (a card's in its starting balance), and importing them would count them twice.
 
 ## 11. Editing the code
 
@@ -316,7 +316,9 @@ The repository's **Actions** tab on GitHub shows the CI run for every push and p
 
 With `apps/api` running (section 9), `scripts/README.md` has a seed script that fills a
 "Demo" workspace with realistic data through the real API — useful to have something to look at
-without building it up by hand through the web app.
+without building it up by hand through the web app. The workspace belongs to the seed's own "demo"
+Keycloak user: sign in as "demo" with the password in `DEMO_USER_PASSWORD` to see it (`scripts/README.md`,
+"Running locally").
 
 ## 14. A disposable environment (optional)
 
