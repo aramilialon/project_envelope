@@ -669,8 +669,9 @@ A trade that moves money owns exactly one transaction on its own account, its **
   then does not show it yet.
 - It appears in `GET …/accounts/:accountId/transactions` like any transaction, with `tradeId`
   set. Its payee, memo and status are its own and are edited there. Its amount, account and date
-  belong to the trade: `PATCH` with `splits` or `amountCents`, or `DELETE`, answers 409
-  `trade_owned_transaction`.
+  belong to the trade: `PATCH` with `splits`, `amountCents` or an `occurredAt` other than the
+  leg's own date, or `DELETE`, answers 409 `trade_owned_transaction`. `accountId` is not a field
+  of that `PATCH` for any transaction: it answers 400 `unknown_field`.
 - A brokerage account's balance is the transfers into and out of it plus its cash legs. Since the
   account is off budget, a trade never changes the budget. The money reached the broker through a
   transfer from an on-budget account, which asked for a category

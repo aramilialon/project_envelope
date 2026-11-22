@@ -6,6 +6,14 @@ Each entry groups changes under **Added**, **Changed**, **Fixed** and **Removed*
 
 ## [Unreleased]
 
+### Added
+
+- `apps/api`: a transaction's date can be edited (`#655`): `PATCH .../accounts/:accountId/transactions/:transactionId` takes `occurredAt` (`YYYY-MM-DD`), dated at midnight in the workspace's time zone as on create, so the transaction moves to the budget month of its new date. Both legs of a transfer move together, and a cleared other leg goes back to uncleared. A trade's cash leg keeps the trade's date (409 `trade_owned_transaction`). `amountCents` alone now changes the amount of a transaction that has one split, keeping its category and memo (the other leg of a transfer follows); on one with several splits it is refused with `amount_needs_splits` until the splits come with it.
+
+### Fixed
+
+- `apps/api`: editing a transaction no longer ignores what it cannot use (`#655`). A field it does not take, `accountId` and ids included, is refused with 400 `unknown_field` naming the field; a field of the wrong type, or a status that is not `pending`, `cleared` or `reconciled`, with 400 `invalid_field`; a body that is not a JSON object with 400 `invalid_body`. Editing or deleting a transaction through an account that does not hold it answers 404. Creating a transaction or a transfer on a date that does not exist (`2026-02-30`, `2026-02-29`) or is not written `YYYY-MM-DD` (`2026-1-5`, `not-a-date`) is refused with 400 `invalid_date` instead of a server error, and any such date that reaches the database answers 400 `invalid_date` too.
+
 ## [0.2.0] - 2026-11-21
 
 ### Added
