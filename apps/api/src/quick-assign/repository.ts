@@ -1,4 +1,4 @@
-import { amountNeededToCover, cardDebt, computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
+import { amountNeededToCover, cardAmountAsked, cardPartsAskedOnCategories, computeTarget, MAX_AMOUNT_CENTS, shiftMonth } from "@envelope/core";
 
 import { createAssignmentBatch, listAssignmentTotals, type AssignmentEntryRecord } from "../assignments/repository.ts";
 import { getBudgetMonth, type BudgetMonthResponse } from "../budget/repository.ts";
@@ -36,19 +36,26 @@ async function desiredAmounts(
       return desired;
     }
     case "cover_overspending":
-      // `amountNeededToCover` (#728): a category's cash overspending, plus its reservation
-      // shortfall when it has no credit overspending — never its credit overspending, which is
-      // already part of its card's uncovered debt and is covered once, by "cover_card_debt".
+      // `amountNeededToCover` (#728, #731): a category's cash overspending plus its reservation
+      // shortfall. Its credit overspending is already part of its card's uncovered debt and is
+      // covered once: by "cover_card_debt", except when the category also has a reservation
+      // shortfall — money assigned to it covers its card spending first, so it asks that too,
+      // and its card asks that much less. The same figure as the category's "To do" item.
       return budgetMonth.categories
         .map((c) => ({ categoryId: c.categoryId, amountCents: amountNeededToCover(c) }))
         .filter((d) => d.amountCents > 0);
-    case "cover_card_debt":
-      // The whole of `cardDebt`'s `toCover` (#699): a card paid beyond what was set aside needs
-      // its cash overspending covered as well as its uncovered debt, in one run. Payment
-      // categories stay out of "cover_overspending", which reads `categories` only.
+    case "cover_card_debt": {
+      // `cardAmountAsked` (#699, #731): the card's whole to cover — a card paid beyond what was
+      // set aside needs its cash overspending covered as well as its uncovered debt, in one run —
+      // less the card spending asked on categories with a reservation shortfall, which
+      // "cover_overspending" covers there; the same figure as the card's "To do" item, so running
+      // both modes, in either order, never sets the same money aside twice. Payment categories
+      // stay out of "cover_overspending", which reads `categories` only.
+      const askedOnCategories = cardPartsAskedOnCategories(budgetMonth.categories, budgetMonth.paymentCategories);
       return budgetMonth.paymentCategories
-        .map((c) => ({ categoryId: c.categoryId, amountCents: cardDebt(c).toCover }))
+        .map((c) => ({ categoryId: c.categoryId, amountCents: cardAmountAsked(c, askedOnCategories.get(c.categoryId) ?? []) }))
         .filter((d) => d.amountCents > 0);
+    }
     case "repeat_assigned": {
       const priorMonth = shiftMonth(month, -1);
       const totals = await listAssignmentTotals(db, workspaceId);

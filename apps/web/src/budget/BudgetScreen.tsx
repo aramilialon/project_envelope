@@ -1,5 +1,6 @@
 import {
   cardDebt,
+  cardPartsAskedOnCategories,
   computeBudgetProblems,
   computeCategoryBar,
   computePaymentCategoryBar,
@@ -381,6 +382,8 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
     [...state.budgetMonth.categories, ...state.budgetMonth.paymentCategories].map((c) => [c.categoryId, c.name] as const),
   );
   const categoryById = new Map(groups.flatMap((g) => g.categories).map((c) => [c.categoryId, c] as const));
+  // #731: the part of each card's debt asked on ordinary categories instead of on the card.
+  const cardPartsAsked = cardPartsAskedOnCategories(state.budgetMonth.categories, state.budgetMonth.paymentCategories);
   // While a newly chosen month loads, the previous month's rows stay on screen: a category's
   // detail and the Move money form wait for the new month's own numbers before opening, so
   // neither measures an entry against one month and writes it to another (#698).
@@ -458,6 +461,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
         owed={category.owed}
         {...(category.hasStartingBalance !== undefined ? { hasStartingBalance: category.hasStartingBalance } : {})}
         {...(category.overspendingBy !== undefined ? { overspendingBy: category.overspendingBy } : {})}
+        askedOnCategories={(cardPartsAsked.get(category.categoryId) ?? []).map((p) => ({ ...p, name: categoryNameById.get(p.categoryId) ?? "" }))}
         currency={currency ?? "EUR"}
         fullScreen={fullScreen}
         focusRequest={focusRequest}

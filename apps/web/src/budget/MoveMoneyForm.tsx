@@ -1,4 +1,4 @@
-import { amountNeededToCover, formatMoney, parseAmount } from "@envelope/core";
+import { amountNeededToCover, cardAmountAsked, cardDebt, cardPartsAskedOnCategories, formatMoney, parseAmount, reservationShortfall } from "@envelope/core";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -8,6 +8,7 @@ import { tooManyRequestsMessage } from "../apiErrors.ts";
 import { plainAmount } from "../format.ts";
 import SideSheet from "../layout/SideSheet.tsx";
 import { createAssignments } from "./api.ts";
+import { cardPartAskedSentence } from "./cardPartAsked.ts";
 import { monthLabel, shiftMonth } from "./monthEvents.ts";
 import type { BudgetGroup, BudgetGroupCategory } from "./useBudgetMonth.ts";
 import "./MoveMoneyForm.css";
@@ -72,13 +73,25 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
   const intl = useIntl();
   const auth = useAuth();
   const byId = flatten(groups);
+  // #731: the part of each card's debt asked on ordinary categories instead of on the card.
+  const askedOnCategories = cardPartsAskedOnCategories(
+    [...byId.values()].filter((c) => !c.isPaymentCategory),
+    [...byId.values()].filter((c) => c.isPaymentCategory),
+  );
+  /**
+   * What the destination still needs (#728, #731): an ordinary category's `amountNeededToCover`;
+   * a card's to cover less what is asked on categories for it (`cardAmountAsked`), the same
+   * figure as its "To do" item and quick assign's "Cover the cards' debt".
+   */
+  const neededBy = (category: BudgetGroupCategory): number =>
+    category.isPaymentCategory ? cardAmountAsked(category, askedOnCategories.get(category.categoryId) ?? []) : amountNeededToCover(category);
 
   const initialState = (() => {
     if (initial.kind === "assign") {
       return { from: UNASSIGNED, to: "", targetMonth: month, amount: "" };
     }
     const category = byId.get(initial.categoryId);
-    const gap = category ? amountNeededToCover(category) : 0;
+    const gap = category ? neededBy(category) : 0;
     const amount = gap > 0 ? plainAmount(gap, intl.locale, currency) : "";
     if (initial.kind === "assignTo") {
       return { from: UNASSIGNED, to: initial.categoryId, targetMonth: month, amount };
@@ -244,13 +257,27 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
     } else {
       const destination = byId.get(to)!;
       lines.push(balanceLine("to", nameOf(to), destination.available, destination.available + amount));
-      const gap = amountNeededToCover(destination);
-      if (gap > 0) {
-        lines.push(
-          <div className="ba note" key="gap">
-            {amount >= gap
-              ? destination.isPaymentCategory
-                ? intl.formatMessage({ id: "moveMoney.cardDebtCovered", defaultMessage: "The card's debt is fully covered." })
+      const gap = neededBy(destination);
+      const askedElsewhere = destination.isPaymentCategory ? (askedOnCategories.get(destination.categoryId) ?? []) : [];
+      const note: string | null =
+        gap <= 0
+          ? null
+          : amount >= gap
+            ? destination.isPaymentCategory
+              ? askedElsewhere.length > 0
+                ? // #731: the rest of the card's debt is asked on categories; the sentence below says so.
+                  null
+                : intl.formatMessage({ id: "moveMoney.cardDebtCovered", defaultMessage: "The card's debt is fully covered." })
+                : destination.creditOverspending > 0 && reservationShortfall(destination) > 0
+                  ? // #731: with a reservation shortfall the gap includes the card spending, which moves to the card first.
+                    intl.formatMessage(
+                      {
+                        id: "moveMoney.overspendingAndReservationCovered",
+                        defaultMessage:
+                          "The overspending and the scheduled transactions are covered. {card} of this amount covers card spending and moves to the card.",
+                      },
+                      { card: money(destination.creditOverspending) },
+                    )
                 : destination.creditOverspending > 0
                   ? // #728: the card part stays in the card's debt, covered on the card's payment category.
                     // Money beyond the cash part covers card spending and moves to the card (rule 4 of
@@ -267,7 +294,20 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
                   : destination.cashOverspending > 0
                     ? intl.formatMessage({ id: "moveMoney.overspendingCovered", defaultMessage: "The overspending is covered." })
                     : intl.formatMessage({ id: "moveMoney.reservationCovered", defaultMessage: "The scheduled transactions are covered." })
-              : intl.formatMessage({ id: "moveMoney.stillMissing", defaultMessage: "{missing} is still missing." }, { missing: money(gap - amount) })}
+              : intl.formatMessage({ id: "moveMoney.stillMissing", defaultMessage: "{missing} is still missing." }, { missing: money(gap - amount) });
+      if (note !== null) {
+        lines.push(
+          <div className="ba note" key="gap">
+            {note}
+          </div>,
+        );
+      }
+      // #731: part of the card's debt is asked on categories instead, so assigning here asks less;
+      // said only while the card still has something to cover.
+      if (askedElsewhere.length > 0 && cardDebt(destination).toCover > 0) {
+        lines.push(
+          <div className="ba note" key="askedElsewhere">
+            {cardPartAskedSentence(intl, money, askedElsewhere, nameOf)}
           </div>,
         );
       }

@@ -29,6 +29,7 @@ Every language follows the same rule as the English (`CLAUDE.md`, "No advice"): 
 - No intensifiers or reassurance ("only", "just", "don't worry", "great") unless the English has them.
 - Neutral framing of a correction: "To get back to your targets:" is *Per tornare ai tuoi obiettivi:*, *Um deine Ziele wieder zu erreichen:*, *Para volver a tus objetivos:*, *Pour revenir à tes objectifs :*.
 - A problem is a fact with an amount ("{category} is negative by {amount}."), not a warning: no "Attention", "Achtung", "¡Cuidado!", "Attention !".
+- A To do subtitle states the consequence, never a deadline order: "if still uncovered when the month ends, it comes out of next month's unassigned money", not "cover it before the month ends". In Italian: *se alla fine del mese non è ancora coperto, viene tolto da «Da assegnare» del mese prossimo*, not *coprilo prima della fine del mese*.
 
 | Language | Notes |
 | --- | --- |

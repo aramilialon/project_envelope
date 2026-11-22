@@ -155,8 +155,8 @@ export type {
   TimelineValueTick,
 } from "./presentation/timeline.ts";
 export { computeTimeline } from "./presentation/timeline.ts";
-export type { CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
-export { amountNeededToCover, computeTodos, reservationShortfall } from "./presentation/todos.ts";
+export type { CardPartAsked, CategoryTargetNeed, OverdueScheduledItem, TodoItem, TodosInput } from "./presentation/todos.ts";
+export { amountNeededToCover, cardAmountAsked, cardPartsAskedOnCategories, computeTodos, reservationShortfall } from "./presentation/todos.ts";
 export type { AccountBalance, BalanceRow, NotYetRecordedAmount } from "./presentation/accountBalance.ts";
 export { computeAccountBalance, isAfterToday } from "./presentation/accountBalance.ts";
 export type { AvailableChange, InflowTiming, TransferCategoryRule, TransferEnd } from "./presentation/transferCategory.ts";

@@ -213,6 +213,7 @@ button{cursor:pointer}
 .goal.pay .meter{flex-shrink:0}
 .goal.pay .gt{flex:1 1 150px;min-width:0}
 .sch-b{grid-column:2 / -1;display:flex;gap:16px}
+.sch .sch-open{font-size:12px;font-weight:500;text-decoration:underline;text-underline-offset:2px}
 .sch.late > small{color:var(--ink);font-weight:700}
 .hist-r{display:flex;align-items:baseline;gap:10px}
 .hist.gone > span:nth-child(2), .hist.gone .n{color:var(--muted);text-decoration:line-through}
@@ -244,6 +245,9 @@ button{cursor:pointer}
 .views{display:flex;gap:20px;border-bottom:1px solid var(--rule)}
 .views button{padding:6px 0 8px;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted);font-weight:500}
 .views button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+/* A switch of the mockup's own sample data, not part of the screen (#726). */
+.sample-sw{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.sample-sw .btn{min-height:32px;border-radius:10px}
 .scroller{overflow-x:auto;border-radius:16px}
 /* Sentence case everywhere: the uppercase labels of the first mockups are gone. */
 .where,.sec h5{font-size:13px;font-weight:600;font-stretch:100%;letter-spacing:0;text-transform:none}
@@ -337,7 +341,7 @@ button{cursor:pointer}
 .spent{font-size:12.5px;color:var(--muted)}
 .bar{position:relative;display:block;height:14px}
 .bar .tr{position:absolute;left:0;top:0;bottom:0;width:82%;border-radius:7px;background:var(--bar);overflow:hidden}
-.bar .tr.empty{background:var(--rule-soft)}
+.bar .tr.no-debt{background:var(--rule-soft)}
 .bar .sp{position:absolute;left:0;top:0;bottom:0;background:var(--spent)}
 .bar .rs{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)}
 .bar .tail{position:absolute;top:0;bottom:0;border-radius:0 7px 7px 0}
@@ -393,10 +397,15 @@ button{cursor:pointer}
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, budget month mockup. The interface is shown in English, with sample data of a household on September 25, 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “To do”, the timeline, Assign, Move money, Quick assign and Scheduled; on the phone, tap a category to open it.</p>
+    <p><b>envelope</b>, budget month mockup. The interface is shown in English, with sample data of a household on September 25, 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “To do”, the timeline, Assign, Move money, Quick assign (it says what it assigned, or why there is nothing to assign) and Scheduled (every item opens its form, and “After October” lists what is due after next month); on the phone, tap a category to open it. The Travel card switch shows a card paid beyond what was set aside, still owing or owing nothing.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
+    </div>
+    <div class="sample-sw" role="group" aria-label="Sample data: the Travel card">
+      <span>Travel card (sample)</span>
+      <button type="button" class="btn" data-tvowes="1" aria-pressed="true">Still owes €245.67</button>
+      <button type="button" class="btn" data-tvowes="0" aria-pressed="false">Owes nothing</button>
     </div>
   </div>
 
@@ -583,7 +592,9 @@ button{cursor:pointer}
       // checking account with nothing assigned here: the card owes €245.67, available is
       // -€254.33 (cash overspending) and "to cover" is €500.00: cash overspending + uncovered,
       // max(0, owed - available) with owed signed (#660: a card in credit, owed < 0, may hold
-      // its payment category down to minus its credit with nothing to cover).
+      // its payment category down to minus its credit with nothing to cover). Its bar draws that
+      // cash overspending as a red part past the end (#726); the strip's "Owes nothing" switch
+      // shows the case with no debt left.
       { id: 'tv', name: 'Travel card', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
         start: { date: 'Sep 1', amount: -50000 },
         txs: [['Sep 20', 'Card payment', 'Checking', -30000], ['Sep 1', 'Starting balance', 'Travel card', -50000, 'start']] }
@@ -608,7 +619,10 @@ button{cursor:pointer}
     { id: 's-mutuo', payee: 'Bank, mortgage payment', cat: 'mutuo', acc: 'cc', amount: 85000, due: { y: 2026, m: 10, d: 1 }, every: 1 },
     { id: 's-net', payee: 'Phone provider', cat: 'net', acc: 'cc', amount: 4500, due: { y: 2026, m: 10, d: 2 }, every: 1 },
     { id: 's-pac', payee: 'Transfer to ETF broker', cat: 'pac', acc: 'cc', amount: 50000, due: { y: 2026, m: 10, d: 5 }, every: 1 },
-    { id: 's-music', payee: 'Music streaming', cat: 'abb', acc: 'cc', amount: 1099, due: { y: 2026, m: 10, d: 8 }, every: 1 }
+    { id: 's-music', payee: 'Music streaming', cat: 'abb', acc: 'cc', amount: 1099, due: { y: 2026, m: 10, d: 8 }, every: 1 },
+    // Due after next month (#744): listed under "Later" in the Scheduled sheet, each one openable.
+    { id: 's-tax', payee: 'Vehicle tax office', cat: 'bollo', acc: 'cc', amount: 18000, due: { y: 2027, m: 2, d: 1 }, every: 12 },
+    { id: 's-ins', payee: 'Insurance company', memo: 'car policy', cat: 'ass', acc: 'cc', amount: 60000, due: { y: 2027, m: 3, d: 15 }, every: 12 }
   ];
   function everyLabel(n) { return !n ? 'once' : n === 1 ? 'every month' : n === 12 ? 'every year' : n === 24 ? 'every 2 years' : 'every ' + n + ' months'; }
 
@@ -707,7 +721,15 @@ button{cursor:pointer}
 
   // ---- Month ----
   function compute() {
-    var byId = {}, covered = {};
+    var byId = {}, covered = {}, need = {};
+    // #731: what each card still needs before card spending moves in — its debt less what its
+    // payment category holds from carried, assigned and paid.
+    GROUPS.forEach(function (g) {
+      g.cats.forEach(function (c) {
+        if (!c.payment) return;
+        need[c.card] = -(c.cardBase - (state.cardD[c.card] || 0)) - (c.carried + c.assigned + delta(c.id, CUR) + c.paid);
+      });
+    });
     GROUPS.forEach(function (g) {
       g.cats.forEach(function (c) {
         if (c.payment) return;
@@ -719,11 +741,18 @@ button{cursor:pointer}
         var real = c.carried + assigned + activity;
         var over = Math.max(0, -real);
         var credit = Math.min(over, outBy.visa + outBy.mc + outBy.tv);
-        // Overspending is attributed to card spending first; here to the Visa first, then the Mastercard, then the Travel card.
-        var cv = Math.min(credit, outBy.visa), cm = Math.min(credit - cv, outBy.mc), ct = credit - cv - cm;
-        covered.visa = (covered.visa || 0) + outBy.visa - cv;
-        covered.mc = (covered.mc || 0) + outBy.mc - cm;
-        covered.tv = (covered.tv || 0) + outBy.tv - ct;
+        // Overspending is attributed to card spending first. #731: the covered part goes first to
+        // the cards that still need money, then to the others (Visa, Mastercard, Travel card), and
+        // each card's share of the overspending is its own spending less what was covered on it.
+        var left = outBy.visa + outBy.mc + outBy.tv - credit, cov = { visa: 0, mc: 0, tv: 0 };
+        [true, false].forEach(function (first) {
+          ['visa', 'mc', 'tv'].forEach(function (k) {
+            var room = outBy[k] - cov[k];
+            var n = Math.max(0, Math.min(room, left, first ? Math.max(0, need[k] - (covered[k] || 0)) : room));
+            cov[k] += n; left -= n; covered[k] = (covered[k] || 0) + n;
+          });
+        });
+        var cv = outBy.visa - cov.visa, cm = outBy.mc - cov.mc, ct = outBy.tv - cov.tv;
         var reserved = reservedOf(c.id);
         var short = Math.max(0, Math.min(reserved, reserved - Math.max(0, real)));
         byId[c.id] = { c: c, g: g, assigned: assigned, activity: activity, real: real, avail: real - reserved, credit: credit, creditBy: { visa: cv, mc: cm, tv: ct }, cash: over - credit, reserved: reserved, short: short };
@@ -751,14 +780,32 @@ button{cursor:pointer}
     if (left !== cashTotal()) console.error('Invariant broken', left, cashTotal());
   }
   // What a category asks for itself (#728), the same figure in "To do", "Move money" and quick
-  // assign: card debt is asked once, on the card's payment category. An ordinary category asks for
-  // its cash overspending, plus what its scheduled transactions are missing when it has no card
-  // overspending (with card overspending, money assigned here goes to the card first); never its
-  // card overspending, which is already part of its card's debt. A payment category asks for what
-  // was paid beyond what was set aside plus the debt still uncovered.
+  // assign: card debt is asked once. An ordinary category asks for its cash overspending plus what
+  // its scheduled transactions are missing. With card overspending it asks that too only when its
+  // scheduled transactions are missing money (#731): money assigned here goes to the card first,
+  // so the card part must be covered for anything to reach them; its card then asks that much
+  // less (askedOn); cash + credit + short is the minimum among assignments, and if the card already
+  // held enough, the extra credit part stays set aside on the card (only a move from the card's
+  // payment category avoids it). Otherwise its card overspending is asked on the card. A payment category asks
+  // for what was paid beyond what was set aside plus the debt still uncovered.
   function needOf(x) {
     if (x.c.payment) return x.cash + x.uncovered;
-    return x.credit > 0 ? x.cash : x.cash + x.short;
+    if (x.credit > 0) return x.short > 0 ? x.cash + x.credit + x.short : x.cash;
+    return x.cash + x.short;
+  }
+  // #731: the line on a card's "To do" item when part of its debt is asked on categories.
+  function askedSub(a) {
+    var total = sum(a, function (p) { return p.amount; });
+    return a.length === 1 ? f(total) + ' of the card\'s debt is included in what ' + a[0].name + ' still needs' : f(total) + ' of the card\'s debt is included in what ' + a.length + ' categories still need';
+  }
+  // #731: what every action that assigns to the card `k` asks ("To do", Assign, Move money, quick
+  // assign): its to cover less the card spending asked on categories. The meter keeps needOf.
+  function cardNeed(byId, k) { return Math.max(0, needOf(byId[k]) - sum(askedOn(byId, k), function (p) { return p.amount; })); }
+  // #731: the card spending asked on categories instead of on the card `k`.
+  function askedOn(byId, k) {
+    var card = byId[k].c.card;
+    return Object.keys(byId).filter(function (j) { var y = byId[j]; return !y.c.payment && y.credit > 0 && y.short > 0 && y.creditBy[card] > 0; })
+      .map(function (j) { return { name: byId[j].c.name, amount: byId[j].creditBy[card] }; });
   }
   function status(x) {
     if (x.credit > 0) return 'credit';
@@ -907,7 +954,8 @@ button{cursor:pointer}
     if (x.debt <= 0 && toCover <= 0) return '';
     var pct = x.debt > 0 ? Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100))) : 0;
     var text = x.cash > 0
-      ? (x.debt > 0 ? f(toCover) + ' to cover: ' + f(x.debt) + ' of debt and ' + f(x.cash) + ' paid beyond what was set aside'
+      // #726: the same order as its "To do" line: what was paid beyond what was set aside, then the debt.
+      ? (x.uncovered > 0 ? f(toCover) + ' to cover: ' + f(x.cash) + ' paid beyond what was set aside, ' + f(x.uncovered) + ' of debt'
         : f(toCover) + ' to cover: paid beyond what was set aside')
       : x.uncovered > 0 ? f(x.uncovered) + ' to cover of ' + f(x.debt) + ' of debt' : f(x.debt) + ' of debt covered';
     return '<span class="goal pay' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span><span class="gt">' + text + '</span></span>';
@@ -939,7 +987,9 @@ button{cursor:pointer}
     var now = ymOf(s.due) <= CUR;
     return '<div class="sch' + (overdue(s.due) ? ' late' : '') + '"><small class="n">' + dLabel(s.due) + '</small>' +
       '<span><b>' + esc(s.payee) + '</b><small>' + sub + '</small></span><span class="n">' + f(s.income ? s.amount : -s.amount) + '</span>' +
-      (now ? '<span class="sch-b"><button type="button" class="plain" data-rec="' + s.id + '">Record</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Skip</button></span>' : '<span></span>') + '</div>';
+      // #744: every scheduled transaction opens the same form, filled in.
+      '<span class="sch-b">' + (now ? '<button type="button" class="plain" data-rec="' + s.id + '">Record</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Skip</button>' : '') +
+        '<button type="button" class="plain" data-sfopen="' + s.id + '" aria-label="Open ' + esc(s.payee) + ', ' + dLabel(s.due) + '">Open</button></span></div>';
   }
   function histHtml(cat) {
     var rev = reversedIds();
@@ -1047,17 +1097,19 @@ button{cursor:pointer}
     var toCover = x.cash + x.uncovered;
     // "Assign" offers that whole amount, the same as the card's one "To fix" item; this
     // mockup caps it at what is still unassigned, as every other assign button here does.
-    var can = Math.min(toCover, Math.max(0, rta()));
+    // #731: less the card spending asked on categories with scheduled transactions short.
+    var asked = askedOn(byId, c.id), can = Math.min(cardNeed(byId, c.id), Math.max(0, rta()));
     var txs = (c.txs || []).map(function (r) {
       return '<div class="tx"><small class="n">' + esc(r[0]) + '</small><span>' + esc(r[1]) + '<small>' + esc(r[2]) + (r[4] === 'start' ? ' · debt, not counted as activity' : '') + '</small></span><span class="n">' + f(r[3]) + '</span></div>';
     }).join('') || '<span style="color:var(--muted)">No activity this month.</span>';
     return (p ? '<div><span class="where">' + esc(x.g.name) + '</span><h4>' + esc(card) + '</h4></div>' : '') +
       '<div class="sec" style="gap:8px"><span class="state-l">Set aside to pay the card</span>' +
       '<span class="big n ' + (x.avail > 0 ? 'pos' : 'zero') + '">' + f(Math.max(0, x.avail)) + '</span>' + (beyond ? '<p class="explain">' + esc(beyond) + '</p>' : '') + (explain ? '<p class="explain">' + esc(explain) + '</p>' : '') + '</div>' +
-      '<div class="sec"><h5><span>Card debt</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Move money here</button></h5>' + line('Card balance', f(-x.debt)) + line('Set aside', f(Math.max(0, x.avail))) +
+      '<div class="sec"><h5><span>Card debt</span><button type="button" class="plain" data-mvopen="to:' + c.id + '">Move money here</button></h5>' + line('Card balance', f(x.debt ? -x.debt : 0)) + line('Set aside', f(Math.max(0, x.avail))) +
       (x.cash > 0 ? line('Paid beyond what was set aside', f(x.cash)) : '') +
       line('To cover', f(toCover), toCover > 0 ? 'warnl' : '') +
-      (toCover > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>' : '') + '</div>' +
+      (asked.length ? '<p class="explain">' + esc(askedSub(asked)) + '</p>' : '') +
+      (cardNeed(byId, c.id) > 0 ? '<button type="button" class="btn primary" style="align-self:flex-start;margin-top:8px" data-fundgap="' + c.id + '" data-amount="' + can + '"' + (can > 0 ? '' : ' disabled') + '>Assign ' + f(can) + ' from unassigned money</button>' : '') + '</div>' +
       '<div class="sec"><h5>The month in numbers</h5>' + line('Carried over from August', f(c.carried)) + asgLine(x, p) +
       line('Card spending covered', f(x.covered)) + line('Card payments', f(c.paid)) + line('Available', f(x.avail)) + '</div>' +
       '<div class="sec"><h5>September assignments</h5>' + histHtml(c.id) + '</div>' +
@@ -1154,8 +1206,11 @@ button{cursor:pointer}
     else {
       var y = byId[to];
       lines.push(ba(nm(to), y.avail, y.avail + amount));
-      var gap = needOf(y);
-      if (gap > 0) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
+      var gap = y.c.payment ? cardNeed(byId, to) : needOf(y), asked = y.c.payment ? askedOn(byId, to) : [];
+      if (gap > 0 && !(amount >= gap && asked.length)) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 && y.short > 0 ? 'The overspending and the scheduled transactions are covered. ' + f(y.credit) + ' of this amount covers card spending and moves to the card.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
+      // #731: part of the card's debt is asked on categories instead.
+      // Only while the card has something to cover (needOf, the card's to cover).
+      if (asked.length && needOf(y) > 0) lines.push('<div class="ba note">' + esc(askedSub(asked)) + '</div>');
     }
     var warn = from === null && amount > r ? 'Unassigned will go below zero: you are assigning money that has not arrived yet.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1184,7 +1239,7 @@ button{cursor:pointer}
     if (spec && spec.indexOf('to:') === 0) {
       var t = spec.slice(3), y = byId[t];
       m.to = t;
-      var gap = needOf(y);
+      var gap = y.c.payment ? cardNeed(byId, t) : needOf(y);
       if (gap > 0) m.amt = amountStr(gap);
       if (rta() < gap) {
         var srcs = Object.keys(byId).filter(function (k) { return k !== t && !byId[k].c.payment && byId[k].avail >= gap; });
@@ -1201,8 +1256,8 @@ button{cursor:pointer}
   var QK = [
     ['targets', 'Fund the targets', 'Brings each category up to what its target asks this month.'],
     ['res', 'Cover the scheduled transactions', 'Adds what is missing to the categories that are short for the month\'s scheduled transactions.'],
-    ['over', 'Cover overspending', 'Covers what categories spent in cash beyond what was available, and what is missing for their scheduled transactions. Card spending is already part of the cards\' debt.'],
-    ['debt', 'Cover the cards\' debt', 'Sets aside what is missing to pay the cards, starting balance included.'],
+    ['over', 'Cover overspending', 'Covers what categories spent in cash beyond what was available, and what is missing for their scheduled transactions. A category short for its scheduled transactions gets its card spending too, which moves to the card.'],
+    ['debt', 'Cover the cards\' debt', 'Sets aside what is missing to pay the cards, starting balance included. Card spending of a category short for its scheduled transactions is covered by “Cover overspending” instead.'],
     ['lastA', 'As assigned last month', 'Brings each category\'s assigned amount up to at least August\'s.'],
     ['lastS', 'As spent last month', 'Brings each category\'s assigned amount up to at least what was spent in it in August.']
   ];
@@ -1212,7 +1267,8 @@ button{cursor:pointer}
       if (scope !== 'all' && scope !== g.id) return;
       g.cats.forEach(function (c) {
         var x = byId[c.id], t = target(x), n = 0;
-        if (c.payment) { if (kind === 'debt') n = x.cash + x.uncovered; }
+        // #731: the same figure as the card's "To do" item, less what categories ask for it.
+        if (c.payment) { if (kind === 'debt') n = cardNeed(byId, c.id); }
         else if (kind === 'targets') n = t ? t.need : 0;
         else if (kind === 'res') n = x.credit + x.cash > 0 ? 0 : x.short;
         // The same figure as the API's cover_overspending (#728): needOf, so a category short only
@@ -1226,26 +1282,41 @@ button{cursor:pointer}
     var left = Math.max(0, rta());
     return out.map(function (q) { var give = Math.min(q[1], left); left -= give; return [q[0], q[1], give]; });
   }
+  // #707: when a choice has nothing to assign, the preview says why, before anything is sent, and
+  // "Run" stays unavailable; after a run, the sheet closes and the one-line confirmation says what
+  // was assigned, with "Undo".
+  var QK_NONE = {
+    targets: 'Nothing to assign: every target is funded.',
+    res: 'Nothing to assign: every category has enough for its scheduled transactions.',
+    over: 'Nothing to assign: no category is overspent in cash or short for its scheduled transactions.',
+    debt: 'Nothing to assign: every card\'s debt is covered.',
+    lastA: 'Nothing to assign: every category already has at least what was assigned to it in August.',
+    lastS: 'Nothing to assign: every category already has at least what was spent in it in August.'
+  };
   function quickHtml(byId) {
     var q = state.qa;
     var opts = QK.map(function (k) {
       var list = qaNeeds(k[0], byId, q.scope), tot = sum(list, function (z) { return z[1]; });
       return '<label class="opt"><input type="radio" name="qakind" value="' + k[0] + '" data-qa="kind"' + (q.kind === k[0] ? ' checked' : '') + '>' +
-        '<span><b>' + k[1] + '</b><small>' + k[2] + '</small><small class="n" style="color:var(--ink-2)">' + (list.length ? list.length + (list.length === 1 ? ' category, ' : ' categories, ') + f(tot) : 'Nothing to do') + '</small></span></label>';
+        '<span><b>' + k[1] + '</b><small>' + k[2] + '</small><small class="n" style="color:var(--ink-2)">' + (list.length ? list.length + (list.length === 1 ? ' category, ' : ' categories, ') + f(tot) : 'Nothing to assign') + '</small></span></label>';
     }).join('');
     var list = qaNeeds(q.kind, byId, q.scope), give = sum(list, function (z) { return z[2]; }), want = sum(list, function (z) { return z[1]; });
     var prev = list.length ? list.map(function (z) {
-      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
+      // #731: once per card, the part of its debt asked on categories instead.
+      var asked = byId[z[0]].c.payment ? askedOn(byId, z[0]) : [];
+      return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>' +
+        (asked.length ? '<div class="ba note">' + esc(askedSub(asked)) + '</div>' : '');
     }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Unassigned</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
-      (give < want ? '<div class="ba note" style="color:var(--warn)">Unassigned is not enough for everything: categories get money in the order of the table while it lasts.</div>' : '')
-      : '<span style="color:var(--muted)">Nothing to assign for this choice.</span>';
+      (give === 0 ? '<div class="ba note qa-none" role="status">Nothing to assign: “Unassigned” is ' + f(rta()) + '.</div>'
+        : give < want ? '<div class="ba note" style="color:var(--warn)">Unassigned is not enough for everything: categories get money in the order of the table while it lasts.</div>' : '')
+      : '<div class="ba note qa-none" role="status">' + (QK_NONE[q.kind] || 'Nothing to assign for this choice.') + '</div>';
     return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Quick assign</h4></div>' +
       '<div class="field"><label for="qa-scope">Scope</label><select id="qa-scope" data-qa="scope"><option value="all">All categories</option>' +
       GROUPS.map(function (g) { return '<option value="' + g.id + '"' + (q.scope === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select></div>' +
       '<fieldset class="types"><legend>Mode</legend>' + opts + '</fieldset>' +
       '<div class="preview">' + prev + '</div>' +
       '<div class="row-btns"><button type="button" class="btn primary" data-qaapply="1"' + (give > 0 ? '' : ' disabled') + '>Run</button></div>' +
-      '<p class="explain" style="font-size:13px;color:var(--muted)">Each category gets one line in the assignment ledger; “Undo” removes them all together.</p>';
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Each category gets one line in the assignment ledger. “Undo”, in the confirmation or in the toolbar, takes back the whole run at once.</p>';
   }
 
   // ---- Scheduled transactions panel ----
@@ -1262,7 +1333,8 @@ button{cursor:pointer}
       if (per !== null && per >= byCat[k]) { st = 'Within the target (' + describe(sp) + ')'; inT += byCat[k]; }
       else if (per !== null) { st = 'The target asks ' + f(per) + ': ' + f(byCat[k] - per) + ' missing'; cls = ' need'; inT += per; }
       else { st = 'No target'; cls = ' need'; }
-      rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return esc(s.payee); }).join(', ') + '</small>' +
+      // Each scheduled transaction in the row opens its form (#744): its payee is the link.
+      rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return '<button type="button" class="plain sch-open" data-sfopen="' + s.id + '" aria-label="Open ' + esc(s.payee) + ', ' + dLabel(s.due) + '">' + esc(s.payee) + '</button>'; }).join(', ') + '</small>' +
         '<span class="goal' + cls + '">' + esc(st) + '</span></span><span class="n">' + f(-byCat[k]) + '</span>' +
         (per === null ? '<span class="sch-b"><button type="button" class="plain" data-sugg="' + k + '">Use as target</button></span>' : '<span></span>') + '</div>';
     });
@@ -1275,6 +1347,7 @@ button{cursor:pointer}
     var inc = now.filter(function (s) { return s.income; });
     var reserved = sum(now.filter(function (s) { return !s.income; }), function (s) { return s.amount; });
     var o = octPreview(byId);
+    var later = state.sched.filter(function (s) { return ymOf(s.due) > CUR + 1; }).sort(function (a, b) { return (ymOf(a.due) - ymOf(b.due)) * 40 + a.due.d - b.due.d; });
     return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Scheduled</h4></div>' +
       '<div class="gstats"><div><small>Reserved this month</small><b class="n">' + f(reserved) + '</b></div>' +
       '<div><small>To record</small><b class="n">' + late.length + '</b></div>' +
@@ -1288,36 +1361,50 @@ button{cursor:pointer}
       '<div class="sec"><h5>Preview: the start of next month</h5><p class="explain">On October 1, <b class="n">' + f(o.total) + '</b> will be reserved for ' + o.n + ' scheduled expenses' +
         (o.total ? ': <b class="n">' + f(o.inT) + '</b> is already within a target' + (o.total - o.inT > 0 ? ', and <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> is left to assign by hand' : '') : '') +
         '. When October opens, the month summary starts from this list.</p>' + o.rows + '</div>' +
+      // #744: everything due after next month, with its next date, each one openable. The heading
+      // names the month it follows ("After October"), computed from the month on screen: the month
+      // after it, as Intl's long standalone month name (lowercase inside the heading in Italian,
+      // Spanish and French). "Later" is the register's word for rows dated after today
+      // (packages/i18n/glossary.md). With nothing due, the section says "None." and has no note.
+      '<div class="sec"><h5>After ' + monthName(CUR + 1 - 2026 * 12) + '</h5>' + (later.length ? later.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">Each one reserves money in its category from the first day of its own month.</p>' : '<span style="color:var(--muted)">None.</span>') + '</div>' +
       (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ New scheduled transaction</button>');
   }
   var SF_DAYS = (function () { var a = []; for (var d = 26; d <= 30; d++) a.push({ y: 2026, m: 9, d: d }); for (d = 1; d <= 31; d++) a.push({ y: 2026, m: 10, d: d }); return a; })();
-  function sfKey(dt) { return dt.m + '-' + dt.d; }
+  function sfKey(dt) { return dt.y + '-' + dt.m + '-' + dt.d; }
+  // The dates the form offers: the rest of this month and next month, plus the date of the
+  // scheduled transaction being edited when it is later than that (#744).
+  function sfDays() { var s = state.sf, a = SF_DAYS.slice(); if (s && s.dueDt && !a.some(function (d) { return sfKey(d) === s.due; })) a.push(s.dueDt); return a; }
   function sfPreview(byId) {
     var s = state.sf, amt = parseAmount(s.amt);
     if (!s.payee.trim()) return '<span style="color:var(--red-text)">Write who this payment goes to.</span>';
     if (amt === null || amt <= 0) return '<span style="color:var(--red-text)">Enter an amount, for example 20 or 20.00.</span>';
     if (s.kind === 'in') return 'Income reserves nothing: once recorded, it lands in Unassigned.';
     if (!s.cat) return '<span style="color:var(--red-text)">Choose a category: every expense has one.</span>';
-    var x = byId[s.cat], due = SF_DAYS.filter(function (d) { return sfKey(d) === s.due; })[0];
-    if (ymOf(due) > CUR) return 'Will reserve ' + f(amt) + ' in ' + esc(x.c.name) + ' from ' + monthName(due.m) + ' 1.';
-    var after = x.avail - amt;
-    return 'Reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' right away: available goes from ' + f(x.avail) + ' to <b class="n">' + f(after) + '</b>.' +
+    var x = byId[s.cat], due = sfDays().filter(function (d) { return sfKey(d) === s.due; })[0];
+    if (ymOf(due) > CUR) return 'This reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' from ' + monthName(due.m) + ' 1' + (due.y !== 2026 ? ', ' + due.y : '') + '.';
+    // An opened one already reserves its amount this month: the preview starts from without it.
+    var was = s.id ? state.sched.filter(function (z) { return z.id === s.id; })[0] : null;
+    var base = x.avail + (was && !was.income && was.cat === s.cat && ymOf(was.due) <= CUR ? was.amount : 0);
+    var after = base - amt;
+    return 'This reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' right away: available goes from ' + f(base) + ' to <b class="n">' + f(after) + '</b>.' +
       (after < 0 ? '<br><span style="color:var(--warn)">Not enough: ' + f(-after) + ' missing. This is not overspending.</span>' : '');
   }
   function sfHtml(byId) {
     var s = state.sf, x = s.cat ? byId[s.cat] : null;
     var canTarget = s.kind === 'out' && x && !specOf(x) && s.every > 0;
-    return '<div class="sec sf"><h5>New scheduled transaction</h5>' +
+    return '<div class="sec sf"><h5 id="sf-title" tabindex="-1">' + (s.id ? 'Scheduled transaction' : 'New scheduled transaction') + '</h5>' +
       '<div class="seg" role="group" aria-label="Kind"><button type="button" class="btn" data-sfkind="out" aria-pressed="' + (s.kind === 'out') + '">Expense</button><button type="button" class="btn" data-sfkind="in" aria-pressed="' + (s.kind === 'in') + '">Income</button></div>' +
       '<div class="field"><label for="sf-payee">' + (s.kind === 'in' ? 'Payee' : 'Payee') + '</label><span class="money-in"><input type="text" id="sf-payee" data-sf="payee" value="' + esc(s.payee) + '" placeholder="For example: Gym"></span></div>' +
       (s.kind === 'out' ? '<div class="field"><label for="sf-cat">Category</label><select id="sf-cat" data-sf="cat">' + mvOptions(byId, s.cat, { pick: true }) + '</select></div>' : '') +
       '<div class="field"><label for="sf-acc">Account</label><select id="sf-acc" data-sf="acc">' + ACCTS.filter(function (a) { return s.kind === 'out' || !a.card; }).map(function (a) { return '<option value="' + a.id + '"' + (s.acc === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="sf-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="sf-amt" data-sf="amt" value="' + esc(s.amt) + '"><span>€</span></span></div>' +
-      '<div class="two"><div class="field"><label for="sf-due">Next date</label><select id="sf-due" data-sf="due">' + SF_DAYS.map(function (d) { return '<option value="' + sfKey(d) + '"' + (s.due === sfKey(d) ? ' selected' : '') + '>' + dLabel(d) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="two"><div class="field"><label for="sf-due">Next date</label><select id="sf-due" data-sf="due">' + sfDays().map(function (d) { return '<option value="' + sfKey(d) + '"' + (s.due === sfKey(d) ? ' selected' : '') + '>' + dLabel(d) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="sf-every">Repeats</label><select id="sf-every" data-sf="every">' + [0, 1, 3, 6, 12].map(function (n) { return '<option value="' + n + '"' + (Number(s.every) === n ? ' selected' : '') + '>' + everyLabel(n) + '</option>'; }).join('') + '</select></div></div>' +
       (canTarget ? '<label class="chk"><input type="checkbox" data-sf="asTarget"' + (s.asTarget ? ' checked' : '') + '> Use it as this category\'s target</label>' : '') +
       '<div class="preview" id="sf-prev" aria-live="polite">' + sfPreview(byId) + '</div>' +
-      '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Save</button><button type="button" class="btn" data-sfcancel="1">Cancel</button></div></div>';
+      '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Save</button><button type="button" class="btn" data-sfcancel="1">Cancel</button>' +
+      (s.id ? '<button type="button" class="plain danger" style="margin-left:8px" data-sfdelete="1">Delete</button>' : '') + '</div></div>';
   }
   function targetFromSched(cat, amount, every, due) {
     if (every === 1) return { type: 'monthly', amount: amount };
@@ -1327,12 +1414,16 @@ button{cursor:pointer}
   function saveSf() {
     var s = state.sf, amt = parseAmount(s.amt), byId = compute();
     if (!s.payee.trim() || amt === null || amt <= 0 || (s.kind === 'out' && !s.cat)) { var i = el(!s.payee.trim() ? 'sf-payee' : 'sf-amt'); if (i) i.focus(); return false; }
-    var due = SF_DAYS.filter(function (d) { return sfKey(d) === s.due; })[0];
-    var item = { id: 'n' + (++state.seq), payee: s.payee.trim(), acc: s.acc, amount: amt, due: { y: due.y, m: due.m, d: due.d }, every: Number(s.every) };
+    var due = sfDays().filter(function (d) { return sfKey(d) === s.due; })[0];
+    var item = { id: s.id || 'n' + (++state.seq), payee: s.payee.trim(), acc: s.acc, amount: amt, due: { y: due.y, m: due.m, d: due.d }, every: Number(s.every) };
     if (s.kind === 'in') item.income = true; else item.cat = s.cat;
-    state.sched.push(item);
+    if (s.id) {
+      var old = state.sched.filter(function (x) { return x.id === s.id; })[0];
+      if (old && old.memo) item.memo = old.memo;
+      state.sched = state.sched.map(function (x) { return x.id === s.id ? item : x; });
+    } else state.sched.push(item);
     if (s.kind === 'out' && s.asTarget && !specOf(byId[s.cat]) && item.every > 0) state.targets[s.cat] = targetFromSched(s.cat, amt, item.every, item.due);
-    state.toast = { text: 'Scheduled: ' + item.payee + ', ' + f(item.income ? amt : -amt) + ' on ' + dLabel(item.due) + (ymOf(item.due) <= CUR && !item.income ? '. The money is already reserved.' : '.') };
+    state.toast = { text: (s.id ? 'Saved: ' : 'Scheduled: ') + item.payee + ', ' + f(item.income ? amt : -amt) + ' on ' + dLabel(item.due) + (ymOf(item.due) <= CUR && !item.income ? '. The money is already reserved.' : '.') };
     state.sf = null;
     return true;
   }
@@ -1346,9 +1437,14 @@ button{cursor:pointer}
   function barHtml(x) {
     var W = 82, TAIL = 18;
     if (x.c.payment) {
-      if (x.debt <= 0) return '<span class="bar"><span class="tr"></span></span>';
+      // #726: what was paid beyond what was set aside is cash overspending, drawn as on any other
+      // category: solid red past the end of the track. With debt, the track is the debt (covered in
+      // `bar`, uncovered hatched) and the red part is in proportion to it, at most 18 %; with no
+      // debt left, the track is empty and the red part takes the whole 18 %.
+      var cashTail = x.cash > 0 ? '<span class="tail cash" style="left:' + W + '%;width:' + (x.debt > 0 ? Math.min(TAIL, x.cash / x.debt * W) : TAIL).toFixed(1) + '%"></span>' : '';
+      if (x.debt <= 0) return '<span class="bar" aria-hidden="true"><span class="tr' + (cashTail ? ' no-debt' : '') + '"></span>' + cashTail + '</span>';
       var cov = pct(Math.max(0, x.avail), x.debt);
-      return '<span class="bar" aria-hidden="true"><span class="tr"><span class="uc" style="left:' + cov.toFixed(1) + '%;width:' + (100 - cov).toFixed(1) + '%"></span></span></span>';
+      return '<span class="bar" aria-hidden="true"><span class="tr"><span class="uc" style="left:' + cov.toFixed(1) + '%;width:' + (100 - cov).toFixed(1) + '%"></span></span>' + cashTail + '</span>';
     }
     var B = budgetOf(x), S = spentOf(x), R = x.reserved;
     var sp, rs, over = 0, kind = '';
@@ -1468,20 +1564,35 @@ button{cursor:pointer}
     var list = [];
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
-      // #728: card overspending is no item of its own here; it is already in the card's debt below.
-      if (x.cash > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.credit === 0 && x.short > 0 ? 'overspent in cash and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash: cover it before the month ends', amount: needOf(x), cat: k });
+      // #728: card overspending is no item of its own here; it is already in the card's debt below,
+      // unless the category's scheduled transactions are missing money too (#731).
+      if (x.cash > 0 && !x.c.payment) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: x.short > 0 ? (x.credit > 0 ? 'overspent in cash and with a card, and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month\'s unassigned money' : 'overspent in cash and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month\'s unassigned money') : 'overspent in cash; if still uncovered when the month ends, it comes out of next month\'s unassigned money', amount: needOf(x), cat: k });
+      // #726: a card's payment category says what its to cover is made of, in the debt meter's order:
+      // what was paid beyond what was set aside (cash overspending, this month), then the debt still
+      // uncovered, if any. #731: its amount is the net figure (cardNeed), and a second line says how
+      // much of the card's debt is included in what categories still need, while there is any to cover.
+      if (x.cash > 0 && x.c.payment) {
+        var a = askedOn(byId, k), n = cardNeed(byId, k);
+        if (n > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: f(x.cash) + ' paid beyond what was set aside; if still uncovered when the month ends, it comes out of next month\'s unassigned money.' + (x.uncovered > 0 ? ' Plus ' + f(x.uncovered) + ' of debt.' : ''), sub2: a.length && needOf(x) > 0 ? askedSub(a) + '.' : '', amount: n, cat: k });
+      }
     });
     state.sched.filter(function (s) { return overdue(s.due); }).forEach(function (s) {
       list.push({ dot: '', title: 'Record ' + s.payee, sub: 'scheduled for ' + dLabel(s.due) + ', not yet in the account', amount: s.amount, rec: s.id });
     });
     Object.keys(byId).forEach(function (k) {
       var x = byId[k];
-      if (x.short > 0 && x.credit + x.cash === 0) {
+      if (x.short > 0 && x.cash === 0) {
         var s = schedThisMonth(k)[0];
-        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + 'still missing', amount: x.short, cat: k });
+        list.push({ dot: 'w', title: x.c.name + ': not enough for what is scheduled', sub: (s ? s.payee + ', ' + dLabel(s.due) + ': ' : '') + (x.credit > 0 ? 'includes ' + f(x.credit) + ' spent with a card, covered first by money assigned here' : 'still missing'), amount: x.credit + x.short, cat: k });
       }
     });
-    Object.keys(byId).forEach(function (k) { var x = byId[k]; if (x.uncovered > 0 && x.cash === 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: x.uncovered, cat: k }); });
+    Object.keys(byId).forEach(function (k) {
+      var x = byId[k];
+      if (!(x.uncovered > 0 && x.cash === 0)) return;
+      // #731: what a category asks for this card is not asked here again.
+      var a = askedOn(byId, k), n = cardNeed(byId, k);
+      if (n > 0) list.push({ dot: 'w', title: 'Debt to cover: ' + x.c.name, sub: a.length ? askedSub(a) : x.c.start ? 'the card\'s starting balance' : 'card spending with no money set aside for it', amount: n, cat: k });
+    });
     var need = Object.keys(byId).filter(function (k) { var t = target(byId[k]); return t && t.need > 0; });
     if (need.length) list.push({ dot: '', title: need.length === 1 ? 'Fund the ' + byId[need[0]].c.name + ' target' : 'Fund ' + need.length + ' targets', sub: 'what is still missing this month', amount: sum(need, function (k) { return target(byId[k]).need; }), fund: need.length === 1 ? need[0] : 'all' });
     if (rta() < 0) list.unshift({ dot: 'r', title: 'You assigned more than you have', sub: 'take money back from a category', amount: -rta(), panel: 'move' });
@@ -1493,7 +1604,7 @@ button{cursor:pointer}
     return '<h5>To do <span>' + (list.length === 1 ? '1 thing' : list.length + ' things') + '</span></h5>' + shown.map(function (t) {
       var act = t.rec ? ' data-rec="' + t.rec + '"' : t.fund ? ' data-fund="' + t.fund + '"' : t.panel ? ' data-panel="' + t.panel + '"' : ' data-' + (max ? 'phcat' : 'cat') + '="' + t.cat + '" data-todo="1"';
       var verb = t.rec ? 'Record' : t.fund ? 'Fund' : t.panel ? 'Move' : 'Open';
-      return '<button type="button" class="todo-i"' + act + '><span class="dot ' + t.dot + '"></span><span><b>' + esc(t.title) + '</b>' + (max ? '' : '<small>' + esc(t.sub) + '</small>') + '</span><span class="n">' + f(t.amount) + '<small class="go-l">' + verb + '</small></span></button>';
+      return '<button type="button" class="todo-i"' + act + '><span class="dot ' + t.dot + '"></span><span><b>' + esc(t.title) + '</b>' + (max ? '' : '<small>' + esc(t.sub) + '</small>' + (t.sub2 ? '<small>' + esc(t.sub2) + '</small>' : '')) + '</span><span class="n">' + f(t.amount) + '<small class="go-l">' + verb + '</small></span></button>';
     }).join('') + (max && list.length > max ? '<p class="explain" style="font-size:13px">+' + (list.length - max) + ' more</p>' : '');
   }
 
@@ -1529,7 +1640,7 @@ button{cursor:pointer}
     el('reset').disabled = lb === null;
     var t = state.toast;
     el('toast').hidden = !t;
-    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Close this message">×</button>';
+    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '"' + (t.undoLabel ? ' aria-label="' + t.undoLabel + '"' : '') + '>Undo</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Close this message">×</button>';
 
     // Bars
     var body = '';
@@ -1563,7 +1674,7 @@ button{cursor:pointer}
 
     // Phone
     el('ph-toast').hidden = !t || !!state.ph;
-    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '');
+    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '"' + (t.undoLabel ? ' aria-label="' + t.undoLabel + '"' : '') + '>Undo</button>' : '');
     el('ph-home').hidden = !!state.ph;
     el('ph-detail').hidden = !state.ph;
     if (state.ph) {
@@ -1623,6 +1734,17 @@ button{cursor:pointer}
     var d = b.dataset, byId;
     if (b.id === 'tab-desk') return show('desk');
     if (b.id === 'tab-phone') return show('phone');
+    if (d.tvowes) {
+      // #726's second case: the same payments and spending, with a smaller starting balance, so the
+      // card owes nothing and was still paid €254.33 beyond what was set aside. The cash accounts do
+      // not change, so the invariant holds either way.
+      var tvc = CAT.tv.c, owes = d.tvowes === '1';
+      tvc.cardBase = owes ? -24567 : 0;
+      tvc.start.amount = owes ? -50000 : -25433;
+      tvc.txs[1][3] = tvc.start.amount;
+      document.querySelectorAll('[data-tvowes]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      return render();
+    }
     if (d.cover) {
       var amount = Number(d.amount);
       if (!d.src || amount <= 0) return;
@@ -1644,9 +1766,21 @@ button{cursor:pointer}
       return render();
     }
     if (d.qaapply) {
-      var ql = qaNeeds(state.qa.kind, compute(), state.qa.scope).filter(function (z) { return z[2] > 0; });
-      if (ql.length) addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }), 'Quick assign: ' + f(sum(ql, function (z) { return z[2]; })) + ' to ' + ql.length + (ql.length === 1 ? ' category.' : ' categories.'));
-      return render();
+      var qall = qaNeeds(state.qa.kind, compute(), state.qa.scope), ql = qall.filter(function (z) { return z[2] > 0; });
+      if (!ql.length) return;
+      var qgive = sum(ql, function (z) { return z[2]; }), qmiss = sum(qall, function (z) { return z[1] - z[2]; });
+      addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }),
+        'Quick assign put ' + f(qgive) + ' in ' + (ql.length === 1 ? nm(ql[0][0]) + '.' : ql.length + ' categories.') +
+        (qmiss > 0 ? ' “Unassigned” was not enough for ' + f(qmiss) + ' more.' : ''));
+      // The confirmation's "Undo" and the toolbar's both take back this whole run; the confirmation's
+      // says so to a screen reader.
+      if (state.toast) state.toast.undoLabel = 'Undo this quick assign';
+      // The sheet closes; the confirmation above the categories says what was done, and focus goes
+      // back to the toolbar's "Quick assign".
+      state.sel = null;
+      render();
+      el('show-quick').focus();
+      return;
     }
     if (d.undo) { var en = allEntries().filter(function (x) { return x.id === d.undo; })[0]; undoEntries([en], 'Undid the entry of ' + en.date + ': ' + moveText(en.from, en.to, en.amount, en.month).toLowerCase()); return render(); }
     if (d.toastundo) { undoEntries(batchEntries(Number(d.toastundo)), 'Undone.'); return render(); }
@@ -1671,10 +1805,21 @@ button{cursor:pointer}
       state.toast = { text: 'New target for ' + nm(d.sugg) + ': ' + describe(state.targets[d.sugg]) + '.' };
       return render();
     }
-    if (d.sfnew) { state.sf = { payee: '', kind: 'out', cat: '', acc: 'cc', amt: '', due: '9-30', every: 1, asTarget: true }; render(); var ip = el('sf-payee'); if (ip) ip.focus(); return; }
+    if (d.sfnew) { state.sf = { payee: '', kind: 'out', cat: '', acc: 'cc', amt: '', due: '2026-9-30', every: 1, asTarget: true }; render(); var ip = el('sf-payee'); if (ip) ip.focus(); return; }
     if (d.sfkind) { state.sf.kind = d.sfkind; if (d.sfkind === 'in' && acct(state.sf.acc).card) state.sf.acc = 'cc'; return render(); }
     if (d.sfsave) { if (saveSf()) render(); return; }
-    if (d.sfcancel) { state.sf = null; return render(); }
+    if (d.sfcancel) { var back = state.sf && state.sf.id; state.sf = null; render(); var ob = back && document.querySelector('[data-sfopen="' + back + '"]'); if (ob) ob.focus(); return; }
+    if (d.sfopen) {
+      var so = state.sched.filter(function (x) { return x.id === d.sfopen; })[0];
+      state.sf = { id: so.id, payee: so.payee, kind: so.income ? 'in' : 'out', cat: so.cat || '', acc: so.acc, amt: amountStr(so.amount), due: sfKey(so.due), dueDt: { y: so.due.y, m: so.due.m, d: so.due.d }, every: so.every, asTarget: false };
+      render(); var st = el('sf-title'); if (st) { st.scrollIntoView({ block: 'nearest' }); st.focus(); } return;
+    }
+    if (d.sfdelete) {
+      var sd = state.sched.filter(function (x) { return x.id === state.sf.id; })[0];
+      state.sched = state.sched.filter(function (x) { return x.id !== state.sf.id; });
+      state.toast = { text: 'Deleted: ' + sd.payee + ', ' + everyLabel(sd.every) + '.' };
+      state.sf = null; render(); var nb = document.querySelector('[data-sfnew]'); if (nb) nb.focus(); return;
+    }
     if (d.goaledit) { startEdit(d.goaledit, d.where); if (d.where === 'desk') state.sel = d.goaledit; return render(); }
     if (d.goalcancel) { state.edit = null; return render(); }
     if (d.goalremove) { state.targets[state.edit.cat] = null; state.edit = null; return render(); }

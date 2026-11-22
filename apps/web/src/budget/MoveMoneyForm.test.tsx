@@ -168,6 +168,66 @@ describe("MoveMoneyForm (#328)", () => {
     expect(screen.getByText("The part overspent in cash is covered. The other €300.00 covers card spending and moves to the card.")).toBeInTheDocument();
   });
 
+  it("'Move money' on a category overspent with a card and short for what is scheduled preselects all of it, card part included (#731)", () => {
+    // Restaurants: nothing assigned, €30 on the card, €10 scheduled.
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    renderForm({ kind: "moveTo", categoryId: "restaurants" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("40.00");
+    expect(screen.getByText("The overspending and the scheduled transactions are covered. €30.00 of this amount covers card spending and moves to the card.")).toBeInTheDocument();
+  });
+
+  it("'Assign' on a card asks its to cover less the card spending asked on a category with what is scheduled, and says so (#731)", () => {
+    // Restaurants: nothing assigned, €30 on the Visa, €10 scheduled; the Visa owes €50, nothing set aside.
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    const visa = categoryIn({
+      categoryId: "visa",
+      name: "Visa payment",
+      available: 0,
+      uncovered: 5_000,
+      owed: 5_000,
+      isPaymentCategory: true,
+      overspendingBy: [{ categoryId: "restaurants", name: "Restaurants", amount: 3_000 }],
+    });
+    renderForm({ kind: "assignTo", categoryId: "visa" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants, visa] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("20.00");
+    expect(screen.getByText("€30.00 of the card's debt is included in what Restaurants still needs")).toBeInTheDocument();
+    // The rest of the debt is asked on Restaurants: not "fully covered".
+    expect(screen.queryByText("The card's debt is fully covered.")).toBeNull();
+  });
+
+  it("'Assign' on a card with nothing to cover does not say its debt is included in what a category still needs (#731)", () => {
+    // Restaurants: €30 on the Visa, €10 scheduled; the Visa owes €50 and already holds €50.
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    const visa = categoryIn({
+      categoryId: "visa",
+      name: "Visa payment",
+      available: 5_000,
+      uncovered: 0,
+      owed: 5_000,
+      isPaymentCategory: true,
+      overspendingBy: [{ categoryId: "restaurants", name: "Restaurants", amount: 3_000 }],
+    });
+    renderForm({ kind: "assignTo", categoryId: "visa" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants, visa] }], unassignedCents: 100_000 });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "10.00" } });
+    expect(screen.getByText(/Visa payment/, { selector: ".ba span" })).toBeInTheDocument();
+    expect(screen.queryByText(/of the card's debt is included in what/)).toBeNull();
+  });
+
+  it("'Move money' on a card whose whole debt is asked on a category preselects no amount (#731)", () => {
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    const visa = categoryIn({
+      categoryId: "visa",
+      name: "Visa payment",
+      available: 0,
+      uncovered: 3_000,
+      owed: 3_000,
+      isPaymentCategory: true,
+      overspendingBy: [{ categoryId: "restaurants", name: "Restaurants", amount: 3_000 }],
+    });
+    renderForm({ kind: "moveTo", categoryId: "visa" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants, visa] }], unassignedCents: 100_000 });
+    expect(screen.getByLabelText("Amount")).toHaveValue("");
+  });
+
   it("'Move money' on a category overspent only with a card preselects no amount (#728)", () => {
     const groceries = categoryIn({ categoryId: "groceries", name: "Groceries", available: -9_134, creditOverspending: 9_134 });
     renderForm({ kind: "moveTo", categoryId: "groceries" }, { groups: [{ id: "g1", name: "Home", categories: [groceries] }], unassignedCents: 100_000 });

@@ -186,6 +186,34 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(onAssignFromUnassigned).toHaveBeenCalled();
   });
 
+  it("'Assign' offers the to cover less what is asked on a category, while 'To cover' keeps the whole debt, and says where the rest is asked (#731)", () => {
+    renderDetail({ available: 0, uncovered: 5_000, owed: 5_000, askedOnCategories: [{ categoryId: "restaurants", name: "Restaurants", amountCents: 3_000 }] });
+    expect(screen.getByText("To cover").closest(".qa")).toHaveTextContent("€50.00");
+    expect(screen.getByText("€30.00 of the card's debt is included in what Restaurants still needs")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Assign €20.00 from unassigned money" })).toBeInTheDocument();
+  });
+
+  it("offers no 'Assign' when the whole debt is asked on categories, only 'Move money here' (#731)", () => {
+    renderDetail({
+      available: 0,
+      uncovered: 4_000,
+      owed: 4_000,
+      askedOnCategories: [
+        { categoryId: "restaurants", name: "Restaurants", amountCents: 3_000 },
+        { categoryId: "groceries", name: "Groceries", amountCents: 1_000 },
+      ],
+    });
+    expect(screen.getByText("€40.00 of the card's debt is included in what 2 categories still need")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Assign / })).toBeNull();
+    expect(screen.getByRole("button", { name: "Move money here" })).toBeInTheDocument();
+  });
+
+  it("a card with nothing to cover does not say its debt is included in what a category still needs (#731)", () => {
+    renderDetail({ available: 5_000, uncovered: 0, owed: 5_000, askedOnCategories: [{ categoryId: "restaurants", name: "Restaurants", amountCents: 3_000 }] });
+    expect(screen.queryByText(/of the card's debt is included in what/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Assign / })).toBeNull();
+  });
+
   it("'Move money here' calls onMoveMoneyHere", () => {
     const { onMoveMoneyHere } = renderDetail({ available: 0, uncovered: 5_000, owed: 5_000 });
     fireEvent.click(screen.getByRole("button", { name: "Move money here" }));

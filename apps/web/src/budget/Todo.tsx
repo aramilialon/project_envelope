@@ -1,6 +1,7 @@
 import type { TodoItem } from "@envelope/core";
 import { useIntl } from "react-intl";
 import { shortDate } from "../format.ts";
+import { cardPartAskedSentence } from "./cardPartAsked.ts";
 import "./Todo.css";
 
 interface Props {
@@ -35,8 +36,17 @@ interface Sentence {
   readonly sub: string;
 }
 
-function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, string>, locale: string, intl: ReturnType<typeof useIntl>): Sentence {
+function sentenceFor(
+  item: TodoItem,
+  categoryNameById: ReadonlyMap<string, string>,
+  locale: string,
+  intl: ReturnType<typeof useIntl>,
+  money: (cents: number) => string,
+): Sentence {
   const categoryName = (id: string) => categoryNameById.get(id) ?? id;
+  // #731: part of a card's debt asked on categories (with their scheduled transactions) instead.
+  const askedOnCategories = (asked: readonly { readonly categoryId: string; readonly amountCents: number }[]) =>
+    cardPartAskedSentence(intl, money, asked, categoryName);
 
   switch (item.kind) {
     case "overassigned":
@@ -47,14 +57,24 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
     case "cashOverspending":
       return {
         title: intl.formatMessage({ id: "budget.todo.cover.title", defaultMessage: "Cover {category}" }, { category: categoryName(item.categoryId) }),
-        // #728: an ordinary category with no card part asks for its reservation shortfall in the same item.
+        // #728: a category asks for its reservation shortfall in the same item; #731: with its card
+        // spending too, when it has any. A card says how much of its debt is asked on categories.
         sub:
-          item.reservationShortfallCents !== undefined
-            ? intl.formatMessage({
-                id: "budget.todo.cashOverspendingAndReservation.sub",
-                defaultMessage: "overspent in cash and not enough for what is scheduled: cover it before the month ends",
-              })
-            : intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash: cover it before the month ends" }),
+          item.askedOnCategories !== undefined
+            ? askedOnCategories(item.askedOnCategories)
+            : item.cardSpendingCents !== undefined
+              ? intl.formatMessage({
+                  id: "budget.todo.cashCardAndReservation.sub",
+                  defaultMessage:
+                    "overspent in cash and with a card, and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money",
+                })
+              : item.reservationShortfallCents !== undefined
+                ? intl.formatMessage({
+                    id: "budget.todo.cashOverspendingAndReservation.sub",
+                    defaultMessage:
+                      "overspent in cash and short for what is scheduled; the cash part, if still uncovered when the month ends, comes out of next month's unassigned money",
+                  })
+                : intl.formatMessage({ id: "budget.todo.cashOverspending.sub", defaultMessage: "overspent in cash; if still uncovered when the month ends, it comes out of next month's unassigned money" }),
       };
     case "scheduledOverdue":
       return {
@@ -70,7 +90,16 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
           { id: "budget.todo.reservationShortfall.title", defaultMessage: "{category}: not enough for what is scheduled" },
           { category: categoryName(item.categoryId) },
         ),
-        sub: intl.formatMessage({ id: "budget.todo.reservationShortfall.sub", defaultMessage: "still missing" }),
+        sub:
+          item.cardSpendingCents !== undefined
+            ? intl.formatMessage(
+                {
+                  id: "budget.todo.reservationShortfallWithCard.sub",
+                  defaultMessage: "includes {amount} spent with a card, covered first by money assigned here",
+                },
+                { amount: money(item.cardSpendingCents) },
+              )
+            : intl.formatMessage({ id: "budget.todo.reservationShortfall.sub", defaultMessage: "still missing" }),
       };
     case "cardDebtUncovered":
       return {
@@ -78,7 +107,10 @@ function sentenceFor(item: TodoItem, categoryNameById: ReadonlyMap<string, strin
           { id: "budget.todo.cardDebtUncovered.title", defaultMessage: "Debt to cover: {category}" },
           { category: categoryName(item.categoryId) },
         ),
-        sub: intl.formatMessage({ id: "budget.todo.cardDebtUncovered.sub", defaultMessage: "card spending with no money set aside for it" }),
+        sub:
+          item.askedOnCategories !== undefined
+            ? askedOnCategories(item.askedOnCategories)
+            : intl.formatMessage({ id: "budget.todo.cardDebtUncovered.sub", defaultMessage: "card spending with no money set aside for it" }),
       };
     case "targetsNeeded":
       return {
@@ -121,7 +153,7 @@ export default function Todo({ items, categoryNameById, money, locale, limit, on
       ) : (
         <>
           {shown.map((item) => {
-            const { title, sub } = sentenceFor(item, categoryNameById, locale, intl);
+            const { title, sub } = sentenceFor(item, categoryNameById, locale, intl, money);
             const key = item.kind === "scheduledOverdue" ? `scheduledOverdue:${item.scheduledTransactionId}` : item.kind === "overassigned" ? "overassigned" : item.kind === "targetsNeeded" ? `targetsNeeded:${item.categoryIds.join(",")}` : `${item.kind}:${item.categoryId}`;
             const clickable = onItemClick && item.kind !== "overassigned";
             const content = (
