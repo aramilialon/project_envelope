@@ -718,6 +718,17 @@ describe("reconciliation repository", () => {
       assert.equal(rows.length, 0);
     });
 
+    it("a sync change applied on its own (no up-front lock) also waits for the reconciliation and answers locked", async () => {
+      const acct = await newAccount();
+      const id = await clearedTransaction(acct, "2026-03-05", -1000);
+      const { waited } = await race(
+        (db) => reconcile(db, acct, [id], -1000),
+        (db) => applyIncomingChange(db, workspaceId, memoChange(id, "from a device")),
+      );
+      assert.deepEqual(waited, { ok: true, value: "locked" });
+      assert.equal((await getTransaction(pool, workspaceId, id))?.memo, null);
+    });
+
     it("a sync upload changing two rows in descending id order and a reconciliation ticking both do not deadlock", async () => {
       const { acct, low, high } = await twoClearedTransactions();
       const { middle, last } = await chain(
