@@ -208,6 +208,12 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(screen.getByRole("button", { name: "Move money here" })).toBeInTheDocument();
   });
 
+  it("a card with nothing to cover does not say its debt is included in what a category still needs (#731)", () => {
+    renderDetail({ available: 5_000, uncovered: 0, owed: 5_000, askedOnCategories: [{ categoryId: "restaurants", name: "Restaurants", amountCents: 3_000 }] });
+    expect(screen.queryByText(/of the card's debt is included in what/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Assign / })).toBeNull();
+  });
+
   it("'Move money here' calls onMoveMoneyHere", () => {
     const { onMoveMoneyHere } = renderDetail({ available: 0, uncovered: 5_000, owed: 5_000 });
     fireEvent.click(screen.getByRole("button", { name: "Move money here" }));

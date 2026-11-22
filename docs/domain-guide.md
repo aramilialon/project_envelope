@@ -345,10 +345,12 @@ Examples, with B paying €500 of A's debt and B starting with nothing set aside
 | €500 | €500 | €0 | €500 | €0 | €0 |
 | €500 | €300 | €0 | €300 | €0 | €200 |
 | €800 | €300 | €300 | €0 | €300, covers its debt | €500 |
+| €800 | €300 | €600 (B pays €200) | €0 | €300 | €200 |
 | €800 | €900 | €300 | €500 | €400, €100 beyond its debt | €0 |
 | €500 | €500 | −€100 (B pays €600) | €600 | −€100, its credit | €0 |
 
-In the last row B pays €600: A ends €100 in credit, its payment category at −€100, which is its
+In the fourth row B pays €200: A still owes more than it holds, so nothing moves and B covers its
+own €200. In the last row B pays €600: A ends €100 in credit, its payment category at −€100, which is its
 credit and not cash overspending, and B holds the €600 it now owes. Before #732 the money moved the
 other way, from the card that was charged to the card that was paid, capped at what the charged
 card held: in the second row B was asked €500 instead of €200.

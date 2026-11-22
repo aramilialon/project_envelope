@@ -513,6 +513,14 @@ describe("computeBudgetMonth", () => {
       assert.equal(b.uncovered, 50000);
     });
 
+    it("A owes €800 and holds €300, B pays €200: A still owes more than it holds, nothing moves, B has €200 to cover", () => {
+      const { a, b } = payDown(80000, 30000, 20000);
+      assert.equal(a.available, 30000);
+      assert.equal(b.available, 0, "never a negative amount moved to B");
+      assert.equal(b.uncovered, 20000);
+      assert.equal(b.cashOverspending, 0);
+    });
+
     it("A owes €800 and holds €900, B pays €500: €500 moves, A keeps €400", () => {
       const { a, b } = payDown(80000, 90000, 50000);
       assert.equal(a.available, 40000);
@@ -586,11 +594,36 @@ describe("computeBudgetMonth", () => {
         assert.equal(category(result.paymentCategories, "c-payment").available, 10000);
         assert.equal(category(result.paymentCategories, "a-payment").available, 0);
       }
-      // The same day: the id decides.
+      // The same day: the id decides, whatever order they are given in.
       const sameDay = transfers.map((t) => ({ ...t, date: "2026-09-10" }));
-      const result = computeBudgetMonth({ ...base, cardTransfers: sameDay }, "2026-09");
+      for (const cardTransfers of [sameDay, [...sameDay].reverse()]) {
+        const result = computeBudgetMonth({ ...base, cardTransfers }, "2026-09");
+        assert.equal(category(result.paymentCategories, "c-payment").available, 50000);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 10000);
+      }
+    });
+
+    it("chained transfers: money B received from A follows B's debt on to C", () => {
+      // A owes €500 and holds €500; B pays it on the 10th, then C pays B's €500 on the 20th.
+      const input: BudgetInput = {
+        ...EMPTY,
+        paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+        assignments: [{ categoryId: "a-payment", month: "2026-09", amount: 50000 }],
+        cardBalances: [
+          { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-10", amount: 50000 }] },
+          { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-10", amount: -50000 }, { date: "2026-09-20", amount: 50000 }] },
+          { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-20", amount: -50000 }] },
+        ],
+        cardTransfers: [
+          { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-10", id: "t1", amount: 50000 },
+          { paidPaymentCategoryId: "b-payment", chargedPaymentCategoryId: "c-payment", month: "2026-09", date: "2026-09-20", id: "t2", amount: 50000 },
+        ],
+      };
+      const result = computeBudgetMonth(input, "2026-09");
+      assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+      assert.equal(category(result.paymentCategories, "b-payment").available, 0);
       assert.equal(category(result.paymentCategories, "c-payment").available, 50000);
-      assert.equal(category(result.paymentCategories, "b-payment").available, 10000);
+      assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
     });
 
     it("refuses a transfer dated outside its month", () => {
