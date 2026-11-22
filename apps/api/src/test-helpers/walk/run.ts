@@ -69,6 +69,8 @@ export interface LoggedStep {
   readonly op: Op;
   /** The status the API answered when the log was written; informational on a replay. */
   status?: number;
+  /** The refusal's code (`refusalCode`); informational too, to count what a long walk ran into. */
+  code?: string;
   /** The handles the step gave out (an entity, its transfer partner, a trade's cash leg). */
   created?: string[];
 }
@@ -293,6 +295,7 @@ class Walk {
 
     const response = await this.env.driver.request(request.method, request.path, request.body, token);
     logged.status = response.status;
+    if (response.status >= 400) logged.code = refusalCode(response.body);
     if (response.status >= 500) fail(`${request.method} ${request.path} answered ${response.status}: ${JSON.stringify(response.body)}`);
 
     if (prediction.kind === "syncOutcome") {
