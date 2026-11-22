@@ -350,6 +350,33 @@ $4,080, so the net worth drops to 4,000 − 500 + 2,000 = **€5,500**, and the 
 included: $4,080.00 (no exchange rates yet)". The euros reappear in the net worth, as dollars
 converted at a rate, only once exchange rates exist (#86).
 
+#### Converting between currencies
+
+Where the app converts an amount from one currency to another, it follows these rules (#86):
+
+- **The rate on a date is the most recent one published on or before it, however old.** Rates are
+  published on working days only, so a Saturday uses Friday's rate, and a rate from months ago is
+  still used where there is no newer one. The date of the rate used comes with every converted
+  amount, so a screen can show how old the rate is rather than hide it.
+- **With no rate on or before the date, the amount is not converted.** It stays in its own
+  currency, listed apart ("Not included"), and never counts as zero.
+- **Every rate is quoted against the euro**, as published: USD 1.0812 means $1.0812 for €1. Between
+  two currencies that are not the euro, the amount goes through the euro, each currency at its own
+  most recent rate, and the conversion's rate date is the older of the two. The rate between the
+  two is never rounded or stored.
+- **A converted amount is rounded once, half away from zero, to the target currency's smallest
+  unit** (cents for the euro and the dollar, whole yen for the yen). A security's value is
+  converted from its quantity and price directly, not from an amount already rounded in its own
+  currency.
+- **Amounts in one currency are added up first, then converted once.** A sum does not depend on how
+  its amounts are split; returns, which follow each flow of money on its own date, convert each one
+  at the rate of its own date.
+
+**Examples.** With rates for 20 November 2026 of USD 1.0812, JPY 162.53 and GBP 0.8450 per euro:
+$1,080.00 is €998.89; ¥10,000 is €61.53; £1,000.00 is $1,279.53 (1,000 × 1.0812 ÷ 0.8450). The
+dollar broker's $3,000.00 from the example above is €2,774.69 on a Sunday, at Friday's rate, with
+that Friday shown as the rate date.
+
 ### Balances as of today
 
 Every balance is as of today in the workspace's time zone (#702), the same definition in the
