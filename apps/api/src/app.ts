@@ -24,6 +24,7 @@ import { registerMeRoute } from "./routes/me.ts";
 import { registerMyWorkspacesRoute } from "./routes/my-workspaces.ts";
 import { registerPortfoliosRoutes } from "./routes/portfolios.ts";
 import { registerPositionsRoutes } from "./routes/positions.ts";
+import { registerPricesRoutes } from "./routes/prices.ts";
 import { registerQuickAssignRoutes } from "./routes/quick-assign.ts";
 import { registerReconciliationRoutes } from "./routes/reconciliation.ts";
 import { registerScheduledTransactionsRoutes } from "./routes/scheduled-transactions.ts";
@@ -114,6 +115,7 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   registerMyWorkspacesRoute(fastify, pool);
   registerPortfoliosRoutes(fastify, pool);
   registerPositionsRoutes(fastify, pool);
+  registerPricesRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
   registerScheduledTransactionsRoutes(fastify, pool, queue);
