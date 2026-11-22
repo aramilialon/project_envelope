@@ -374,6 +374,46 @@ button{cursor:pointer}
 .ph-acc.static{color:var(--ink-2)}
 .ph-acc small{display:block;font-size:12px;color:var(--muted)}
 .ph-chips{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+/* #705, #717, #778: the accounts list's close and reopen, a closed account, another currency */
+.lr-b{width:100%;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.lr-b:hover span:first-child{text-decoration:underline;text-underline-offset:3px}
+.saved{margin:6px 0 0;color:var(--pen);font-weight:600}
+.closed-tag{display:inline-block;margin-left:8px;padding:2px 8px;border:1px solid var(--rule);border-radius:999px;font-family:var(--font);font-size:12px;font-weight:600;letter-spacing:0;color:var(--ink-2);vertical-align:middle}
+.closed-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin-top:16px;padding:12px 14px;border:1px solid var(--rule);border-radius:12px;background:var(--paper-2);color:var(--ink-2)}
+.closed-note p{flex:1 1 280px;margin:0}
+.closed-note b{color:var(--ink)}
+.closed-note .btn{min-height:44px}
+.rrow > div.open{grid-column:2 / -1;display:grid;grid-template-columns:92px minmax(0,1.1fr) minmax(0,1.3fr) 96px 96px 104px;align-items:center;min-height:44px}
+.rrow > .st{cursor:default}
+.ph-tx > div.open,.ph-tx > button.open{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:54px;padding:6px 0;border:0;background:transparent;text-align:left;grid-column:1 / 3;min-width:0}
+.flabel{font-weight:600}
+.none-note{margin:0;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--paper-2);font-size:13px;color:var(--ink-2)}
+.field input[readonly]{background:var(--paper-2);color:var(--ink-2)}
+.btn[aria-disabled="true"]{opacity:.45;cursor:default}
+.btn.bad{border-color:var(--red);color:var(--red-text)}
+.btn.bad.primary{background:var(--red);color:var(--red-ink)}
+.ph-acc2{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px;border-bottom:1px solid var(--rule-soft)}
+.ph-acc2 > .open{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:52px;padding:6px 0;border:0;background:transparent;text-align:left;font-size:15px;min-width:0;color:inherit}
+.ph-acc2 .nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ph-acc2 .nm small{display:block;font-size:12px;color:var(--muted)}
+.ph-acc2 .n{white-space:nowrap}
+.ph-acc2.closed > .open{color:var(--ink-2)}
+.ph-act{min-height:44px;min-width:44px;padding:0 4px;border:0;background:transparent;color:var(--pen);font-weight:600}
+.ph-act.bad-t{color:var(--red-text)}
+.ph-acc2{position:relative}
+/* The row's "⋯" menu: budget-categories.html's .gmenu-btn and .gmenu, phone sized (#705). */
+.gmenu-btn{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.gmenu-btn:hover,.gmenu-btn[aria-expanded="true"]{background:var(--rule-soft);color:var(--ink)}
+.gmenu{position:absolute;top:calc(100% - 4px);right:0;z-index:5;min-width:200px;padding:6px;border:1px solid var(--rule-strong);border-radius:12px;background:var(--paper)}
+.gmenu button{display:block;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:8px;background:transparent;text-align:left;white-space:nowrap;font:inherit;color:var(--ink)}
+.gmenu button:hover,.gmenu button:focus-visible{background:var(--paper-2)}
+.acc-ask{display:flex;flex-direction:column;gap:8px;margin:6px 0 10px;padding:14px 16px;border-radius:12px;background:var(--paper-2);border:1px solid var(--rule)}
+.acc-ask p{margin:0;color:var(--ink-2)}
+.ph-in .acc-ask .btn{min-height:44px}
+.acc-refusal{margin:0;padding:8px 0 10px;border-bottom:1px solid var(--rule-soft)}
+.acc-refusal p{margin:0}
+.acc-refusal ul{margin:4px 0 0;padding-left:20px}
+.ph-in .insp-like .row-btns .btn{min-height:44px}
 
 /* Mariner restyle (shared with the budget month): sentence-case labels, the display face for
    titles and big figures, softer corners, and the navigation band that replaces the sidebar. */
@@ -446,7 +486,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry.</p>
+    <p><b>envelope</b>, account register and transaction entry mockup. Click a row to edit it, use "New transaction", split an expense across categories, record a transfer coming in from another account ("Transfer", then "From another account": from the off-budget "ETF broker" the money lands in "Unassigned" unless a category is chosen), tick transactions as cleared, or work through the "To do" list (recording the overdue scheduled transaction fills the form for you). On the phone: the accounts list, the register and quick entry. Also: “+ Add account” (its currency, and a starting balance with its date, for every type); the off-budget “Dollar savings” register, in US dollars, where a transfer has no account to pick; the closed “Old post office account”, read only until it is reopened; on the phone's accounts list, “Close account”, in each row's “⋯” menu, asks first (Prepaid card) or says why not yet (Visa), and a closed account can be reopened. The desktop sidebar stands in for the Accounts list here: a closed account is in no account panel or picker, only under “Closed”.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -467,23 +507,13 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
             <button type="button" aria-current="page">Accounts</button>
             <button type="button">Portfolio</button>
           </div>
-          <div class="ledger">
-            <h5>On budget</h5>
-            <div class="lr on"><span>Checking</span><span class="dots"></span><span class="n" id="side-bal"></span></div>
-            <div class="lr"><span>Savings</span><span class="dots"></span><span class="n">8,000.00</span></div>
-            <div class="lr"><span>Cash</span><span class="dots"></span><span class="n">85.40</span></div>
-            <div class="lr"><span>Visa</span><span class="dots"></span><span class="n neg">−642.30</span></div>
-          </div>
-          <div class="ledger">
-            <h5>Off budget</h5>
-            <div class="lr"><span>ETF broker</span><span class="dots"></span><span class="n">42,180.00</span></div>
-            <div class="lr"><span>Home mortgage</span><span class="dots"></span><span class="n neg">−96,300.00</span></div>
-          </div>
-          <button type="button" class="plain">+ Add account</button>
+          <div id="side-acc"></div>
+          <button type="button" class="plain" id="add-acc-desk" data-addopen="desk">+ Add account</button>
           <div class="me"><span>Giorgio</span><button type="button" class="plain">Settings</button></div>
         </nav>
 
         <div class="main">
+          <div id="main-cc">
           <div class="acc-head">
             <div>
               <h3>Checking</h3>
@@ -509,6 +539,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
           </div>
 
           <div id="register"></div>
+          </div>
+          <div id="main-other" hidden></div>
         </div>
 
         <aside class="insp" aria-label="Transaction" id="panel" hidden></aside>
@@ -582,10 +614,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   var RTA_ID = 'rta';
   CAT[RTA_ID] = { id: RTA_ID, name: 'Unassigned', avail: 31200, group: '' };
   var ACCOUNTS = [
-    ['risp', 'Savings', 'cash', true], ['cont', 'Cash', 'cash', true], ['visa', 'Visa', 'credit', true], ['tv', 'Travel card', 'credit', true], ['broker', 'ETF broker', 'cash', false], ['mutuo', 'Home mortgage', 'loan', false]
+    ['risp', 'Savings', 'cash', true], ['cont', 'Cash', 'cash', true], ['visa', 'Visa', 'credit', true], ['tv', 'Travel card', 'credit', true], ['broker', 'ETF broker', 'cash', false], ['mutuo', 'Home mortgage', 'loan', false], ['usd', 'Dollar savings', 'cash', false, 'USD']
   ];
   var ACC = {};
-  ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3] }; });
+  ACCOUNTS.forEach(function (a) { ACC[a[0]] = { id: a[0], name: a[1], type: a[2], onBudget: a[3], currency: a[4] || 'EUR' }; });
 
   var OPENING = 317573; // balance on August 31
   var seq = 0;
@@ -609,7 +641,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   ];
   var LAST_CAT = { 'Supermarket': 'spesa', 'Local market': 'spesa', 'Bakery': 'spesa', 'Gas station': 'carb', 'Pharmacy': 'farm', 'Trattoria': 'rist', 'Pizzeria': 'rist', 'Café': 'rist', 'Energy provider': 'luce', 'Plumber': 'manut', 'Vet clinic': 'vet', 'Salary': RTA_ID, 'Department store': 'spesa', 'Phone provider': 'net' };
 
-  var state = { sel: null, filter: 'all', q: '', open: {}, draft: null, errors: [], where: 'desk' };
+  var state = { sel: null, filter: 'all', q: '', open: {}, draft: null, errors: [], where: 'desk', acc: 'cc' };
   var ph = { screen: 'accounts', filter: 'all', q: '' };
 
   function sorted() { return TXS.slice().sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; }); }
@@ -628,6 +660,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (t.splits) return '<span class="kind">Split</span>' + t.splits.length + ' categories ' + ICON.chev;
     if (t.cat === RTA_ID) return '<span class="kind">Inflow</span>Unassigned';
     return esc(CAT[t.cat].name);
+  }
+  // The same as one line of plain text (the phone, a title, the opened row): the kind and the rest
+  // joined by " · ", "Inflow · Unassigned", "Transfer · To ETF broker".
+  function catPlain(t) {
+    return catText(t).replace(/^<span class="kind">([^<]*)<\/span>/, '$1 · ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
   function matches(t) {
     if (state.filter === 'pending' && t.status !== 'pending') return false;
@@ -767,7 +804,6 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   function renderRegister() {
     var b = balances();
     el('b-cleared').textContent = f(b.cleared); el('b-pending').textContent = f(b.pending); el('b-total').textContent = f(b.total);
-    el('side-bal').textContent = plainN(b.total);
     renderInsight();
     var counts = { all: TXS.length, pending: 0, cleared: 0, locked: 0 };
     TXS.forEach(function (t) { counts[t.status]++; });
@@ -793,7 +829,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<button type="button" class="open" data-open="' + t.id + '" aria-label="Open ' + esc(t.payee) + ', ' + dLabel(t.date) + '">' +
         '<span class="cell n">' + dLabel(t.date) + '</span>' +
         '<span class="cell"><b style="font-weight:500">' + esc(t.payee) + '</b>' + (t.memo ? '<small>' + esc(t.memo) + '</small>' : '') + '</span>' +
-        '<span class="cell" title="' + esc(catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()) + '">' + catText(t) + '</span>' +
+        '<span class="cell" title="' + esc(catPlain(t)) + '">' + catText(t) + '</span>' +
         '<span class="cell r n">' + (t.amount < 0 ? plainN(-t.amount) : '') + '</span>' +
         '<span class="cell r n">' + (t.amount > 0 ? plainN(t.amount) : '') + '</span>' +
         '<span class="cell r n">' + plainN(r.bal) + '</span></button>';
@@ -847,8 +883,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   // "From account" leaves credit cards out: money coming from a card (a cash advance) is not covered by
   // the rules for transfers from off-budget accounts, and an incoming transfer to a card with no
   // category is refused, so the form does not offer a card as the source.
+  // A transfer only lists the accounts in this account's currency (#652); the ones left out are named under the list (#717).
   function sourceAccounts() {
-    return state.draft.dir === 'in' ? ACCOUNTS.filter(function (a) { return a[2] !== 'credit'; }) : ACCOUNTS;
+    var same = ACCOUNTS.filter(function (a) { return (a[4] || 'EUR') === 'EUR'; });
+    return state.draft.dir === 'in' ? same.filter(function (a) { return a[2] !== 'credit'; }) : same;
+  }
+  function otherCurrencyHint() {
+    var out = ACCOUNTS.filter(function (a) { return (a[4] || 'EUR') !== 'EUR'; });
+    return out.map(function (a) { return '<span class="hint">' + esc(a[1]) + ' isn\'t listed: it\'s in ' + CUR_PLAIN[a[4]] + ', and a transfer stays in one currency.</span>'; }).join('');
   }
   function offBudgetIn() { var d = state.draft; return d.kind === 'transfer' && d.dir === 'in' && !!ACC[d.transfer] && !ACC[d.transfer].onBudget; }
   // Effect on the category's available money, the way the budget month would show it after saving.
@@ -885,7 +927,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       var t = TXS.filter(function (x) { return x.id === d.id; })[0];
       return '<button type="button" class="plain closer" data-close="1">× Close</button>' +
         '<div><span class="where">Reconciled transaction</span><h4>' + esc(t.payee) + '</h4></div>' +
-        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catText(t).replace(/<[^>]+>/g, ' ') + '</span></div>' +
+        '<div class="sec" style="gap:6px"><span class="big n">' + f(t.amount) + '</span><span class="hint">' + dLabel(t.date) + ', 2026 · ' + catPlain(t) + '</span></div>' +
         '<div class="locknote">It is part of the September 5 reconciliation, when the account\'s balance was compared with the bank\'s. It is locked so that comparison stays intact; once unlocked, changing it changes a balance the bank already confirmed.</div>' +
         '<div class="row-btns"><button type="button" class="btn" data-unlock="1">Unlock</button></div>';
     }
@@ -903,7 +945,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         return '<label><input type="radio" name="dir" value="' + k[0] + '" data-df="dir" id="dir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
       }).join('') + '</div>';
       h += '<div class="field"><label for="tx-acc">' + (d.dir === 'in' ? 'From account' : 'To account') + '</label><select id="tx-acc" data-df="transfer"><option value="">Choose an account</option>' +
-        sourceAccounts().map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (off budget)') + '</option>'; }).join('') + '</select></div>';
+        sourceAccounts().map(function (a) { return '<option value="' + a[0] + '"' + (d.transfer === a[0] ? ' selected' : '') + '>' + esc(a[1]) + (a[3] ? '' : ' (off budget)') + '</option>'; }).join('') + '</select>' + otherCurrencyHint() + '</div>';
       if (d.transfer && !ACC[d.transfer].onBudget) h += '<div class="field"><label for="tx-cat">Category</label><select id="tx-cat" data-df="cat">' + catOptions(d.cat, d.dir === 'in') + '</select></div>';
     } else {
       h += '<div class="field"><label for="tx-payee">Payee</label><input type="text" id="tx-payee" data-df="payee" list="payees" value="' + esc(d.payee) + '" autocomplete="off">' +
@@ -969,11 +1011,294 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (state.where === 'ph') ph.screen = 'register';
     renderAll();
   }
+
+  // ---- Other accounts (#705, #717, #778): a register in another currency, a closed account, and
+  // the Accounts list's own close, reopen and "+ Add account".
+  var NF = {};
+  function fc(c, cur) { cur = cur || 'EUR'; NF[cur] = NF[cur] || new Intl.NumberFormat('en-US', { style: 'currency', currency: cur }); return NF[cur].format(c / 100).replace('-', '−'); }
+  var SYM = { EUR: '€', USD: '$', CHF: 'CHF', GBP: '£' };
+  var CUR_NAME = { EUR: 'Euro (EUR)', USD: 'US dollar (USD)', CHF: 'Swiss franc (CHF)', GBP: 'Pound sterling (GBP)' };
+  var CUR_LONG = { USD: 'US dollars (USD)', CHF: 'Swiss francs (CHF)', GBP: 'pounds sterling (GBP)' };
+  var CUR_PLAIN = { USD: 'US dollars', CHF: 'Swiss francs', GBP: 'pounds sterling' };
+  var OTHER = {
+    // An off-budget account in US dollars (#717): every amount in its own currency, its starting
+    // balance a plain balance row with no category (#778), and no other account in USD to transfer with.
+    usd: { id: 'usd', name: 'Dollar savings', currency: 'USD', onBudget: false, closed: null, rows: [
+      { id: 'u1', date: '2026-06-30', payee: 'Starting balance', amount: 300000, status: 'locked', start: true },
+      { id: 'u2', date: '2026-09-01', payee: 'Interest', amount: 410, status: 'cleared' }
+    ] },
+    // A closed account (#705): its history stays, read only, until it is reopened.
+    old: { id: 'old', name: 'Old post office account', currency: 'EUR', onBudget: true, closed: '2026-09-12', rows: [
+      { id: 'o1', date: '2026-01-15', payee: 'Starting balance', amount: 30000, cat: 'Unassigned', status: 'cleared', start: true },
+      { id: 'o2', date: '2026-09-12', payee: 'Transfer', amount: -30000, transfer: 'To Checking', status: 'cleared' }
+    ] }
+  };
+  var O = { draft: null, view: null, done: null };
+  var A = null, ADDED = [], addDone = null;
+  function obal(a) { return a.rows.reduce(function (s, r) { return s + (r.date > TODAY_ISO ? 0 : r.amount); }, 0); }
+  function ocat(a, r) {
+    if (r.transfer) return '<span class="kind">Transfer</span>' + esc(r.transfer);
+    if (!a.onBudget) return '';
+    if (r.cat === 'Unassigned') return '<span class="kind">Inflow</span>Unassigned';
+    return esc(r.cat || '');
+  }
+  // The same, as one line of text (the phone, the opened row): "Transfer · To Checking", and
+  // "Inflow · Unassigned", so a kind and a category never read as one phrase.
+  function ocatText(a, r) {
+    if (r.transfer) return 'Transfer · ' + r.transfer;
+    if (!a.onBudget) return '';
+    if (r.cat === 'Unassigned') return 'Inflow · Unassigned';
+    return r.cat || '';
+  }
+  function oRows(a) {
+    var run = 0;
+    return a.rows.slice().sort(function (x, y) { return x.date < y.date ? -1 : x.date > y.date ? 1 : 0; })
+      .map(function (r) { run += r.amount; return { r: r, bal: run }; }).reverse();
+  }
+  function closedNoteHtml(a) {
+    return '<div class="closed-note"><p><b>This account is closed.</b> It takes no new transactions, transfers or trades. Its past transactions still count in the months they belong to.</p>' +
+      '<button type="button" class="btn" data-reopen="' + a.id + '">Reopen</button></div>';
+  }
+  function oDone(a) { return O.done && O.done.acc === a.id ? '<p class="saved" role="status">' + esc(O.done.text) + '</p>' : ''; }
+  function otherMainHtml(a) {
+    var closed = !!a.closed;
+    var h = '<div class="acc-head"><div><h3>' + esc(a.name) + (closed ? ' <span class="closed-tag">Closed</span>' : '') + '</h3>' +
+      '<div class="sub">' + (a.onBudget ? 'On-budget account' : 'Off-budget account') + (a.currency !== 'EUR' ? ' · in ' + CUR_LONG[a.currency] : '') + (closed ? ' · closed on ' + dLabel(a.closed) : '') + '</div></div>' +
+      '<div class="acc-bal" aria-label="Account balance"><small>Balance</small><span class="big n">' + fc(obal(a), a.currency) + '</span></div></div>' +
+      oDone(a) + (closed ? closedNoteHtml(a) : '') +
+      (closed ? '' : '<div class="reg-tools"><div class="tabs"></div><div class="right"><button type="button" class="btn">Import</button><button type="button" class="btn">Reconcile</button><button type="button" class="btn primary" data-onew="desk">New transaction</button></div></div>');
+    h += '<div class="rth rcols"><span></span><span>Date</span><span>Payee</span><span>Category</span><span class="r">Outflow</span><span class="r">Inflow</span><span class="r">Balance</span></div>';
+    oRows(a).forEach(function (x) {
+      var r = x.r, sel = O.view && O.view.where === 'desk' && O.view.id === r.id;
+      var cells = '<span class="cell n">' + dLabel(r.date) + '</span><span class="cell"><b style="font-weight:500">' + esc(r.payee) + '</b></span><span class="cell">' + ocat(a, r) + '</span>' +
+        '<span class="cell r n">' + (r.amount < 0 ? plainN(-r.amount) : '') + '</span><span class="cell r n">' + (r.amount > 0 ? plainN(r.amount) : '') + '</span><span class="cell r n">' + plainN(x.bal) + '</span>';
+      h += '<div class="rrow rcols' + (sel ? ' on' : '') + '"><span class="st ' + r.status + '" role="img" aria-label="' + STATUS_LABEL[r.status] + '">' + ICON[r.status] + '</span>' +
+        (closed ? '<button type="button" class="open" data-oopen="' + r.id + '" aria-label="Open ' + esc(r.payee) + ', ' + dLabel(r.date) + '">' + cells + '</button>' : '<div class="open">' + cells + '</div>') + '</div>';
+    });
+    return h;
+  }
+  function phOtherHtml(a) {
+    var closed = !!a.closed, html = '', day = null;
+    oRows(a).forEach(function (x) {
+      var r = x.r;
+      if (r.date !== day) { day = r.date; var q = day.split('-'); html += '<div class="ph-day">' + (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2]))) + '</div>'; }
+      var sub = ocatText(a, r);
+      var inner = '<span class="who"><b>' + esc(r.payee) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><span class="amt n' + (r.amount > 0 ? ' in' : '') + '">' + fc(r.amount, a.currency) + '</span>';
+      html += '<div class="ph-tx">' + (closed ? '<button type="button" class="open" data-oopen="' + r.id + '">' + inner + '</button>' : '<div class="open">' + inner + '</div>') +
+        '<span class="st ' + r.status + '" role="img" aria-label="' + STATUS_LABEL[r.status] + '">' + ICON[r.status] + '</span></div>';
+    });
+    return '<div class="ph-h"><button type="button" class="ph-back" data-phscreen="accounts">‹ Accounts</button>' + (closed ? '' : '<button type="button" class="btn primary" data-onew="ph">+ New</button>') + '</div>' +
+      '<div class="ph-h" style="margin-top:6px;justify-content:flex-start"><h3>' + esc(a.name) + '</h3>' + (closed ? '<span class="closed-tag">Closed</span>' : '') + '</div>' +
+      '<div class="ph-bal"><b class="n">' + fc(obal(a), a.currency) + '</b><span>' + (closed ? 'Closed on ' + dLabel(a.closed) : (a.onBudget ? 'On budget' : 'Off budget') + (a.currency !== 'EUR' ? ' · in ' + CUR_LONG[a.currency] : '')) + '</span></div>' +
+      oDone(a) + (closed ? closedNoteHtml(a) : '') + html;
+  }
+  // A closed account's transaction, opened: read only.
+  function otherRowHtml() {
+    var a = OTHER[O.view.acc], r = a.rows.filter(function (x) { return x.id === O.view.id; })[0];
+    return '<button type="button" class="plain closer" data-oclose="1" aria-label="Close the transaction">× Close</button>' +
+      '<div><span class="where">' + esc(a.name) + '</span><h4>' + esc(r.payee) + '</h4></div>' +
+      '<div class="sec" style="gap:6px"><span class="big n">' + fc(r.amount, a.currency) + '</span><span class="hint">' + dLabel(r.date) + ', 2026' + (ocatText(a, r) ? ' · ' + ocatText(a, r) : '') + '</span></div>' +
+      '<div class="locknote">This account is closed, so its transactions can\'t be changed. Reopen the account to change one.</div>';
+  }
+  // A new transaction in the dollar account: amounts in its currency, and a transfer with no account to pick.
+  function otherEditorHtml() {
+    var d = O.draft, a = OTHER[d.acc];
+    var h = '<button type="button" class="plain closer" data-oclose="1" aria-label="Close the transaction">× Close</button>' +
+      '<div><span class="where">' + esc(a.name) + '</span><h4>New transaction</h4></div>' +
+      '<div class="segs" role="radiogroup" aria-label="Kind">' + [['out', 'Outflow'], ['in', 'Inflow'], ['transfer', 'Transfer']].map(function (k) {
+        return '<label><input type="radio" name="okind" value="' + k[0] + '" data-of="kind" id="okind-' + k[0] + '"' + (d.kind === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
+      }).join('') + '</div>' +
+      '<div class="two"><div class="field"><label for="o-date">Date</label><input type="date" id="o-date" data-of="date" value="' + d.date + '"></div>' +
+      (d.kind === 'transfer' ? '' : '<div class="field"><label for="o-amt">Amount</label><span class="money-in"><input type="text" inputmode="decimal" id="o-amt" data-of="amt" value="' + esc(d.amt) + '" placeholder="0.00"><span>' + SYM[a.currency] + '</span></span></div>') + '</div>';
+    if (d.kind === 'transfer') {
+      // No account shares this currency: nothing to pick, and no amount or memo (hidden, not
+      // disabled) until the move is entered as an outflow (or an inflow) instead.
+      h += '<div class="segs" role="radiogroup" aria-label="Direction">' + [['out', 'To another account'], ['in', 'From another account']].map(function (k) {
+        return '<label><input type="radio" name="odir" value="' + k[0] + '" data-of="dir" id="odir-' + k[0] + '"' + (d.dir === k[0] ? ' checked' : '') + '><span>' + k[1] + '</span></label>';
+      }).join('') + '</div>' +
+        '<div class="field"><span class="flabel">' + (d.dir === 'in' ? 'From account' : 'To account') + '</span>' +
+        '<p class="none-note" id="o-none">No other account is in ' + CUR_PLAIN[a.currency] + ', so there is nothing to transfer ' + (d.dir === 'in' ? 'from' : 'to') + '. ' +
+        (d.dir === 'in' ? 'To move money from an account in another currency, add an outflow there and an inflow here.' : 'To move money to an account in another currency, add an outflow here and an inflow there.') + '</p></div>';
+    } else {
+      h += '<div class="field"><label for="o-payee">Payee</label><input type="text" id="o-payee" data-of="payee" value="' + esc(d.payee) + '" autocomplete="off"></div>' +
+        '<span class="hint">An off-budget account\'s transactions have no category.</span>';
+    }
+    h += (d.kind === 'transfer' ? '' : '<div class="field"><label for="o-memo">Memo</label><input type="text" id="o-memo" data-of="memo" value="' + esc(d.memo) + '"></div>') +
+      (d.errs.length ? '<div class="errs" role="alert">' + d.errs.map(esc).join('<br>') + '</div>' : '') +
+      '<div class="row-btns">' + (d.kind === 'transfer'
+        ? '<button type="button" class="btn primary" data-oaskind="' + (d.dir === 'in' ? 'in' : 'out') + '" aria-describedby="o-none">' + (d.dir === 'in' ? 'Enter as an inflow' : 'Enter as an outflow') + '</button>'
+        : '<button type="button" class="btn primary" data-osave="1">Add</button>') + '<button type="button" class="btn" data-oclose="1">Cancel</button></div>';
+    return h;
+  }
+  function oSave() {
+    var d = O.draft, a = OTHER[d.acc], amt = parseAmount(d.amt), errs = [];
+    if (d.kind === 'transfer') return;
+    if (amt === null || amt <= 0) errs.push('Enter an amount greater than zero.');
+    if (!d.payee.trim()) errs.push('Enter the payee.');
+    d.errs = errs;
+    if (errs.length) return renderAll();
+    a.rows.push({ id: 'n' + (++seq), date: d.date, payee: d.payee.trim(), amount: d.kind === 'in' ? amt : -amt, status: 'pending' });
+    O.draft = null; renderAll();
+  }
+
+  // ---- "+ Add account" (#717, #778): its currency, and a starting balance with its date for every type.
+  var A_TYPES = [['checking', 'Checking', 'Salary, bills, debit card'], ['savings', 'Savings', 'Money set aside, on or off budget as you choose'], ['cash', 'Cash', 'Your wallet'],
+    ['credit_card', 'Credit card', 'Debt you pay off, with its own payment category'], ['brokerage', 'Brokerage', 'Investments, always off budget']];
+  function newAdd(where) { return { where: where, name: '', type: 'checking', on: true, cur: 'EUR', amt: '', date: TODAY_ISO, err: '' }; }
+  function aOn() { return A.type === 'savings' ? A.on : A.type !== 'brokerage'; }
+  function aCur() { return aOn() ? 'EUR' : A.cur; }
+  function signed(str) {
+    var s = String(str).trim().replace('−', '-'), neg = s.charAt(0) === '-';
+    var v = parseAmount(neg ? s.slice(1) : s);
+    return v === null ? null : neg ? -v : v;
+  }
+  // The date is the balance at the end of that day, from January 1, 1900 up to today in the
+  // workspace's time zone; a date after today is refused (#778).
+  var DATE_MIN = '1900-01-01';
+  function addImpact() {
+    var card = A.type === 'credit_card', v = signed(A.amt);
+    if (!A.amt.trim()) return card ? 'Optional: without it, the card starts with no debt.' : 'Optional: without it, the account starts at zero.';
+    if (v === null) return '';
+    if (card) return v < 0 ? '' : 'It shows as debt to cover in the card\'s payment category.'; // a card in credit is refused when added
+    if (!aOn()) return 'An off-budget account does not count toward “Unassigned”.';
+    if (!A.date || A.date > TODAY_ISO || A.date < DATE_MIN) return ''; // refused when added
+    // On budget: income on "Unassigned" in its date's month, counting from that month on (a
+    // negative one, an overdraft, lowers it the same way); earlier months are unchanged.
+    return 'It comes into “Unassigned” in the month of its date. This month, “Unassigned” goes from ' + f(CAT[RTA_ID].avail) + ' to ' + f(CAT[RTA_ID].avail + v) + '.';
+  }
+  function inv(id) { return A.err && A.errAt === id ? ' aria-invalid="true"' : ''; }
+  function addFormHtml() {
+    var on = aOn(), card = A.type === 'credit_card', cur = aCur();
+    return '<button type="button" class="plain closer" data-addclose="1" aria-label="Close the form">× Close</button>' +
+      '<div><span class="where">Family</span><h4>Add account</h4></div>' +
+      '<div class="field"><label for="a-name">Name</label><input type="text" id="a-name" data-af="name" value="' + esc(A.name) + '"></div>' +
+      '<fieldset class="types"><legend>Account type</legend>' + A_TYPES.map(function (t) {
+        return '<label class="opt"><input type="radio" name="a-type" value="' + t[0] + '" data-af="type" id="a-type-' + t[0] + '"' + (A.type === t[0] ? ' checked' : '') + ' aria-describedby="a-type-h-' + t[0] + '"><span><b>' + t[1] + '</b><small id="a-type-h-' + t[0] + '" aria-hidden="true">' + t[2] + '</small></span></label>';
+      }).join('') + '</fieldset>' +
+      (A.type === 'savings' ? '<label class="check"><input type="checkbox" data-af="on" id="a-on"' + (A.on ? ' checked' : '') + '> On budget</label>' : '') +
+      // The currency is chosen once: it never changes after the account is added (#717).
+      '<div class="field"><label for="a-cur">Currency</label>' + (on
+        ? '<input type="text" id="a-cur" value="Euro (EUR)" readonly aria-describedby="a-cur-h"><span class="hint" id="a-cur-h">An on-budget account uses the workspace\'s currency, euro.</span>'
+        : '<select id="a-cur" data-af="cur" aria-describedby="a-cur-h">' + ['EUR', 'USD', 'CHF', 'GBP'].map(function (c) { return '<option value="' + c + '"' + (cur === c ? ' selected' : '') + '>' + CUR_NAME[c] + '</option>'; }).join('') + '</select>' +
+          '<span class="hint" id="a-cur-h">An off-budget account can use any currency. It can\'t be changed later.</span>') + '</div>' +
+      '<div class="field"><label for="a-amt">' + (card ? 'How much do you owe on this card?' : A.type === 'brokerage' ? 'Cash balance' : 'Starting balance') + '</label>' +
+        '<span class="money-in"><input type="text" inputmode="decimal" id="a-amt" data-af="amt" value="' + esc(A.amt) + '" placeholder="0.00"' + inv('a-amt') + ' aria-describedby="' + (A.type === 'brokerage' ? 'a-amt-h ' : '') + 'a-impact' + (A.err && A.errAt === 'a-amt' ? ' a-err' : '') + '"><span>' + SYM[cur] + '</span></span>' +
+        (A.type === 'brokerage' ? '<span class="hint" id="a-amt-h">Only the cash; add the securities you hold as a transfer in.</span>' : '') + '</div>' +
+      '<div class="field"><label for="a-date">' + (card ? 'Owed on' : 'Balance on') + '</label><input type="date" id="a-date" data-af="date" value="' + A.date + '" min="' + DATE_MIN + '" max="' + TODAY_ISO + '"' + inv('a-date') + ' aria-describedby="a-date-h a-impact' + (A.err && A.errAt === 'a-date' ? ' a-err' : '') + '">' +
+        '<span class="hint" id="a-date-h">' + (card ? 'What you owed at the end of that day.' : 'The balance at the end of that day.') + ' Transactions after it go in the register, by hand or by import.</span></div>' +
+      '<p class="hint" id="a-impact" aria-live="polite" style="margin:0">' + addImpact() + '</p>' +
+      (A.err ? '<div class="errs" role="alert" id="a-err">' + esc(A.err) + '</div>' : '') +
+      '<div class="row-btns"><button type="button" class="btn primary" data-addsave="1">Add account</button><button type="button" class="btn" data-addclose="1">Cancel</button></div>';
+  }
+  function addSave() {
+    var v = A.amt.trim() ? signed(A.amt) : 0, card = A.type === 'credit_card';
+    // Each refusal states its rule first, then the fact that breaks it.
+    A.errAt = 'a-amt';
+    if (!A.name.trim()) { A.err = 'Give the account a name.'; A.errAt = 'a-name'; }
+    else if (v === null) A.err = 'Enter a valid amount.';
+    else if (card && v < 0) A.err = 'What you owe on a card has to be zero or more: a card that starts in credit can\'t be added yet.';
+    else if (!A.date || A.date > TODAY_ISO) { A.err = 'The date has to be today or earlier: ' + (A.date ? dLabel(A.date) + ' is after today.' : 'enter one.'); A.errAt = 'a-date'; }
+    else if (A.date < DATE_MIN) { A.err = 'The date has to be January 1, 1900 or later.'; A.errAt = 'a-date'; }
+    else A.err = '';
+    if (A.err) { renderAll(); var e = el(A.errAt); if (e) e.focus(); return; }
+    var on = aOn();
+    ADDED.push({ id: 'a' + (++seq), name: A.name.trim(), on: on, card: card, cur: aCur(), bal: card ? -v : v, pay: 0 });
+    addDone = 'Added ' + A.name.trim() + '.';
+    var where = A.where; A = null; renderAll();
+    var back = el(where === 'ph' ? 'ph-add' : 'add-acc-desk'); if (back) back.focus();
+  }
+
+  // ---- The Accounts list (the phone's own; the desktop's is the workspace settings list,
+  // settings-first-run.html): close asks first, a refusal says why, a closed account can be reopened.
+  var PH_ACC = [
+    { id: 'cc', name: 'Checking', on: true, open: 'register' },
+    { id: 'risp', name: 'Savings', on: true, bal: 800000 },
+    { id: 'cont', name: 'Cash', on: true, bal: 8540 },
+    { id: 'prep', name: 'Prepaid card', on: true, bal: 0 },
+    { id: 'visa', name: 'Visa', on: true, bal: -64230, card: true, pay: 59380, sub: 'credit card' },
+    { id: 'broker', name: 'ETF broker', on: false, bal: 4218000 },
+    { id: 'usd', name: 'Dollar savings', on: false, other: 'usd', cur: 'USD' },
+    { id: 'mutuo', name: 'Home mortgage', on: false, bal: -9630000 },
+    { id: 'old', name: 'Old post office account', on: true, other: 'old' }
+  ];
+  var phAsk = null, phRefused = null, phMenu = null;
+  function allPh() { return PH_ACC.concat(ADDED); }
+  function closedOf(x) { return x.other ? OTHER[x.other].closed : x.closed || null; }
+  function balOf(x) { return x.open ? balances().total : x.other ? obal(OTHER[x.other]) : x.bal; }
+  function askHtml(x) {
+    return '<div class="acc-ask" role="group" aria-labelledby="ask-h-' + x.id + '"><b id="ask-h-' + x.id + '">Close ' + esc(x.name) + '?</b>' +
+      '<p>' + esc(x.name) + ' is at <span class="n">' + fc(0, x.cur) + '</span>, with nothing dated after today.</p>' +
+      '<p>A closed account takes no new transactions, transfers or trades. Its past transactions stay, and still count in the months they belong to. It can be reopened.</p>' +
+      (x.card ? '<p>Its payment category, ' + esc(x.name) + ', stays in September and earlier months, and leaves the budget from October.</p>' : '') +
+      '<div class="row-btns"><button type="button" class="btn bad primary" data-phconfirm="' + x.id + '">Close ' + esc(x.name) + '</button><button type="button" class="btn" data-phcancel="' + x.id + '">Cancel</button></div></div>';
+  }
+  function refusalHtml(x) {
+    // The rule first, then only the facts that break it (settings-first-run.html draws the same).
+    var reasons = [], b = balOf(x), intro;
+    if (x.card) {
+      intro = esc(x.name) + ' can\'t be closed yet: it has to be empty, today and later, and its payment category has to have <span class="n">' + fc(0) + '</span> available, with nothing assigned to it in a later month. Right now:';
+      if (b !== 0) reasons.push(esc(x.name) + '\'s balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
+      if (x.pay !== 0) reasons.push('Its payment category, ' + esc(x.name) + ', has <span class="n">' + fc(x.pay) + '</span> available.');
+    } else {
+      intro = esc(x.name) + ' can\'t be closed yet: it has to be empty, today and later. Right now:';
+      if (b !== 0) reasons.push('Its balance today is <span class="n">' + fc(b, x.cur) + '</span>.');
+    }
+    return '<div class="hint bad acc-refusal" role="alert"><p>' + intro + '</p><ul>' + reasons.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></div>';
+  }
+  function phRow(x) {
+    var closed = closedOf(x), bal = balOf(x), opens = x.open || x.other;
+    var sub = closed ? 'closed on ' + dLabel(closed) : x.open ? '1 pending transaction' : x.sub || '';
+    var inner = '<span class="nm">' + esc(x.name) + (sub ? '<small>' + sub + '</small>' : '') + '</span><span class="n' + (bal < 0 ? ' neg' : '') + '">' + fc(bal, x.cur) + (opens ? ' ›' : '') + '</span>';
+    var main = x.open ? '<button type="button" class="open" data-phscreen="register">' + inner + '</button>'
+      : x.other ? '<button type="button" class="open" data-phother="' + x.other + '">' + inner + '</button>' : '<div class="open">' + inner + '</div>';
+    // Reopen is one tap; closing sits behind the row's "⋯" menu (#705).
+    var act = closed ? '<button type="button" class="ph-act" data-phreopen="' + x.id + '">Reopen<span class="sr"> ' + esc(x.name) + '</span></button>'
+      : '<button type="button" class="gmenu-btn" data-phmore="' + x.id + '" aria-haspopup="menu" aria-label="Actions for ' + esc(x.name) + '" aria-expanded="' + (phMenu === x.id) + '">⋯</button>' +
+        (phMenu === x.id ? '<div class="gmenu" role="menu" aria-label="Actions for ' + esc(x.name) + '"><button type="button" role="menuitem" data-phclose="' + x.id + '">Close account</button></div>' : '');
+    return '<div class="ph-acc2' + (closed ? ' closed' : '') + '">' + main + act + '</div>' + (phAsk === x.id ? askHtml(x) : '') + (phRefused === x.id ? refusalHtml(x) : '');
+  }
+  function phAccountsHtml() {
+    var list = allPh(), open = list.filter(function (x) { return !closedOf(x); }), closed = list.filter(function (x) { return closedOf(x); });
+    var onTotal = open.filter(function (x) { return x.on && (x.cur || 'EUR') === 'EUR'; }).reduce(function (s, x) { return s + balOf(x); }, 0);
+    return '<div class="ph-h"><h3>Accounts</h3><button type="button" class="plain ph-act" id="ph-add" data-addopen="ph">+ Add</button></div>' +
+      (addDone || O.done && !O.done.acc ? '<p class="saved" role="status">' + esc(addDone || O.done.text) + '</p>' : '') +
+      '<div class="ph-day">On budget · ' + f(onTotal) + '</div>' + open.filter(function (x) { return x.on; }).map(phRow).join('') +
+      '<div class="ph-day">Off budget</div>' + open.filter(function (x) { return !x.on; }).map(phRow).join('') +
+      (closed.length ? '<div class="ph-day">Closed</div>' + closed.map(phRow).join('') : '') +
+      '<p class="hint">In this mockup Checking, Dollar savings and the closed Old post office account open their registers.</p>';
+  }
+  function setClosed(x, iso) { if (x.other) OTHER[x.other].closed = iso; else x.closed = iso; }
+
+  // ---- The desktop's (stale) sidebar: picks the register, and "+ Add account".
+  function renderSidebar() {
+    var b = balances();
+    function lr(id, name, val, neg) {
+      var cls = 'lr' + (id && state.acc === id ? ' on' : ''), inner = '<span>' + esc(name) + '</span><span class="dots"></span><span class="n' + (neg ? ' neg' : '') + '">' + val + '</span>';
+      return id ? '<button type="button" class="' + cls + ' lr-b" data-acc="' + id + '"' + (state.acc === id ? ' aria-current="true"' : '') + '>' + inner + '</button>' : '<div class="' + cls + '">' + inner + '</div>';
+    }
+    function added(on) { return ADDED.filter(function (x) { return x.on === on; }).map(function (x) { return lr(null, x.name, (x.cur === 'EUR' ? '' : SYM[x.cur]) + plainN(x.bal), x.bal < 0); }).join(''); }
+    var oldClosed = !!OTHER.old.closed;
+    el('side-acc').innerHTML = (addDone ? '<p class="saved" role="status" style="margin:0 0 8px">' + esc(addDone) + '</p>' : '') +
+      '<div class="ledger"><h5>On budget</h5>' + lr('cc', 'Checking', plainN(b.total)) + lr(null, 'Savings', '8,000.00') + lr(null, 'Cash', '85.40') + lr(null, 'Visa', '−642.30', true) +
+        (oldClosed ? '' : lr('old', 'Old post office account', plainN(0))) + added(true) + '</div>' +
+      '<div class="ledger"><h5>Off budget</h5>' + lr(null, 'ETF broker', '42,180.00') + lr('usd', 'Dollar savings', '$' + plainN(obal(OTHER.usd))) + lr(null, 'Home mortgage', '−96,300.00', true) + added(false) + '</div>' +
+      (oldClosed ? '<div class="ledger"><h5>Closed</h5>' + lr('old', 'Old post office account', plainN(0)) + '</div>' : '');
+  }
+  function renderOther() {
+    var other = state.acc !== 'cc';
+    el('main-cc').hidden = other; el('main-other').hidden = !other;
+    el('main-other').innerHTML = other ? otherMainHtml(OTHER[state.acc]) : '';
+  }
+
   function renderPanel() {
-    var open = !!state.draft && state.where === 'desk';
-    el('panel').hidden = !open;
-    el('desk').classList.toggle('nopanel', !open);
-    el('panel').innerHTML = open ? editorHtml() : '';
+    var html = '';
+    if (A && A.where === 'desk') html = addFormHtml();
+    else if (state.acc !== 'cc' && O.draft && O.draft.where === 'desk') html = otherEditorHtml();
+    else if (state.acc !== 'cc' && O.view && O.view.where === 'desk') html = otherRowHtml();
+    else if (state.acc === 'cc' && state.draft && state.where === 'desk') html = editorHtml();
+    el('panel').hidden = !html;
+    el('desk').classList.toggle('nopanel', !html);
+    el('panel').innerHTML = html;
     renderPhone();
   }
   function refreshLive() {
@@ -1023,7 +1348,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       if (isLater(t) && !laterOpen) { laterOpen = true; html += '<div class="month-sep later-sep" style="padding-left:0"><h3>Later</h3><p>Dated after today: not in today\'s balance.</p></div>'; }
       var laterEnd = isLater(t) && ++laterShown === laterTotal;
       if (t.date !== day) { day = t.date; var q = day.split('-'); html += '<div class="ph-day">' + (day === TODAY_ISO ? 'Today' : (q[0] === TODAY_ISO.slice(0, 4) ? LONGDAY : LONGDAY_Y).format(new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])))) + '</div>'; }
-      var sub = catText(t).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      var sub = catPlain(t);
       html += '<div class="ph-tx' + (laterEnd ? ' later-end' : '') + '"><button type="button" class="open" data-phopen="' + t.id + '"><span class="who"><b>' + esc(t.payee) + '</b><small>' + esc(sub) + (t.memo ? ' · ' + esc(t.memo) : '') + '</small></span>' +
         '<span class="amt n' + (t.amount > 0 ? ' in' : '') + '">' + f(t.amount) + '</span></button>' +
         '<button type="button" class="st ' + t.status + '" data-toggle="' + t.id + '" aria-label="' + STATUS_LABEL[t.status] + (t.status === 'locked' ? '' : ': change status') + '"' + (t.status === 'locked' ? ' aria-disabled="true"' : '') + '>' + ICON[t.status] + '</button></div>';
@@ -1037,24 +1362,15 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       '<label class="ph-search" style="margin-top:12px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><span class="sr">Search</span><input type="search" id="ph-search" value="' + esc(ph.q) + '" placeholder="Search"></label>' +
       '<div class="ph-chips">' + chips + '</div>' + html;
   }
-  function phAccountsHtml() {
-    var b = balances();
-    return '<div class="ph-h"><h3>Accounts</h3><button type="button" class="plain">+ Add</button></div>' +
-      '<div class="ph-day">On budget · ' + f(b.total + 800000 + 8540 - 64230) + '</div>' +
-      '<button type="button" class="ph-acc" data-phscreen="register"><span>Checking<small>1 pending transaction</small></span><span class="n" style="display:flex;align-items:center;gap:6px">' + f(b.total) + ' ›</span></button>' +
-      '<div class="ph-acc static"><span>Savings</span><span class="n">' + f(800000) + '</span></div>' +
-      '<div class="ph-acc static"><span>Cash</span><span class="n">' + f(8540) + '</span></div>' +
-      '<div class="ph-acc static"><span>Visa<small>credit card</small></span><span class="n neg">' + f(-64230) + '</span></div>' +
-      '<div class="ph-day">Off budget</div>' +
-      '<div class="ph-acc static"><span>ETF broker</span><span class="n">' + f(4218000) + '</span></div>' +
-      '<div class="ph-acc static"><span>Home mortgage</span><span class="n neg">' + f(-9630000) + '</span></div>' +
-      '<p class="hint">In this mockup only Checking has transactions.</p>';
-  }
   function renderPhone() {
     var out;
-    if (state.draft && state.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-close="1" style="align-self:flex-start">‹ Checking</button>' + editorHtml() + '</div>';
+    if (A && A.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-addclose="1" style="align-self:flex-start">‹ Accounts</button>' + addFormHtml() + '</div>';
+    else if (O.draft && O.draft.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-oclose="1" style="align-self:flex-start">‹ ' + esc(OTHER[O.draft.acc].name) + '</button>' + otherEditorHtml() + '</div>';
+    else if (O.view && O.view.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-oclose="1" style="align-self:flex-start">‹ ' + esc(OTHER[O.view.acc].name) + '</button>' + otherRowHtml() + '</div>';
+    else if (state.draft && state.where === 'ph') out = '<div class="insp-like"><button type="button" class="ph-back" data-close="1" style="align-self:flex-start">‹ Checking</button>' + editorHtml() + '</div>';
     else if (ph.screen === 'quick') out = qeHtml();
     else if (ph.screen === 'register') out = phRegisterHtml();
+    else if (ph.screen === 'other') out = phOtherHtml(OTHER[ph.acc]);
     else out = phAccountsHtml();
     el('ph').innerHTML = out;
     el('ph-tab-acc').toggleAttribute('aria-current', ph.screen !== 'quick');
@@ -1065,12 +1381,52 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     el('view-desk').hidden = !desk; el('view-phone').hidden = desk;
     el('tab-desk').setAttribute('aria-selected', String(desk)); el('tab-phone').setAttribute('aria-selected', String(!desk));
   }
-  function renderAll() { renderRegister(); renderPanel(); }
+  function renderAll() { renderRegister(); renderOther(); renderSidebar(); renderPanel(); }
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button');
     if (!b || b.disabled) return;
     var d = b.dataset;
+    if (b.id === 'tab-desk' || b.id === 'tab-phone') { A = null; O.draft = null; O.view = null; }
+    var inPh = !!b.closest('#view-phone');
+    if (d.acc) { state.acc = d.acc; state.draft = null; state.sel = null; O.draft = null; O.view = null; O.done = null; A = null; return renderAll(); }
+    if (d.addopen) { A = newAdd(d.addopen); addDone = null; renderAll(); var an = el('a-name'); if (an) an.focus(); if (inPh) el('ph').scrollTop = 0; return; }
+    if (d.addclose) { var aw = A && A.where; A = null; renderAll(); var ab = el(aw === 'ph' ? 'ph-add' : 'add-acc-desk'); if (ab) ab.focus(); return; }
+    if (d.addsave) return addSave();
+    if (d.phother) { ph.screen = 'other'; ph.acc = d.phother; O.done = null; renderPhone(); el('ph').scrollTop = 0; return; }
+    if (d.onew) { O.view = null; O.draft = { acc: d.onew === 'ph' ? ph.acc : state.acc, where: d.onew, kind: 'out', dir: 'out', date: TODAY_ISO, amt: '', payee: '', memo: '', errs: [] }; renderAll(); var oa = el('o-amt'); if (oa) oa.focus(); return; }
+    if (d.oopen) { O.draft = null; O.view = { acc: inPh ? ph.acc : state.acc, id: d.oopen, where: inPh ? 'ph' : 'desk' }; renderAll(); if (inPh) el('ph').scrollTop = 0; return; }
+    if (d.oclose) { O.draft = null; O.view = null; return renderAll(); }
+    if (d.osave) return oSave();
+    if (d.oaskind) { O.draft.kind = d.oaskind; O.draft.errs = []; renderAll(); var oam = el('o-amt'); if (oam) oam.focus(); return; }
+    if (d.reopen) {
+      var ra = OTHER[d.reopen]; ra.closed = null; O.view = null;
+      O.done = { acc: ra.id, text: ra.name + ' is open again.' };
+      renderAll(); var nb = document.querySelector((inPh ? '#view-phone ' : '#main-other ') + '[data-onew]'); if (nb) nb.focus(); return;
+    }
+    if (d.phclose) {
+      var px = allPh().filter(function (x) { return x.id === d.phclose; })[0];
+      O.done = null; addDone = null; phMenu = null;
+      if (balOf(px) !== 0 || (px.card && px.pay !== 0)) { phAsk = null; phRefused = px.id; renderPhone(); var pm = document.querySelector('[data-phmore="' + px.id + '"]'); if (pm) pm.focus(); return; }
+      phRefused = null; phAsk = px.id; renderPhone();
+      var pc = document.querySelector('[data-phcancel="' + px.id + '"]'); if (pc) pc.focus(); return;
+    }
+    if (d.phmore) {
+      phMenu = phMenu === d.phmore ? null : d.phmore; phAsk = null; phRefused = null; renderPhone();
+      var mi = phMenu && document.querySelector('[data-phclose="' + phMenu + '"]'); if (mi) mi.focus(); else { var mb = document.querySelector('[data-phmore="' + d.phmore + '"]'); if (mb) mb.focus(); }
+      return;
+    }
+    if (d.phcancel) { phAsk = null; renderPhone(); var pb = document.querySelector('[data-phmore="' + d.phcancel + '"]'); if (pb) pb.focus(); return; }
+    if (d.phconfirm) {
+      var cx = allPh().filter(function (x) { return x.id === d.phconfirm; })[0];
+      setClosed(cx, TODAY_ISO); phAsk = null; addDone = null; O.done = { acc: null, text: cx.name + ' is closed.' };
+      renderAll(); var rb = document.querySelector('[data-phreopen="' + cx.id + '"]'); if (rb) rb.focus(); return;
+    }
+    if (d.phreopen) {
+      var rx = allPh().filter(function (x) { return x.id === d.phreopen; })[0];
+      setClosed(rx, null); phRefused = null; addDone = null; O.done = { acc: null, text: rx.card ? rx.name + ' is open again, and its payment category is back in the budget.' : rx.name + ' is open again.' };
+      renderAll(); var cb2 = document.querySelector('[data-phmore="' + rx.id + '"]'); if (cb2) cb2.focus(); return;
+    }
     if (b.id === 'tab-desk') { if (state.where === 'ph') { state.draft = null; renderAll(); } return show('desk'); }
     if (b.id === 'tab-phone') { if (state.where === 'desk') { state.draft = null; state.sel = null; renderAll(); } return show('phone'); }
     if (b.id === 'new-tx') { state.where = 'desk'; state.sel = null; state.draft = draftFrom(null); state.errors = []; renderAll(); var p = el('tx-amt'); if (p) p.focus(); return; }
@@ -1115,7 +1471,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     if (d.qeacc) { qe.acc = d.qeacc; return renderPhone(); }
     if (d.qe === 'again') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
     if (d.qe === 'close') { qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; ph.screen = 'register'; return renderPhone(); }
-    if (d.phscreen) { ph.screen = d.phscreen; state.draft = null; if (d.phscreen === 'quick') qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
+    if (d.phscreen) { ph.screen = d.phscreen; O.done = null; phAsk = null; phRefused = null; phMenu = null; state.draft = null; if (d.phscreen === 'quick') qe = { amt: '', payee: null, cat: null, acc: 'visa', done: null }; return renderPhone(); }
     if (d.phfilter) { ph.filter = d.phfilter; return renderPhone(); }
     if (d.phopen) { state.where = 'ph'; state.draft = draftFrom(TXS.filter(function (x) { return x.id === d.phopen; })[0]); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
     if (d.phnew) { state.where = 'ph'; state.draft = draftFrom(null); state.errors = []; renderAll(); el('ph').scrollTop = 0; return; }
@@ -1130,6 +1486,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   document.addEventListener('input', function (e) {
     var t = e.target;
     if (t.id === 'reg-search') { state.q = t.value; return renderRegister(); }
+    if (t.dataset.af && A && t.type !== 'radio' && t.type !== 'checkbox' && t.tagName !== 'SELECT') { A[t.dataset.af] = t.value; var ai = el('a-impact'); if (ai) ai.textContent = addImpact(); if (t.dataset.af === 'date') { /* the date also changes the line */ } return; }
+    if (t.dataset.of && O.draft && t.type !== 'radio') { O.draft[t.dataset.of] = t.value; return; }
     if (t.id === 'ph-search') { ph.q = t.value; var pos = t.selectionStart; renderPhone(); var n = el('ph-search'); n.focus(); try { n.setSelectionRange(pos, pos); } catch (err) { /* ignore */ } return; }
     if (!state.draft) return;
     if (t.dataset.df && t.type !== 'radio' && t.type !== 'checkbox' && t.tagName !== 'SELECT') { state.draft[t.dataset.df] = t.value; refreshLive(); }
@@ -1137,6 +1495,10 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   });
   document.addEventListener('change', function (e) {
     var t = e.target;
+    if (t.dataset.af && A && (t.type === 'radio' || t.type === 'checkbox' || t.tagName === 'SELECT')) {
+      A[t.dataset.af] = t.type === 'checkbox' ? t.checked : t.value; renderAll(); var af = el(t.id); if (af) af.focus(); return;
+    }
+    if (t.dataset.of && O.draft && t.type === 'radio') { O.draft[t.dataset.of] = t.value; O.draft.errs = []; renderAll(); var of = el(t.id); if (of) of.focus(); return; }
     if (!state.draft) return;
     if (t.dataset.df === 'kind') { state.draft.kind = t.value; state.draft.split = false; if (t.value === 'in') state.draft.cat = RTA_ID; else if (state.draft.cat === RTA_ID) state.draft.cat = ''; if (offBudgetIn()) state.draft.cat = RTA_ID; renderPanel(); var r = el('kind-' + t.value); if (r) r.focus(); return; }
     if (t.dataset.df === 'dir') {
@@ -1164,6 +1526,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state.draft && !el('view-desk').hidden) { state.sel = null; state.draft = null; renderAll(); }
+    if (e.key === 'Escape' && !el('view-desk').hidden && (A || O.draft || O.view)) { var wasAdd = !!A; A = null; O.draft = null; O.view = null; renderAll(); if (wasAdd) el('add-acc-desk').focus(); }
+    if (e.key === 'Escape' && (phAsk || phMenu)) { var k = phAsk || phMenu; phAsk = null; phMenu = null; renderPhone(); var pk = document.querySelector('[data-phmore="' + k + '"]'); if (pk) pk.focus(); }
   });
   if (window.matchMedia && window.matchMedia('(max-width: 700px)').matches) show('phone');
   renderAll();
