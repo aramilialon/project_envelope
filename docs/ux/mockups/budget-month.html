@@ -213,6 +213,7 @@ button{cursor:pointer}
 .goal.pay .meter{flex-shrink:0}
 .goal.pay .gt{flex:1 1 150px;min-width:0}
 .sch-b{grid-column:2 / -1;display:flex;gap:16px}
+.sch .sch-open{font-size:12px;font-weight:500;text-decoration:underline;text-underline-offset:2px}
 .sch.late > small{color:var(--ink);font-weight:700}
 .hist-r{display:flex;align-items:baseline;gap:10px}
 .hist.gone > span:nth-child(2), .hist.gone .n{color:var(--muted);text-decoration:line-through}
@@ -340,7 +341,7 @@ button{cursor:pointer}
 .spent{font-size:12.5px;color:var(--muted)}
 .bar{position:relative;display:block;height:14px}
 .bar .tr{position:absolute;left:0;top:0;bottom:0;width:82%;border-radius:7px;background:var(--bar);overflow:hidden}
-.bar .tr.empty{background:var(--rule-soft)}
+.bar .tr.no-debt{background:var(--rule-soft)}
 .bar .sp{position:absolute;left:0;top:0;bottom:0;background:var(--spent)}
 .bar .rs{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(90deg,var(--paper) 0 3px,transparent 3px 6px),var(--bar)}
 .bar .tail{position:absolute;top:0;bottom:0;border-radius:0 7px 7px 0}
@@ -396,7 +397,7 @@ button{cursor:pointer}
 <body>
 <div class="wrap">
   <div class="strip">
-    <p><b>envelope</b>, budget month mockup. The interface is shown in English, with sample data of a household on September 25, 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “To do”, the timeline, Assign, Move money, Quick assign (it says what it assigned, or why there is nothing to assign) and Scheduled (with “Later”, what is due after next month, each one openable); on the phone, tap a category to open it. The Travel card switch shows a card paid beyond what was set aside, still owing or owing nothing.</p>
+    <p><b>envelope</b>, budget month mockup. The interface is shown in English, with sample data of a household on September 25, 2026 that matches the accounts to the cent. Open a category to see its detail and change what it is assigned; try “To do”, the timeline, Assign, Move money, Quick assign (it says what it assigned, or why there is nothing to assign) and Scheduled (every item opens its form, and “After October” lists what is due after next month); on the phone, tap a category to open it. The Travel card switch shows a card paid beyond what was set aside, still owing or owing nothing.</p>
     <div class="views" role="tablist" aria-label="View">
       <button type="button" role="tab" id="tab-desk" aria-controls="view-desk" aria-selected="true">Desktop</button>
       <button type="button" role="tab" id="tab-phone" aria-controls="view-phone" aria-selected="false">Phone</button>
@@ -918,7 +919,8 @@ button{cursor:pointer}
     if (x.debt <= 0 && toCover <= 0) return '';
     var pct = x.debt > 0 ? Math.max(0, Math.min(100, Math.round((x.debt - x.uncovered) / x.debt * 100))) : 0;
     var text = x.cash > 0
-      ? (x.debt > 0 ? f(toCover) + ' to cover: ' + f(x.debt) + ' of debt and ' + f(x.cash) + ' paid beyond what was set aside'
+      // #726: the same order as its "To do" line: what was paid beyond what was set aside, then the debt.
+      ? (x.uncovered > 0 ? f(toCover) + ' to cover: ' + f(x.cash) + ' paid beyond what was set aside, ' + f(x.uncovered) + ' of debt'
         : f(toCover) + ' to cover: paid beyond what was set aside')
       : x.uncovered > 0 ? f(x.uncovered) + ' to cover of ' + f(x.debt) + ' of debt' : f(x.debt) + ' of debt covered';
     return '<span class="goal pay' + (toCover > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + pct + '%"></i></span><span class="gt">' + text + '</span></span>';
@@ -950,8 +952,9 @@ button{cursor:pointer}
     var now = ymOf(s.due) <= CUR;
     return '<div class="sch' + (overdue(s.due) ? ' late' : '') + '"><small class="n">' + dLabel(s.due) + '</small>' +
       '<span><b>' + esc(s.payee) + '</b><small>' + sub + '</small></span><span class="n">' + f(s.income ? s.amount : -s.amount) + '</span>' +
-      (now ? '<span class="sch-b"><button type="button" class="plain" data-rec="' + s.id + '">Record</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Skip</button></span>'
-        : ymOf(s.due) > CUR + 1 && withCat ? '<span class="sch-b"><button type="button" class="plain" data-sfopen="' + s.id + '" aria-label="Open ' + esc(s.payee) + ', ' + dLabel(s.due) + '">Open</button></span>' : '<span></span>') + '</div>';
+      // #744: every scheduled transaction opens the same form, filled in.
+      '<span class="sch-b">' + (now ? '<button type="button" class="plain" data-rec="' + s.id + '">Record</button><button type="button" class="plain quiet" data-skip="' + s.id + '">Skip</button>' : '') +
+        '<button type="button" class="plain" data-sfopen="' + s.id + '" aria-label="Open ' + esc(s.payee) + ', ' + dLabel(s.due) + '">Open</button></span></div>';
   }
   function histHtml(cat) {
     var rev = reversedIds();
@@ -1260,16 +1263,16 @@ button{cursor:pointer}
     var prev = list.length ? list.map(function (z) {
       return '<div class="ba"><span>' + esc(nm(z[0])) + '</span><span class="n">' + (z[2] < z[1] ? '<span style="color:var(--warn)">' + f(z[2]) + ' of ' + f(z[1]) + '</span>' : '+' + f(z[2])) + '</span></div>';
     }).join('') + '<div class="ba" style="border-top:1px solid var(--rule);margin-top:4px;padding-top:6px"><span>Unassigned</span><span class="n">' + f(rta()) + ' → <b>' + f(rta() - give) + '</b></span></div>' +
-      (give === 0 ? '<div class="ba note qa-none" role="status">Nothing to assign: there is no unassigned money.</div>'
+      (give === 0 ? '<div class="ba note qa-none" role="status">Nothing to assign: “Unassigned” is ' + f(rta()) + '.</div>'
         : give < want ? '<div class="ba note" style="color:var(--warn)">Unassigned is not enough for everything: categories get money in the order of the table while it lasts.</div>' : '')
-      : '<div class="ba note qa-none" role="status">' + QK_NONE[q.kind] + '</div>';
+      : '<div class="ba note qa-none" role="status">' + (QK_NONE[q.kind] || 'Nothing to assign for this choice.') + '</div>';
     return CLOSE + '<div><span class="where">Family · September 2026</span><h4>Quick assign</h4></div>' +
       '<div class="field"><label for="qa-scope">Scope</label><select id="qa-scope" data-qa="scope"><option value="all">All categories</option>' +
       GROUPS.map(function (g) { return '<option value="' + g.id + '"' + (q.scope === g.id ? ' selected' : '') + '>' + esc(g.name) + '</option>'; }).join('') + '</select></div>' +
       '<fieldset class="types"><legend>Mode</legend>' + opts + '</fieldset>' +
       '<div class="preview">' + prev + '</div>' +
       '<div class="row-btns"><button type="button" class="btn primary" data-qaapply="1"' + (give > 0 ? '' : ' disabled') + '>Run</button></div>' +
-      '<p class="explain" style="font-size:13px;color:var(--muted)">Each category gets one line in the assignment ledger; “Undo” removes them all together.</p>';
+      '<p class="explain" style="font-size:13px;color:var(--muted)">Each category gets one line in the assignment ledger. “Undo”, in the confirmation or in the toolbar, takes back the whole run at once.</p>';
   }
 
   // ---- Scheduled transactions panel ----
@@ -1286,7 +1289,8 @@ button{cursor:pointer}
       if (per !== null && per >= byCat[k]) { st = 'Within the target (' + describe(sp) + ')'; inT += byCat[k]; }
       else if (per !== null) { st = 'The target asks ' + f(per) + ': ' + f(byCat[k] - per) + ' missing'; cls = ' need'; inT += per; }
       else { st = 'No target'; cls = ' need'; }
-      rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return esc(s.payee); }).join(', ') + '</small>' +
+      // Each scheduled transaction in the row opens its form (#744): its payee is the link.
+      rows += '<div class="sch"><small class="n">' + items.map(function (s) { return dLabel(s.due); }).join(', ') + '</small><span><b>' + esc(x.c.name) + '</b><small>' + items.map(function (s) { return '<button type="button" class="plain sch-open" data-sfopen="' + s.id + '" aria-label="Open ' + esc(s.payee) + ', ' + dLabel(s.due) + '">' + esc(s.payee) + '</button>'; }).join(', ') + '</small>' +
         '<span class="goal' + cls + '">' + esc(st) + '</span></span><span class="n">' + f(-byCat[k]) + '</span>' +
         (per === null ? '<span class="sch-b"><button type="button" class="plain" data-sugg="' + k + '">Use as target</button></span>' : '<span></span>') + '</div>';
     });
@@ -1313,9 +1317,11 @@ button{cursor:pointer}
       '<div class="sec"><h5>Preview: the start of next month</h5><p class="explain">On October 1, <b class="n">' + f(o.total) + '</b> will be reserved for ' + o.n + ' scheduled expenses' +
         (o.total ? ': <b class="n">' + f(o.inT) + '</b> is already within a target' + (o.total - o.inT > 0 ? ', and <b class="n" style="color:var(--warn)">' + f(o.total - o.inT) + '</b> is left to assign by hand' : '') : '') +
         '. When October opens, the month summary starts from this list.</p>' + o.rows + '</div>' +
-      // #744: everything due after next month, with its next date, each one openable.
-      '<div class="sec"><h5>Later</h5>' + (later.length ? later.map(function (s) { return schedRow(s, true); }).join('') +
-        '<p class="explain" style="font-size:13px">Due after October: each one reserves money from the first day of its own month.</p>' : '<span style="color:var(--muted)">None.</span>') + '</div>' +
+      // #744: everything due after next month, with its next date, each one openable. The heading
+      // names the month it follows ("After October"); "Later" is the register's word for rows
+      // dated after today (packages/i18n/glossary.md).
+      '<div class="sec"><h5>After ' + monthName(CUR + 1 - 2026 * 12) + '</h5>' + (later.length ? later.map(function (s) { return schedRow(s, true); }).join('') +
+        '<p class="explain" style="font-size:13px">Each one reserves money in its category from the first day of its own month.</p>' : '<span style="color:var(--muted)">None.</span>') + '</div>' +
       (state.sf ? sfHtml(byId) : '<button type="button" class="btn" style="align-self:flex-start" data-sfnew="1">+ New scheduled transaction</button>');
   }
   var SF_DAYS = (function () { var a = []; for (var d = 26; d <= 30; d++) a.push({ y: 2026, m: 9, d: d }); for (d = 1; d <= 31; d++) a.push({ y: 2026, m: 10, d: d }); return a; })();
@@ -1330,9 +1336,12 @@ button{cursor:pointer}
     if (s.kind === 'in') return 'Income reserves nothing: once recorded, it lands in Unassigned.';
     if (!s.cat) return '<span style="color:var(--red-text)">Choose a category: every expense has one.</span>';
     var x = byId[s.cat], due = sfDays().filter(function (d) { return sfKey(d) === s.due; })[0];
-    if (ymOf(due) > CUR) return 'Will reserve ' + f(amt) + ' in ' + esc(x.c.name) + ' from ' + monthName(due.m) + ' 1' + (due.y !== 2026 ? ', ' + due.y : '') + '.';
-    var after = x.avail - amt;
-    return 'Reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' right away: available goes from ' + f(x.avail) + ' to <b class="n">' + f(after) + '</b>.' +
+    if (ymOf(due) > CUR) return 'This reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' from ' + monthName(due.m) + ' 1' + (due.y !== 2026 ? ', ' + due.y : '') + '.';
+    // An opened one already reserves its amount this month: the preview starts from without it.
+    var was = s.id ? state.sched.filter(function (z) { return z.id === s.id; })[0] : null;
+    var base = x.avail + (was && !was.income && was.cat === s.cat && ymOf(was.due) <= CUR ? was.amount : 0);
+    var after = base - amt;
+    return 'This reserves ' + f(amt) + ' in ' + esc(x.c.name) + ' right away: available goes from ' + f(base) + ' to <b class="n">' + f(after) + '</b>.' +
       (after < 0 ? '<br><span style="color:var(--warn)">Not enough: ' + f(-after) + ' missing. This is not overspending.</span>' : '');
   }
   function sfHtml(byId) {
@@ -1349,7 +1358,7 @@ button{cursor:pointer}
       (canTarget ? '<label class="chk"><input type="checkbox" data-sf="asTarget"' + (s.asTarget ? ' checked' : '') + '> Use it as this category\'s target</label>' : '') +
       '<div class="preview" id="sf-prev" aria-live="polite">' + sfPreview(byId) + '</div>' +
       '<div class="row-btns"><button type="button" class="btn primary" data-sfsave="1">Save</button><button type="button" class="btn" data-sfcancel="1">Cancel</button>' +
-      (s.id ? '<button type="button" class="plain danger" data-sfdelete="1">Delete</button>' : '') + '</div></div>';
+      (s.id ? '<button type="button" class="plain danger" style="margin-left:8px" data-sfdelete="1">Delete</button>' : '') + '</div></div>';
   }
   function targetFromSched(cat, amount, every, due) {
     if (every === 1) return { type: 'monthly', amount: amount };
@@ -1387,7 +1396,7 @@ button{cursor:pointer}
       // `bar`, uncovered hatched) and the red part is in proportion to it, at most 18 %; with no
       // debt left, the track is empty and the red part takes the whole 18 %.
       var cashTail = x.cash > 0 ? '<span class="tail cash" style="left:' + W + '%;width:' + (x.debt > 0 ? Math.min(TAIL, x.cash / x.debt * W) : TAIL).toFixed(1) + '%"></span>' : '';
-      if (x.debt <= 0) return '<span class="bar" aria-hidden="true"><span class="tr' + (cashTail ? ' empty' : '') + '"></span>' + cashTail + '</span>';
+      if (x.debt <= 0) return '<span class="bar" aria-hidden="true"><span class="tr' + (cashTail ? ' no-debt' : '') + '"></span>' + cashTail + '</span>';
       var cov = pct(Math.max(0, x.avail), x.debt);
       return '<span class="bar" aria-hidden="true"><span class="tr"><span class="uc" style="left:' + cov.toFixed(1) + '%;width:' + (100 - cov).toFixed(1) + '%"></span></span>' + cashTail + '</span>';
     }
@@ -1513,7 +1522,7 @@ button{cursor:pointer}
       // #726: a card's payment category says what its one amount is made of: what was paid beyond
       // what was set aside (cash overspending, this month) and the debt still uncovered, if any.
       var sub = x.c.payment
-        ? f(x.cash) + ' paid beyond what was set aside, to cover this month' + (x.uncovered > 0 ? ', and ' + f(x.uncovered) + ' of debt' : '')
+        ? f(x.cash) + ' paid beyond what was set aside; if still uncovered when the month ends, it comes out of next month\'s unassigned money.' + (x.uncovered > 0 ? ' Plus ' + f(x.uncovered) + ' of debt.' : '')
         : x.credit === 0 && x.short > 0 ? 'overspent in cash and not enough for what is scheduled: cover it before the month ends' : 'overspent in cash: cover it before the month ends';
       if (x.cash > 0) list.push({ dot: 'r', title: 'Cover ' + x.c.name, sub: sub, amount: needOf(x), cat: k });
     });
@@ -1575,7 +1584,7 @@ button{cursor:pointer}
     el('reset').disabled = lb === null;
     var t = state.toast;
     el('toast').hidden = !t;
-    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Close this message">×</button>';
+    if (t) el('toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '"' + (t.undoLabel ? ' aria-label="' + t.undoLabel + '"' : '') + '>Undo</button>' : '') + '<button type="button" class="plain quiet" data-toastclose="1" aria-label="Close this message">×</button>';
 
     // Bars
     var body = '';
@@ -1609,7 +1618,7 @@ button{cursor:pointer}
 
     // Phone
     el('ph-toast').hidden = !t || !!state.ph;
-    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '">Undo</button>' : '');
+    if (t) el('ph-toast').innerHTML = '<span>' + esc(t.text) + '</span>' + (t.batch && !t.noUndo && lb === t.batch ? '<button type="button" class="plain" data-toastundo="' + t.batch + '"' + (t.undoLabel ? ' aria-label="' + t.undoLabel + '"' : '') + '>Undo</button>' : '');
     el('ph-home').hidden = !!state.ph;
     el('ph-detail').hidden = !state.ph;
     if (state.ph) {
@@ -1705,8 +1714,11 @@ button{cursor:pointer}
       if (!ql.length) return;
       var qgive = sum(ql, function (z) { return z[2]; }), qmiss = sum(qall, function (z) { return z[1] - z[2]; });
       addBatch(ql.map(function (z) { return { from: null, to: z[0], amount: z[2] }; }),
-        'Quick assign: assigned ' + f(qgive) + ' to ' + ql.length + (ql.length === 1 ? ' category.' : ' categories.') +
-        (qmiss > 0 ? ' Unassigned was not enough for ' + f(qmiss) + ' more.' : ''));
+        'Quick assign put ' + f(qgive) + ' in ' + (ql.length === 1 ? nm(ql[0][0]) + '.' : ql.length + ' categories.') +
+        (qmiss > 0 ? ' “Unassigned” was not enough for ' + f(qmiss) + ' more.' : ''));
+      // The confirmation's "Undo" and the toolbar's both take back this whole run; the confirmation's
+      // says so to a screen reader.
+      if (state.toast) state.toast.undoLabel = 'Undo this quick assign';
       // The sheet closes; the confirmation above the categories says what was done, and focus goes
       // back to the toolbar's "Quick assign".
       state.sel = null;

@@ -116,6 +116,8 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
 .det-h h4{margin:0;font-family:var(--display);font-size:20px;font-weight:700}
 .det .rest{margin:8px 0 0;color:var(--muted);font-size:12.5px}
 .empty-b{margin:18px 0 0;padding:16px 18px;border-radius:12px;background:var(--paper-2);color:var(--ink-2)}
+.empty-b p{margin:0}
+.empty-b p + p{margin-top:6px}
 .toast{margin-top:14px;padding:10px 14px;border-radius:10px;background:var(--paper-2);color:var(--ink-2);font-size:13px}
 </style>
 </head>
@@ -223,7 +225,8 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
     // #709: a budget with no categories points at the inline "+ Add a group" right below it, not at
     // Workspace settings; a read-only member, who cannot add any, is told who can.
     if (!GROUPS.length) {
-      html += '<p class="empty-b">' + (canWrite() ? 'No categories yet: start with “+ Add a group” below, then add its categories.' : 'No categories yet. An owner or an editor can add them.') + '</p>';
+      html += '<div class="empty-b"><p>No categories yet. Categories hold the money you assign, like rent, groceries or a trip; groups keep them together.</p>' +
+        '<p>' + (canWrite() ? 'Add a group first, then its categories.' : 'An owner or an editor can add them.') + '</p></div>';
     }
     if (canWrite()) {
       html += S.editing && S.editing.kind === 'group' ? '<div class="add-group">' + field('Name of the new group', '', 'Add') + '</div>' :
