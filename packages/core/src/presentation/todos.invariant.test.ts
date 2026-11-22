@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { computeBudgetMonth, type Assignment, type BudgetInput, type BudgetMonth, type CategoryMonth } from "../budget/budget-month.ts";
+import { owing } from "../testing/card-balance.ts";
 import { mulberry32 } from "../testing/random.ts";
 import { amountNeededToCover, computeTodos, type TodoItem } from "./todos.ts";
 
@@ -68,8 +69,8 @@ const X2: BudgetInput = {
     { paymentCategoryId: "visa", month: MONTH, amount: 4_567 },
   ],
   cardBalances: [
-    { paymentCategoryId: "mc", owed: 50_000 + 4_567 - 30_000, hasStartingBalance: true },
-    { paymentCategoryId: "visa", owed: 0, hasStartingBalance: false },
+    { paymentCategoryId: "mc", transactions: owing(50_000 + 4_567 - 30_000, `${MONTH}-01`), hasStartingBalance: true },
+    { paymentCategoryId: "visa", transactions: owing(0, `${MONTH}-01`), hasStartingBalance: false },
   ],
   today: "2026-09-30",
 };
@@ -85,7 +86,7 @@ const V2: BudgetInput = {
     { categoryId: "groceries", month: MONTH, amount: -30_000, paymentCategoryId: "visa" },
   ],
   cardPayments: [],
-  cardBalances: [{ paymentCategoryId: "visa", owed: 30_000, hasStartingBalance: false }],
+  cardBalances: [{ paymentCategoryId: "visa", transactions: owing(30_000, `${MONTH}-01`), hasStartingBalance: false }],
   today: "2026-09-30",
 };
 
@@ -169,7 +170,7 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
           (sum, t) => sum + (t.sourcePaymentCategoryId === card ? t.amount : 0) - (t.destinationPaymentCategoryId === card ? t.amount : 0),
           0,
         );
-        return { paymentCategoryId: card, owed: start + spent - paid + transferred, hasStartingBalance: start > 0 };
+        return { paymentCategoryId: card, transactions: owing(start + spent - paid + transferred, `${MONTH}-01`), hasStartingBalance: start > 0 };
       });
       return {
         categoryIds,
@@ -191,9 +192,9 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       return Math.min(c.reserved, Math.max(0, c.reserved - Math.max(0, c.available + c.reserved)));
     }
 
-    /** What a card takes to cover, written out again rather than read from `cardDebt`. */
+    /** What a card takes to cover, written out again rather than read from `cardDebt`: owed is signed (#660). */
     function toCover(c: CategoryMonth): number {
-      return Math.max(0, Math.max(0, c.owed ?? 0) - c.available);
+      return Math.max(0, (c.owed ?? 0) - c.available);
     }
 
     /**
@@ -223,7 +224,9 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
     function assertSettled(before: BudgetMonth, after: BudgetMonth, context: string): void {
       for (const card of before.paymentCategories) {
         const settled = find(after.paymentCategories, card.categoryId);
-        assert.ok(settled.available >= Math.max(0, settled.owed ?? 0), `${context}, card ${card.categoryId}`);
+        // A card in credit may stay below zero, down to minus its credit (#660).
+        assert.ok(settled.available >= (settled.owed ?? 0), `${context}, card ${card.categoryId}`);
+        assert.equal(settled.cashOverspending, 0, `${context}, card ${card.categoryId}`);
       }
       for (const c of after.categories) {
         assert.equal(c.cashOverspending, 0, `${context}, category ${c.categoryId}`);
@@ -265,7 +268,7 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
         }
         for (const card of month.paymentCategories) {
           const settled = find(after.paymentCategories, card.categoryId);
-          assert.equal(settled.available, Math.max(card.available, Math.max(0, card.owed ?? 0)), `${context}, card ${card.categoryId}`);
+          assert.equal(settled.available, Math.max(card.available, card.owed ?? 0), `${context}, card ${card.categoryId}`);
         }
         assertSettled(month, after, context);
         if ((input.cardTransfers ?? []).length > 0) settledWithTransfer++;

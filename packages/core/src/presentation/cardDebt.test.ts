@@ -3,11 +3,12 @@ import { describe, it } from "node:test";
 
 import { computeBudgetMonth } from "../budget/budget-month.ts";
 import { cardDebt } from "./cardDebt.ts";
+import { owing } from "../testing/card-balance.ts";
 import { amountNeededToCover, computeTodos } from "./todos.ts";
 
 describe("cardDebt", () => {
   it("no debt and nothing set aside: all zero", () => {
-    assert.deepEqual(cardDebt({ available: 0, uncovered: 0, owed: 0 }), {
+    assert.deepEqual(cardDebt({ available: 0, uncovered: 0, owed: 0, cashOverspending: 0 }), {
       owed: 0,
       setAside: 0,
       paidBeyondSetAside: 0,
@@ -17,7 +18,7 @@ describe("cardDebt", () => {
   });
 
   it("partially covered: set aside is available, to cover is what it does not cover", () => {
-    assert.deepEqual(cardDebt({ available: 50_000, uncovered: 70_000, owed: 120_000 }), {
+    assert.deepEqual(cardDebt({ available: 50_000, uncovered: 70_000, owed: 120_000, cashOverspending: 0 }), {
       owed: 120_000,
       setAside: 50_000,
       paidBeyondSetAside: 0,
@@ -27,19 +28,27 @@ describe("cardDebt", () => {
   });
 
   it("more set aside than owed: nothing to cover", () => {
-    const debt = cardDebt({ available: 80_000, uncovered: 0, owed: 60_000 });
+    const debt = cardDebt({ available: 80_000, uncovered: 0, owed: 60_000, cashOverspending: 0 });
     assert.equal(debt.setAside, 80_000);
     assert.equal(debt.toCover, 0);
   });
 
   it("an unknown card balance counts as owing nothing", () => {
-    assert.equal(cardDebt({ available: 0, uncovered: 0 }).owed, 0);
+    assert.equal(cardDebt({ available: 0, uncovered: 0, cashOverspending: 0 }).owed, 0);
   });
 
-  it("a card in credit (negative owed) still needs its cash overspending covered", () => {
-    const debt = cardDebt({ available: -5_000, uncovered: 0, owed: -1_000 });
-    assert.equal(debt.paidBeyondSetAside, 5_000);
-    assert.equal(debt.toCover, 5_000);
+  it("a card in credit (negative owed) needs only its cash overspending beyond the credit covered (#660)", () => {
+    // The domain guide's edge case: owes −€10, available −€50: cash overspending €40.
+    const debt = cardDebt({ available: -5_000, uncovered: 0, owed: -1_000, cashOverspending: 4_000 });
+    assert.equal(debt.paidBeyondSetAside, 4_000);
+    assert.equal(debt.toCover, 4_000);
+  });
+
+  it("a card in credit holding its payment category at minus the credit: nothing to cover (#660)", () => {
+    const debt = cardDebt({ available: -3_000, uncovered: 0, owed: -3_000, cashOverspending: 0 });
+    assert.equal(debt.paidBeyondSetAside, 0);
+    assert.equal(debt.setAside, 0);
+    assert.equal(debt.toCover, 0);
   });
 
   it("the domain guide's worked example: paid beyond what was set aside (#699)", () => {
@@ -54,7 +63,7 @@ describe("cardDebt", () => {
         assignments: [{ categoryId: "groceries", month: "2026-09", amount: 10_000 }],
         activity: [{ categoryId: "groceries", month: "2026-09", amount: -4_567, paymentCategoryId: CARD }],
         cardPayments: [{ paymentCategoryId: CARD, month: "2026-09", amount: 30_000 }],
-        cardBalances: [{ paymentCategoryId: CARD, owed: 50_000 + 4_567 - 30_000, hasStartingBalance: true }],
+        cardBalances: [{ paymentCategoryId: CARD, transactions: owing(50_000 + 4_567 - 30_000, "2026-09-01"), hasStartingBalance: true }],
         today: "2026-09-30",
       },
       "2026-09",
@@ -97,6 +106,8 @@ describe("cardDebt", () => {
       { name: "owed > 0, available < 0", owed: 100_000, assign: 0, pay: 30_000 },
       { name: "owed = 0, available < 0", owed: 0, assign: 0, pay: 30_000 },
       { name: "owed < 0 (in credit), available < 0", owed: -1_000, assign: 0, pay: 5_000 },
+      { name: "owed < 0 (in credit), −credit < available < 0", owed: -5_000, assign: 0, pay: 1_000 },
+      { name: "owed < 0 (in credit), available = −credit", owed: -5_000, assign: 0, pay: 5_000 },
       { name: "owed < 0 (in credit), available >= 0", owed: -1_000, assign: 10_000, pay: 0 },
       { name: "owed absent, available < 0", owed: undefined, assign: 0, pay: 30_000 },
       { name: "owed absent, available >= 0", owed: undefined, assign: 10_000, pay: 0 },
@@ -112,7 +123,7 @@ describe("cardDebt", () => {
             assignments: c.assign > 0 ? [{ categoryId: CARD, month: "2026-09", amount: c.assign }] : [],
             activity: [],
             cardPayments: c.pay > 0 ? [{ paymentCategoryId: CARD, month: "2026-09", amount: c.pay }] : [],
-            cardBalances: c.owed === undefined ? [] : [{ paymentCategoryId: CARD, owed: c.owed, hasStartingBalance: false }],
+            cardBalances: c.owed === undefined ? [] : [{ paymentCategoryId: CARD, transactions: owing(c.owed, "2026-09-01"), hasStartingBalance: false }],
             today: "2026-09-30",
           },
           "2026-09",
@@ -123,8 +134,9 @@ describe("cardDebt", () => {
         const debt = cardDebt(card);
 
         assert.equal(debt.toCover, card.cashOverspending + card.uncovered);
-        assert.equal(debt.toCover, Math.max(0, Math.max(0, c.owed ?? 0) - card.available));
+        assert.equal(debt.toCover, Math.max(0, (c.owed ?? 0) - card.available));
         assert.equal(debt.paidBeyondSetAside, card.cashOverspending);
+        assert.equal(card.cashOverspending, Math.max(0, -card.available - Math.max(0, -(c.owed ?? 0))));
         assert.ok(debt.setAside >= 0);
         assert.equal(amountNeededToCover(card), debt.toCover);
 

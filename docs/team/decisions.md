@@ -25,6 +25,8 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#89** (2026-11-22, architect): #89 depends on #719.
 - **#596** (2026-11-22, architect; domain-expert confirms): untimed trades in histories that local-midnight ordering would reorder get `occurred_at` = UTC midnight of their date by a repair migration (0038), which keeps the replay order, positions and cost basis they had; rejected: a release note only, a fail-loud check, accepting the change.
 - **#719** (2026-11-22, architect): the positions answer carries no list or count of trades dated after `asOf`; how later trades show is decided with the portfolio dashboard (#106, 0.2.4) and its mockup.
+- **#782** (2026-11-22, domain-expert): negative income in a later month is left out of an earlier month's unassigned calculation item by item, not as the month's net; a later month's positive income still pays its own assignments.
+- **#660** (2026-11-22, domain-expert): budget problems flag a payment category only beyond its card's credit (same figure as `cashOverspending`).
 
 ### 0.2.0
 

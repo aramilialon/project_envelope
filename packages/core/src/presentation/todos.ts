@@ -98,7 +98,8 @@ export function reservationShortfall(category: CategoryMonth): Cents {
  * so it would not reach the reservation and would only lower what the card asks.
  *
  * A payment category asks `cardDebt`'s `toCover`: its cash overspending (the card was paid beyond
- * what was set aside) plus its uncovered debt, `max(0, max(0, owed) - available)` (#699).
+ * what was set aside, beyond the card's credit) plus its uncovered debt, `max(0, owed - available)`
+ * with `owed` signed (#699, #660).
  * `uncovered` is always 0 on an ordinary category, and `reserved` always 0 on a payment category.
  */
 export function amountNeededToCover(category: CategoryMonth): Cents {

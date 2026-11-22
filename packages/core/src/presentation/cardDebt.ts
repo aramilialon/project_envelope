@@ -9,31 +9,36 @@ import type { Cents } from "../money.ts";
  * none of them derives a debt figure of its own.
  */
 export interface CardDebt {
-  /** The card's real debt (`CategoryMonth.owed`); 0 when the card's balance is not known. */
+  /** The card's real debt (`CategoryMonth.owed`), negative when the card is in credit; 0 when the card's balance is not known. */
   readonly owed: Cents;
   /** Money set aside to pay the card: `max(0, available)`, never negative. */
   readonly setAside: Cents;
-  /** How much the card was paid beyond what was set aside: `max(0, -available)` (the category's cash overspending). */
+  /**
+   * How much the card was paid beyond what was set aside and beyond its own credit: the payment
+   * category's cash overspending, `max(0, -available - credit)` with credit = `max(0, -owed)`
+   * (#660). A negative available down to minus the card's credit is the card in credit, not
+   * money paid beyond.
+   */
   readonly paidBeyondSetAside: Cents;
   /** Part of the debt no money set aside covers yet (`CategoryMonth.uncovered`). */
   readonly uncovered: Cents;
   /**
    * What it takes to bring the payment category back to covering the whole debt:
-   * `cashOverspending + uncovered`, that is `max(0, max(0, owed) - available)`. A card whose
-   * balance is in credit (negative `owed`) counts as owing nothing here, so the figure is never
-   * less than the cash overspending itself. The status line, the detail's "To cover", the "To do"
-   * item, "Assign" and quick assign's "cover card debt" all use this one figure.
+   * `cashOverspending + uncovered`, that is `max(0, owed - available)` with `owed` signed (#660):
+   * a card in credit may hold a payment category down to minus its credit with nothing to cover.
+   * The status line, the detail's "To cover", the "To do" item, "Assign" and quick assign's
+   * "cover card debt" all use this one figure.
    */
   readonly toCover: Cents;
 }
 
-export function cardDebt(category: Pick<CategoryMonth, "available" | "uncovered" | "owed">): CardDebt {
+export function cardDebt(category: Pick<CategoryMonth, "available" | "uncovered" | "owed" | "cashOverspending">): CardDebt {
   const owed = category.owed ?? 0;
   return {
     owed,
     setAside: Math.max(0, category.available),
-    paidBeyondSetAside: Math.max(0, -category.available),
+    paidBeyondSetAside: category.cashOverspending,
     uncovered: category.uncovered,
-    toCover: Math.max(0, Math.max(0, owed) - category.available),
+    toCover: Math.max(0, owed - category.available),
   };
 }

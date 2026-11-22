@@ -26,6 +26,9 @@ from the months before M. M's unassigned money is the smallest of these figures.
   salary;
 - money assigned ahead to a later month comes out of the month it was taken from;
 - but a later month's assignment paid for by that later month's own income is not blamed on M;
+- negative income (money going out of Unassigned, such as an overdraft recorded there) counts from
+  its own month on, like cash overspending: it is never charged to earlier months, so a later
+  month counts only its positive income in M's figures (#782);
 - income dated after today counts nowhere until its date: it is expected income, not money
   received. The same holds for every other amount coming in dated after today, split by split: a
   refund, a categorized transfer in from the broker, the positive split of a receipt with a return
@@ -53,12 +56,17 @@ income does not pay for, charged to M; when it exceeds what M has, M's unassigne
    €50 of groceries already entered for the 25th: November shows **€1,700** unassigned and
    Groceries €250 available. The €500 counts from the 27th on, in November and every later month,
    not before.
-6. €2,000 received in November, €300 assigned to Groceries and €100 to Household, and a €200
+6. €100 unassigned in September and nothing else; a −€300 overdraft on checking is recorded on
+   Unassigned on 22 November. September shows **€100** and October **€100**, with nothing
+   assigned to later months; November shows **−€200**, a warning in the month the money went out.
+   September's money at its end does not include a November overdraft, so it is not charged back
+   to it as "assigned to later months" (#782).
+7. €2,000 received in November, €300 assigned to Groceries and €100 to Household, and a €200
    Groceries refund entered for 28 November: Groceries shows **€300** available until the 28th,
    €500 from then on; unassigned money stays €1,600 throughout.
-7. A €100 receipt dated 25 November, split into €150 of Groceries and a €50 return to Household:
+8. A €100 receipt dated 25 November, split into €150 of Groceries and a €50 return to Household:
    Groceries loses the €150 at once; Household gets the €50 only from the 25th.
-8. €2,000 received in November, €50 of it assigned to Groceries, €100 of groceries paid in cash
+9. €2,000 received in November, €50 of it assigned to Groceries, €100 of groceries paid in cash
    on 10 November and a €60 refund entered for the 28th: until the 28th, November closes with
    Groceries at **−€50**, so December takes €50 of overspending from its unassigned money
    (€1,900 instead of €1,950). From the 28th, November closes at +€10, December's Groceries
@@ -124,16 +132,18 @@ budget works out fresh every time.
 holds takes the difference from cash that had no job: the payment category's available goes
 negative, and that negative part is cash overspending, taken from next month's unassigned money like
 any other. It covers none of the debt, so `uncovered` ignores it, and the card's real debt is what
-is owed on it (`owed`), never `available + uncovered`. What it takes to bring the payment category
-back to covering the whole debt is
+is owed on it (`owed`), never `available + uncovered`.
+
+What it takes to bring the payment category back to covering the whole debt is
 
 ```
-to cover = cash overspending + uncovered = max(0, max(0, owed) − available)
+to cover = cash overspending + uncovered = max(0, owed − available)
 ```
 
-A card in credit (negative `owed`) counts as owing nothing in it. The row's status line, the
-detail's "To cover", the card's "To do" item, its "Assign" button and quick assign's "Cover card
-debt" all use this one figure.
+with `owed` signed: a card in credit (below) may hold its payment category down to minus its credit
+with nothing to cover. "Paid beyond what was set aside" is the cash overspending. The row's status
+line, the detail's "To cover", the card's "To do" item, its "Assign" button and quick assign's
+"Cover card debt" all use this one figure.
 
 **Example.** A card is added owing €500 (its starting balance). €45.67 of groceries go on the card,
 covered by the Groceries category's own money, so €45.67 moves into the payment category. €300 is
@@ -143,7 +153,7 @@ then paid to the card from checking, with nothing assigned to the payment catego
 - The debt shown is €245.67; "Set aside" is €0.00, never negative; a neutral line says "Paid beyond
   what was set aside: €254.33".
 - Uncovered = max(0, 245.67 − max(0, −254.33)) = €245.67.
-- To cover = max(0, max(0, 245.67) − (−254.33)) = **€500.00**: the €254.33 of cash overspending
+- To cover = max(0, 245.67 − (−254.33)) = **€500.00**: the €254.33 of cash overspending
   plus the €245.67 still uncovered. The row reads "€500.00 to cover: €245.67 of debt and €254.33
   paid beyond what was set aside"; the month's one "To do" item for the card, its "Assign" button
   and quick assign's "Cover the cards' debt" all ask for €500.00, and assigning it brings both the cash
@@ -152,11 +162,65 @@ then paid to the card from checking, with nothing assigned to the payment catego
 Reading the debt as `available + uncovered` would give −€8.66 here, which is why the budget returns
 `owed` itself.
 
+**A card in credit is not cash overspending** (#660). A refund on the card after it was paid leaves
+the card owing less than nothing — it is *in credit* — and its payment category negative by the
+same amount, though no cash left any account. So the payment category may be negative down to the
+card's credit at the end of the month without that being overspending:
+
+```
+credit            = max(0, −owed at the end of the month)
+cash overspending = max(0, −available − credit)
+```
+
+Only the part beyond the credit is cash overspending, taken from next month's unassigned money; the
+rest carries over as a negative balance and returns to zero as the credit is spent with the card
+(covered card spending moves money into the payment category, as ever). The card's balance at the
+end of every month comes from the card's own transactions, starting balance included.
+
+**Example (a card in credit).** Groceries is given €100 in November; €100 of groceries go on the
+card, the card is paid €100 from checking, and then €30 of them are refunded on the card.
+
+- November: Groceries **+€30** (the refund goes back to it), the payment category **−€30** (€70
+  moved in, €100 paid), the card owes **−€30**: €30 in credit, so there is no cash overspending and
+  nothing to cover. December starts with the payment category at −€30 and its unassigned money
+  untouched.
+- December, (a): €30 of groceries go on the card. Groceries is covered, €30 moves into the payment
+  category, which is back to **€0**; the card owes €0.
+- December, (b): instead, €30 is spent in Restaurants with nothing assigned. Restaurants has €30 of
+  credit overspending (the card's debt, asked on the card). The card owes €0, so its credit is gone
+  and the payment category's −€30 is now cash overspending: the card asks **€30** to cover,
+  Restaurants asks nothing. Left uncovered, January's unassigned money is €30 lower.
+
+**Wording for a card in credit** (#660). A card in credit has nothing to cover, but no money set
+aside covers anything either, so the payment category's detail never says the debt is "fully
+covered by money set aside": it says "The card is in credit by €30.00. Card spending uses up this
+credit first; there is nothing to cover." When the payment category is negative beyond the credit
+(the €10 / €50 case below), the detail says how much was paid beyond what was set aside in all, how
+much of it is still on the card as credit, and what happens to the rest if it is still uncovered
+when the month ends, as a consequence and not an order: "The card was paid €50.00 more than was set
+aside. €10.00 of it is still on the card as credit. If the other €40.00 is still uncovered when the
+month ends, it comes out of next month's unassigned money." Its card debt list shows "Credit on the
+card" with the credit, a positive amount, in place of the card's balance, so no negative amount is
+on screen. A card known to owe nothing reads "The card owes nothing right now; there is nothing to
+cover." "Fully covered by money set aside" is kept for a card that owes money (and for one whose
+balance is not known).
+
+**Known gap: a card refund dated after today** (#660, #668). The card's balance at the end of the
+month counts every card transaction dated in the month, but the budget counts a card refund only
+from its own date (#668). Between today and a future-dated refund, the card's credit already
+includes the refund while the payment category does not yet show it, so the cash overspending reads
+lower than it will. Example: a card added owing €100 is paid €100 from checking with nothing set
+aside, and a €30 refund on the card is dated 25 November. On 22 November the card owes −€30 (€30 in
+credit) and the payment category is −€100, so the cash overspending reads **€70**; from 25 November
+the refund counts, the payment category is −€130, and the cash overspending is **€100**, the figure
+it settles on. This is accepted for now; no code works around it.
+
 **Two edge cases.**
 
 - *A card in credit.* The card owes −€10 (it was paid €10 more than its whole balance) and its
-  payment category's available is −€50. The debt counts as 0, so uncovered = 0, the cash
-  overspending is €50, and to cover = max(0, max(0, −10) − (−50)) = **€50**.
+  payment category's available is −€50. The credit is €10, so uncovered = 0, the cash
+  overspending is max(0, 50 − 10) = **€40**, and to cover = max(0, −10 − (−50)) = **€40**. The
+  other €10 carries over to next month as the card's credit.
 - *A card paid exactly its debt from cash.* A card is added owing €300 and €300 is paid to it from
   checking, with nothing assigned. Debt = owed = **€0**, paid beyond what was set aside = **€300**
   (available is −€300), uncovered = 0, and to cover = max(0, 0 − (−300)) = **€300**: the row reads

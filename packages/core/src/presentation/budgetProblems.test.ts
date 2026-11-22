@@ -47,6 +47,19 @@ describe("computeBudgetProblems", () => {
     assert.deepEqual(problems.map((p) => p.kind).sort(), ["overspent_category", "uncovered_card_debt"]);
   });
 
+  it("a card in credit: its payment category is overspent only beyond the card's credit (#660)", () => {
+    const inCredit = computeBudgetProblems({
+      unassigned: 0,
+      categories: [category({ categoryId: "visa-payment", available: -3_000, owed: -3_000 })],
+    });
+    assert.deepEqual(inCredit, []);
+    const beyond = computeBudgetProblems({
+      unassigned: 0,
+      categories: [category({ categoryId: "visa-payment", available: -5_000, owed: -1_000 })],
+    });
+    assert.deepEqual(beyond, [{ kind: "overspent_category", categoryId: "visa-payment", amountCents: 4_000 }]);
+  });
+
   it("omits name/groupName entirely when the caller gives none, rather than undefined fields", () => {
     const problems = computeBudgetProblems({ unassigned: 0, categories: [category({ categoryId: "c1", available: -100 })] });
     assert.deepEqual(Object.keys(problems[0]!).sort(), ["amountCents", "categoryId", "kind"]);

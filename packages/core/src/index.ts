@@ -97,6 +97,8 @@ export type {
   ScheduledItem,
 } from "./budget/budget-month.ts";
 export { computeBudgetMonth, incomeReceived } from "./budget/budget-month.ts";
+export type { CardTransaction } from "./budget/card-balance.ts";
+export { owedAsOf } from "./budget/card-balance.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";
 export { aggregateTransactions, UNASSIGNED } from "./budget/transactions.ts";
 export type {
