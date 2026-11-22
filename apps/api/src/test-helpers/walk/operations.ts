@@ -6,8 +6,11 @@
  * - `request`: the HTTP request it is, with the handles resolved to the workspace's ids;
  * - `predict`: what the API must answer, for the cheap rules only (a read-only member, another
  *   workspace's id, a sale of more than is held, a reconciled leg, a trade's cash leg changed
- *   on its own); anything else is `any`: accepted, or refused with a code from the allowlist and
- *   nothing changed;
+ *   on its own, the tax regime rules of an `IT` workspace, the close rule); anything else is
+ *   `any`: accepted, or refused with a code from the allowlist and nothing changed;
+ * - `writes`: the accounts whose rows the request would write. A closed one turns the
+ *   prediction into 409 `account_closed` (ADR 0018, `predictOperation`), so every operation, a
+ *   new one included, is tried against a closed account as soon as the walk has closed one;
  * - `accept`: what an accepted answer adds to the model, and what it touched (for the checks).
  *
  * Personas are weight profiles over this one set (`PROFILES`). A new route joins the walk by
@@ -15,15 +18,23 @@
  */
 import {
   amountOf,
+  checkRegimeChange,
+  checkTradeRegime,
   computePositions,
   isValidationError,
   PRICE_FACTOR_ONE,
+  TAX_REGIMES,
   toPriceFactor,
+  validateAccountTaxSettings,
   validatePositionHistory,
+  validateTaxRegimeChange,
+  validateWithholdingAgentChange,
   type PortfolioPosition,
   type PositionTrade,
   type Price,
   type Quantity,
+  type TaxRegime,
+  type TaxRegimeEntry,
 } from "@envelope/core";
 
 import type { HttpMethod } from "./driver.ts";
@@ -32,6 +43,7 @@ import { localMidnight, type WalkRandom } from "./generator.ts";
 import {
   amountOf as transactionAmount,
   sortableHandle,
+  sortRegimes,
   type AccountEntity,
   type AccountType,
   type Persona,
@@ -54,8 +66,10 @@ export type Params = Readonly<Record<string, unknown>>;
 
 export type Prediction =
   | { readonly kind: "accept" }
-  | { readonly kind: "refuse"; readonly status: number; readonly code?: string }
-  | { readonly kind: "any" }
+  /** `details`, when given, must be part of the refusal's `details`, field by field. */
+  | { readonly kind: "refuse"; readonly status: number; readonly code?: string; readonly details?: Readonly<Record<string, unknown>> }
+  /** `alsoAllowed`: codes this one request may be refused with besides the allowlist's. */
+  | { readonly kind: "any"; readonly alsoAllowed?: readonly string[] }
   /** A sync upload is answered 201 with one outcome per change: a refused change has its own. */
   | { readonly kind: "syncOutcome"; readonly outcome: string };
 
@@ -65,6 +79,8 @@ export interface Touched {
   /** Portfolio handles whose positions to check. */
   readonly portfolios: Set<string>;
   readonly budget: boolean;
+  /** Account handles whose tax regime history to read back and compare with the model. */
+  readonly regimes: Set<string>;
   /** Entities the step created, for the isolation probe. */
   readonly created: { readonly kind: "account" | "portfolio" | "transaction" | "trade"; readonly id: string }[];
 }
@@ -85,6 +101,21 @@ export interface GenerateContext {
 interface OperationSpec<P extends Params> {
   /** A trade: in the mixed household, every budget month must be the same before and after it. */
   readonly trade?: boolean;
+  /**
+   * The accounts, by handle, whose rows the request would write: the rows it adds, edits or
+   * deletes, a transfer's other leg when the request writes it too, the account a trade moves to.
+   * Required of every operation, so that none leaves out the closed-account guard (ADR 0018,
+   * #735); one that writes no account's rows (a portfolio, a tax regime history, which ADR 0018
+   * leaves writable, the close itself) answers none.
+   */
+  writes(model: WorkspaceModel, params: P, models: ReadonlyMap<Persona, WorkspaceModel>): readonly (string | undefined)[];
+  /**
+   * Whether the API refuses a closed account before any rule `predict` knows (`checkAccountsOpen`,
+   * #741, #655). Otherwise a closed account turns only an `ACCEPT` or `ANY` into `account_closed`:
+   * the rules `predict` refuses with come first (a card's income, a missing category, a reconciled
+   * or trade-owned row, a sync change's own outcome), and the database's trigger after them.
+   */
+  readonly closedFirst?: boolean;
   generate(model: WorkspaceModel, ctx: GenerateContext): P | undefined;
   request(model: WorkspaceModel, params: P, models: ReadonlyMap<Persona, WorkspaceModel>): WalkRequest;
   predict(model: WorkspaceModel, params: P, models: ReadonlyMap<Persona, WorkspaceModel>): Prediction;
@@ -93,6 +124,8 @@ interface OperationSpec<P extends Params> {
 
 const ACCEPT: Prediction = { kind: "accept" };
 const ANY: Prediction = { kind: "any" };
+/** A write to a closed account (#729, ADR 0018). */
+const ACCOUNT_CLOSED: Prediction = { kind: "refuse", status: 409, code: "account_closed" };
 /** The transactions API's reconciled lock answers a bare 409 without a `code`. */
 const RECONCILED_TRANSACTION: Prediction = { kind: "refuse", status: 409 };
 const TRADE_OWNED: Prediction = { kind: "refuse", status: 409, code: "trade_owned_transaction" };
@@ -116,6 +149,11 @@ export const REFUSAL_ALLOWLIST: ReadonlySet<string> = new Set([
   "invalid_trade",
   "withholding_exceeds_gross",
   "reconciled",
+  // An edit of a trade in the `IT` workspace (`ANY`) that moves it to a date or an account whose
+  // regime, or broker, does not allow its taxes (#508, #653). A new trade, a regime change and a
+  // new account are predicted exactly instead, with these codes and the others of the regime rules.
+  "tax_kind_not_allowed_in_regime",
+  "domestic_withholding_requires_agent",
 ]);
 
 /**
@@ -130,13 +168,30 @@ function excluded(name: string): boolean {
   return process.env.WALK_INCLUDE_EXCLUDED !== "1" && name in EXCLUSIONS;
 }
 
-function touched(partial: Partial<{ accounts: Iterable<string>; portfolios: Iterable<string>; budget: boolean; created: Touched["created"] }>): Touched {
+function touched(
+  partial: Partial<{ accounts: Iterable<string>; portfolios: Iterable<string>; budget: boolean; regimes: Iterable<string>; created: Touched["created"] }>,
+): Touched {
   return {
     accounts: new Set(partial.accounts ?? []),
     portfolios: new Set(partial.portfolios ?? []),
     budget: partial.budget ?? false,
+    regimes: new Set(partial.regimes ?? []),
     created: partial.created ?? [],
   };
+}
+
+/** For an operation that writes no account's rows. */
+const NONE = (): readonly string[] => [];
+
+/** The refusal a `ValidationError` of `@envelope/core` thrown by `check` stands for (400 and its code), or `ACCEPT`. */
+function predictCore(check: () => void): Prediction {
+  try {
+    check();
+    return ACCEPT;
+  } catch (error) {
+    if (isValidationError(error)) return { kind: "refuse", status: 400, code: error.code };
+    throw error;
+  }
 }
 
 function ws(model: WorkspaceModel, suffix: string): string {
@@ -172,9 +227,16 @@ const ACCOUNT_LIMITS: Readonly<Record<Persona, Partial<Record<AccountType, numbe
   mixed: { checking: 2, savings: 1, credit_card: 1, brokerage: 2 },
 };
 
-type CreateAccountParams = { type: AccountType; onBudget: boolean; name: string };
+/** The tax country whose regime rules the walk exercises (#508, #676): the investor's workspace has it. */
+export const WALK_TAX_COUNTRY = "IT";
+
+/** A brokerage account's tax settings in the `IT` workspace: each one left out now and then, which is refused. */
+type AccountTaxParams = { taxRegime?: TaxRegime; taxRegimeValidFrom?: string; domesticWithholdingAgent?: boolean };
+
+type CreateAccountParams = { type: AccountType; onBudget: boolean; name: string } & AccountTaxParams;
 const createAccount: OperationSpec<CreateAccountParams> = {
-  generate(model, { random }) {
+  writes: NONE,
+  generate(model, { random, progress }) {
     const limits = ACCOUNT_LIMITS[model.persona];
     const open = (Object.keys(limits) as AccountType[]).filter(
       (type) => [...model.accounts.values()].filter((a) => a.type === type).length < (limits[type] ?? 0),
@@ -183,25 +245,261 @@ const createAccount: OperationSpec<CreateAccountParams> = {
     const type = random.pick(open);
     // A savings account is on budget or not (a deposit kept apart); the rest take their default.
     const onBudget = type === "brokerage" ? false : type === "savings" ? random.chance(0.5) : true;
-    return { type, onBudget, name: `${type} ${model.accounts.size + 1}` };
+    const params = { type, onBudget, name: `${type} ${model.accounts.size + 1}` };
+    if (type !== "brokerage" || model.taxCountry !== WALK_TAX_COUNTRY) return params;
+    // In the `IT` workspace a brokerage account needs both settings (`tax_regime_required`), and an
+    // administered or managed regime a broker that withholds (`tax_regime_requires_withholding_agent`).
+    const omit = random.chance(0.15) ? random.pick(["taxRegime", "domesticWithholdingAgent"] as const) : undefined;
+    const taxRegime = random.pick(TAX_REGIMES);
+    const domesticWithholdingAgent = random.chance(0.7);
+    return {
+      ...params,
+      ...(omit === "taxRegime" ? {} : { taxRegime, taxRegimeValidFrom: random.date(progress) }),
+      ...(omit === "domesticWithholdingAgent" ? {} : { domesticWithholdingAgent }),
+    };
   },
-  request: (model, p) => ({ method: "POST", path: ws(model, "/accounts"), body: { name: p.name, type: p.type, currency: "EUR", onBudget: p.onBudget } }),
-  predict: () => ACCEPT,
+  request: (model, p) => ({
+    method: "POST",
+    path: ws(model, "/accounts"),
+    body: {
+      name: p.name,
+      type: p.type,
+      currency: "EUR",
+      onBudget: p.onBudget,
+      ...(p.taxRegime === undefined ? {} : { taxRegime: p.taxRegime }),
+      ...(p.taxRegimeValidFrom === undefined ? {} : { taxRegimeValidFrom: p.taxRegimeValidFrom }),
+      ...(p.domesticWithholdingAgent === undefined ? {} : { domesticWithholdingAgent: p.domesticWithholdingAgent }),
+    },
+  }),
+  // The account's first regime is checked as a change from no history (`addTaxRegime`): with no
+  // trades yet, the history's own rules are all there is to it.
+  predict: (model, p) =>
+    predictCore(() => {
+      validateAccountTaxSettings({ accountType: p.type, taxCountry: model.taxCountry, taxRegime: p.taxRegime, domesticWithholdingAgent: p.domesticWithholdingAgent });
+      if (p.taxRegime !== undefined) {
+        validateTaxRegimeChange({
+          taxCountry: model.taxCountry,
+          domesticWithholdingAgent: p.domesticWithholdingAgent ?? null,
+          history: [{ validFrom: p.taxRegimeValidFrom!, regime: p.taxRegime }],
+        });
+      }
+    }),
   accept(model, p, body) {
-    const record = body as Parameters<WorkspaceModel["addAccount"]>[0] & { name: string };
+    const record = body as Parameters<WorkspaceModel["addAccount"]>[0] & { name: string; closedAt: string | null };
     expectEcho("createAccount", [
       ["name", p.name, record.name],
       ["type", p.type, record.type],
       ["currency", "EUR", record.currency],
       ["onBudget", p.onBudget, record.onBudget],
+      ["domesticWithholdingAgent", p.domesticWithholdingAgent ?? null, record.domesticWithholdingAgent],
+      ["closedAt", null, record.closedAt],
     ]);
-    const account = model.addAccount(record);
-    return touched({ accounts: [account.handle], budget: true, created: [{ kind: "account", id: account.id }] });
+    const regimes = p.taxRegime === undefined ? [] : [{ validFrom: p.taxRegimeValidFrom!, regime: p.taxRegime }];
+    const account = model.addAccount(record, regimes);
+    return touched({ accounts: [account.handle], budget: true, regimes: [account.handle], created: [{ kind: "account", id: account.id }] });
+  },
+};
+
+/** At most this many closed accounts per workspace, so that most of what the walk writes still lands. */
+const MAX_CLOSED_ACCOUNTS = 2;
+
+type CloseAccountParams = { account: string };
+
+/**
+ * Closes an account (#703, #729): accepted only when it is empty today, else 409
+ * `account_not_empty` with the figures the rule read; an account already closed is not found.
+ * Weighted high but generated mostly when an account is empty (a new one, or one `sweepAccount`
+ * emptied), so it closes before another step writes to it again and the walk goes on to write to
+ * it (`writes`, ADR 0018). Never the last open on-budget cash account or brokerage account, so
+ * the walk can still budget and trade.
+ */
+const closeAccount: OperationSpec<CloseAccountParams> = {
+  writes: NONE,
+  generate(model, { random }) {
+    const closed = model.closedAccounts();
+    if (closed.length > 0 && random.chance(0.05)) return { account: random.pick(closed).handle };
+    if (closed.length >= MAX_CLOSED_ACCOUNTS) return undefined;
+    const open = model.openAccounts();
+    const cashLike = (account: AccountEntity): boolean => account.onBudget && account.type !== "credit_card";
+    const candidates = open.filter(
+      (account) =>
+        (account.type !== "brokerage" || open.some((other) => other !== account && other.type === "brokerage")) &&
+        (!cashLike(account) || open.some((other) => other !== account && cashLike(other))),
+    );
+    const empty = candidates.filter((account) => {
+      const rule = model.closeRule(account);
+      return rule.balanceCents === 0 && !rule.holdsPositions;
+    });
+    if (empty.length > 0) return { account: random.pick(empty).handle };
+    // Now and then an account that is not empty: refused, with the figures.
+    return candidates.length > 0 && random.chance(0.15) ? { account: random.pick(candidates).handle } : undefined;
+  },
+  request: (model, p) => ({ method: "PATCH", path: ws(model, `/accounts/${model.account(p.account).id}/close`) }),
+  predict(model, p) {
+    const account = model.account(p.account);
+    if (account.closed) return { kind: "refuse", status: 404 };
+    const { balanceCents, holdsPositions } = model.closeRule(account);
+    if (balanceCents === 0 && !holdsPositions) return ACCEPT;
+    return {
+      kind: "refuse",
+      status: 409,
+      code: "account_not_empty",
+      details: {
+        balanceCents,
+        holdsPositions,
+        laterRows: { count: 0, firstDate: null },
+        scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null },
+      },
+    };
+  },
+  accept(model, p, body) {
+    const account = model.account(p.account);
+    const record = body as { id: string; closedAt: string | null };
+    expectEcho("closeAccount", [
+      ["id", account.id, record.id],
+      ["closed", true, typeof record.closedAt === "string"],
+    ]);
+    account.closed = true;
+    return touched({ accounts: [account.handle], budget: account.onBudget });
+  },
+};
+
+// --- Tax regimes (#508, #653) ------------------------------------------------------------------
+
+/** An account to change the regime of: mostly a brokerage account, now and then one that takes none. */
+function regimeAccount(model: WorkspaceModel, random: WalkRandom): AccountEntity | undefined {
+  const accounts = [...model.accounts.values()];
+  if (accounts.length === 0) return undefined;
+  const brokers = model.brokerageAccounts();
+  return brokers.length > 0 && random.chance(0.9) ? random.pick(brokers) : random.pick(accounts);
+}
+
+/** A 1 January a change can start on, in the window or the year after it. */
+function yearStart(random: WalkRandom): string {
+  return random.pick(["2025-01-01", "2026-01-01", "2027-01-01"]);
+}
+
+/**
+ * What the API answers a change of `account`'s history to `after` (`addTaxRegime`,
+ * `replaceTaxRegimes`): only a brokerage account takes one; then the history's own rules and the
+ * flag they need (`validateTaxRegimeChange`), then every trade the change covers
+ * (`checkRegimeChange`, `tax_regime_conflicts_with_trade`), as `@envelope/core` judges them.
+ */
+function predictRegimeChange(model: WorkspaceModel, account: AccountEntity, after: readonly TaxRegimeEntry[]): Prediction {
+  if (account.type !== "brokerage") return { kind: "refuse", status: 400, code: "tax_regime_not_applicable" };
+  return predictCore(() => {
+    validateTaxRegimeChange({ taxCountry: model.taxCountry, domesticWithholdingAgent: account.domesticWithholdingAgent, history: after });
+    checkRegimeChange(model.regimeCheckedTrades(account), {
+      before: account.taxRegimes,
+      after,
+      domesticWithholdingAgent: account.domesticWithholdingAgent,
+    });
+  });
+}
+
+type AddTaxRegimeParams = { account: string; regime: TaxRegime; validFrom: string };
+
+/**
+ * A new period in a brokerage account's history: mostly from a 1 January, now and then from
+ * another day (refused unless it is the earliest) or from a day that already starts one.
+ */
+const addTaxRegime: OperationSpec<AddTaxRegimeParams> = {
+  writes: NONE,
+  generate(model, { random, progress }) {
+    const account = regimeAccount(model, random);
+    if (!account) return undefined;
+    const roll = random.float();
+    const existing = account.taxRegimes.map((entry) => entry.validFrom);
+    const validFrom = roll < 0.75 ? yearStart(random) : roll < 0.9 || existing.length === 0 ? random.date(progress) : random.pick(existing);
+    return { account: account.handle, regime: random.pick(TAX_REGIMES), validFrom };
+  },
+  request: (model, p) => ({
+    method: "POST",
+    path: ws(model, `/accounts/${model.account(p.account).id}/tax-regimes`),
+    body: { regime: p.regime, validFrom: p.validFrom },
+  }),
+  predict(model, p) {
+    const account = model.account(p.account);
+    return predictRegimeChange(model, account, [...account.taxRegimes, { validFrom: p.validFrom, regime: p.regime }]);
+  },
+  accept(model, p, body) {
+    const entry = body as TaxRegimeEntry;
+    expectEcho("the added tax regime", [
+      ["validFrom", p.validFrom, entry.validFrom],
+      ["regime", p.regime, entry.regime],
+    ]);
+    const account = model.account(p.account);
+    account.taxRegimes = sortRegimes([...account.taxRegimes, entry]);
+    return touched({ regimes: [account.handle] });
+  },
+};
+
+type ReplaceTaxRegimesParams = { account: string; history: TaxRegimeEntry[] };
+
+/**
+ * The whole history corrected at once: now and then emptied (`tax_regime_required` in the `IT`
+ * workspace), else one to three periods, the first from any day, the others from a 1 January or,
+ * now and then, from another day.
+ */
+const replaceTaxRegimes: OperationSpec<ReplaceTaxRegimesParams> = {
+  writes: NONE,
+  generate(model, { random, progress }) {
+    const account = regimeAccount(model, random);
+    if (!account) return undefined;
+    if (random.chance(0.15)) return { account: account.handle, history: [] };
+    const history: TaxRegimeEntry[] = [{ validFrom: random.date(progress), regime: random.pick(TAX_REGIMES) }];
+    for (let count = random.int(0, 2); count > 0; count--) {
+      history.push({ validFrom: random.chance(0.9) ? yearStart(random) : random.date(progress), regime: random.pick(TAX_REGIMES) });
+    }
+    return { account: account.handle, history };
+  },
+  request: (model, p) => ({
+    method: "PUT",
+    path: ws(model, `/accounts/${model.account(p.account).id}/tax-regimes`),
+    body: { taxRegimes: p.history },
+  }),
+  predict: (model, p) => predictRegimeChange(model, model.account(p.account), p.history),
+  accept(model, p, body) {
+    const { taxRegimes } = body as { taxRegimes: TaxRegimeEntry[] };
+    expectEcho("the replaced tax regime history", [["taxRegimes", sortRegimes(p.history), taxRegimes]]);
+    const account = model.account(p.account);
+    account.taxRegimes = sortRegimes(taxRegimes);
+    return touched({ regimes: [account.handle] });
+  },
+};
+
+type SetWithholdingAgentParams = { account: string; value: boolean };
+
+/**
+ * The withholding-agent flag, set once on an account that has none: every account of the walk has
+ * one from its creation in the `IT` workspace and none elsewhere, so this is always refused
+ * (`withholding_agent_already_set`, `tax_regime_not_applicable`) and must change nothing.
+ */
+const setWithholdingAgent: OperationSpec<SetWithholdingAgentParams> = {
+  writes: NONE,
+  generate(model, { random }) {
+    const account = regimeAccount(model, random);
+    return account ? { account: account.handle, value: random.chance(0.5) } : undefined;
+  },
+  request: (model, p) => ({
+    method: "PATCH",
+    path: ws(model, `/accounts/${model.account(p.account).id}`),
+    body: { domesticWithholdingAgent: p.value },
+  }),
+  predict(model, p) {
+    const account = model.account(p.account);
+    return predictCore(() =>
+      validateWithholdingAgentChange({ accountType: account.type, taxCountry: model.taxCountry, current: account.domesticWithholdingAgent }),
+    );
+  },
+  accept: () => {
+    throw new Error("setWithholdingAgent is never accepted in the walk: every account's flag is set when it is created, or never applies");
   },
 };
 
 type CreatePortfolioParams = { name: string };
 const createPortfolio: OperationSpec<CreatePortfolioParams> = {
+  writes: NONE,
   // A name from the seed, so it never repeats one a deleted portfolio had in a way that differs between runs.
   generate: (model, { random }) => (model.portfolios.size >= 3 ? undefined : { name: `Portfolio ${random.int(1, 1_000_000_000)}` }),
   request: (model, p) => ({ method: "POST", path: ws(model, "/portfolios"), body: { name: p.name } }),
@@ -216,6 +514,7 @@ const createPortfolio: OperationSpec<CreatePortfolioParams> = {
 
 type PortfolioParams = { portfolio: string };
 const deletePortfolio: OperationSpec<PortfolioParams> = {
+  writes: NONE,
   generate(model, { random }) {
     if (model.portfolios.size < 2) return undefined;
     return { portfolio: random.pick([...model.portfolios.keys()]) };
@@ -286,7 +585,11 @@ function acceptTransaction(model: WorkspaceModel, p: TransactionParams, body: un
   return touched({ accounts: [model.accountById(entity.record.accountId).handle], budget: true, created: [{ kind: "transaction", id: entity.record.id }] });
 }
 
+/** A new transaction writes its account; a card's income is refused before the closed account (`assertNotCardIncome`). */
+const transactionWrites = (_model: WorkspaceModel, p: TransactionParams): readonly string[] => [p.account];
+
 const income: OperationSpec<TransactionParams> = {
+  writes: transactionWrites,
   generate(model, { random, progress }) {
     // Cards too: income on an on-budget card must be refused, and leave nothing behind (#548).
     const accounts = [...model.budgetCashAccounts(), ...model.cards()];
@@ -308,6 +611,7 @@ const income: OperationSpec<TransactionParams> = {
 };
 
 const spend: OperationSpec<TransactionParams> = {
+  writes: transactionWrites,
   generate(model, { random, progress }) {
     const accounts = [...model.budgetCashAccounts(), ...model.cards()];
     const categories = model.ordinaryCategories();
@@ -328,6 +632,7 @@ const spend: OperationSpec<TransactionParams> = {
 
 /** Money paid into a brokerage account from outside the app: a plain transaction, no category. */
 const brokerDeposit: OperationSpec<TransactionParams> = {
+  writes: transactionWrites,
   generate(model, { random, progress }) {
     const brokers = model.brokerageAccounts();
     if (brokers.length === 0) return undefined;
@@ -342,6 +647,8 @@ type TransferParams = { source: string; destination: string; amountCents: number
 
 function transferSpec(choose: (model: WorkspaceModel, random: WalkRandom) => { source: AccountEntity; destination: AccountEntity; category?: string } | undefined, max: number): OperationSpec<TransferParams> {
   return {
+    // Both legs; a missing category and a card's income are refused before the closed account.
+    writes: (_model, p) => [p.source, p.destination],
     generate(model, { random, progress }) {
       const chosen = choose(model, random);
       if (!chosen) return undefined;
@@ -475,8 +782,37 @@ const brokerToBroker = transferSpec((model, random) => {
   return { source, destination: random.pick(brokers.filter((a) => a !== source)) };
 }, 300_000);
 
+/**
+ * Empties an account that holds money, so the walk can close it (#735): its whole balance moves
+ * to another on-budget cash account, or a card's debt is paid off from one. Each is a transfer
+ * like any other, refused when it writes to an account already closed.
+ */
+const sweepAccount: OperationSpec<TransferParams> = {
+  ...transferSpec(() => undefined, 0),
+  generate(model, { random, progress }) {
+    const cash = model.budgetCashAccounts();
+    const candidates = model.openAccounts().filter((account) => account.type !== "brokerage" && model.balanceOf(account) !== 0);
+    if (candidates.length === 0) return undefined;
+    const account = random.pick(candidates);
+    const balance = model.balanceOf(account);
+    const others = cash.filter((other) => other !== account);
+    if (others.length === 0) return undefined;
+    const other = random.pick(others);
+    const [source, destination] = balance > 0 ? [account, other] : [other, account];
+    return { source: source.handle, destination: destination.handle, amountCents: Math.abs(balance), occurredAt: random.occurredAt(progress) };
+  },
+};
+
 type EditTransactionParams = { tx: string; change: "memo" | "payee" | "amount" | "status"; value: string | number };
 const editTransaction: OperationSpec<EditTransactionParams> = {
+  // Its own account, and the other leg's when a new amount moves it too (#547); checked first (#655).
+  writes(model, p) {
+    const entity = model.transaction(p.tx);
+    const partner = model.transferPartner(entity);
+    const movesPartner = p.change === "amount" && partner !== undefined && p.value !== transactionAmount(entity.record);
+    return accountsTouchedBy(model, [entity, movesPartner ? partner : undefined]);
+  },
+  closedFirst: true,
   generate(model, { random }) {
     const candidates = nonLeg(model);
     if (candidates.length === 0) return undefined;
@@ -568,7 +904,12 @@ function echoEdit(what: string, before: TransactionJson, after: TransactionJson,
   expectEcho(what, Object.keys(expected).map((key) => [key, expected[key as keyof typeof expected], actual[key as keyof typeof actual]] as const));
 }
 
+/** An edit of a transaction's own fields writes its account, checked before anything else (#655). */
+const ownAccount = (model: WorkspaceModel, p: { tx: string }): readonly string[] => accountsTouchedBy(model, [model.transaction(p.tx)]);
+
 const clearTransaction: OperationSpec<TxParams> = {
+  writes: ownAccount,
+  closedFirst: true,
   generate(model, { random }) {
     const pending = [...model.transactions.values()].filter((e) => e.record.status === "pending");
     return pending.length === 0 ? undefined : { tx: random.pick(pending).handle };
@@ -586,7 +927,14 @@ const clearTransaction: OperationSpec<TxParams> = {
   },
 };
 
+/** A delete writes both legs; a reconciled or trade-owned row is refused before the closed account. */
+const deleteWrites = (model: WorkspaceModel, p: TxParams): readonly string[] => {
+  const entity = model.transaction(p.tx);
+  return accountsTouchedBy(model, [entity, model.transferPartner(entity)]);
+};
+
 const deleteTransaction: OperationSpec<TxParams> = {
+  writes: deleteWrites,
   generate(model, { random }) {
     const candidates = nonLeg(model);
     return candidates.length === 0 ? undefined : { tx: random.pick(candidates).handle };
@@ -615,6 +963,8 @@ const deleteTransaction: OperationSpec<TxParams> = {
 
 type LegEditParams = { tx: string; change: "memo" | "payee" | "status"; value: string };
 const editLeg: OperationSpec<LegEditParams> = {
+  writes: ownAccount,
+  closedFirst: true,
   generate(model, { random }) {
     const candidates = legs(model);
     if (candidates.length === 0) return undefined;
@@ -637,6 +987,8 @@ const editLeg: OperationSpec<LegEditParams> = {
 
 type LegAmountParams = { tx: string; amountCents: number };
 const editLegAmount: OperationSpec<LegAmountParams> = {
+  writes: ownAccount,
+  closedFirst: true,
   generate(model, { random }) {
     const candidates = legs(model);
     return candidates.length === 0 ? undefined : { tx: random.pick(candidates).handle, amountCents: -random.int(1, 100_000) };
@@ -656,6 +1008,7 @@ const editLegAmount: OperationSpec<LegAmountParams> = {
 };
 
 const deleteLeg: OperationSpec<TxParams> = {
+  writes: deleteWrites,
   generate(model, { random }) {
     const candidates = legs(model);
     return candidates.length === 0 ? undefined : { tx: random.pick(candidates).handle };
@@ -683,6 +1036,8 @@ function syncRequest(model: WorkspaceModel, p: SyncParams): WalkRequest {
 
 /** A device changing a field of a cash leg that belongs to the trade: refused, `trade_owned`. */
 const syncTradeOwned: OperationSpec<SyncParams> = {
+  // `trade_owned` and `locked` come before `account_closed` (sync/apply.ts): its outcome stays.
+  writes: ownAccount,
   generate(model, { random }) {
     const candidates = legs(model);
     if (candidates.length === 0) return undefined;
@@ -707,6 +1062,7 @@ const syncTradeOwned: OperationSpec<SyncParams> = {
 
 /** A device changing the memo of a reconciled transaction: refused, `locked`. */
 const syncLockedMemo: OperationSpec<SyncParams> = {
+  writes: ownAccount,
   generate(model, { random }) {
     const candidates = [...model.transactions.values()].filter((e) => e.record.status === "reconciled");
     if (candidates.length === 0) return undefined;
@@ -721,6 +1077,7 @@ const syncLockedMemo: OperationSpec<SyncParams> = {
 
 type ReconcileParams = { account: string; date: string; ticked: string[]; statementBalanceCents: number };
 const reconcile: OperationSpec<ReconcileParams> = {
+  writes: (_model, p) => [p.account],
   generate(model, { random }) {
     const cleared = [...model.transactions.values()].filter((e) => e.record.status === "cleared");
     if (cleared.length === 0) return undefined;
@@ -754,6 +1111,7 @@ const reconcile: OperationSpec<ReconcileParams> = {
 };
 
 const unlock: OperationSpec<TxParams> = {
+  writes: ownAccount,
   generate(model, { random }) {
     const reconciled = [...model.transactions.values()].filter((e) => e.record.status === "reconciled");
     return reconciled.length === 0 ? undefined : { tx: random.pick(reconciled).handle };
@@ -931,12 +1289,38 @@ function maybeTime(random: WalkRandom, tradeDate: string): { occurredAt?: string
   return time === undefined ? {} : { occurredAt: time };
 }
 
+/**
+ * The tax regime rules a new row must pass in the `IT` workspace (#508), checked before the
+ * replay: a regime history on its account (`tax_regime_required`), then `checkTradeRegime` against
+ * the regime in force on its date and the account's broker. Undefined when every row passes, or
+ * outside that workspace.
+ */
+function predictRegime(model: WorkspaceModel, rows: readonly PositionTrade[]): Prediction | undefined {
+  if (model.taxCountry !== WALK_TAX_COUNTRY) return undefined;
+  for (const row of rows) {
+    const account = model.accountById(row.accountId);
+    if (account.taxRegimes.length === 0) return { kind: "refuse", status: 400, code: "tax_regime_required" };
+    const instrumentType = row.instrumentId === null ? null : (model.instruments.byId.get(row.instrumentId)?.type ?? null);
+    const prediction = predictCore(() =>
+      checkTradeRegime(row, { history: account.taxRegimes, date: row.date, domesticWithholdingAgent: account.domesticWithholdingAgent, instrumentType }),
+    );
+    if (prediction.kind !== "accept") return prediction;
+  }
+  return undefined;
+}
+
+/** A trade's accounts are checked open before anything that could refuse it for another reason (#741). */
 function singleTradeSpec(generate: OperationSpec<TradeFields>["generate"]): OperationSpec<TradeFields> {
   return {
     trade: true,
+    writes: (_model, p) => [p.account],
+    closedFirst: true,
     generate,
     request: (model, p) => ({ method: "POST", path: ws(model, "/trades"), body: tradeBody(model, p) }),
-    predict: (model, p) => predictHistory(model, [candidateRow(model, "candidate", p)]),
+    predict(model, p) {
+      const rows = [candidateRow(model, "candidate", p)];
+      return predictRegime(model, rows) ?? predictHistory(model, rows);
+    },
     accept(model, p, body) {
       const { trades } = body as { trades: TradeJson[] };
       expectEcho(`the recorded ${p.type}`, [["rows", 1, trades.length]]);
@@ -1037,6 +1421,17 @@ const tax = singleTradeSpec((model, { random, progress }) => {
   return { type: "tax", ...where, instrument: null, tradeDate, ...maybeTime(random, tradeDate), taxKind, amounts: { grossCents } };
 });
 
+/**
+ * `ANY`, and `account_closed` as well when a closed account ever traded the instrument: whether it
+ * held some on a split's date, and so gets a row of the split, is the API's to work out.
+ */
+function anyOrClosedHolder(model: WorkspaceModel, instrument: string): Prediction {
+  const { id } = model.instruments.get(instrument);
+  const closed = new Set(model.closedAccounts().map((account) => account.id));
+  const held = [...model.trades.values()].some((trade) => trade.record.instrumentId === id && closed.has(trade.record.accountId));
+  return held ? { kind: "any", alsoAllowed: ["account_closed"] } : ANY;
+}
+
 type SplitParams = { instrument: string; tradeDate: string; occurredAt?: string; splitFrom: number; splitTo: number };
 const split: OperationSpec<SplitParams> = {
   trade: true,
@@ -1059,8 +1454,10 @@ const split: OperationSpec<SplitParams> = {
       splitTo: p.splitTo,
     },
   }),
-  // The rows a split stands for are the API's to work out (every holding at the start of its date).
-  predict: () => ANY,
+  // The rows a split stands for are the API's to work out (every holding at the start of its date),
+  // so its accounts too: a closed one that held the instrument then refuses it (ADR 0018).
+  writes: NONE,
+  predict: (model, p) => anyOrClosedHolder(model, p.instrument),
   accept(model, p, body) {
     // Which holdings the rows cover is checked by the positions oracle; each row keeps what was sent.
     const { trades } = body as { trades: TradeJson[] };
@@ -1084,6 +1481,8 @@ type TransferSecuritiesParams = { instrument: string; tradeDate: string; occurre
 
 const transferSecurities: OperationSpec<TransferSecuritiesParams> = {
   trade: true,
+  writes: (_model, p) => [p.from?.account, p.to?.account],
+  closedFirst: true,
   generate(model, { random, progress }) {
     const brokers = model.brokerageAccounts();
     const portfolios = [...model.portfolios.keys()];
@@ -1154,7 +1553,7 @@ const transferSecurities: OperationSpec<TransferSecuritiesParams> = {
       });
     if (p.from) rows.push(legRow("candidate-from", p.from, -p.quantityE8, p.to ? "candidate-to" : null));
     if (p.to) rows.push(legRow("candidate-to", p.to, p.quantityE8, p.from ? "candidate-from" : null));
-    return predictHistory(model, rows);
+    return predictRegime(model, rows) ?? predictHistory(model, rows);
   },
   accept(model, p, body) {
     const { trades } = body as { trades: TradeJson[] };
@@ -1189,8 +1588,14 @@ const transferSecurities: OperationSpec<TransferSecuritiesParams> = {
 
 /** `move` names, by handle, the account or portfolio a trade moves to; `patch` holds only plain values. */
 type EditTradeParams = { trade: string; patch: Record<string, unknown>; move?: { account?: string; portfolio?: string } };
+/** Every account of a trade's group (#741: an edit or a delete checks them before the reconciled lock). */
+const groupWrites = (model: WorkspaceModel, p: { trade: string }): string[] =>
+  model.tradeGroup(model.trade(p.trade)).map((member) => model.accountById(member.record.accountId).handle);
+
 const editTrade: OperationSpec<EditTradeParams> = {
   trade: true,
+  writes: (model, p) => [...groupWrites(model, p), p.move?.account],
+  closedFirst: true,
   generate(model, { random }) {
     if (model.trades.size === 0) return undefined;
     const entity = random.pick([...model.trades.values()]);
@@ -1254,7 +1659,14 @@ const editTrade: OperationSpec<EditTradeParams> = {
       ...(p.move?.portfolio ? { portfolioId: model.portfolio(p.move.portfolio).id } : {}),
     },
   }),
-  predict: (model, p) => (model.isTradeLocked(model.trade(p.trade)) ? { kind: "refuse", status: 409, code: "reconciled" } : ANY),
+  predict(model, p) {
+    const entity = model.trade(p.trade);
+    if (model.isTradeLocked(entity)) return { kind: "refuse", status: 409, code: "reconciled" };
+    // A split moved to another date may cover a closed account it did not before.
+    return entity.record.type === "split" && entity.record.instrumentId !== null
+      ? anyOrClosedHolder(model, instrumentHandle(model, entity.record.instrumentId))
+      : ANY;
+  },
   accept(model, p, body) {
     const group = model.tradeGroup(model.trade(p.trade));
     const accountsBefore = group.map((t) => model.accountById(t.record.accountId).handle);
@@ -1314,6 +1726,8 @@ function echoTradeEdit(model: WorkspaceModel, p: EditTradeParams, group: readonl
 type TradeParams = { trade: string };
 const deleteTrade: OperationSpec<TradeParams> = {
   trade: true,
+  writes: groupWrites,
+  closedFirst: true,
   generate(model, { random }) {
     return model.trades.size === 0 ? undefined : { trade: random.pick([...model.trades.keys()]) };
   },
@@ -1343,6 +1757,10 @@ function foreignModel(models: ReadonlyMap<Persona, WorkspaceModel>, persona: Per
  * exist, and neither workspace changes.
  */
 const foreign: OperationSpec<ForeignParams> = {
+  // A new trade names its own account, checked open before the portfolio is looked up (#741); the
+  // other variants are refused before anything is written (an unknown account, category or row).
+  writes: (_model, p) => (p.variant === "tradeInForeignPortfolio" ? [p.own] : []),
+  closedFirst: true,
   generate(model, { random, models }) {
     const others = [...models.values()].filter((m) => m !== model);
     const other = random.pick(others);
@@ -1417,6 +1835,10 @@ const foreign: OperationSpec<ForeignParams> = {
 /** Each operation has its own parameter type; `operation()` hands them out as plain `Params`. */
 export const OPERATIONS: Readonly<Record<string, OperationSpec<any>>> = {
   createAccount,
+  closeAccount,
+  addTaxRegime,
+  replaceTaxRegimes,
+  setWithholdingAgent,
   createPortfolio,
   deletePortfolio,
   income,
@@ -1429,6 +1851,7 @@ export const OPERATIONS: Readonly<Record<string, OperationSpec<any>>> = {
   offBudgetSavings,
   cardToCard,
   brokerToBroker,
+  sweepAccount,
   editTransaction,
   clearTransaction,
   deleteTransaction,
@@ -1476,9 +1899,18 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     unlock: 1,
     syncLockedMemo: 1,
     foreign: 2,
+    // An account emptied, then closed, then written to (#735). The close is weighted high, but
+    // generated mostly while an account is empty (`closeAccount`).
+    sweepAccount: 2,
+    closeAccount: 6,
   },
+  // The investor's workspace is the walk's `IT` one (#676): its tax regimes change as it goes.
   investor: {
     createAccount: 1,
+    closeAccount: 4,
+    addTaxRegime: 2,
+    replaceTaxRegimes: 1,
+    setWithholdingAgent: 1,
     createPortfolio: 1,
     deletePortfolio: 1,
     brokerDeposit: 3,
@@ -1501,6 +1933,10 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
   },
   mixed: {
     createAccount: 1,
+    sweepAccount: 1,
+    closeAccount: 4,
+    // No tax country: a regime is refused as not applicable, and must change nothing.
+    addTaxRegime: 1,
     createPortfolio: 1,
     deletePortfolio: 1,
     income: 4,
@@ -1540,4 +1976,17 @@ export function operation(kind: string): OperationSpec<Params> {
   const spec = OPERATIONS[kind];
   if (!spec) throw new Error(`unknown operation ${kind}`);
   return spec as OperationSpec<Params>;
+}
+
+/**
+ * What a member who may write must get for an operation: its own prediction, unless it writes to a
+ * closed account (ADR 0018), which is refused 409 `account_closed` first when the API checks that
+ * first (`closedFirst`), and otherwise wherever the operation's own prediction would let it through.
+ */
+export function predictOperation(kind: string, model: WorkspaceModel, params: Params, models: ReadonlyMap<Persona, WorkspaceModel>): Prediction {
+  const spec = operation(kind);
+  const closed = spec.writes(model, params, models).some((handle) => handle !== undefined && model.account(handle).closed);
+  if (closed && spec.closedFirst) return ACCOUNT_CLOSED;
+  const prediction = spec.predict(model, params, models);
+  return closed && (prediction.kind === "accept" || prediction.kind === "any") ? ACCOUNT_CLOSED : prediction;
 }
