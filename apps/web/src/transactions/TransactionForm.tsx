@@ -85,8 +85,8 @@ function centsToInput(cents: number, locale: string, currency: string): string {
  * money leaves the budget or comes into an on-budget card, optional from an off-budget account
  * into a cash account, where "Unassigned" (no category: income to assign) comes first and is the
  * default, with a hint saying how much "Unassigned" (or the chosen category) goes from and to in
- * the month of the transfer's date, or, dated after today, the day the money comes in. Editing an existing transfer leg is limited to its payee, memo,
- * cleared status and, on such an on-budget leg, its category (cleared back to "Unassigned" only
+ * the month of the transfer's date, or, dated after today, the day the money comes in. Editing
+ * an existing transfer leg is limited to its payee, memo, cleared status and, on such an on-budget leg, its category (cleared back to "Unassigned" only
  * where the rule allows it): the form sends a category change as the leg's one split with its
  * own amount, so the other leg is left alone; the amount and the other account are set only at
  * creation (the API would move the other leg's amount too, #547, but the mockup has no amount

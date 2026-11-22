@@ -58,6 +58,12 @@ income does not pay for, charged to M; when it exceeds what M has, M's unassigne
    €500 from then on; unassigned money stays €1,600 throughout.
 7. A €100 receipt dated 25 November, split into €150 of Groceries and a €50 return to Household:
    Groceries loses the €150 at once; Household gets the €50 only from the 25th.
+8. €2,000 received in November, €50 of it assigned to Groceries, €100 of groceries paid in cash
+   on 10 November and a €60 refund entered for the 28th: until the 28th, November closes with
+   Groceries at **−€50**, so December takes €50 of overspending from its unassigned money
+   (€1,900 instead of €1,950). From the 28th, November closes at +€10, December's Groceries
+   starts with €10 and its unassigned money is €1,950: money coming in dated after today changes
+   how past months close every day until its date.
 
 ### A category's own month
 
