@@ -79,8 +79,14 @@ function up(): void {
   for (const volume of Object.keys(VOLUMES)) must("docker", ["volume", "create", "--label", LABEL, volume]);
   must("docker", sandboxRunArgs());
 
-  const ready = run("docker", ["exec", CONTAINER, "timeout", String(SYSTEM_READY_TIMEOUT_S), "systemctl", "is-system-running", "--wait"]);
-  const state = (ready.stdout ?? "").trim();
+  // `systemctl` cannot answer until systemd has started its bus: retry until it reports a state.
+  const deadline = Date.now() + SYSTEM_READY_TIMEOUT_S * 1000;
+  let state = "";
+  while (state === "" && Date.now() < deadline) {
+    const ready = run("docker", ["exec", CONTAINER, "timeout", String(SYSTEM_READY_TIMEOUT_S), "systemctl", "is-system-running", "--wait"]);
+    state = (ready.stdout ?? "").trim();
+    if (state === "") Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+  }
   if (state !== "running") console.warn(`systemd reports "${state || "no state"}"; check with: docker exec ${CONTAINER} systemctl --failed`);
 
   const passwords = USERS.map((user) => [user, randomBytes(9).toString("base64url")] as const);

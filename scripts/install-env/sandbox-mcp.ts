@@ -2,7 +2,10 @@
  * The installer's only tool (#777): a stdio MCP server (`installer-sandbox` in .mcp.json) with one
  * tool, `run`, that runs a shell command inside the sandbox container and nowhere else:
  *
- *   docker exec -i -u <root|dev> envelope-installer-sandbox timeout -k 10 <s> bash -lc <command>
+ *   docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <s> bash -lc <command>
+ *
+ * starting in the user's home directory, as a login would; `timeout` runs inside the sandbox, so a
+ * stopped command does not keep running there after the client gives up.
  *
  * It refuses unless that container exists, runs and carries the label envelope.installer=1; the
  * Docker client gets a minimal environment, never the host's; a command is stopped after at most
@@ -76,8 +79,10 @@ export function parseRunInput(raw: unknown): RunInput | string {
   return { command, user: user as SandboxUser, timeout_s: timeout };
 }
 
+export const HOMES: Record<SandboxUser, string> = { root: "/root", dev: "/home/dev" };
+
 export function runArgs(input: RunInput): string[] {
-  return ["exec", "-i", "-u", input.user, CONTAINER, "timeout", "-k", String(KILL_GRACE_S), String(input.timeout_s), "bash", "-lc", input.command];
+  return ["exec", "-i", "-u", input.user, "-w", HOMES[input.user], CONTAINER, "timeout", "-k", String(KILL_GRACE_S), String(input.timeout_s), "bash", "-lc", input.command];
 }
 
 /** Refuses unless the sandbox container exists, runs and carries the installer label. */

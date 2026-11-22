@@ -19,7 +19,11 @@ RUN apt-get update \
  && systemctl mask \
       sys-kernel-config.mount sys-kernel-debug.mount sys-kernel-tracing.mount \
       systemd-modules-load.service getty@tty1.service console-getty.service \
- && systemctl enable ssh.service
+ && systemctl enable ssh.service \
+ && rm -f /usr/sbin/policy-rc.d /etc/apt/apt.conf.d/docker-* /etc/dpkg/dpkg.cfg.d/docker-*
+# The last line drops the base image's container tweaks, which a real install does not have:
+# policy-rc.d stops every package's service from starting when it is installed (the Docker
+# Engine of the manual among them), and the apt and dpkg settings drop indexes and translations.
 
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]

@@ -120,8 +120,8 @@ describe("installer sandbox MCP server", () => {
     const docker = fakeDocker(RUNNING_LABELLED);
     const result = await runTool(docker.sandbox, { command: "uname -a; id", user: "dev", timeout_s: 60 });
     assert.equal(result.isError, false);
-    assert.deepEqual(docker.calls[1], ["exec", "-i", "-u", "dev", CONTAINER, "timeout", "-k", "10", "60", "bash", "-lc", "uname -a; id"]);
-    assert.deepEqual(runArgs({ command: "x", user: "root", timeout_s: 5 }).slice(0, 5), ["exec", "-i", "-u", "root", CONTAINER]);
+    assert.deepEqual(docker.calls[1], ["exec", "-i", "-u", "dev", "-w", "/home/dev", CONTAINER, "timeout", "-k", "10", "60", "bash", "-lc", "uname -a; id"]);
+    assert.deepEqual(runArgs({ command: "x", user: "root", timeout_s: 5 }).slice(0, 7), ["exec", "-i", "-u", "root", "-w", "/root", CONTAINER]);
     assert.match(docker.records[0] ?? "", /\$ uname -a; id/);
   });
 
