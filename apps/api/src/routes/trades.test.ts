@@ -311,6 +311,23 @@ describe("trades routes (#77)", () => {
     });
   }
 
+  it("lists a trade with no time at the first midnight where midnight comes twice, as the replay orders it (#596)", async () => {
+    // Atlantic/Azores goes back from 01:00 (UTC+0) to 00:00 (UTC-1) on 2026-10-25: midnight is at
+    // 00:00Z and again at 01:00Z. PostgreSQL's AT TIME ZONE alone takes the second, which would
+    // list a sale at 00:30Z before the untimed buy the replay put first.
+    const azores = await addWorkspace("owner");
+    await superuserPool.query("UPDATE workspaces SET time_zone = 'Atlantic/Azores' WHERE id = $1", [azores]);
+    const broker = await account("brokerage", "EUR", azores);
+    const base = { accountId: broker, portfolioId: await portfolio(azores), instrumentId: await instrument(), priceE6: price(10), quantityE8: units(1) };
+    const [buy] = await created({ ...base, type: "buy", tradeDate: "2026-10-25" }, azores);
+    const [sell] = await created({ ...base, type: "sell", tradeDate: "2026-10-25", occurredAt: "2026-10-25T00:30:00Z" }, azores);
+    const listed = await list(`?accountId=${broker}`, azores);
+    assert.deepEqual(
+      (listed.json().trades as TradeBody[]).map((trade) => trade.id),
+      [buy!.id, sell!.id],
+    );
+  });
+
   it("refuses a time that is not on the trade date in the workspace's time zone", async () => {
     const base = { type: "fee", accountId: await account(), portfolioId: await portfolio(), feesCents: 100, tradeDate: "2026-01-10" };
     // 23:30 UTC on the 9th is 00:30 on the 10th in Rome: on the date.
@@ -1633,7 +1650,15 @@ describe("trades routes (#77)", () => {
       await superuserPool.query("UPDATE transactions SET status = 'reconciled' WHERE id = ANY($1)", [[fee!.cashTransactionId, outgoing.cashTransactionId]]);
 
       const before = await snapshot();
-      for (const response of [await patch(fee!.id, { feesCents: 800 }), await remove(fee!.id), await patch(incoming.id, { memo: "x" }), await remove(incoming.id)]) {
+      // A type-only edit too, the trade's own type or another: checked before the type is (#596).
+      for (const response of [
+        await patch(fee!.id, { feesCents: 800 }),
+        await patch(fee!.id, { type: "fee" }),
+        await patch(fee!.id, { type: "tax" }),
+        await remove(fee!.id),
+        await patch(incoming.id, { memo: "x" }),
+        await remove(incoming.id),
+      ]) {
         assert.equal(response.statusCode, 409, response.body);
         assert.equal(response.json().code, "reconciled");
       }

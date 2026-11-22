@@ -221,13 +221,27 @@ const TRADE_COLUMNS = `
 `;
 
 /**
+ * The first instant of a date in a time zone, as `startOfLocalDay` in `@envelope/core` gives it:
+ * where the clocks skip midnight, the instant they jump (PostgreSQL's `AT TIME ZONE` gives the same);
+ * where midnight comes twice (clocks going back across it, as in Atlantic/Azores on 2026-10-25),
+ * the first one. `AT TIME ZONE` alone takes the second there, so the first is found as the
+ * midnight that follows 21:00 of the day before at the offset then in force, kept only when the
+ * wall clock there reads midnight (#596). `date` and `timeZone` are SQL expressions.
+ */
+export function localDayStartSql(date: string, timeZone: string): string {
+  const evening = `((${date})::timestamp - interval '3 hours') AT TIME ZONE ${timeZone} + interval '3 hours'`;
+  return `LEAST((${date})::timestamp AT TIME ZONE ${timeZone},
+    CASE WHEN (${evening}) AT TIME ZONE ${timeZone} = (${date})::timestamp THEN ${evening} END)`;
+}
+
+/**
  * The replay order of `@envelope/core` (ADR 0011): trade date, a split first on its date, time,
  * creation time, id. A trade with no time sorts at the first instant of its date in the
- * workspace's time zone (#596), as `toPositionTrade` maps it (`startOfLocalDay`, which agrees with
- * PostgreSQL's `AT TIME ZONE` where midnight does not exist). The query joins `workspaces w`.
+ * workspace's time zone (#596), as `toPositionTrade` maps it (`startOfLocalDay`; `localDayStartSql`
+ * gives the same instant, the first midnight where it comes twice). The query joins `workspaces w`.
  */
 const REPLAY_ORDER = `
-  t.trade_date, (t.type <> 'split'), COALESCE(t.occurred_at, t.trade_date::timestamp AT TIME ZONE w.time_zone), t.created_at, t.id
+  t.trade_date, (t.type <> 'split'), COALESCE(t.occurred_at, ${localDayStartSql("t.trade_date", "w.time_zone")}), t.created_at, t.id
 `;
 
 interface TradeRow {
@@ -1547,7 +1561,7 @@ export async function deleteTrade(
   workspaceId: string,
   userId: string | null,
   tradeId: string,
-): Promise<TradeRecord[] | "not_found" | "reconciled" | "nothing_to_change"> {
+): Promise<TradeRecord[] | "not_found" | "reconciled"> {
   const group = await lockTradeGroup(db, workspaceId, tradeId, undefined);
   if (!group) {
     return "not_found";

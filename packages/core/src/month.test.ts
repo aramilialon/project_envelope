@@ -131,6 +131,13 @@ describe("startOfLocalDay", () => {
     assert.equal(startOfLocalDay("2026-04-05", "America/Santiago"), "2026-04-05T04:00:00.000Z");
   });
 
+  it("takes the first midnight where the clocks go back across it, which PostgreSQL's AT TIME ZONE does not", () => {
+    // Atlantic/Azores goes back from 01:00 (UTC+0) to 00:00 (UTC-1): midnight at 00:00Z and at 01:00Z.
+    assert.equal(startOfLocalDay("2026-10-25", "Atlantic/Azores"), "2026-10-25T00:00:00.000Z");
+    // America/Havana goes back from 01:00 (UTC-4) to 00:00 (UTC-5): midnight at 04:00Z and at 05:00Z.
+    assert.equal(startOfLocalDay("2026-11-01", "America/Havana"), "2026-11-01T04:00:00.000Z");
+  });
+
   it("keeps an offset in seconds from before standard time", () => {
     assert.equal(startOfLocalDay("1890-01-01", "Europe/Rome"), "1889-12-31T23:10:04.000Z");
   });
