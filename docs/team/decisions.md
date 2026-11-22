@@ -35,6 +35,7 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#505** (2026-11-22, architect): a private instrument's name is unique per workspace, ignoring case, after trimming (409 `name_taken`).
 - **#505** (2026-11-22, architect): a workspace-scoped instrument search is deferred to #789.
 - **#657** (2026-11-22, ux-reviewer): the note on a trade's cash leg reads "This transaction belongs to “{trade}”: its amount and date change on the trade." instead of the triage's "Change it on the trade.", because one note covers several fields, the web app has no trade screen before 0.2.4, and the side sheet's title does not name the trade.
+- **#710** (2026-11-22, domain-expert): off-budget splits stored with a category before #710 are not migrated (they change no figure); a future on-/off-budget switch must clear or refuse such categories first.
 
 ### 0.2.0
 

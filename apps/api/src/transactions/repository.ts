@@ -142,7 +142,7 @@ const TRANSACTION_COLUMNS = `
 /** The trade behind a cash leg and its instrument (#657), joined after `transactions t`. */
 const TRADE_JOINS = `
   LEFT JOIN trades tr ON tr.id = t.trade_id AND tr.workspace_id = t.workspace_id
-  LEFT JOIN instruments i ON i.id = tr.instrument_id
+  LEFT JOIN instruments i ON i.id = tr.instrument_id AND (i.workspace_id IS NULL OR i.workspace_id = t.workspace_id)
 `;
 
 interface TransactionRow {
