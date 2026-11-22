@@ -216,7 +216,7 @@ envelope=# UPDATE instruments SET name = 'Corrected name' WHERE id = '<id>';
 envelope=# DELETE FROM instruments WHERE id = '<id>';
 ```
 
-Check before a correction that it keeps every workspace's figures right: changing `type`, `currency` or `price_factor_e6` changes how every holding of that instrument is valued and taxed, in every workspace. A row that trades still reference cannot be deleted (#77); correct it in place instead.
+Check before a correction that it keeps every workspace's figures right: changing `type`, `currency` or `price_factor_e6` changes how every holding of that instrument is valued and taxed, in every workspace; a change to `price_factor_e6` also revalues every stored price of it (`prices.close_e6` is quoted with the instrument's price factor applied on top, #82), shared and workspace prices alike. A row that trades or prices still reference cannot be deleted (#77, #82: neither foreign key has an `ON DELETE` action); correct it in place instead.
 
 ### Income on a credit card stored before #548
 

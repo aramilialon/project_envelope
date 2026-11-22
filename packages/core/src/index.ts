@@ -62,6 +62,8 @@ export {
   validatePositionHistory,
   valuePosition,
 } from "./portfolio/positions.ts";
+export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
+export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
 export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
 export { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
