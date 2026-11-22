@@ -8,4 +8,5 @@ Fixed
   card. A card that owes −€10 with its payment category at −€50 now asks €40 to cover, not €50,
   and a card in credit with nothing beyond it is no longer reported as overspent. Its detail says the card is in
   credit by that amount, with nothing to cover, instead of "fully covered by money set aside", and
-  shows the card's credit on a line of its own.
+  shows "Credit on the card" in place of a negative card balance; a card that owes nothing says
+  so.

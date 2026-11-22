@@ -89,10 +89,19 @@ export default function PaymentCategoryDetail({
           intl.formatMessage(
             {
               id: "budget.payment.inCredit",
-              defaultMessage: "The card is in credit by {credit}. Spending with the card uses it up; there is nothing to cover.",
+              defaultMessage: "The card is in credit by {credit}. Card spending uses up this credit first; there is nothing to cover.",
             },
             { credit: money(credit) },
           ),
+        ];
+      }
+      // A card known to owe nothing has no debt for money set aside to cover (#660).
+      if (owed === 0) {
+        return [
+          intl.formatMessage({
+            id: "budget.payment.noDebt",
+            defaultMessage: "The card owes nothing right now; there is nothing to cover.",
+          }),
         ];
       }
       return [
@@ -112,7 +121,7 @@ export default function PaymentCategoryDetail({
           {
             id: "budget.payment.paidBeyondInCreditExplanation",
             defaultMessage:
-              "The card was paid {paidBeyondTotal} more than was set aside; {credit} of it is still on the card as credit. If the other {paidBeyond} is still uncovered when the month ends, it comes out of next month's unassigned money.",
+              "The card was paid {paidBeyondTotal} more than was set aside. {credit} of it is still on the card as credit. If the other {paidBeyond} is still uncovered when the month ends, it comes out of next month's unassigned money.",
           },
           { paidBeyondTotal: money(-available), credit: money(credit), paidBeyond: money(debt.paidBeyondSetAside) },
         ),
@@ -193,11 +202,20 @@ export default function PaymentCategoryDetail({
 
       {!covered && (
         <div className="sec">
-          <div className="qa static">
-            <span>{intl.formatMessage({ id: "budget.payment.cardBalance", defaultMessage: "Card balance" })}</span>
-            <span className="dots" />
-            <span className="n">{money(debt.owed)}</span>
-          </div>
+          {/* A card in credit shows its credit as a positive line in the balance's place, never a negative balance (#660). */}
+          {inCredit ? (
+            <div className="qa static">
+              <span>{intl.formatMessage({ id: "budget.payment.cardCredit", defaultMessage: "Credit on the card" })}</span>
+              <span className="dots" />
+              <span className="n">{money(credit)}</span>
+            </div>
+          ) : (
+            <div className="qa static">
+              <span>{intl.formatMessage({ id: "budget.payment.cardBalance", defaultMessage: "Card balance" })}</span>
+              <span className="dots" />
+              <span className="n">{money(debt.owed)}</span>
+            </div>
+          )}
           <div className="qa static">
             <span>{intl.formatMessage({ id: "budget.payment.setAsideLine", defaultMessage: "Set aside" })}</span>
             <span className="dots" />
@@ -208,13 +226,6 @@ export default function PaymentCategoryDetail({
               <span>{intl.formatMessage({ id: "budget.payment.paidBeyondSetAside", defaultMessage: "Paid beyond what was set aside" })}</span>
               <span className="dots" />
               <span className="n">{money(debt.paidBeyondSetAside)}</span>
-            </div>
-          )}
-          {inCredit && (
-            <div className="qa static">
-              <span>{intl.formatMessage({ id: "budget.payment.cardCredit", defaultMessage: "Card's credit" })}</span>
-              <span className="dots" />
-              <span className="n">{money(credit)}</span>
             </div>
           )}
           <div className="qa static">
