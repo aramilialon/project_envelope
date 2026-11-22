@@ -182,9 +182,28 @@ describe("private instruments (#505), as the envelope_app role", () => {
       }
     });
 
+    // The repository's INSERT … RETURNING would fail on the SELECT policy alone, so a statement
+    // with no RETURNING is what proves the INSERT policy itself refuses the row.
+    it("refuses a plain INSERT into another workspace, or with no workspace selected, by the INSERT policy itself", async () => {
+      const insert = "INSERT INTO instruments (workspace_id, name, type, currency) VALUES ($1, 'X', 'other', 'EUR')";
+      await as({ workspaceId: workspaceA }, async (client) => {
+        await rejectsWith(() => client.query(insert, [workspaceB]), INSUFFICIENT_PRIVILEGE);
+      });
+      for (const session of [{}, { userId: userA }, { systemJob: true }]) {
+        await as(session, async (client) => {
+          await rejectsWith(() => client.query(insert, [workspaceA]), INSUFFICIENT_PRIVILEGE);
+        });
+      }
+    });
+
     it("lets nobody update or delete an instrument, shared or private", async () => {
       for (const id of [shared, privateOfA, privateOfB]) {
-        for (const statement of ["UPDATE instruments SET name = 'Changed' WHERE id = $1", "DELETE FROM instruments WHERE id = $1"]) {
+        for (const statement of [
+          "UPDATE instruments SET name = 'Changed' WHERE id = $1",
+          `UPDATE instruments SET workspace_id = '${workspaceA}' WHERE id = $1`,
+          "UPDATE instruments SET workspace_id = NULL WHERE id = $1",
+          "DELETE FROM instruments WHERE id = $1",
+        ]) {
           await as({ workspaceId: workspaceA }, async (client) => {
             await rejectsWith(() => client.query(statement, [id]), INSUFFICIENT_PRIVILEGE);
           });
@@ -194,6 +213,25 @@ describe("private instruments (#505), as the envelope_app role", () => {
   });
 
   describe("constraints", () => {
+    it("keeps a workspace's private instrument names unique, ignoring case, and no other names", async () => {
+      await rejectsWith(
+        () =>
+          superuserPool.query("INSERT INTO instruments (workspace_id, name, type, currency) VALUES ($1, $2, 'other', 'EUR')", [
+            workspaceA,
+            `${namePrefix} FLAT OF A`,
+          ]),
+        "23505",
+        "instruments_workspace_name_key",
+      );
+      // The same name in another workspace is no conflict.
+      await as({ workspaceId: workspaceB }, async (client) => {
+        await client.query("INSERT INTO instruments (workspace_id, name, type, currency) VALUES ($1, $2, 'other', 'EUR')", [
+          workspaceB,
+          `${namePrefix} flat of A`,
+        ]);
+      });
+    });
+
     it("keeps identifiers off a private instrument and requires one on a shared instrument", async () => {
       for (const [columns, values] of [
         ["workspace_id, isin", [workspaceA, "US0378331005"]],
