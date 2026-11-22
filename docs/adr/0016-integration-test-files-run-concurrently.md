@@ -30,5 +30,5 @@ Three things were still shared by every file of a run: the migration runner, whi
 
 - The full integration run takes less than half as long on a development machine (`apps/api/README.md`, "Running the integration tests locally", has the numbers).
 - A file that is not safe to run alongside the others fails some runs and not others. A flaky failure in the integration tests is first suspected of sharing something, and `API_TEST_CONCURRENCY=1` is the way to check.
-- Each walk file builds its own app, Keycloak realm and users, so the walk's setup runs five times instead of once; one realm per run (#639) takes most of that away.
+- Each walk file builds its own app and users, so the walk's setup runs five times instead of once. Since #639 every file of a run shares one Keycloak realm, created and deleted once by the runner's global setup (`apps/api/README.md`, "One Keycloak realm per run"), and gets only users of its own in it; a test file therefore never changes anything realm-wide, one more rule of the list above.
 - Several runs on one machine, each against a database of its own, now add up: each uses as many processes as the machine has cores. Set `API_TEST_CONCURRENCY` lower when running more than one at a time.

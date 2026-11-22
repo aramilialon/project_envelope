@@ -6,7 +6,7 @@
  * `node --test` runs them alongside each other and alongside every other integration test file,
  * and no single file holds up the end of the run. `walk.test.ts` runs a walk on demand only
  * (`WALK_SEED`, `WALK_REPLAY`). Each file calls `useWalkSuite()` once, inside its `describe`, and
- * gets its own app, its own Keycloak realm and its own users and workspaces: no file depends on
+ * gets its own app, its own Keycloak users (in the run's one realm, #639) and its own workspaces: no file depends on
  * another having run, or on running alone.
  */
 import { join } from "node:path";
@@ -88,7 +88,7 @@ export interface WalkSuiteOptions {
 
 /**
  * Registers the `before`, `afterEach` and `after` hooks of a walk file in the current `describe`:
- * the database migrated, the run's app login, a Keycloak realm of the file's own, an app built
+ * the database migrated, the run's app login, the file's own Keycloak user in the run's realm, an app built
  * against both, and a user per persona and role. Call it once per file, at the top of its
  * `describe`.
  */
