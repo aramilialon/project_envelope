@@ -164,8 +164,10 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 { "taxCountry": "IT" }
 ```
 
-`taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+`taxCountry` is an officially assigned ISO 3166-1 alpha-2 code in upper case (`"it"` is refused
+with `invalid_tax_country`, and so are codes that name no country, such as `ZZ`, `EU`, `UN` or
+`UK`: the United Kingdom is `GB`), or `null` to remove it. A code stored before this check (#711)
+is still returned as it is, and can be replaced or removed. The answer is the workspace, with the brokerage
 accounts that have no tax regime yet:
 
 ```json
@@ -185,7 +187,7 @@ for their regimes right away.
 
 | Error | Details |
 | --- | --- |
-| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not a known region |
+| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -352,7 +354,7 @@ workspaces may already use it.
 | `exchange` | the exchange's ISO 10383 market identifier code (MIC), exactly 4 letters or digits, such as `XMIL` or `XETR`; upper-cased |
 | `name` | required, up to 200 characters |
 | `type` | `stock`, `fund` (ETFs included), `etc_etn`, `government_bond`, `bond`, `certificate`, `cash`, `other`. The split follows the lines tax rules draw, since a row is never updated |
-| `currency` | three letters, upper-cased; the currency the instrument is quoted in |
+| `currency` | an ISO 4217 code the runtime lists as in use, upper-cased (the same check as an account's, #595); the currency the instrument is quoted in |
 | `assetClass` | optional free text, up to 64 characters |
 | `priceFactorE6` | optional, default `1000000` (a factor of 1); `10000` (0.01) for a bond quoted in percent of nominal or a price in pence |
 
@@ -375,7 +377,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 | 400 `invalid_isin` | `{ "isin" }`: wrong shape or check digit |
 | 400 `invalid_ticker`, `invalid_exchange` | `{ "ticker" }`, `{ "exchange" }` |
 | 400 `invalid_instrument_type` | `{ "type" }` |
-| 400 `invalid_currency` | `{ "currency" }`: not three letters |
+| 400 `invalid_currency` | `{ "currency" }` as sent: not an ISO 4217 code in use (`XYZ`, the withdrawn `VEF`) |
 | 400 `invalid_instrument_field` | `{ "field" }` (a missing name, or a field that is not a string) or `{ "field", "maxLength" }` |
 | 400 `invalid_price_factor` | `{ "label": "priceFactorE6", "value" }`: not a positive safe integer |
 
