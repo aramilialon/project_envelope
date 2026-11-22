@@ -434,7 +434,7 @@ historical prices, rather than asking the user to maintain a balance by hand. Tw
 "return" numbers answer two different questions:
 
 - **TWR** (time-weighted return) measures how good the *strategy* was, independent of when money
-  was added or removed — the number to compare against an index.
+  was added or removed; after the costs and taxes the trades record.
 - **MWR/XIRR** (money-weighted return) measures the *household's own result*, given exactly when
   their contributions happened — the number that answers "did my timing help or hurt me."
 
@@ -667,6 +667,67 @@ since in 0.2.0 the instrument must be in each account's currency, and the core's
 it too (`invalid_trade`, field `currency`). Such a move is entered as a transfer out of the app
 from the first account plus a transfer in from outside into the second, carrying the cost
 converted by the user.
+
+#### Flows, valuation and returns
+
+Returns are computed after the costs and taxes the trades record, in `packages/core`
+(`externalFlows`, `timeWeightedReturn`, `moneyWeightedReturn`), and never stored.
+
+**A portfolio holds securities only.** Its value on a date is the sum of its positions at the
+latest price on or before that date (quantity × price × price factor); the cash of its trades
+belongs to the brokerage account. A bond is valued at its clean price, so the accrued interest
+paid on a buy shows as a dip in the return until the coupon comes. A position of quantity 0 needs
+no price; any other position with no price makes the value **unknown**, never 0, and every return
+that needs it unknown too.
+
+**External flows.** Money moved into the portfolio is a positive flow, money taken out a negative
+one. Each trade's flow is minus its cash leg (the table above), plus the market value of the
+securities a transfer moves:
+
+| Trade | Flow |
+| --- | --- |
+| Buy | + everything it cost: gross + fees + transaction tax + accrued interest − domestic withholding |
+| Sell | − the net proceeds |
+| Dividend or coupon | − the net cash (income) |
+| Fee, tax | + the amount; a gain tax refund − |
+| Transfer of securities | ± the market value of the units on its date (never their cost), + its fees |
+| Split | none |
+
+A dividend is a flow on its payment date: one with its ex-date in September and paid in October
+lowers September's value (the price drops on the ex-date) and is a flow in October. Each flow and
+each value is converted to the base currency at its own date's rate.
+
+**Time-weighted return (TWR)** answers how the holdings did, independent of when money was added;
+after the costs and taxes the trades record. It is computed truly time-weighted, not by the Modified
+Dietz approximation: the period is cut at the end of every day with a flow and at every month end,
+flows count at the end of their day, each sub-period's return is (V_b − F_b) ÷ V_a − 1 (V_a the
+value at its start, V_b at its end, F_b the flows of its last day), or V_b ÷ F_b − 1 for a
+sub-period that starts from nothing, and the sub-periods are linked: Π(1 + r) − 1.
+
+| Date | Event | Value | Sub-period |
+| --- | --- | --- | --- |
+| 31 Aug | | 10,000 | |
+| 10 Sep | Buy, cash 2,000 (flow +2,000) | 12,100 | (12,100 − 2,000) ÷ 10,000 − 1 = 1.00% |
+| 30 Sep | | 12,300 | 12,300 ÷ 12,100 − 1 = 1.6529% |
+| 15 Oct | Dividend, net 50 (flow −50) | 12,250 | (12,250 + 50) ÷ 12,300 − 1 = 0.00% |
+| 31 Oct | | 12,100 | 12,100 ÷ 12,250 − 1 = −1.2245% |
+
+September is 1.01 × 1.016529 − 1 = 2.6694%, October −1.2245%, the two months 1.4122%. A portfolio
+started with a buy of €10,000 on 10 September, worth €9,995 that evening and €10,150 on 30
+September, returned 1.50% in September; Modified Dietz would say 2.25%, and 4.50% had the buy been
+on 20 September, because it divides the gain by the money weighted by days held.
+
+**Money-weighted return (MWR, XIRR)** answers how the household's own money did, given exactly
+when it went in and out: the yearly rate, counted Actual/365, that brings the household's flows to
+zero (the opposite of the portfolio's flows, the value at the start paid in on the start date and
+the value at the end received on the end date). It is found by bisection between −99% and +1000% a
+year; no rate in that range, a total loss included, makes it unknown. €10,000 paid in on 1 January
+2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is 8.02% a year.
+
+**Periods.** A period of 365 days or more shows a yearly figure (the TWR as (1 + R)^(365 ÷ days) − 1);
+a shorter one shows the return over the period itself (the MWR as (1 + r)^(days ÷ 365) − 1), so
+€10,000 growing to €10,100 over 30 days is 1.00% either way. The days run from the first money in
+the portfolio. A return is shown to 0.01 percentage points.
 
 ### Target allocation and thresholds
 

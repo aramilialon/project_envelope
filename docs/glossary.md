@@ -55,6 +55,9 @@ What each term means, and its name in the code. How the interface writes it, in 
 | Managed regime | A manager, an Italian intermediary, runs the account under a mandate and applies the tax to the result the mandate accrued over the year, realized or not | `managed` |
 | Withholding agent | A broker that withholds Italian tax at source on the investor's behalf (on income from funds and ETFs, dividends and coupons); fixed per account, required for an administered or managed one | `domesticWithholdingAgent` |
 | Dossier | One securities account at a broker, under one tax regime; one account in the app. A broker can hold several | — |
+| External flow | Money moved into (+) or out of (−) a portfolio: minus a trade's cash leg, plus the market value of securities transferred in or out; a dividend's or a coupon's is income | `externalFlows`, `ExternalFlow` |
+| Time-weighted return (TWR) | How a portfolio's holdings did, independent of when money was added, after the costs and taxes the trades record: sub-period returns between flow days and month ends, linked | `timeWeightedReturn` |
+| Money-weighted return (MWR, XIRR) | How the household's own money did, given when it went in and out: the yearly rate (Actual/365) that brings its flows to zero | `moneyWeightedReturn` |
 
 ## Technical
 
