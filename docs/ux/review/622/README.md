@@ -10,7 +10,8 @@ How they are taken:
 
 | Mockup | State | 1440 | 360 |
 | --- | --- | --- | --- |
-| account-register | initial | `account-register-{light,dark}-1440.png` | `account-register-{light,dark}-360.png` |
+| account-register | initial (phone: the Checking register) | `account-register-{light,dark}-1440.png` | `account-register-{light,dark}-360.png` |
+| account-register | phone: the Accounts list | — | `account-register-list-{light,dark}-360.png` |
 | accounts-panel | initial | `accounts-panel-{light,dark}-1440.png` | desktop only, by design: on a phone the tab bar's Accounts is the navigation |
 | budget-categories | initial | `budget-categories-{light,dark}-1440.png` | `budget-categories-{light,dark}-360.png` |
 | budget-month | initial | `budget-month-{light,dark}-1440.png` | `budget-month-{light,dark}-360.png` |
@@ -22,5 +23,7 @@ How they are taken:
 | settings-first-run | First run | `settings-first-run-first-run-{light,dark}-1440.png` | `settings-first-run-first-run-{light,dark}-360.png` |
 | sign-in | Idle | `sign-in-{light,dark}-1440.png` | `sign-in-{light,dark}-360.png` |
 | sign-in | Error | `sign-in-error-{light,dark}-1440.png` | `sign-in-error-{light,dark}-360.png` |
+
+budget-categories is an excerpt of the budget month; its band is a placeholder, unchanged from the Italian mockup (the real band comes with #763).
 
 This folder is temporary: it is removed before the pull request is merged.
