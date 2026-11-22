@@ -462,8 +462,14 @@ $ pnpm install:status
 $ pnpm install:down     # removes the container, its volumes, its network and the image
 ```
 
+`status` also prints the size of the sandbox's two volumes, which grow with every image the
+installer pulls: watch it during a run, and run `down` as soon as the run and `qa`'s
+reproductions are over.
+
 `up` is refused when the sandbox already exists or when less than 12 GB is free under Docker's
-data directory; it waits for systemd and sets fresh random passwords for `root` and `dev`, which
+data directory, and when an existing `envelope-installer-net` is not on the bridge
+`br-envinstaller` with the label (the firewall matches the bridge by name, so it would not cover
+another one); it waits for systemd and sets fresh random passwords for `root` and `dev`, which
 exist only inside the sandbox and go into the installer's brief.
 
 **The agent's tool.** `install-env/sandbox-mcp.ts` is the `installer-sandbox` MCP server in
@@ -471,7 +477,8 @@ exist only inside the sandbox and go into the installer's brief.
 timeout_s })`, is the installer's only tool (`mcp__installer-sandbox__run`, allowed in
 `.claude/settings.json`). Each call runs
 `docker exec -i -u <root|dev> -w <home> envelope-installer-sandbox timeout -k 10 <timeout_s> bash -lic <command>`,
-after checking that the container exists, runs and carries the label; the Docker client gets a
+after checking that the container exists, runs, carries the label and is attached to
+`envelope-installer-net` and no other network; the Docker client gets a
 minimal environment, never the host's; `timeout_s` defaults to 600 and is capped at 1800; the
 output returned is the last 20,000 characters. The shell is an interactive login shell, as a
 real user's terminal is, so the lines a manual adds to `~/.bashrc` take effect in the next call
