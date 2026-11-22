@@ -37,6 +37,7 @@ const EXPECTED_TABLES = [
   "scheduled_transactions",
   "scheduled_transaction_splits",
   "trades",
+  "prices",
 ];
 
 /**
@@ -78,7 +79,7 @@ describe("apps/api/migrations, applied to a real database", () => {
   it("forces row-level security on every workspace-scoped table", async () => {
     const workspaceTables = await loadWorkspaceTables(pool);
     // Guards against the query above silently returning nothing, which would make this test pass vacuously.
-    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios", "trades"]) {
+    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios", "trades", "prices"]) {
       assert.ok(workspaceTables.includes(known), `expected "${known}" among the workspace-scoped tables`);
     }
 

@@ -79,7 +79,8 @@ export type ValidationErrorCode =
   | "tax_regime_duplicate_date"
   | "tax_regime_requires_withholding_agent"
   | "tax_regime_conflicts_with_trade"
-  | "withholding_agent_already_set";
+  | "withholding_agent_already_set"
+  | "duplicate_price";
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
