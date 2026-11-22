@@ -508,6 +508,65 @@ describe("the TWR's clock runs only while something is held (domain expert, #89)
   });
 });
 
+describe("moneyWeightedReturn: the clock starts on the first day something is held (domain expert, #89)", () => {
+  // Each figure computed apart: the same equation solved by a separate bisection, the flows before
+  // the first day held (10 September) carried forward to it.
+  it("a €50 dividend on 3 September while nothing is held, €10,000 paid in on 10 September, €10,100 at the month end: 1.51%, not 2.04%", () => {
+    const input = {
+      start: value("2025-08-31", 0),
+      end: value("2025-09-30", 10_100),
+      valuations: [value("2025-09-03", 0), value("2025-09-10", 10_000)],
+      flows: [flow("2025-09-03", -50), flow("2025-09-10", 10_000)],
+    };
+    assert.deepEqual(moneyWeightedReturn(input), { status: "known", returnE6: 15102, annualized: false });
+  });
+
+  it("a €5 fee on 3 September instead: 0.95%, not 1.28%", () => {
+    const input = {
+      start: value("2025-08-31", 0),
+      end: value("2025-09-30", 10_100),
+      valuations: [value("2025-09-03", 0), value("2025-09-10", 10_000)],
+      flows: [flow("2025-09-03", 5), flow("2025-09-10", 10_000)],
+    };
+    assert.deepEqual(moneyWeightedReturn(input), { status: "known", returnE6: 9494, annualized: false });
+  });
+
+  it("a €5 fee on 10 January 2024, €10,000 paid in on 1 January 2025, €11,000 on 31 December 2025: 9.94% over the period, not yearly", () => {
+    const input = {
+      start: value("2023-12-31", 0),
+      end: value("2025-12-31", 11_000),
+      valuations: [value("2024-01-10", 0), value("2024-12-31", 0), value("2025-01-01", 10_000)],
+      flows: [flow("2024-01-10", 5), flow("2025-01-01", 10_000)],
+    };
+    assert.deepEqual(moneyWeightedReturn(input), { status: "known", returnE6: 99397, annualized: false });
+    assert.deepEqual(timeWeightedReturn({ start: input.start, valuations: [...input.valuations, input.end], flows: input.flows }), {
+      status: "known",
+      returnE6: 100000,
+      annualized: false,
+    });
+  });
+
+  it("a €5 fee on 3 September while nothing is held, a first buy of €10,010 on the end date worth €10,000: MWR −0.1498%, TWR −0.0999%", () => {
+    const start = value("2025-08-31", 0);
+    const valuations = [value("2025-09-03", 0)];
+    const end = value("2025-09-30", 10_000);
+    const flows = [flow("2025-09-03", 5), flow("2025-09-30", 10_010)];
+    // 10,000 ÷ 10,015 − 1: the idle fee counts in the MWR, not in the TWR.
+    assert.deepEqual(moneyWeightedReturn({ start, end, valuations, flows }), { status: "known", returnE6: -1498, annualized: false });
+    assert.deepEqual(timeWeightedReturn({ start, valuations: [...valuations, end], flows }), { status: "known", returnE6: -999, annualized: false });
+  });
+
+  it("an unknown value before the first day held makes the MWR unknown", () => {
+    const outcome = moneyWeightedReturn({
+      start: value("2025-08-31", 0),
+      end: value("2025-09-30", 10_100),
+      valuations: [value("2025-09-03", null), value("2025-09-10", 10_000)],
+      flows: [flow("2025-09-03", 5), flow("2025-09-10", 10_000)],
+    });
+    assert.deepEqual(outcome, { status: "unknown", reason: "missing_value" });
+  });
+});
+
 describe("moneyWeightedReturn: the period ends at the last money received, and the root is the one nearest 0 (#89)", () => {
   it("bought for €10,000 on 1 September, sold for a net €10,100 on 30 September, a €5 fee on 15 October: about 0.95%, not no_solution", () => {
     const input = {
@@ -544,6 +603,27 @@ describe("moneyWeightedReturn: the period ends at the last money received, and t
       flows: [flow("2025-10-03", -50), flow("2025-10-10", 10_000)],
     });
     assertRate(outcome, -1, false);
+  });
+
+  it("a root on each side, −1.2% and +1.1% a year: the figure is +1.1%, the nearer one", () => {
+    // −1,000,000, then +1,000,000 (a + b), then −1,000,000 ab a year apart: (1 + r) is a or b.
+    const outcome = moneyWeightedRate({
+      start: value("2023-01-01", 1_000_000),
+      end: value("2025-01-01", 0),
+      valuations: [value("2024-01-01", 0)],
+      flows: [flow("2024-01-01", -1_999_000), flow("2025-01-01", 998_868)],
+    });
+    assertRate(outcome, 0.011, true);
+  });
+
+  it("two roots one step apart in the scan, 7% and 9% a year: the figure is 7%", () => {
+    const outcome = moneyWeightedRate({
+      start: value("2023-01-01", 1_000_000),
+      end: value("2025-01-01", 0),
+      valuations: [value("2024-01-01", 0)],
+      flows: [flow("2024-01-01", -2_160_000), flow("2025-01-01", 1_166_300)],
+    });
+    assertRate(outcome, 0.07, true);
   });
 
   it("refuses valuations out of order or after the end, a flow with no valuation, and an end-date valuation that differs from the end", () => {

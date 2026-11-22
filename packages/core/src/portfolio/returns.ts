@@ -26,18 +26,21 @@
  * - **Money-weighted return** (`moneyWeightedReturn`, XIRR): the rate that
  *   brings the household's own flows to zero (the opposite of the
  *   portfolio's, the start value paid in on the start date and the end value
- *   received on the end date), each flow timed by `yearFraction` from the
- *   first one. The bounds apply to the figure shown: the yearly rate for a
- *   period of a year or more, the period's own rate for a shorter one, from
- *   just above −100% to +1000%. With several sign changes there can be
+ *   received on the end date), each flow timed by `yearFraction`. The
+ *   bounds apply to the figure shown: the yearly rate for a period of a year
+ *   or more, the period's own rate for a shorter one, from just above −100%
+ *   to +1000%. With several sign changes there can be
  *   several rates; the figure is the one nearest 0, found by scanning
- *   outward from 0 for the first sign change and bisecting there. Nothing
- *   received back after money was paid in is exactly −100%. The period ends
- *   at the last money received, since XIRR assumes money stays invested at
- *   its rate: a payment after it (a fee after the final sale) is discounted
- *   back to it. A period of no length (nothing held at the start and every
- *   flow on the end date, a first buy on the end date itself) is the end
- *   value ÷ that day's net flow − 1, the same as the TWR.
+ *   outward from 0 on both sides (see `nearestRoot`). Its clock starts at O,
+ *   the start date when something is held then, otherwise the first day
+ *   ending with a value above 0: money paid or received before O (a fee
+ *   while nothing was held) is carried forward to it. Nothing received
+ *   after O is exactly −100%. The period ends at the last money received,
+ *   since XIRR assumes money stays invested at its rate: a payment after it
+ *   (a fee after the final sale) is discounted back to it. A period of no
+ *   length (O is the end date, a first buy on the end date itself) is the
+ *   end value ÷ the net money put in over the period − 1, idle flows
+ *   included.
  *
  * **Nothing held.** Both returns first check that the period held capital:
  * a value above 0 at the end of at least one day it is valued on (its
@@ -51,8 +54,7 @@
  * the period itself. The TWR's clock runs only while something is held:
  * from the start date, or the first day ending with a value above 0, to the
  * next day the value is back to 0, stretch by stretch, the stretches'
- * `yearFraction`s added up. The MWR's runs from the household's first flow
- * to the last money received.
+ * `yearFraction`s added up. The MWR's runs from O to the last money received.
  *
  * Computed in double precision from integer minor units, in a fixed order,
  * and rounded once to millionths (`returnE6`, half away from zero): 26694 is
@@ -114,7 +116,7 @@ const MWR_HIGH = 10;
  * −100% geometrically: the first step, and the factor each step grows by.
  */
 const SCAN_FIRST_STEP = 1e-4;
-const SCAN_GROWTH = 1.5;
+const SCAN_GROWTH = 1.1;
 
 /**
  * Years from `from` to `to` by calendar anniversaries: the whole
@@ -283,14 +285,21 @@ export function moneyWeightedRate(input: MoneyWeightedInput): RateOutcome {
   if ([...daily.values()].some((amount) => amount === null)) return unknown("missing_value");
   const endValue = input.end.valueCents;
 
-  // 2. A period of no length: nothing held at the start, every flow on the end date (a first buy today).
-  if (input.start.valueCents === 0 && [...daily.keys()].every((date) => date === input.end.date)) {
-    const flow = daily.get(input.end.date) ?? 0;
-    if (flow === null || flow <= 0) return unknown("no_capital");
-    return known(endValue / flow - 1, false);
+  // 2. The clock starts at O: the start date when something is held then, else the first day ending with a value above 0.
+  const cuts = [...input.valuations.filter((valuation) => valuation.date < input.end.date), input.end];
+  const firstHeld = cuts.find((valuation) => valuation.valueCents !== null && valuation.valueCents > 0) as Valuation;
+  const origin = input.start.valueCents > 0 ? input.start.date : firstHeld.date;
+  if (cuts.some((valuation) => valuation.date < origin && valuation.valueCents === null)) return unknown("missing_value");
+
+  // 3. A period of no length (O is the end date): the end value ÷ the net money put in − 1, idle flows included.
+  if (origin === input.end.date) {
+    let net = 0;
+    for (const amount of daily.values()) net += amount as Cents;
+    if (net <= 0) return unknown("no_capital");
+    return known(endValue / net - 1, false);
   }
 
-  // The household's side: what it pays in is negative, what it gets back positive.
+  // The household's side, netted by date: what it pays in is negative, what it gets back positive.
   const household = new Map<LocalDate, Cents>();
   const add = (date: LocalDate, amount: Cents): void => {
     const total = (household.get(date) ?? 0) + amount;
@@ -300,79 +309,95 @@ export function moneyWeightedRate(input: MoneyWeightedInput): RateOutcome {
   if (input.start.valueCents !== 0) add(input.start.date, -input.start.valueCents);
   for (const [date, amount] of daily) add(date, -(amount as Cents));
   add(input.end.date, endValue);
+  const cashFlows = [...household].filter(([, amount]) => amount !== 0).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
 
-  const cashFlows = [...household].filter(([, amount]) => amount !== 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const firstPaid = cashFlows.findIndex(([, amount]) => amount < 0);
-  const first = cashFlows[0];
-  if (first === undefined || firstPaid === -1) return unknown("no_capital");
-  const origin = first[0];
-  // 3. Nothing received back after money was paid in: a total loss, outside any bounds.
-  const lastReceived = cashFlows.findLast(([, amount]) => amount > 0);
-  if (lastReceived === undefined || cashFlows.indexOf(lastReceived) < firstPaid) {
-    return known(-1, yearFraction(origin, input.end.date) >= 1);
-  }
+  // 4. Nothing received after the clock starts: a total loss, outside any bounds.
+  const lastReceived = cashFlows.findLast(([date, amount]) => amount > 0 && date > origin);
+  if (lastReceived === undefined) return known(-1, yearFraction(origin, input.end.date) >= 1);
 
-  // 4. The period ends at the last money received; a payment after it is discounted back to it.
-  const period = yearFraction(origin, lastReceived[0]);
+  // 5. The period runs from O to the last money received L: earlier flows are carried forward to O,
+  // later payments discounted back to L.
+  const last = lastReceived[0];
+  const period = yearFraction(origin, last);
   const annualized = period >= 1;
   // Each flow's exponent in the unit of the figure shown: years, or fractions of the period.
   const unit = annualized ? 1 : period;
-  // Values at the period's end: every exponent but those of later payments is ≥ 0.
-  const timed = cashFlows.map(([date, amount]) => ({
-    exponent: date <= lastReceived[0] ? (period - yearFraction(origin, date)) / unit : -yearFraction(lastReceived[0], date) / unit,
-    amount,
-  }));
-  // 5. The root nearest 0.
+  const timed = cashFlows.map(([date, amount]) => {
+    let exponent: number;
+    if (date < origin) exponent = (period + yearFraction(date, origin)) / unit;
+    else if (date <= last) exponent = (period - yearFraction(origin, date)) / unit;
+    else exponent = -yearFraction(last, date) / unit;
+    return { exponent, amount };
+  });
+  // 6. The root nearest 0.
   const rate = nearestRoot((r) => timed.reduce((total, flow) => total + flow.amount * Math.pow(1 + r, flow.exponent), 0));
   if (rate === null) return unknown("no_solution");
   return known(rate, annualized);
 }
 
+/** One side of the scan for the root nearest 0: `sign` −1 below 0, +1 above. */
+interface ScanSide {
+  readonly sign: -1 | 1;
+  previous: { rate: number; value: number };
+  done: boolean;
+  root: number | null;
+}
+
 /**
  * The root of `f` nearest 0 between `MWR_LOW` and `MWR_HIGH`, or null if `f`
- * does not change sign there: steps outward from 0 on both sides, in
- * ln(1 + rate) with growing steps (the side below 0 first at each step, as
- * it is the nearer one), until a step brackets a change of sign, then
- * bisects that step. It never evaluates nearer −100% than the bracket it
- * needs, where a later payment's negative exponent would overflow.
+ * does not change sign there. It steps outward from 0 on both sides, in
+ * ln(1 + rate) with steps growing by `SCAN_GROWTH`, until a step brackets a
+ * change of sign, and bisects that step for a root r1; it then keeps
+ * scanning the other side out to |r1| and returns the nearer root, the one
+ * above 0 on a tie. Two rates closer together than one scan step may be
+ * missed; the figure is then unknown. The scan stops on a side where `f` is
+ * NaN: near −100% a later payment's negative exponent overflows.
  */
 function nearestRoot(f: (rate: number) => number): number | null {
   const atZero = f(0);
   if (atZero === 0) return 0;
   if (Number.isNaN(atZero)) return null;
-  const lowLog = Math.log1p(MWR_LOW);
-  const highLog = Math.log1p(MWR_HIGH);
-  let below = { rate: 0, value: atZero };
-  let above = { rate: 0, value: atZero };
-  let belowDone = false;
-  let aboveDone = false;
-  for (let distance = SCAN_FIRST_STEP; !(belowDone && aboveDone); distance *= SCAN_GROWTH) {
-    if (!belowDone) {
-      const rate = -distance <= lowLog ? MWR_LOW : Math.expm1(-distance);
-      const value = f(rate);
-      if (Number.isNaN(value)) {
-        belowDone = true;
-      } else {
-        if (value === 0) return rate;
-        if (Math.sign(value) !== Math.sign(below.value)) return bisect(f, rate, below.rate, value);
-        below = { rate, value };
-        if (rate === MWR_LOW) belowDone = true;
-      }
+  const bound = { [-1]: Math.log1p(MWR_LOW), [1]: Math.log1p(MWR_HIGH) } as const;
+  const sides: ScanSide[] = [-1, 1].map((sign) => ({ sign: sign as -1 | 1, previous: { rate: 0, value: atZero }, done: false, root: null }));
+  const [below, above] = sides as [ScanSide, ScanSide];
+
+  /** One step of `side` at `distance` in ln(1 + rate), never beyond `limit` in rate. */
+  const step = (side: ScanSide, distance: number, limit: number): void => {
+    const log = side.sign * distance;
+    let rate = Math.abs(log) >= Math.abs(bound[side.sign]) ? (side.sign < 0 ? MWR_LOW : MWR_HIGH) : Math.expm1(log);
+    if (Math.abs(rate) >= limit) rate = side.sign * limit;
+    const atBound = rate === MWR_LOW || rate === MWR_HIGH || Math.abs(rate) === limit;
+    const value = f(rate);
+    if (Number.isNaN(value)) {
+      side.done = true;
+      return;
     }
-    if (!aboveDone) {
-      const rate = distance >= highLog ? MWR_HIGH : Math.expm1(distance);
-      const value = f(rate);
-      if (Number.isNaN(value)) {
-        aboveDone = true;
-      } else {
-        if (value === 0) return rate;
-        if (Math.sign(value) !== Math.sign(above.value)) return bisect(f, above.rate, rate, above.value);
-        above = { rate, value };
-        if (rate === MWR_HIGH) aboveDone = true;
-      }
+    if (value === 0) {
+      side.root = rate;
+    } else if (Math.sign(value) !== Math.sign(side.previous.value)) {
+      side.root = side.sign < 0 ? bisect(f, rate, side.previous.rate, value) : bisect(f, side.previous.rate, rate, side.previous.value);
+    } else {
+      side.previous = { rate, value };
     }
+    if (side.root !== null || atBound) side.done = true;
+  };
+
+  let distance = SCAN_FIRST_STEP;
+  for (; !(below.done && above.done) && below.root === null && above.root === null; distance *= SCAN_GROWTH) {
+    for (const side of sides) if (!side.done) step(side, distance, Infinity);
   }
-  return null;
+  const found = sides.find((side) => side.root !== null);
+  if (found === undefined) return null;
+  // Keep scanning the other side out to the distance of the root found.
+  const other = found === below ? above : below;
+  const limit = Math.abs(found.root as number);
+  // Already scanned past the root found, with no change of sign: nothing nearer there.
+  if (Math.abs(other.previous.rate) >= limit) other.done = true;
+  for (; !other.done; distance *= SCAN_GROWTH) step(other, distance, limit);
+  if (other.root === null) return found.root;
+  const [first, second] = [found.root as number, other.root];
+  if (Math.abs(first) !== Math.abs(second)) return Math.abs(first) < Math.abs(second) ? first : second;
+  return Math.max(first, second);
 }
 
 /** A root of `f` between `low` and `high`, where `f` changes sign (`fLow` is `f(low)`). */

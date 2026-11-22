@@ -488,7 +488,8 @@ describe("monthlyPerformance: nothing held (domain expert, #89)", () => {
   const fee = (date: string, amount: number) => trade({ date, type: "fee", instrumentId: null, feesCents: cents(amount) });
   const sell = (date: string, count: number, price: number, extra: Partial<PositionTrade> = {}) =>
     trade({ date, type: "sell", instrumentId: ETF, quantity: units(count), price: e6(price), grossCents: cents(count * price), ...extra });
-  const figures = (row: { gainCents: number | null; twrE6: number | null; mwrE6: number | null; twrUnknownReason: string | null; mwrUnknownReason: string | null } | undefined) => [
+  type Figures = { gainCents: number | null; twrE6: number | null; mwrE6: number | null; twrUnknownReason: string | null; mwrUnknownReason: string | null };
+  const figures = (row: Figures | undefined) => [
     row?.gainCents,
     row?.twrE6,
     row?.twrUnknownReason,
@@ -554,6 +555,17 @@ describe("monthlyPerformance: nothing held (domain expert, #89)", () => {
       }),
     );
     assert.deepEqual(figures(result.months[0]), [cents(-10), -999, null, -999, null]);
+    // With a €5 fee earlier in the month while nothing was held: the MWR counts it (−0.1498%), the TWR does not.
+    const withFee = monthlyPerformance(
+      input({
+        from: "2026-11",
+        to: "2026-11",
+        today: "2026-11-15",
+        trades: [fee("2026-11-03", 5), buy("2026-11-15", ETF, 100, 100, { feesCents: cents(10) })],
+        priceCandidates: new Map([[ETF, prices({ "2026-11-15": 100 })]]),
+      }),
+    );
+    assert.deepEqual(figures(withFee.months[0]), [cents(-15), -999, null, -1498, null]);
   });
 
   it("held through 2024 for +10%, then nothing held through 2025: 10.00% a year for both, in either order", () => {

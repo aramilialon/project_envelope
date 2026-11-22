@@ -32,8 +32,9 @@
  *   over the whole range in one call (the totals), never by linking rounded
  *   figures. Both get the same cuts and test them for capital held: a month
  *   (or a range) worth nothing at the end of every flow date and month end,
- *   and at its start and end, has no return (`no_capital`), only its gain. A month is always shorter than a year, so a row's returns are
- *   the month's own figures; the totals' are yearly from a year on.
+ *   and at its start and end, has no return (`no_capital`), only its gain.
+ *   A month is always shorter than a year, so a row's returns are the
+ *   month's own figures; the totals' are yearly from a year on.
  *
  * Every amount is in the base currency's minor unit; anything that cannot be
  * computed is null, never 0. Pure: no database and no user-facing text
