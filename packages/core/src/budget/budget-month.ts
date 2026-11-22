@@ -14,15 +14,23 @@
  *    month M and every month N from M on, let
  *      cum(N) = income dated up to the earlier of (the end of N, today)
  *               − everything assigned to months up to N
- *               − cash overspending of the months before M.
+ *               − cash overspending of the months before M,
+ *    where a month N after M counts only its positive income: negative income
+ *    (money going out of Unassigned, such as an overdraft recorded there)
+ *    counts from its own month on, like cash overspending, and is never
+ *    charged to earlier months (#782).
  *    Unassigned money in M is the smallest cum(N), N from M to the latest
  *    month with any data: M's money already assigned ahead to a later month
  *    is gone from M (rule 3), but a later month's assignment paid for by that
  *    later month's own income is not blamed on M (#488). Income dated after
  *    today counts nowhere until its date: it is expected income, not money
- *    received. Spending dated after today does count, against its category,
- *    from its own month on (the cautious side). `today` is an input
- *    (`BudgetInput.today`), so the function stays pure.
+ *    received. The same holds for every positive activity amount (a refund, a
+ *    categorized transfer in from an off-budget account), split by split
+ *    (#668): dated after today, it counts nowhere — not in its category, not
+ *    in any month, and on a card it moves nothing between the category and the
+ *    payment category — until its date. Spending dated after today does count,
+ *    against its category, from its own month on (the cautious side). `today`
+ *    is an input (`BudgetInput.today`), so the function stays pure.
  * 2. A category's positive available balance rolls over to the next month.
  * 3. Money assigned to future months is already assigned: it reduces
  *    unassigned money immediately, as far as the later months' own income
@@ -33,7 +41,8 @@
  * 5. A card payment (a transfer from a cash account to the card) is spending
  *    of the payment category.
  * 6. A category still negative at the end of a month starts the next month at
- *    zero. The overspending is split in two:
+ *    zero (for a payment category, see rule 9). The overspending is split in
+ *    two:
  *    - credit overspending: the part paid with a credit card. It is new debt
  *      on the card, not covered by the payment category, and does NOT touch
  *      unassigned money;
@@ -55,6 +64,16 @@
  *    source actually holds — never pushing it negative. A part the source
  *    cannot cover is never cash overspending (nothing real moved): it only
  *    ever shows up as the source's own uncovered debt (`CardBalance`).
+ * 9. A card in credit (#660): when a card's real balance at the end of a month
+ *    is negative (a refund after the card was paid), its payment category can
+ *    be negative by up to that credit without it being overspending. With
+ *    credit = max(0, −owed at the end of the month), the payment category's
+ *    cash overspending is max(0, −available − credit): only the part beyond
+ *    the card's credit is cash taken from next month's unassigned money. The
+ *    rest carries over as a negative balance and returns to zero as the
+ *    credit is spent with the card (covered card spending moves money in, as
+ *    ever). The card's balance at the end of every month comes from its own
+ *    transactions (`CardBalance.transactions`, `owedAsOf`).
  *
  * Coverage is decided on the month's final numbers: assigning more money to a
  * category later in the month also funds the credit card spending made
@@ -70,6 +89,7 @@ import type { Cents } from "../money.ts";
 import { assertCents, assertTotal } from "../money.ts";
 import type { LocalDate, Month } from "../month.ts";
 import { assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth } from "../month.ts";
+import type { CardTransaction } from "./card-balance.ts";
 
 /** Money that came into unassigned money in a month (salary, starting balance…). */
 export interface Income {
@@ -98,6 +118,12 @@ export interface Assignment {
 export interface Activity {
   readonly categoryId: string;
   readonly month: Month;
+  /**
+   * The day it happened, in the workspace's time zone, inside `month`. A positive amount dated after
+   * `BudgetInput.today` counts nowhere until its date (rule 1, #668); without a date, it counts as
+   * dated on the first day of its month. A negative amount counts whatever its date.
+   */
+  readonly date?: LocalDate;
   readonly amount: Cents;
   readonly paymentCategoryId?: string;
 }
@@ -110,15 +136,16 @@ export interface CardPayment {
 }
 
 /**
- * A card's real, external balance (from its own account's transactions,
- * including any starting balance) as of the requested month — not derived
- * from activity or card payments. Used only to compute `uncovered`; never
- * stored or carried across months by this function.
+ * A card's real, external balance, given as its own account's transactions
+ * (including any starting balance) — not derived from activity or card
+ * payments. The balance at the end of each month (`owedAsOf`) gives
+ * `uncovered` and `owed` for the requested month, and the card's credit for
+ * every month (rule 9); never stored by this function.
  */
 export interface CardBalance {
   readonly paymentCategoryId: string;
-  /** Positive: amount currently owed on the card. */
-  readonly owed: Cents;
+  /** Every transaction of the card's own account, in any order: what is owed at the end of a month is minus their sum up to it. */
+  readonly transactions: readonly CardTransaction[];
   /**
    * Whether the card had a starting balance when its account was created (#355) — the amount
    * and date are already on the account/transaction itself, not reproduced here; a boolean is
@@ -168,15 +195,19 @@ export interface BudgetInput {
   /** Transfers between two cards' payment categories. */
   readonly cardTransfers?: readonly CardTransfer[];
   /**
-   * Today, in the workspace's time zone (rule 1): income dated after it has not been received
-   * yet and counts nowhere. Required, so that no caller silently counts every income as received.
+   * Today, in the workspace's time zone (rule 1): income and positive activity dated after it have
+   * not been received yet and count nowhere. Required, so that no caller silently counts every income as received.
    */
   readonly today: LocalDate;
 }
 
 export interface CategoryMonth {
   readonly categoryId: string;
-  /** Available balance carried over from the previous month (never negative). */
+  /**
+   * Available balance carried over from the previous month. Never negative, except on a payment
+   * category whose card was in credit at the end of the previous month (rule 9): down to minus
+   * that credit.
+   */
   readonly carriedOver: Cents;
   readonly assigned: Cents;
   /**
@@ -188,7 +219,10 @@ export interface CategoryMonth {
   readonly available: Cents;
   /** Part of a negative `available` paid with credit cards (becomes card debt if left uncovered). */
   readonly creditOverspending: Cents;
-  /** Rest of a negative `available` (taken from unassigned money next month if left uncovered). */
+  /**
+   * Rest of a negative `available` (taken from unassigned money next month if left uncovered). On a
+   * payment category, only the part beyond the card's credit (rule 9): `max(0, −available − credit)`.
+   */
   readonly cashOverspending: Cents;
   /**
    * Money reserved by scheduled transactions not yet recorded (`BudgetInput.scheduledItems`);
@@ -199,16 +233,17 @@ export interface CategoryMonth {
   /**
    * Payment categories only: how much of the card's real balance (`BudgetInput.cardBalances`)
    * assigned money does not cover yet — `max(0, owed - max(0, available))`. A negative
-   * `available` (the card was paid beyond what was set aside) is already `cashOverspending` and
-   * covers nothing, so it never counts here a second time; the card's real debt is therefore
-   * `owed`, never `available + uncovered`. Derived fresh every call, never persisted or carried
-   * to the next month; 0 when no `cardBalances` entry is given.
+   * `available` (the card was paid beyond what was set aside, or is in credit) covers nothing, so
+   * it never counts here; the card's real debt is therefore `owed`, never `available + uncovered`.
+   * Derived fresh every call, never persisted or carried to the next month; 0 when no
+   * `cardBalances` entry is given.
    */
   readonly uncovered: Cents;
   /**
-   * Payment categories only (#699): the card's real balance, what is owed on it
-   * (`CardBalance.owed`) — the debt the interface shows. Absent when no `cardBalances` entry is
-   * given for the card, and always absent for an ordinary category.
+   * Payment categories only (#699): the card's real balance at the end of the month, what is owed
+   * on it (`owedAsOf` over `CardBalance.transactions`; negative when the card is in credit) — the
+   * debt the interface shows. Absent when no `cardBalances` entry is given for the card, and always
+   * absent for an ordinary category.
    */
   readonly owed?: Cents;
   /**
@@ -307,6 +342,11 @@ function validate(input: BudgetInput, month: Month): void {
     count(item.amount, "activity", { month: item.month, categoryId: item.categoryId });
     if (!regular.has(item.categoryId)) unknown(item.categoryId);
     if (item.paymentCategoryId !== undefined && !payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
+    if (item.date !== undefined && monthOf(item.date) !== item.month) {
+      throw new ValidationError("invalid_date", `activity dated "${item.date}" is not in its month "${item.month}"`, {
+        value: item.date,
+      });
+    }
   }
   for (const item of input.cardPayments ?? []) {
     assertMonth(item.month);
@@ -315,7 +355,10 @@ function validate(input: BudgetInput, month: Month): void {
   }
   const seenBalances = new Set<string>();
   for (const item of input.cardBalances ?? []) {
-    count(item.owed, "card balance", { categoryId: item.paymentCategoryId });
+    for (const transaction of item.transactions) {
+      assertDate(transaction.date);
+      count(transaction.amount, "card balance", { categoryId: item.paymentCategoryId });
+    }
     if (!payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
     if (seenBalances.has(item.paymentCategoryId)) {
       throw new ValidationError(
@@ -370,7 +413,8 @@ function computePaymentCategories(
   data: {
     assignedBy: ReadonlyMap<string, Cents>;
     paymentsBy: ReadonlyMap<string, Cents>;
-    cardBalanceBy: ReadonlyMap<string, Cents>;
+    /** Each card's signed balance at the end of `m` (rule 9); no entry when no `cardBalances` entry was given. */
+    owedBy: ReadonlyMap<string, Cents>;
     cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
     hasStartingBalanceBy: ReadonlyMap<string, boolean>;
     overspendingByCard: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
@@ -403,10 +447,13 @@ function computePaymentCategories(
     const delta = transferDelta.get(p.id) ?? 0;
     const activity = p.activity + delta;
     const available = p.available + delta;
-    const owed = data.cardBalanceBy.get(p.id);
+    const owed = data.owedBy.get(p.id);
     // Paying more than the payment category holds spends cash that had no job: cash
-    // overspending. A card-to-card transfer never pushes `available` below zero (it is
-    // already capped above), so it never contributes to this on its own.
+    // overspending — but only beyond the card's own credit (rule 9): a negative available down to
+    // minus the credit is money the card holds, not cash gone. A card-to-card transfer never
+    // pushes `available` below zero (it is already capped above), so it never contributes to this
+    // on its own.
+    const credit = Math.max(0, -(owed ?? 0));
     return {
       categoryId: p.id,
       carriedOver: p.carriedOver,
@@ -414,13 +461,12 @@ function computePaymentCategories(
       activity,
       available,
       creditOverspending: 0,
-      cashOverspending: Math.max(0, -available),
+      cashOverspending: Math.max(0, -available - credit),
       // Payment categories never receive a scheduled item directly (rule 7: a scheduled
       // card expense reserves in its own spending category, the same as a cash one).
       reserved: 0,
-      // max(0, available): an overpayment already reduces available and next month's
-      // unassigned (cashOverspending); counting its negative available again here
-      // would double the same shortfall into both mechanisms.
+      // max(0, available): a negative available (an overpayment, already cash overspending, or a
+      // card in credit) covers no debt; counting it here would double the same shortfall.
       uncovered: owed === undefined ? 0 : Math.max(0, owed - Math.max(0, available)),
       ...(owed !== undefined ? { owed } : {}),
       overspendingBy: [...(data.overspendingByCard.get(p.id) ?? [])]
@@ -444,7 +490,7 @@ function computeMonth(
     activityBy: ReadonlyMap<string, Cents>;
     creditBy: ReadonlyMap<string, ReadonlyMap<string, Cents>>;
     paymentsBy: ReadonlyMap<string, Cents>;
-    cardBalanceBy: ReadonlyMap<string, Cents>;
+    owedBy: ReadonlyMap<string, Cents>;
     /** Only ever non-empty for the month actually requested (rule 7: reservations do not carry over). */
     reservedBy: ReadonlyMap<string, Cents>;
     cardTransfersBy: ReadonlyMap<Month, readonly CardTransfer[]>;
@@ -526,9 +572,9 @@ function computeMonth(
 }
 
 /**
- * Whether income dated `date` has been received by `today`, both days in the workspace's time zone
- * (rule 1): income counts from its own date on, never before. The one rule the budget month and
- * every preview of incoming money share (#650, #700).
+ * Whether money coming in dated `date` has been received by `today`, both days in the workspace's
+ * time zone (rule 1): income, and every positive split (#668), counts from its own date on, never
+ * before. The one rule the budget month and every preview of incoming money share (#650, #700).
  */
 export function incomeReceived(date: LocalDate, today: LocalDate): boolean {
   return date <= today;
@@ -548,7 +594,10 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   const creditBy = new Map<string, Map<string, Cents>>();
   const paymentsBy = new Map<string, Cents>();
   for (const a of input.assignments) addTo(assignedBy, key(a.categoryId, a.month), a.amount);
-  for (const a of input.activity) {
+  // Rule 1 (#668): money coming in dated after today counts nowhere until its date, split by split;
+  // spending counts at once.
+  const activity = input.activity.filter((a) => a.amount <= 0 || incomeReceived(a.date ?? `${a.month}-01`, input.today));
+  for (const a of activity) {
     addTo(activityBy, key(a.categoryId, a.month), a.amount);
     if (a.paymentCategoryId !== undefined) {
       const k = key(a.categoryId, a.month);
@@ -558,10 +607,13 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     }
   }
   for (const p of input.cardPayments ?? []) addTo(paymentsBy, key(p.paymentCategoryId, p.month), p.amount);
-  const cardBalanceBy = new Map<string, Cents>();
+  // Rule 9: each card's transactions summed by month, for its balance at the end of every month.
+  const cardAmountsBy = new Map<string, Map<Month, Cents>>();
   const hasStartingBalanceBy = new Map<string, boolean>();
   for (const b of input.cardBalances ?? []) {
-    cardBalanceBy.set(b.paymentCategoryId, b.owed);
+    const byMonth = new Map<Month, Cents>();
+    for (const t of b.transactions) addTo(byMonth, monthOf(t.date), t.amount);
+    cardAmountsBy.set(b.paymentCategoryId, byMonth);
     if (b.hasStartingBalance) hasStartingBalanceBy.set(b.paymentCategoryId, true);
   }
   const reservedBy = new Map<string, Cents>();
@@ -577,7 +629,6 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     activityBy,
     creditBy,
     paymentsBy,
-    cardBalanceBy,
     reservedBy: new Map<string, Cents>(),
     cardTransfersBy,
     hasStartingBalanceBy,
@@ -598,16 +649,37 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
     if (compareMonths(item.month, lastMonth) > 0) lastMonth = item.month;
   }
 
+  // Each card's balance at the end of a month (`owedAsOf`, in one pass): a running sum of its
+  // transactions, started with everything dated before the first month and moved on one month at
+  // a time, so `owedThrough` must be called once for each month from `firstMonth` on, in order.
+  const cardRunning = new Map<string, Cents>();
+  for (const [id, byMonth] of cardAmountsBy) {
+    let before = 0;
+    for (const [m, amount] of byMonth) if (compareMonths(m, firstMonth) < 0) before += amount;
+    cardRunning.set(id, before);
+  }
+  const owedThrough = (m: Month): Map<string, Cents> => {
+    const owedBy = new Map<string, Cents>();
+    for (const [id, byMonth] of cardAmountsBy) {
+      const running = (cardRunning.get(id) ?? 0) + (byMonth.get(m) ?? 0);
+      cardRunning.set(id, running);
+      owedBy.set(id, 0 - running); // not `-running`, which is -0 for a card with nothing on it
+    }
+    return owedBy;
+  };
+
   // 3. Walk the months before the requested one, closing each of them.
   const carried = new Map<string, Cents>();
   let cashOverspentTotal = 0;
   let overspentLastMonth = 0;
   for (const m of monthRange(firstMonth, month).slice(0, -1)) {
-    const state = computeMonth(input, m, carried, data);
+    const state = computeMonth(input, m, carried, { ...data, owedBy: owedThrough(m) });
     let cashOverspentThisMonth = 0;
     for (const c of [...state.categories, ...state.paymentCategories]) {
-      // Rule 2 and rule 6: positive balances roll over, negative ones restart at zero.
-      carried.set(c.categoryId, Math.max(0, c.available));
+      // Rule 2 and rule 6: positive balances roll over, overspending restarts at zero. Rule 9: a
+      // payment category keeps the negative part its card's credit holds, that is everything
+      // but its cash overspending (an ordinary category's overspending is all cash or credit).
+      carried.set(c.categoryId, c.available < 0 ? c.available + c.cashOverspending + c.creditOverspending : c.available);
       cashOverspentThisMonth += c.cashOverspending;
     }
     cashOverspentTotal += cashOverspentThisMonth;
@@ -616,15 +688,21 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
 
   // 4. The requested month, still open. Reservations (rule 7) apply only here, never to the
   // earlier months just closed above.
-  const current = computeMonth(input, month, carried, { ...data, reservedBy });
+  const current = computeMonth(input, month, carried, { ...data, owedBy: owedThrough(month), reservedBy });
 
   // 5. Unassigned money (rule 1): the smallest cum(N) for N from the requested month to the
   // latest one with data, where cum(N) = income received by the end of N (and by today) −
-  // everything assigned up to N − cash overspending of the months before the requested one. A
-  // later month's own unresolved overspending stays a separate concern (#489).
+  // everything assigned up to N − cash overspending of the months before the requested one, a
+  // month after the requested one counting only its positive income (#782). A later month's own
+  // unresolved overspending, and its own negative income, stay that month's concern (#489).
   const receivedBy = new Map<Month, Cents>();
+  // #782: a later month counts only its positive income; its negative income counts from its own
+  // month on and is never charged to an earlier one.
+  const laterReceivedBy = new Map<Month, Cents>();
   for (const item of input.income) {
-    if (incomeReceived(item.date ?? `${item.month}-01`, input.today)) addTo(receivedBy, item.month, item.amount);
+    if (!incomeReceived(item.date ?? `${item.month}-01`, input.today)) continue;
+    addTo(receivedBy, item.month, item.amount);
+    if (item.amount > 0) addTo(laterReceivedBy, item.month, item.amount);
   }
   const assignedByMonth = new Map<Month, Cents>();
   for (const a of input.assignments) addTo(assignedByMonth, a.month, a.amount);
@@ -635,7 +713,7 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   const cumulativeInMonth = cumulative;
   let unassigned = cumulative;
   for (let m = shiftMonth(month, 1); compareMonths(m, lastMonth) <= 0; m = shiftMonth(m, 1)) {
-    cumulative += (receivedBy.get(m) ?? 0) - (assignedByMonth.get(m) ?? 0);
+    cumulative += (laterReceivedBy.get(m) ?? 0) - (assignedByMonth.get(m) ?? 0);
     if (cumulative < unassigned) unassigned = cumulative;
   }
   const assignedInFuture = cumulativeInMonth - unassigned;

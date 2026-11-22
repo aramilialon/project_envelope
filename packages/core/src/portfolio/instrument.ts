@@ -1,9 +1,10 @@
 /**
- * Instruments of the shared catalog (design.md, "Portfolio module" and "Data model"): validation
+ * Instruments, shared and private (design.md, "Portfolio module" and "Data model"): validation
  * and normalization of what a user types when adding one. Pure: no database, no user-facing text,
  * only `ValidationError`s with a stable `code` (ADR 0004).
  */
 import { ValidationError } from "../errors.ts";
+import { isKnownCurrency } from "../money.ts";
 import { PRICE_FACTOR_ONE, toPriceFactor, type PriceFactor } from "./quantity.ts";
 
 /**
@@ -137,8 +138,9 @@ function optionalText(value: string | null | undefined, field: InstrumentTextFie
 /**
  * Trims every field, strips control and format characters from the name and asset class,
  * upper-cases the ISIN, ticker, exchange and currency, turns empty optional fields into `null`, and
- * validates the result. An instrument is a listing: it needs an ISIN, or a ticker on an exchange
- * (no private instruments in the shared catalog yet), and a ticker always needs its exchange.
+ * validates the result. A shared instrument is a listing: it needs an ISIN, or a ticker on an
+ * exchange, and a ticker always needs its exchange (a private one, `normalizePrivateInstrument`,
+ * has neither).
  *
  * @throws ValidationError `invalid_instrument_field` (a missing name, or a name or asset class too
  *   long), `missing_instrument_identifier` (neither an ISIN nor a ticker), `missing_exchange` (a
@@ -147,26 +149,13 @@ function optionalText(value: string | null | undefined, field: InstrumentTextFie
  *   `{ label: "priceFactorE6", value }`, the same shape as `assertPriceFactor`'s).
  */
 export function normalizeInstrument(input: InstrumentInput): NormalizedInstrument {
-  const name = optionalText(input.name, "name");
-  if (name === null) {
-    throw new ValidationError("invalid_instrument_field", "name is required", { field: "name" });
-  }
+  const name = normalizeName(input.name);
 
   const isin = input.isin?.trim().toUpperCase() || null;
   if (isin !== null) assertIsin(isin);
 
-  const type = input.type.trim();
-  if (!isInstrumentType(type)) {
-    throw new ValidationError("invalid_instrument_type", `"${input.type}" is not an instrument type`, { type: input.type });
-  }
-
-  const currency = input.currency.trim().toUpperCase();
-  if (!/^[A-Z]{3}$/.test(currency)) {
-    throw new ValidationError("invalid_currency", `"${input.currency}" is not a known currency code`, {
-      currency: input.currency,
-    });
-  }
-
+  const type = normalizeType(input.type);
+  const currency = normalizeCurrency(input.currency);
   const priceFactorE6 = normalizePriceFactorE6(input.priceFactorE6);
 
   const ticker = input.ticker?.trim().toUpperCase() || null;
@@ -196,6 +185,64 @@ export function normalizeInstrument(input: InstrumentInput): NormalizedInstrumen
     assetClass: optionalText(input.assetClass, "assetClass"),
     priceFactorE6,
   };
+}
+
+/** What a private instrument is made of: a shared instrument's fields without its identifiers. */
+export type PrivateInstrumentInput = Omit<InstrumentInput, "isin" | "ticker" | "exchange">;
+
+/**
+ * A private instrument (#505): one workspace's own asset with no ISIN and no exchange ticker (real
+ * estate, a company pension fund, private company shares), seen by that workspace only. The same
+ * rules as `normalizeInstrument` for the name, type, currency, asset class and price factor; the
+ * identifiers are always `null`, since a private instrument is not a listing and an identifier
+ * would collide with the shared catalog's.
+ *
+ * @throws ValidationError `invalid_instrument_field`, `invalid_instrument_type`, `invalid_currency`
+ *   or `invalid_price_factor`, as `normalizeInstrument`.
+ */
+export function normalizePrivateInstrument(input: PrivateInstrumentInput): NormalizedInstrument {
+  const name = normalizeName(input.name);
+  const type = normalizeType(input.type);
+  const currency = normalizeCurrency(input.currency);
+  const priceFactorE6 = normalizePriceFactorE6(input.priceFactorE6);
+  return {
+    isin: null,
+    ticker: null,
+    exchange: null,
+    name,
+    type,
+    currency,
+    assetClass: optionalText(input.assetClass, "assetClass"),
+    priceFactorE6,
+  };
+}
+
+function normalizeName(value: string): string {
+  const name = optionalText(value, "name");
+  if (name === null) {
+    throw new ValidationError("invalid_instrument_field", "name is required", { field: "name" });
+  }
+  return name;
+}
+
+function normalizeType(value: string): InstrumentType {
+  const type = value.trim();
+  if (!isInstrumentType(type)) {
+    throw new ValidationError("invalid_instrument_type", `"${value}" is not an instrument type`, { type: value });
+  }
+  return type;
+}
+
+/**
+ * The same list as a workspace's and an account's currency (#595): "XYZ" or a withdrawn code
+ * would be stored, though no account could ever trade it.
+ */
+function normalizeCurrency(value: string): string {
+  const currency = value.trim().toUpperCase();
+  if (!isKnownCurrency(currency)) {
+    throw new ValidationError("invalid_currency", `"${value}" is not a known currency code`, { currency: value });
+  }
+  return currency;
 }
 
 /** A missing factor is 1; anything but a number is rejected before `toPriceFactor` sees it. */

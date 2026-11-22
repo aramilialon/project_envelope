@@ -61,6 +61,8 @@ No catalog writes a currency symbol, a decimal or grouping separator, a minus si
 | `es-ES` | -1234,56 € | -5,00 € | 5 sept | No grouping below 10,000; U+00A0 before € |
 | `fr-FR` | -1 234,56 € | -5,00 € | 5 sept. | A narrow no-break space (U+202F) groups thousands; U+00A0 before € |
 
+Italian: before a `shortDate` argument write *il giorno {date}* (and *del giorno*, *al giorno*, *per il giorno*), never *il {date}*: *il 8 nov* and *il 11 nov* need an elision (*l’8*, *l’11*) that a message cannot know. *con data {date}* is fine as it is.
+
 The minus is the ASCII hyphen-minus in every locale. A message never adds its own space between an amount and a word that `Intl` already spaces.
 
 ### Plurals
@@ -123,6 +125,7 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | Credit card payments (the group) | Pagamenti delle carte di credito | Kreditkartenzahlungen | Pagos de tarjetas de crédito | Paiements des cartes de crédit | |
 | Card payment (paying the card) | Pagamento della carta | Kartenausgleich | Pago de la tarjeta | Règlement de la carte | Not *Kartenzahlung*, which means paying *with* a card |
 | Card spending | Spesa con la carta | Kartenausgaben | Gastos con tarjeta | Dépenses par carte | |
+| Credit on a card (a card balance in the user's favour; *in credit*) | Credito sulla carta; *in credito* | Guthaben auf der Karte; *im Guthaben* | Saldo a favor en la tarjeta; *con saldo a favor* | Crédit sur la carte; *créditrice* | A card paid beyond its debt (#660); the credit is used up by card spending. Not *Kredit* in German, which means a loan |
 
 ### Accounts
 

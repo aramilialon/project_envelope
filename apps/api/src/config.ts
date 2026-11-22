@@ -6,6 +6,9 @@
 
 import { isIP } from "node:net";
 
+import { ECB_DEFAULT_BASE_URL } from "./market-data/ecb-provider.ts";
+import { isPriceProviderName, PRICE_PROVIDER_NAMES, type PriceProviderName } from "./market-data/registry.ts";
+
 export type LogLevel = "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 
 /** Selects the queue driver (design.md, "Queue module"); `postgres` (pg-boss) is the only one so far. */
@@ -128,6 +131,66 @@ export function loadPushConfig(env: NodeJS.ProcessEnv = process.env): PushConfig
     vapidPublicKey: requireEnv(env, "VAPID_PUBLIC_KEY"),
     vapidPrivateKey: requireEnv(env, "VAPID_PRIVATE_KEY"),
   };
+}
+
+/**
+ * Market data (#84, #85, ADR 0019), loaded separately like the queue and push settings.
+ *
+ * - `fetchEnabled` (`MARKET_DATA_FETCH_ENABLED`, default true, maintainer decision 2026-11-22):
+ *   whether the server makes any outbound request for market data. Off, it fetches nothing, and
+ *   rates are loaded from a downloaded file (`fx-rates:import`).
+ * - `ecbBaseUrl` (`MARKET_DATA_ECB_URL`): the directory the ECB rate files are fetched from.
+ *   Administrator configuration, for a mirror or the smoke tests' local server; only HTTPS, or
+ *   plain HTTP to this machine (127.0.0.1, ::1 or localhost), with no credentials, query or
+ *   fragment, so a mistake cannot send the request elsewhere in clear text.
+ * - `priceProvider` (`MARKET_DATA_PRICE_PROVIDER`, default `manual`): which price provider is
+ *   used; any name the registry does not know stops the server at startup.
+ */
+export interface MarketDataConfig {
+  readonly fetchEnabled: boolean;
+  readonly ecbBaseUrl: string;
+  readonly priceProvider: PriceProviderName;
+}
+
+export function loadMarketDataConfig(env: NodeJS.ProcessEnv = process.env): MarketDataConfig {
+  return {
+    fetchEnabled: parseBoolean(env, "MARKET_DATA_FETCH_ENABLED", true),
+    ecbBaseUrl: parseFetchBaseUrl(env, "MARKET_DATA_ECB_URL", ECB_DEFAULT_BASE_URL),
+    priceProvider: parsePriceProvider(env, "MARKET_DATA_PRICE_PROVIDER"),
+  };
+}
+
+function parsePriceProvider(env: NodeJS.ProcessEnv, name: string): PriceProviderName {
+  const value = env[name] || "manual";
+  if (!isPriceProviderName(value)) {
+    throw new Error(`${name} must be one of ${PRICE_PROVIDER_NAMES.join(", ")}, got "${value}"`);
+  }
+  return value;
+}
+
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+function parseFetchBaseUrl(env: NodeJS.ProcessEnv, name: string, defaultValue: string): string {
+  const value = env[name] || defaultValue;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be an absolute URL, got "${value}"`);
+  }
+  const secure = url.protocol === "https:";
+  const local = url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
+  if (!secure && !local) {
+    throw new Error(`${name} must be an https:// URL (or http:// to 127.0.0.1, ::1 or localhost), got "${value}"`);
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error(`${name} must not carry credentials, a query or a fragment, got "${value}"`);
+  }
+  // The files are resolved against it as a directory: "…/eurofxref" and "…/eurofxref/" both mean the directory.
+  if (!url.pathname.endsWith("/")) {
+    url.pathname = `${url.pathname}/`;
+  }
+  return url.href;
 }
 
 function parseQueueDriver(env: NodeJS.ProcessEnv, name: string, defaultValue: QueueDriverName): QueueDriverName {

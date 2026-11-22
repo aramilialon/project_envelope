@@ -79,7 +79,7 @@ describe("apps/api/migrations, applied to a real database", () => {
   it("forces row-level security on every workspace-scoped table", async () => {
     const workspaceTables = await loadWorkspaceTables(pool);
     // Guards against the query above silently returning nothing, which would make this test pass vacuously.
-    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios", "trades", "prices"]) {
+    for (const known of ["accounts", "transactions", "splits", "reconciliations", "goals", "change_log", "portfolios", "trades", "prices", "instruments"]) {
       assert.ok(workspaceTables.includes(known), `expected "${known}" among the workspace-scoped tables`);
     }
 
@@ -109,10 +109,26 @@ describe("apps/api/migrations, applied to a real database", () => {
        WHERE c.contype = 'f' AND c.connamespace = 'public'::regnamespace`,
     );
     assert.ok(rows.length >= 19, `expected at least 19 workspace-to-workspace foreign keys, found ${rows.length}`);
+    // The only exceptions point at `instruments`, whose workspace_id is null for the shared catalog
+    // (migration 0035, #505): a composite key cannot say "shared, or this row's own workspace's",
+    // so a trigger reading the instrument under the caller's policies guards each of them instead
+    // (checked below, and exercised in private-instruments.test.ts).
+    const guardedByTrigger: Readonly<Record<string, string>> = {
+      prices_instrument_id_fkey: "prices_refuse_hidden_instrument",
+      trades_instrument_id_fkey: "trades_refuse_hidden_instrument",
+    };
     assert.deepEqual(
-      rows.filter((row) => !row.composite).map((row) => row.conname),
-      [],
+      rows
+        .filter((row) => !row.composite)
+        .map((row) => row.conname)
+        .sort(),
+      Object.keys(guardedByTrigger).sort(),
     );
+    const { rows: triggers } = await pool.query<{ tgname: string }>(
+      "SELECT tgname FROM pg_trigger WHERE tgname = ANY($1) AND tgenabled = 'O'",
+      [Object.values(guardedByTrigger)],
+    );
+    assert.deepEqual(triggers.map((row) => row.tgname).sort(), Object.values(guardedByTrigger).sort());
   });
 
   describe("row-level security, as the envelope_app role", () => {

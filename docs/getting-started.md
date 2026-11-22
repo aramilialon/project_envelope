@@ -231,6 +231,12 @@ $ pnpm --filter @envelope/api dev
 
 Obtaining and configuring these (and, later, APNs/FCM) for a real self-hosted deployment is its own guide: [self-hosting push notifications](how-to/self-host-push-notifications.md).
 
+Once started, the server downloads the euro exchange rates the European Central Bank publishes, a public file, and keeps them up to date twice every working day (`#85`); the request carries nothing about the server or its users. To make no outbound request at all, add this line to `.env` before starting it, and load the rates from a downloaded file instead (`apps/api/README.md`, "Exchange rates"):
+
+```bash
+MARKET_DATA_FETCH_ENABLED=false
+```
+
 The server listens on `http://127.0.0.1:3000` by default; `GET /health` reports whether it can reach PostgreSQL. `KEYCLOAK_ISSUER`/`KEYCLOAK_AUDIENCE` in `.env` must match the realm and client the previous section's `bootstrap.sh` created (its own defaults, `envelope`/`envelope-api`, already do) — the web app's own sign-in (`#49`, next section) is a real token from this Keycloak, verified against it on every request. Letting another device on your own network reach the API directly (section 8's own alternative to the SSH tunnel) needs `KEYCLOAK_ISSUER` and `WEB_ORIGIN` changed to `https://<that address>:8443/realms/envelope` and `https://<that address>` respectively, and `TRUST_PROXY=127.0.0.1` added, so the per-address rate limit (#566) counts each device by the address Caddy forwards rather than all of them as Caddy's own — `HOST` stays `127.0.0.1`: Caddy (section 8) is what the network actually reaches.
 
 Its integration tests use a separate database, so a failing test never touches the one above, and provision their own throwaway Keycloak realm through the admin API and their own login roles (no manual setup needed for tests specifically):
@@ -244,9 +250,9 @@ $ DATABASE_URL=postgres://envelope:<password>@127.0.0.1:5432/envelope_test \
 
 Roles are cluster-wide, not per-database, so the tests never change the login or password of `envelope_app` and `envelope_queue`: each test database gets two login roles of its own, members of those two, named and given passwords derived from `DATABASE_URL` (`apps/api/README.md`, "Running the integration tests locally"). Running the tests therefore never breaks a dev server started from this section, nor another test run on the same server. `scripts/dev/reset-role-passwords.sh` is only for repairing a server whose `envelope_app`/`envelope_queue` passwords no longer match this `.env` (for example after a test run from before this change); it sets both back, no arguments needed, and must not run while a dev server or tests from another checkout rely on the old ones.
 
-Two test runs can share this machine at the same time, as long as each has a database of its own (another `createdb`, and its name in `DATABASE_URL`): the smoke tests listen on ports the operating system picks, test tokens live a minute, and the tests of the scheduled-transactions job create and drop a throwaway database of their own, so the `envelope` user needs to be allowed to create databases (it is, as the superuser `infra/docker-compose.yml` creates).
+Two test runs can share this machine at the same time, as long as each has a database of its own (another `createdb`, and its name in `DATABASE_URL`) and, since each run uses every core, a lower `API_TEST_CONCURRENCY`: the smoke tests listen on ports the operating system picks, test tokens live a minute, and the tests of the scheduled-transactions job create and drop a throwaway database of their own, so the `envelope` user needs to be allowed to create databases (it is, as the superuser `infra/docker-compose.yml` creates).
 
-The integration tests include a seeded random walk through the whole API, which takes about a minute on its own; running it longer, with another seed, or replaying a failure is in [`apps/api/README.md`](../apps/api/README.md), "The random walk".
+The integration test files run several at once, by default as many as the machine has cores minus one (`API_TEST_CONCURRENCY` sets another number; [ADR 0016](adr/0016-integration-test-files-run-concurrently.md)), so the whole run takes two to three minutes on a machine of the size above. They include a seeded random walk through the whole API, split into one file per seed or check, each under about 40 seconds; running it longer, with another seed, or replaying a failure is in [`apps/api/README.md`](../apps/api/README.md), "The random walk".
 
 See [`apps/api/README.md`](../apps/api/README.md) for the environment variables and the migration runner.
 

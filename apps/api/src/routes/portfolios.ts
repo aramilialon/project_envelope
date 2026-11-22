@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong } from "../errors.ts";
+import { sendIfTextTooLong, strictBody } from "../errors.ts";
 import { isUuid } from "../ids.ts";
 import {
   createPortfolio,
@@ -24,6 +24,15 @@ import { isPortfolioHasTradesViolation, portfolioHasTrades } from "../trades/rep
  * #397); `portfolio_has_trades` (a portfolio with trades cannot be deleted, #77).
  */
 type PortfolioConflict = "name_taken" | "portfolio_has_trades";
+
+/**
+ * Every field a portfolio's `POST` takes (#713); anything else (a misspelt key, an `id`, an
+ * `archivedAt`) is a 400 `unknown_field` naming it, before anything else is checked or written.
+ */
+const CREATE_KEYS: ReadonlySet<string> = new Set(["name", "purpose"]);
+
+/** Every field a portfolio's `PATCH` takes (#713); anything else is a 400 `unknown_field`. */
+const PATCH_KEYS: ReadonlySet<string> = new Set(["name", "purpose", "archived"]);
 
 /** An optional free-text purpose: a string (blank meaning none) or `null`; `undefined` when absent, `false` when invalid. */
 function purposeField(body: Record<string, unknown>): string | null | undefined | false {
@@ -76,7 +85,7 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
   });
 
   app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const body = strictBody(request.body, CREATE_KEYS);
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const purpose = purposeField(body);
     if (!name || purpose === false) {
@@ -106,7 +115,7 @@ export function registerPortfoliosRoutes(app: FastifyInstance, pool: DbPool): vo
   // in any combination.
   app.patch(`${base}/:portfolioId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { portfolioId } = request.params as { portfolioId: string };
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const body = strictBody(request.body, PATCH_KEYS);
     const name = body.name === undefined ? undefined : typeof body.name === "string" ? body.name.trim() : "";
     const purpose = purposeField(body);
     const archived = body.archived;

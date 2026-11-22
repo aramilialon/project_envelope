@@ -6,6 +6,8 @@ import { MAX_AMOUNT_CENTS } from "../money.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
+import { owedAsOf } from "./card-balance.ts";
+import { shiftMonth } from "../month.ts";
 import type { BudgetAccount, BudgetTransaction } from "./transactions.ts";
 import { aggregateTransactions, UNASSIGNED } from "./transactions.ts";
 
@@ -32,7 +34,7 @@ describe("aggregateTransactions", () => {
     ]);
 
     assert.deepEqual(result.income, [{ month: "2026-09", date: "2026-09-01", amount: 200000 }]);
-    assert.deepEqual(result.activity, [{ categoryId: "groceries", month: "2026-09", amount: -4550 }]);
+    assert.deepEqual(result.activity, [{ categoryId: "groceries", month: "2026-09", date: "2026-09-03", amount: -4550 }]);
     assert.deepEqual(result.cardPayments, []);
   });
 
@@ -42,7 +44,7 @@ describe("aggregateTransactions", () => {
     ]);
 
     assert.deepEqual(result.activity, [
-      { categoryId: "fun", month: "2026-09", amount: -3000, paymentCategoryId: "visa-payment" },
+      { categoryId: "fun", month: "2026-09", date: "2026-09-05", amount: -3000, paymentCategoryId: "visa-payment" },
     ]);
   });
 
@@ -103,7 +105,7 @@ describe("aggregateTransactions", () => {
       tx({ accountId: "broker", date: "2026-09-30", amount: 1200 }), // dividend inside the broker account
     ]);
 
-    assert.deepEqual(result.activity, [{ categoryId: "investing", month: "2026-09", amount: -30000 }]);
+    assert.deepEqual(result.activity, [{ categoryId: "investing", month: "2026-09", date: "2026-09-22", amount: -30000 }]);
   });
 
   it("rejects invalid transactions with translatable error codes", () => {
@@ -250,8 +252,87 @@ describe("money coming back from an off-budget account (#598)", () => {
     const result = aggregateTransactions(ACCOUNTS, [
       tx({ accountId: "visa", date: "2026-09-15", amount: 20000, transferAccountId: "broker", categoryId: "investing" }),
     ]);
-    assert.deepEqual(result.activity, [{ categoryId: "investing", month: "2026-09", amount: 20000, paymentCategoryId: "visa-payment" }]);
+    assert.deepEqual(result.activity, [{ categoryId: "investing", month: "2026-09", date: "2026-09-15", amount: 20000, paymentCategoryId: "visa-payment" }]);
     assert.deepEqual(result.income, []);
+  });
+});
+
+describe("money coming in dated after today (#668)", () => {
+  // Today is 21 November 2026: €2,000 of salary, €300 assigned to Groceries and €100 to Household.
+  const categoryIds = ["groceries", "household", "investing"];
+  const november: BudgetTransaction[] = [
+    { id: "salary", accountId: "checking", date: "2026-11-02", amount: 200000, categoryId: UNASSIGNED },
+  ];
+  const assignments = [
+    { categoryId: "groceries", month: "2026-11", amount: 30000 },
+    { categoryId: "household", month: "2026-11", amount: 10000 },
+  ];
+  const budget = (transactions: readonly BudgetTransaction[], today: string) =>
+    computeBudgetMonth(
+      { categoryIds, paymentCategoryIds: ["visa-payment", "amex-payment"], ...aggregateTransactions(ACCOUNTS, transactions), assignments, today },
+      "2026-11",
+    );
+  const find = (list: ReturnType<typeof computeBudgetMonth>["categories"], id: string) => list.find((c) => c.categoryId === id);
+
+  it("a card refund dated after today moves nothing until its date", () => {
+    const spent: BudgetTransaction[] = [
+      ...november,
+      { id: "shop", accountId: "visa", date: "2026-11-10", amount: -8000, categoryId: "groceries" },
+    ];
+    const refunded = [...spent, { id: "refund", accountId: "visa", date: "2026-11-28", amount: 3000, categoryId: "groceries" }];
+
+    const before = budget(refunded, "2026-11-21");
+    assert.deepEqual(before, budget(spent, "2026-11-21"));
+    assert.equal(find(before.categories, "groceries")?.available, 22000);
+    assert.equal(find(before.paymentCategories, "visa-payment")?.available, 8000);
+
+    const onTheDay = budget(refunded, "2026-11-28");
+    assert.equal(find(onTheDay.categories, "groceries")?.available, 25000);
+    assert.equal(find(onTheDay.paymentCategories, "visa-payment")?.available, 5000);
+  });
+
+  it("a receipt with a return on it dated after today: the spending counts at once, the return from its date", () => {
+    // −€100 at the store on the 25th: €150 of groceries, €50 back on a household return.
+    const transactions: BudgetTransaction[] = [
+      ...november,
+      {
+        id: "receipt",
+        accountId: "checking",
+        date: "2026-11-25",
+        amount: -10000,
+        splits: [
+          { categoryId: "groceries", amount: -15000 },
+          { categoryId: "household", amount: 5000 },
+        ],
+      },
+    ];
+
+    const before = budget(transactions, "2026-11-21");
+    assert.equal(find(before.categories, "groceries")?.available, 15000);
+    assert.equal(find(before.categories, "household")?.available, 10000);
+    assert.equal(before.unassigned, 160000);
+
+    const onTheDay = budget(transactions, "2026-11-25");
+    assert.equal(find(onTheDay.categories, "groceries")?.available, 15000);
+    assert.equal(find(onTheDay.categories, "household")?.available, 15000);
+    assert.equal(onTheDay.unassigned, 160000);
+  });
+
+  it("a categorized transfer in from an off-budget account dated after today counts nowhere until its date", () => {
+    const transactions: BudgetTransaction[] = [
+      ...november,
+      { id: "sale", accountId: "checking", date: "2026-11-28", amount: 50000, transferAccountId: "broker", categoryId: "investing" },
+      { id: "sale-broker", accountId: "broker", date: "2026-11-28", amount: -50000, transferAccountId: "checking" },
+    ];
+
+    const before = budget(transactions, "2026-11-21");
+    assert.deepEqual(before, budget(november, "2026-11-21"));
+    assert.equal(find(before.categories, "investing")?.available, 0);
+    assert.equal(before.unassigned, 160000);
+
+    const onTheDay = budget(transactions, "2026-11-28");
+    assert.equal(find(onTheDay.categories, "investing")?.available, 50000);
+    assert.equal(onTheDay.unassigned, 160000);
   });
 });
 
@@ -259,13 +340,19 @@ describe("budget invariant with accounts and credit cards", () => {
   // Whatever happens, the money in the budget must match the money in the accounts:
   //   unassigned money + available of every category and payment category
   //   + assigned in future + this month's credit overspending + this month's reserved
-  //   = balance of the on-budget cash accounts at the end of the month, less the income dated
-  //     after today (not received yet, so it counts nowhere: rule 1)
+  //   = balance of the on-budget cash accounts at the end of the month, less every positive split
+  //     dated after today on them: income, a refund, a categorized transfer in from the broker
+  //     (not received yet, so it counts nowhere: rule 1, #668). Transfers between two on-budget
+  //     accounts are not splits and stay in the balance.
   // Credit overspending is added back because it is spending that no cash covers yet: card
   // debt. Reserved is added back for the same reason: a scheduled item not yet recorded has
   // not moved any real cash either, only reduced a category's own reported available.
   it("balances on 300 random histories", () => {
     const random = mulberry32(7);
+    // How many months checked a payment category held negative by a card in credit (#660), so
+    // that the test is not vacuous.
+    let inCredit = 0;
+    let carriedNegative = 0;
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
     const months = ["2026-01", "2026-02", "2026-03", "2026-04"];
@@ -283,6 +370,17 @@ describe("budget invariant with accounts and credit cards", () => {
     // broker (#598). Income dated after today is left out of the balance below.
     const isIncome = (t: BudgetTransaction) =>
       t.categoryId === UNASSIGNED || (t.transferAccountId === "broker" && t.categoryId === undefined && t.amount > 0);
+    const onBudgetIds = new Set(accounts.filter((a) => a.onBudget).map((a) => a.id));
+    // What of a cash transaction is not received by today (#668): every positive split of it dated
+    // after today — income, a refund, a categorized transfer in from the broker — but never a
+    // transfer between two on-budget accounts.
+    const notReceived = (t: BudgetTransaction, today: string): number => {
+      if (t.date <= today) return 0;
+      if (t.transferAccountId !== undefined && onBudgetIds.has(t.transferAccountId)) return 0;
+      if (isIncome(t)) return t.amount;
+      const parts = t.splits !== undefined && t.splits.length > 0 ? t.splits.map((s) => s.amount) : [t.amount];
+      return parts.filter((a) => a > 0).reduce((sum, a) => sum + a, 0);
+    };
 
     for (let run = 0; run < 300; run++) {
       const transactions: BudgetTransaction[] = [];
@@ -292,8 +390,8 @@ describe("budget invariant with accounts and credit cards", () => {
       for (let i = 0; i < 40; i++) {
         const d = date();
         switch (Math.floor(random() * 9)) {
-          case 0: // income
-            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000), categoryId: UNASSIGNED });
+          case 0: // income, or now and then money going out of Unassigned (negative income, #782)
+            add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(300000) * pick([1, 1, 1, 1, -1]), categoryId: UNASSIGNED });
             break;
           case 1: // cash spending or refund
             add({ accountId: pick(["checking", "wallet"]), date: d, amount: amount(60000) * pick([-1, -1, -1, 1]), categoryId: pick(categoryIds) });
@@ -302,16 +400,16 @@ describe("budget invariant with accounts and credit cards", () => {
             add({ accountId: pick(["visa", "amex"]), date: d, amount: amount(60000) * pick([-1, -1, -1, 1]), categoryId: pick(categoryIds) });
             break;
           case 3: {
-            // split spending
+            // split spending, or a receipt with a return on it (#668): one split positive
             const a = amount(30000);
-            const b = amount(30000);
+            const b = amount(30000) * pick([-1, -1, 1]);
             add({
               accountId: pick(["checking", "visa"]),
               date: d,
-              amount: -(a + b),
+              amount: -a + b,
               splits: [
                 { categoryId: pick(categoryIds), amount: -a },
-                { categoryId: pick(categoryIds), amount: -b },
+                { categoryId: pick(categoryIds), amount: b },
               ],
             });
             break;
@@ -365,9 +463,21 @@ describe("budget invariant with accounts and credit cards", () => {
       }
 
       const aggregated = aggregateTransactions(accounts, transactions);
-      // A starting balance (or any card debt tracked outside the budget) is external to
-      // the invariant: it must never move money between the budget and the cash accounts.
-      const cardBalances = paymentCategoryIds.map((id) => ({ paymentCategoryId: id, owed: amount(300000) }));
+      // Each card's real balance comes from its own transactions, after a starting balance (or a
+      // card in credit from the start) dated in the first month: refunds after a payment leave a
+      // card in credit now and then (#660). A starting balance is external to the invariant: it
+      // must never move money between the budget and the cash accounts.
+      const cardBalances = paymentCategoryIds.map((id) => {
+        const accountId = id === "visa-payment" ? "visa" : "amex";
+        const start = pick([0, amount(300000), -amount(30000)]);
+        return {
+          paymentCategoryId: id,
+          transactions: [
+            { date: "2026-01-01", amount: 0 - start },
+            ...transactions.filter((t) => t.accountId === accountId).map((t) => ({ date: t.date, amount: t.amount })),
+          ],
+        };
+      });
       // Today falls inside the history most of the time, so some income is not received yet.
       const today = random() < 0.25 ? "2026-12-31" : date();
       const input: BudgetInput = {
@@ -385,33 +495,54 @@ describe("budget invariant with accounts and credit cards", () => {
         scheduledItems: Array.from({ length: 5 }, () => ({ categoryId: pick(categoryIds), amount: amount(50000) })),
         today,
       };
-      const month = pick(months);
+      // Every month of the history, so that a card's credit carried from one month into the next
+      // is checked on both sides (#660), and a month before negative income as well as its own (#782).
+      let previous: ReturnType<typeof computeBudgetMonth> | undefined;
+      for (const month of months) {
+        const result = computeBudgetMonth(input, month);
 
-      const result = computeBudgetMonth(input, month);
+        const budgeted =
+          result.unassigned +
+          [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
+          result.assignedInFuture +
+          result.creditOverspending +
+          result.reserved;
+        const cashBalance = transactions
+          .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
+          .filter((t) => t.date.slice(0, 7) <= month)
+          .reduce((sum, t) => sum + t.amount - notReceived(t, today), 0);
 
-      const budgeted =
-        result.unassigned +
-        [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
-        result.assignedInFuture +
-        result.creditOverspending +
-        result.reserved;
-      const cashBalance = transactions
-        .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
-        .filter((t) => t.date.slice(0, 7) <= month && !(isIncome(t) && t.date > today))
-        .reduce((sum, t) => sum + t.amount, 0);
+        assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);
 
-      assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);
-
-      for (const card of result.paymentCategories) {
-        const owed = cardBalances.find((b) => b.paymentCategoryId === card.categoryId)?.owed ?? 0;
-        assert.ok(card.uncovered >= 0, `uncovered went negative on run ${run}, month ${month}`);
-        assert.equal(
-          card.uncovered,
-          Math.max(0, owed - Math.max(0, card.available)),
-          `uncovered formula mismatch on run ${run}, month ${month}`,
-        );
+        for (const card of result.paymentCategories) {
+          const own = cardBalances.find((b) => b.paymentCategoryId === card.categoryId)?.transactions ?? [];
+          const owed = owedAsOf(own, month);
+          const credit = Math.max(0, -owed);
+          assert.equal(card.owed, owed, `owed mismatch on run ${run}, month ${month}`);
+          assert.ok(card.uncovered >= 0, `uncovered went negative on run ${run}, month ${month}`);
+          assert.equal(
+            card.uncovered,
+            Math.max(0, owed - Math.max(0, card.available)),
+            `uncovered formula mismatch on run ${run}, month ${month}`,
+          );
+          // Rule 9 (#660): only the part beyond the card's credit is cash overspending, and what
+          // carries over into this month is no lower than minus the card's credit at the end of
+          // the month before.
+          assert.equal(card.cashOverspending, Math.max(0, -card.available - credit), `cash overspending on run ${run}, month ${month}`);
+          const previousCredit = Math.max(0, -owedAsOf(own, shiftMonth(month, -1)));
+          assert.ok(card.carriedOver >= -previousCredit, `carried over below the credit on run ${run}, month ${month}`);
+          if (card.available < 0 && credit > 0) inCredit++;
+          if (card.carriedOver < 0) carriedNegative++;
+          // What the month before kept: its available, less only its cash overspending.
+          const before = previous?.paymentCategories.find((c) => c.categoryId === card.categoryId);
+          const kept = before === undefined ? 0 : before.available < 0 ? before.available + before.cashOverspending : before.available;
+          assert.equal(card.carriedOver, kept, `carried over on run ${run}, month ${month}`);
+        }
+        previous = result;
       }
     }
+    assert.ok(inCredit > 10, `only ${inCredit} months had a payment category held negative by a card in credit`);
+    assert.ok(carriedNegative > 5, `only ${carriedNegative} months carried a card's credit over`);
   });
 });
 

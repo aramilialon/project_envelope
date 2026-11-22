@@ -1296,3 +1296,140 @@ describe("totals beyond the safe range (#651, ADR 0002)", () => {
     assert.throws(() => computePositions([fee("fee-1", "2026-01-10"), fee("fee-2", "2026-01-11")]), overflowAt("fee-2", "standaloneFeesCents"));
   });
 });
+
+describe("positions as of a date (#719)", () => {
+  // Today 2026-11-21: 10 units bought on Nov 1 for €1,000, and a sale of the 10 units recorded
+  // ahead, dated 2028-03-03, for €1,500.
+  const issueExample = () => [buy("2026-11-01", "A", 10, 100, 0), sell("2028-03-03", "A", 10, 150, 0)];
+
+  it("leaves out a sale dated after the date: the units and their cost are still held today", () => {
+    const today = computePositions(issueExample(), { asOf: "2026-11-21" });
+    const held = account(today);
+    assert.equal(held.quantity, units(10));
+    assert.equal(held.costBasisCents, eur(1000));
+    assert.equal(held.averageCost, price(100));
+    assert.equal(held.realizedCents, 0);
+    assert.equal(held.costSoldCents, 0);
+    assert.equal(portfolio(today, "A").quantity, units(10));
+    assert.equal(portfolio(today, "A").costBasisCents, eur(1000));
+
+    // Without a date, and as of the sale's own date, the sale counts.
+    for (const sold of [computePositions(issueExample()), computePositions(issueExample(), { asOf: "2028-03-03" })]) {
+      assert.equal(account(sold).quantity, 0);
+      assert.equal(account(sold).costBasisCents, 0);
+      assert.equal(account(sold).realizedCents, eur(500));
+      assert.equal(account(sold).averageCost, null);
+    }
+  });
+
+  it("counts a trade dated on the date and leaves out one dated the next day, across a month and a year end", () => {
+    for (const [asOf, next] of [
+      ["2026-11-30", "2026-12-01"],
+      ["2026-12-31", "2027-01-01"],
+      ["2028-02-29", "2028-03-01"],
+    ] as const) {
+      const trades = [buy("2026-01-05", "A", 4, 10, 0), sell(asOf, "A", 1, 12, 0), sell(next, "A", 1, 13, 0)];
+      const position = account(computePositions(trades, { asOf }));
+      assert.equal(position.quantity, units(3), asOf);
+      assert.equal(position.costBasisCents, eur(30), asOf);
+      assert.equal(position.realizedCents, eur(2), asOf);
+    }
+  });
+
+  it("leaves out a later split, a later transfer's two legs and a later fee without an instrument", () => {
+    const trades = [
+      buy("2026-01-10", "A", 3, 100, 0, { accountId: OTHER_ACCOUNT }),
+      buy("2026-01-10", "A", 10, 120, 0),
+      split("2026-06-01", "A", 1, 2),
+      split("2026-06-01", "A", 1, 2, { accountId: OTHER_ACCOUNT }),
+      trade({ id: "out", accountId: OTHER_ACCOUNT, date: "2026-07-01", type: "transfer", quantity: units(-1), transferTradeId: "in" }),
+      trade({ id: "in", date: "2026-07-01", type: "transfer", quantity: units(1), transferTradeId: "out" }),
+      trade({ date: "2026-07-01", type: "fee", instrumentId: null, feesCents: eur(3) }),
+    ];
+    const beforeSplit = computePositions(trades, { asOf: "2026-05-31" });
+    assert.equal(account(beforeSplit).quantity, units(10));
+    assert.equal(account(beforeSplit, OTHER_ACCOUNT).quantity, units(3));
+    assert.deepEqual(beforeSplit.charges, []);
+
+    const beforeTransfer = computePositions(trades, { asOf: "2026-06-30" });
+    assert.equal(account(beforeTransfer).quantity, units(20));
+    assert.equal(account(beforeTransfer).costBasisCents, eur(1200));
+    assert.equal(account(beforeTransfer, OTHER_ACCOUNT).quantity, units(6));
+    assert.equal(account(beforeTransfer, OTHER_ACCOUNT).costTransferredOutCents, 0);
+
+    const after = computePositions(trades, { asOf: "2026-07-01" });
+    assert.equal(account(after).quantity, units(21));
+    assert.equal(account(after).costBasisCents, eur(1250));
+    assert.equal(account(after, OTHER_ACCOUNT).quantity, units(5));
+    assert.equal(account(after, OTHER_ACCOUNT).costBasisCents, eur(250));
+    assert.equal(after.charges[0]!.standaloneFeesCents, eur(3));
+  });
+
+  it("has no row for a holding whose every trade comes after the date", () => {
+    const positions = computePositions([buy("2026-12-01", "A", 1, 10, 0)], { asOf: "2026-11-30" });
+    assert.deepEqual(positions, { accounts: [], portfolios: [], charges: [] });
+  });
+
+  it("refuses a malformed date, and still checks the shape of a trade it leaves out", () => {
+    assert.throws(() => computePositions(issueExample(), { asOf: "2026-02-30" }), (error) => isValidationError(error, "invalid_date"));
+    const malformed = trade({ date: "2027-01-01", type: "fee", feesCents: 0, grossCents: 1 });
+    assert.throws(
+      () => computePositions([...issueExample(), malformed], { asOf: "2026-11-21" }),
+      (error) => isValidationError(error, "invalid_trade"),
+    );
+  });
+});
+
+describe("a position's quantity beyond the safe range (#662)", () => {
+  // 9 × 10^15 (units × 10^8) is a safe integer; two of them together are not.
+  const big = 9e15 as Quantity;
+  // The account and the portfolio too: a request adding several rows names each of them null.
+  const overflowAt = (tradeId: string, accountId = ACCOUNT, portfolioId = "A") => (error: unknown) =>
+    isValidationError(error, "invalid_quantity") &&
+    error.details.tradeId === tradeId &&
+    error.details.label === "positionQuantity" &&
+    error.details.accountId === accountId &&
+    error.details.portfolioId === portfolioId;
+
+  it("names the buy that pushes the position over", () => {
+    const first = trade({ id: "q-1", date: "2026-01-10", type: "buy", quantity: big, price: 1 as Price });
+    const second = trade({ id: "q-2", date: "2026-01-11", type: "buy", quantity: big, price: 1 as Price });
+    assert.throws(() => computePositions([second, first]), overflowAt("q-2"));
+  });
+
+  it("names the split row of the holding the split pushes over, not the date's first row", () => {
+    const held = trade({ id: "q-held", date: "2026-01-10", type: "buy", portfolioId: "A", quantity: 1e15 as Quantity, price: 1 as Price });
+    const small = trade({ id: "q-small", date: "2026-01-10", type: "buy", portfolioId: "B", quantity: 1 as Quantity, price: 1 as Price });
+    // B's row sorts first by id; A's is the one that leaves the safe range.
+    const rowB = split("2026-02-01", "B", 1, 10, { id: "q-split-a" });
+    const rowA = split("2026-02-01", "A", 1, 10, { id: "q-split-b" });
+    assert.throws(() => computePositions([held, small, rowA, rowB]), overflowAt("q-split-b"));
+  });
+
+  it("names the incoming leg of a transfer, even when the outgoing leg is replayed first", () => {
+    const source = trade({ id: "q-src", date: "2026-01-10", type: "buy", portfolioId: "A", quantity: big, price: 1 as Price });
+    // In another account: one account holding both would already be beyond the safe range.
+    const target = trade({ id: "q-dst", date: "2026-01-10", type: "buy", accountId: OTHER_ACCOUNT, portfolioId: "B", quantity: big, price: 1 as Price });
+    const out = trade({ id: "q-leg-0", date: "2026-02-01", type: "transfer", portfolioId: "A", quantity: -big as Quantity, transferTradeId: "q-leg-1" });
+    const into = trade({
+      id: "q-leg-1",
+      date: "2026-02-01",
+      type: "transfer",
+      accountId: OTHER_ACCOUNT,
+      portfolioId: "B",
+      quantity: big,
+      transferTradeId: "q-leg-0",
+      occurredAt: out.occurredAt,
+      createdAt: out.createdAt,
+    });
+    assert.throws(() => computePositions([source, target, out, into]), overflowAt("q-leg-1", OTHER_ACCOUNT, "B"));
+  });
+
+  it("names no trade for a trade's own quantity beyond the safe range: it is not a running total", () => {
+    const own = trade({ id: "q-own", date: "2026-01-10", type: "buy", quantity: 2 ** 53 as Quantity, price: 1 as Price });
+    assert.throws(
+      () => computePositions([own]),
+      (error) => isValidationError(error, "invalid_quantity") && error.details.tradeId === undefined && error.details.label === "quantity",
+    );
+  });
+});

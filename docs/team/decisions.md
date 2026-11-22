@@ -18,11 +18,22 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#84** (2026-11-22, architect): screens and endpoints read only stored prices and rates, never a provider.
 - **#85** (2026-11-22, architect): rates are stored as `rate_e10`, quote currency per 1 EUR as published, never inverted; other pairs are computed through the euro with one rounding.
 - **#85** (2026-11-22, architect): no XML dependency for the ECB file, and the built-in `fetch`.
+- **#85** (2026-11-22, domain-expert): the ECB parser checks every entry's syntax and leaves out currencies `isKnownCurrency` refuses (withdrawn ISO 4217 codes, e.g. TRL beyond the ×10^10 safe range), naming them in `skippedCurrencies`; a kept currency out of range still refuses the whole file.
+- **#85** (2026-11-22, security-reviewer): the README states the one request the server makes by itself (ECB rates, on by default — maintainer decision) and the switch that turns it off.
 - **#87/#88** (2026-11-22, architect): returns are computed in floating point inside, output as an integer `returnE6`, never stored.
 - **#83** (2026-11-22, architect): prices are not a sync entity in 0.2.1; a future entity id is derived from (workspace, instrument, date).
 - **#83** (2026-11-22, architect): one audit entry per manual price write, one summary entry per CSV import.
 - **#89** (2026-11-22, architect): the performance range is capped at 120 months, computed on read, with no cache.
 - **#89** (2026-11-22, architect): #89 depends on #719.
+- **#596** (2026-11-22, architect; domain-expert confirms): untimed trades in histories that local-midnight ordering would reorder get `occurred_at` = UTC midnight of their date by a repair migration (0038), which keeps the replay order, positions and cost basis they had; rejected: a release note only, a fail-loud check, accepting the change.
+- **#719** (2026-11-22, architect): the positions answer carries no list or count of trades dated after `asOf`; how later trades show is decided with the portfolio dashboard (#106, 0.2.4) and its mockup.
+- **#782** (2026-11-22, domain-expert): negative income in a later month is left out of an earlier month's unassigned calculation item by item, not as the month's net; a later month's positive income still pays its own assignments.
+- **#660** (2026-11-22, domain-expert): budget problems flag a payment category only beyond its card's credit (same figure as `cashOverspending`).
+- **#505** (2026-11-22, architect): a workspace's private instruments live under `/workspaces/:workspaceId/instruments`; GET by id there also returns a shared instrument, and another workspace's private one is a 404.
+- **#505** (2026-11-22, architect): a private instrument carries no ISIN, ticker or exchange, so the shared catalog's unique indexes can never answer a 409 that reveals another workspace's holdings.
+- **#505** (2026-11-22, architect): every instrument response carries `workspaceId` (`null` for a shared instrument).
+- **#505** (2026-11-22, architect): a private instrument's name is unique per workspace, ignoring case, after trimming (409 `name_taken`).
+- **#505** (2026-11-22, architect): a workspace-scoped instrument search is deferred to #789.
 
 ### 0.2.0
 
@@ -50,3 +61,10 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#655** (2026-11-22, architect): PATCH occurredAt takes a date only while create still takes an instant; accountId in a PATCH body is 400 unknown_field for every transaction, a trade's cash leg included; editing or deleting through an account that does not hold the transaction answers 404; invalid_body, unknown_field and invalid_field are the shared request-shape codes that #713 reuses and #663 lists.
 - **#87/#88/#89** (2026-11-22, domain-expert): a portfolio holds securities only; its flows are minus its trades' cash legs plus the market value of securities moved in or out; TWR is valued at each flow day (not Modified Dietz); a missing price makes a figure unknown, never 0.
 - **#87/#88** (2026-11-22, domain-expert): a figure is yearly once the period reaches its first anniversary; year fraction = whole anniversaries + days since the last ÷ days to the next (not Actual/365); MWR bounds apply to the figure shown (period rate under a year), nothing received back = −100%; TWR sub-periods holding nothing at either end contribute 1.
+- **#668** (2026-11-22, domain-expert): every positive split dated after today counts nowhere until its date, per split; negative splits count at once.
+- **#662** (2026-11-22, architect): an error's `details.tradeId` names a stored trade, or is `null` for a row the request itself adds, never an id the server made up; the one exception is 409 `id_taken`, which echoes the client id sent.
+- **#662** (2026-11-22, architect): a position's quantity leaving the safe range is 400 `invalid_quantity` with `{ label: "positionQuantity", value, tradeId, accountId, portfolioId }`, naming the trade that pushes it over.
+- **#594** (2026-11-22, architect): a field of another kind of trade request is `invalid_trade` naming it (per type, from `TRADE_REQUEST_FIELDS`), a field no trade request has is `unknown_field`; `taxKind` on a trade other than a tax keeps its own code, `tax_kind_not_allowed_for_trade_type`.
+- **#594** (2026-11-22, architect): `null` on create means the field is left out; on edit it clears the field (`occurredAt`, `memo`, a fee's or a tax's `instrumentId`).
+- **#594** (2026-11-22, architect): an edit that changes nothing (`{}`, `type` alone, only `null` legs) is 400 `invalid_body`, with no audit entry.
+- **#594** (2026-11-22, architect): the `details.field` names (request names such as `quantityE8` against core names such as `quantity`) are unified in #663, not here.

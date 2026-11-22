@@ -36,8 +36,9 @@ export function transferCategoryRule(source: TransferEnd, destination: TransferE
 /**
  * What money coming in does to the available amount it lands in ("Unassigned" or a category):
  * - received: from what it holds to that plus the amount;
- * - not received yet: income dated after today counts nowhere until its date (budget month, rule 1;
- *   #650, #700), so the amount stays as it is until `date`.
+ * - not received yet: money coming in dated after today, into "Unassigned" or into a category,
+ *   counts nowhere until its date (budget month, rule 1; #650, #700, #668), so the amount stays as
+ *   it is until `date`.
  */
 export type AvailableChange =
   | { readonly received: true; readonly fromCents: Cents; readonly toCents: Cents }
@@ -50,8 +51,8 @@ export interface InflowTiming {
 }
 
 /**
- * Without `timing`, the money counts at once: right for a category, whose money counts by month
- * (#668). Into "Unassigned", pass the timing, so that money dated after today waits for its date.
+ * Pass `timing`, so that money dated after today waits for its date, into "Unassigned" and into a
+ * category alike (#668). Without it, the money counts at once.
  */
 export function availableAfterInflow(availableCents: Cents, inflowCents: Cents, timing?: InflowTiming): AvailableChange {
   if (timing !== undefined && !incomeReceived(timing.date, timing.today)) {

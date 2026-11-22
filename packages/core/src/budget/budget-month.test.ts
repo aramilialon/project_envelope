@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { owing } from "../testing/card-balance.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
 import { shiftMonth } from "../month.ts";
@@ -244,6 +245,56 @@ describe("computeBudgetMonth", () => {
     assert.equal(computeBudgetMonth(input, "2026-10").unassigned, -10000);
   });
 
+  it("negative income counts from its own month on, never charged back to earlier months (#782)", () => {
+    // €100 unassigned in September; a −€300 overdraft on checking recorded on Unassigned on 22 Nov.
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [
+        { month: "2026-09", date: "2026-09-10", amount: 10000 },
+        { month: "2026-11", date: "2026-11-22", amount: -30000 },
+      ],
+      assignments: [],
+      activity: [],
+      today: "2026-11-22",
+    };
+
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(september.unassigned, 10000);
+    assert.equal(september.assignedInFuture, 0);
+    const october = computeBudgetMonth(input, "2026-10");
+    assert.equal(october.unassigned, 10000);
+    assert.equal(october.assignedInFuture, 0);
+    assert.equal(computeBudgetMonth(input, "2026-11").unassigned, -20000);
+    assert.equal(computeBudgetMonth(input, "2026-12").unassigned, -20000);
+  });
+
+  it("a later month's assignment beyond its own positive income is still charged back, its negative income is not (#782, #488)", () => {
+    // €1,000 in September. October: €500 in, −€300 out, €500 assigned to October.
+    const input: BudgetInput = {
+      categoryIds: ["rent"],
+      income: [
+        { month: "2026-09", date: "2026-09-10", amount: 100000 },
+        { month: "2026-10", date: "2026-10-05", amount: 50000 },
+        { month: "2026-10", date: "2026-10-06", amount: -30000 },
+      ],
+      assignments: [
+        { categoryId: "rent", month: "2026-10", amount: 50000 },
+        { categoryId: "rent", month: "2026-11", amount: 20000 },
+      ],
+      activity: [],
+      today: "2026-11-22",
+    };
+
+    // October's own €500 pays its €500; November has no income, so its €200 comes from September.
+    const september = computeBudgetMonth(input, "2026-09");
+    assert.equal(september.unassigned, 80000);
+    assert.equal(september.assignedInFuture, 20000);
+    // October: €1,000 + €500 − €300 − €500, less the €200 November takes.
+    const october = computeBudgetMonth(input, "2026-10");
+    assert.equal(october.unassigned, 50000);
+    assert.equal(october.assignedInFuture, 20000);
+  });
+
   it("income dated after today counts nowhere until its date", () => {
     const input: BudgetInput = {
       categoryIds: ["groceries"],
@@ -265,6 +316,140 @@ describe("computeBudgetMonth", () => {
 
     // On the 27th it has arrived.
     assert.equal(computeBudgetMonth({ ...input, today: "2026-11-27" }, "2026-11").unassigned, 220000);
+  });
+
+  it("a refund dated after today counts nowhere until its date (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries", "household"],
+      income: [{ month: "2026-11", date: "2026-11-05", amount: 200000 }],
+      assignments: [
+        { categoryId: "groceries", month: "2026-11", amount: 30000 },
+        { categoryId: "household", month: "2026-11", amount: 10000 },
+      ],
+      activity: [{ categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 20000 }],
+      today: "2026-11-21",
+    };
+
+    const before = computeBudgetMonth(input, "2026-11");
+    assert.equal(category(before.categories, "groceries").available, 30000); // not €500 yet
+    assert.equal(before.unassigned, 160000);
+    assert.equal(category(computeBudgetMonth(input, "2026-12").categories, "groceries").available, 30000, "nor in a later month");
+
+    const onTheDay = computeBudgetMonth({ ...input, today: "2026-11-28" }, "2026-11");
+    assert.equal(category(onTheDay.categories, "groceries").available, 50000);
+    assert.equal(onTheDay.unassigned, 160000);
+  });
+
+  it("splits of one receipt dated after today: the spending counts at once, the positive split from its date (#668)", () => {
+    // −€100 at the store on the 25th: €150 of groceries, €50 back on a household return.
+    const input: BudgetInput = {
+      categoryIds: ["groceries", "household"],
+      income: [{ month: "2026-11", date: "2026-11-05", amount: 200000 }],
+      assignments: [
+        { categoryId: "groceries", month: "2026-11", amount: 30000 },
+        { categoryId: "household", month: "2026-11", amount: 10000 },
+      ],
+      activity: [
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-25", amount: -15000 },
+        { categoryId: "household", month: "2026-11", date: "2026-11-25", amount: 5000 },
+      ],
+      today: "2026-11-21",
+    };
+
+    const before = computeBudgetMonth(input, "2026-11");
+    assert.equal(category(before.categories, "groceries").available, 15000);
+    assert.equal(category(before.categories, "household").available, 10000);
+
+    const onTheDay = computeBudgetMonth({ ...input, today: "2026-11-25" }, "2026-11");
+    assert.equal(category(onTheDay.categories, "groceries").available, 15000);
+    assert.equal(category(onTheDay.categories, "household").available, 15000);
+  });
+
+  it("a card refund dated after today moves nothing between the category and the payment category until its date (#668)", () => {
+    const base: BudgetInput = {
+      categoryIds: ["groceries"],
+      paymentCategoryIds: ["visa-payment"],
+      income: [{ month: "2026-11", date: "2026-11-05", amount: 200000 }],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 30000 }],
+      activity: [{ categoryId: "groceries", month: "2026-11", date: "2026-11-10", amount: -10000, paymentCategoryId: "visa-payment" }],
+      today: "2026-11-21",
+    };
+    const withRefund: BudgetInput = {
+      ...base,
+      activity: [
+        ...base.activity,
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 4000, paymentCategoryId: "visa-payment" },
+      ],
+    };
+
+    assert.deepEqual(computeBudgetMonth(withRefund, "2026-11"), computeBudgetMonth(base, "2026-11"));
+    const onTheDay = computeBudgetMonth({ ...withRefund, today: "2026-11-28" }, "2026-11");
+    assert.equal(category(onTheDay.categories, "groceries").available, 24000);
+    assert.notDeepEqual(onTheDay.paymentCategories, computeBudgetMonth({ ...base, today: "2026-11-28" }, "2026-11").paymentCategories);
+  });
+
+  it("a cash refund dated after today changes how the month closes, and the next month, only from its date (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      income: [{ month: "2026-11", date: "2026-11-02", amount: 200000 }],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 5000 }],
+      activity: [
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-10", amount: -10000 },
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 6000 },
+      ],
+      today: "2026-11-21",
+    };
+
+    assert.equal(category(computeBudgetMonth(input, "2026-11").categories, "groceries").available, -5000);
+    const december = computeBudgetMonth(input, "2026-12");
+    assert.equal(december.overspentLastMonth, 5000);
+    assert.equal(december.unassigned, 190000);
+    assert.equal(category(december.categories, "groceries").available, 0);
+
+    const later = { ...input, today: "2026-11-28" };
+    assert.equal(category(computeBudgetMonth(later, "2026-11").categories, "groceries").available, 1000);
+    const decemberLater = computeBudgetMonth(later, "2026-12");
+    assert.equal(decemberLater.overspentLastMonth, 0);
+    assert.equal(decemberLater.unassigned, 195000);
+    assert.equal(category(decemberLater.categories, "groceries").available, 1000);
+  });
+
+  it("a card refund dated after today: the payment category holds more than the debt until its date (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      paymentCategoryIds: ["visa-payment"],
+      income: [{ month: "2026-11", date: "2026-11-02", amount: 200000 }],
+      assignments: [{ categoryId: "groceries", month: "2026-11", amount: 5000 }],
+      activity: [
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-10", amount: -8000, paymentCategoryId: "visa-payment" },
+        { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 3000, paymentCategoryId: "visa-payment" },
+      ],
+      // The card's real debt counts every transaction to the end of the month, the refund included.
+      cardBalances: [{ paymentCategoryId: "visa-payment", transactions: owing(5000, "2026-11-28") }],
+      today: "2026-11-21",
+    };
+
+    const before = computeBudgetMonth(input, "2026-11");
+    assert.equal(before.creditOverspending, 3000);
+    assert.equal(category(before.paymentCategories, "visa-payment").available, 5000);
+    assert.equal(category(before.paymentCategories, "visa-payment").uncovered, 0);
+
+    const onTheDay = computeBudgetMonth({ ...input, today: "2026-11-28" }, "2026-11");
+    assert.equal(onTheDay.creditOverspending, 0);
+    assert.equal(category(onTheDay.categories, "groceries").available, 0);
+    assert.equal(category(onTheDay.paymentCategories, "visa-payment").available, 5000);
+  });
+
+  it("an undated refund counts from the first day of its month (#668)", () => {
+    const input: BudgetInput = {
+      categoryIds: ["groceries"],
+      income: [],
+      assignments: [],
+      activity: [{ categoryId: "groceries", month: "2026-12", amount: 5000 }],
+      today: "2026-11-30",
+    };
+    assert.equal(category(computeBudgetMonth(input, "2026-12").categories, "groceries").available, 0);
+    assert.equal(category(computeBudgetMonth({ ...input, today: "2026-12-01" }, "2026-12").categories, "groceries").available, 5000);
   });
 
   it("assigning more than is available takes unassigned money below zero", () => {
@@ -367,6 +552,14 @@ describe("computeBudgetMonth", () => {
       (error) => isValidationError(error, "invalid_date"),
     );
     assert.throws(
+      () =>
+        computeBudgetMonth(
+          { ...EMPTY, categoryIds: ["groceries"], activity: [{ categoryId: "groceries", month: "2026-09", date: "2026-10-01", amount: 100 }] },
+          "2026-09",
+        ),
+      (error) => isValidationError(error, "invalid_date"),
+    );
+    assert.throws(
       () => computeBudgetMonth({ ...EMPTY, today: "2026-02-30" }, "2026-09"),
       (error) => isValidationError(error, "invalid_date"),
     );
@@ -375,7 +568,8 @@ describe("computeBudgetMonth", () => {
 
 /**
  * A random budget over six months, with income on random days and a random today: inside the
- * months most of the time, so that some income is not received yet.
+ * months most of the time, so that some income is not received yet. One income in five is
+ * negative (#782: money going out of Unassigned, such as an overdraft recorded there).
  */
 function randomBudget(random: () => number): { input: BudgetInput; month: string; today: string } {
   const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
@@ -388,10 +582,17 @@ function randomBudget(random: () => number): { input: BudgetInput; month: string
     categoryIds,
     income: Array.from({ length: 5 }, () => {
       const month = pick(months);
-      return { month, date: `${month}-${day()}`, amount: Math.abs(amount()) };
+      return { month, date: `${month}-${day()}`, amount: random() < 0.2 ? -Math.abs(amount()) : Math.abs(amount()) };
     }),
     assignments: Array.from({ length: 15 }, () => ({ categoryId: pick(categoryIds), month: pick(months), amount: amount() })),
-    activity: Array.from({ length: 20 }, () => ({ categoryId: pick(categoryIds), month: pick(months), amount: -Math.abs(amount()) })),
+    // Mostly spending, with a refund now and then (#668); dated on a random day, or undated.
+    activity: Array.from({ length: 20 }, () => {
+      const month = pick(months);
+      const value = random() < 0.25 ? Math.abs(amount()) : -Math.abs(amount());
+      return random() < 0.8
+        ? { categoryId: pick(categoryIds), month, date: `${month}-${day()}`, amount: value }
+        : { categoryId: pick(categoryIds), month, amount: value };
+    }),
     today,
   };
   return { input, month: pick(months), today };
@@ -402,12 +603,22 @@ function receivedBy(input: BudgetInput, month: string, today: string): number {
   return input.income.filter((i) => i.month <= month && (i.date ?? `${i.month}-01`) <= today).reduce((sum, i) => sum + i.amount, 0);
 }
 
+/**
+ * Activity up to the end of `month`, less every refund dated after today (#668): money coming in
+ * that has not arrived yet.
+ */
+function activityBy(input: BudgetInput, month: string, today: string): number {
+  return input.activity
+    .filter((a) => a.month <= month && (a.amount <= 0 || (a.date ?? `${a.month}-01`) <= today))
+    .reduce((sum, a) => sum + a.amount, 0);
+}
+
 describe("budget invariant", () => {
   // Whatever happens, the books must balance:
   //   unassigned money + available of the month + assigned in future
   //   = income received by the end of the month (and by today) + activity up to the end of the
-  //     month (that is, the money in the accounts at the end of the month, less the income not
-  //     received yet)
+  //     month, less the refunds dated after today (that is, the money in the accounts at the end
+  //     of the month, less every positive split not received yet: #668)
   it("balances on 500 random budgets", () => {
     const random = mulberry32(42);
     for (let run = 0; run < 500; run++) {
@@ -416,11 +627,9 @@ describe("budget invariant", () => {
       const result = computeBudgetMonth(input, month);
 
       const availableTotal = result.categories.reduce((sum, c) => sum + c.available, 0);
-      const activitySoFar = input.activity.filter((a) => a.month <= month).reduce((sum, a) => sum + a.amount, 0);
-
       assert.equal(
         result.unassigned + availableTotal + result.assignedInFuture,
-        receivedBy(input, month, today) + activitySoFar,
+        receivedBy(input, month, today) + activityBy(input, month, today),
         `invariant violated on run ${run}, month ${month}`,
       );
     }
@@ -428,7 +637,10 @@ describe("budget invariant", () => {
 });
 
 describe("unassigned money properties (#650)", () => {
-  /** cum(N) of rule 1, for every month N from `month` to the last one of the data. */
+  /**
+   * cum(N) of rule 1, for every month N from `month` to the last one of the data: a month after
+   * `month` counts only its positive income (#782).
+   */
   function cumulative(input: BudgetInput, month: string, today: string, overspentBefore: number): number[] {
     const last = [month, ...input.income.map((i) => i.month), ...input.assignments.map((a) => a.month), ...input.activity.map((a) => a.month)].reduce(
       (latest, m) => (m > latest ? m : latest),
@@ -436,7 +648,10 @@ describe("unassigned money properties (#650)", () => {
     const values: number[] = [];
     for (let m = month; m <= last; m = shiftMonth(m, 1)) {
       const assigned = input.assignments.filter((a) => a.month <= m).reduce((sum, a) => sum + a.amount, 0);
-      values.push(receivedBy(input, m, today) - assigned - overspentBefore);
+      const laterNegative = input.income
+        .filter((i) => i.month > month && i.month <= m && i.amount < 0 && (i.date ?? `${i.month}-01`) <= today)
+        .reduce((sum, i) => sum + i.amount, 0);
+      values.push(receivedBy(input, m, today) - laterNegative - assigned - overspentBefore);
     }
     return values;
   }
@@ -467,7 +682,6 @@ describe("unassigned money properties (#650)", () => {
     const random = mulberry32(6500);
     for (let run = 0; run < 300; run++) {
       const { input, month, today } = randomBudget(random);
-      const result = computeBudgetMonth(input, month);
       // More income, dated after the month and already received.
       const later = shiftMonth(month, 1 + Math.floor(random() * 3));
       const more: BudgetInput = {
@@ -478,14 +692,15 @@ describe("unassigned money properties (#650)", () => {
       const before = computeBudgetMonth({ ...input, today: "2026-12-31" }, month);
       const after = computeBudgetMonth(more, month);
 
-      // Every available is the same whatever income there is.
-      assert.deepEqual(after.categories, result.categories, `run ${run}, month ${month}`);
+      // Every available is the same whatever income there is (on the same today: a refund dated
+      // after today changes a category on its date, #668).
+      assert.deepEqual(after.categories, before.categories, `run ${run}, month ${month}`);
       // Never more than the month itself has received (cum(M) holds no income after M).
-      const values = cumulative(more, month, "2026-12-31", overspentBefore(input, month));
+      const values = cumulative(more, month, "2026-12-31", overspentBefore({ ...input, today: "2026-12-31" }, month));
       assert.ok(after.unassigned <= (values[0] as number), `run ${run}, month ${month}`);
       assert.ok(after.unassigned >= before.unassigned, `run ${run}, month ${month}`);
       // No later month over-assigned: cum(N) never drops below cum(M), so the month shows cum(M).
-      const beforeValues = cumulative(input, month, "2026-12-31", overspentBefore(input, month));
+      const beforeValues = cumulative(input, month, "2026-12-31", overspentBefore({ ...input, today: "2026-12-31" }, month));
       if (beforeValues.every((v) => v >= (beforeValues[0] as number))) {
         assert.equal(after.unassigned, before.unassigned, `run ${run}, month ${month}`);
       }

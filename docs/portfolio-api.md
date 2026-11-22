@@ -17,9 +17,12 @@ the [domain guide](domain-guide.md#portfolios-and-rebalancing); the decisions ar
 checked against a running server.
 
 What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain or net result
-(milestone 0.2.1); no exchange rates, so a trade's instrument must be in its account's currency;
-no private instruments (no ISIN and no ticker, milestone 0.2.1); no settlement date on a trade; no
-import of a broker's statement; and no field of a trade is synced from devices yet.
+(milestone 0.2.1); exchange rates are stored ([Exchange rates](#exchange-rates), milestone 0.2.1)
+but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
+settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
+from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
+[Private instruments](#private-instruments)), and so did a workspace's own closing prices, typed or
+imported from a CSV file (#83, [Prices](#prices)); positions do not use them yet.
 
 ## Contents
 
@@ -28,6 +31,8 @@ import of a broker's statement; and no field of a trade is synced from devices y
 - [Workspace tax country](#workspace-tax-country)
 - [Brokerage accounts and their tax regime](#brokerage-accounts-and-their-tax-regime)
 - [Instruments](#instruments)
+- [Prices](#prices)
+- [Exchange rates](#exchange-rates)
 - [Portfolios](#portfolios)
 - [Trades](#trades)
 - [Positions](#positions)
@@ -49,7 +54,7 @@ shows how to get one for a persona with `curl`; tokens there last 15 minutes. Bo
 | Endpoint | Who |
 | --- | --- |
 | `PATCH /workspaces/:workspaceId` (tax country) | the workspace's `owner` |
-| `POST /instruments`, `GET /instruments…` | any signed-in user, no workspace needed: the catalog is shared |
+| `POST /instruments`, `GET /instruments…` | any signed-in user, no workspace needed: the catalog is shared (these routes never see a workspace's private instruments) |
 | Every `GET` under `/workspaces/:workspaceId/` | any member, `read_only` included |
 | Every other write under `/workspaces/:workspaceId/` | `owner` and `editor`; a `read_only` member gets 403 |
 
@@ -82,10 +87,18 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 
 | Status | Body | When |
 | --- | --- | --- |
-| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain: the codes below, each with its `details` |
-| 400 | `{ "error": "invalid trade: fee is not a field of this request" }` | a body the route cannot read: a missing field, a wrong JSON type, an unknown field. English text, no code |
+| 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
+| 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
-| 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
+| 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
+
+**Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
+misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
+`currency` on its `PATCH`), is 400 `unknown_field` with `{ "field" }` naming it, checked before
+anything else, so nothing is written (#713; the trades since #594). A field inside a nested object
+or list is named by its path: `from.fees` in a trade's leg, `taxRegimes[1].regim` in a regime
+history. A body that is not a JSON object (an array, a string) is 400 `invalid_body` on those
+same routes. Closing an account takes no field: send no body, or `{}`.
 
 Names and free text have length limits (`apps/api/README.md`, "Length limits on names and free
 text"): a portfolio's `name` 100 characters, its `purpose` and a trade's `memo` 500; over the
@@ -98,20 +111,21 @@ never creates a duplicate. (For a request whose answer was lost, see
 
 ## The schema
 
-Migrations 0025 to 0031 in `apps/api/migrations/`. The parts and how they connect:
+Migrations 0025 to 0031 in `apps/api/migrations/`, and 0035 for private instruments. The parts and how they connect:
 
 ```
 workspaces (tax_country)
  ├─ accounts (type 'brokerage', on_budget false, domestic_withholding_agent)
  │   ├─ account_tax_regimes (valid_from, regime)        one row per period
  │   ├─ transactions (trade_id → the trade it is the cash leg of)
- │   └─ trades ──────────── instrument_id → instruments (shared, no workspace)
+ │   └─ trades ──────────── instrument_id → instruments (shared, or this workspace's own)
+ ├─ instruments (workspace_id set: private instruments)
  └─ portfolios ──────────── ◄ trades.portfolio_id
 ```
 
 | Table | What a row is | Workspace isolation |
 | --- | --- | --- |
-| `instruments` | one listing of a security in the shared catalog: an ISIN, or a ticker on an exchange | none: shared by every workspace, like `users`. The app may only read and insert (`SELECT`, `INSERT`); an administrator corrects it with SQL (`apps/api/README.md`, "Correcting the instruments catalog") |
+| `instruments` | one listing of a security in the shared catalog (an ISIN, or a ticker on an exchange, `workspace_id` null), or a workspace's private instrument (`workspace_id` set, no ISIN, ticker or exchange) | Row-Level Security since migration 0035, one policy per command: every caller reads the shared rows and its own workspace's, and inserts a shared row or one of its own workspace's. The app may only read and insert (`SELECT`, `INSERT`); an administrator corrects it with SQL (`apps/api/README.md`, "Correcting the instruments catalog") |
 | `portfolios` | a named group of holdings with a free-text purpose; archivable | Row-Level Security |
 | `trades` | one buy, sell, dividend or coupon, fee, tax, split row or transfer leg | Row-Level Security |
 | `account_tax_regimes` | one period of a brokerage account's tax regime | Row-Level Security |
@@ -137,7 +151,7 @@ from migrations 0028 to 0031; migration 0029 (#504) converted the older tables' 
 | `trades (workspace_id, transfer_trade_id)` | `trades (workspace_id, id)`, the other leg of a transfer | no action, deferrable, so both legs are inserted pointing at each other and only deleted together |
 | `transactions (workspace_id, trade_id, account_id)` | `trades (workspace_id, id, account_id)` | cascade; on update cascade, so a cash leg can only ever sit on its trade's account |
 | `account_tax_regimes (workspace_id, account_id)` | `accounts (workspace_id, id)` | cascade |
-| `trades (instrument_id)` | `instruments (id)` | no action: an instrument a trade uses is never removed. Single-column, since the catalog belongs to no workspace |
+| `trades (instrument_id)` | `instruments (id)` | no action: an instrument a trade uses is never removed. Single-column, since a shared instrument belongs to no workspace; a trigger (migration 0035) refuses an instrument that is neither shared nor the trade's own workspace's, with a `check_violation` naming `instrument_not_found` |
 
 **The `trades` columns.** Every amount is in the account's minor unit; `quantity_e8` and
 `price_e6` are scaled integers (ADR 0011). A column a type does not use is 0 (amounts, quantity,
@@ -160,8 +174,10 @@ brokerage account can never be on budget (a `CHECK`), on every write path.
 { "taxCountry": "IT" }
 ```
 
-`taxCountry` is an ISO 3166-1 alpha-2 code in upper case (`"it"` is refused with
-`invalid_tax_country`), or `null` to remove it. The answer is the workspace, with the brokerage
+`taxCountry` is an officially assigned ISO 3166-1 alpha-2 code in upper case (`"it"` is refused
+with `invalid_tax_country`, and so are codes that name no country, such as `ZZ`, `EU`, `UN` or
+`UK`: the United Kingdom is `GB`), or `null` to remove it. A code stored before this check (#711)
+is still returned as it is, and can be replaced or removed. The answer is the workspace, with the brokerage
 accounts that have no tax regime yet:
 
 ```json
@@ -181,7 +197,8 @@ for their regimes right away.
 
 | Error | Details |
 | --- | --- |
-| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not a known region |
+| 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
+| 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -233,6 +250,7 @@ The answer (201) is the account; the regime is read with `GET …/tax-regimes`:
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` (`""` when none) | given on another account type, or outside an `IT` workspace |
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime": "administered" }` | `administered` or `managed` without `domesticWithholdingAgent: true` |
 | 400 `invalid_date` | `{ "value" }` | `taxRegimeValidFrom` is not a real date |
+| 400 `unknown_field` | `{ "field" }` | a key other than `name`, `type`, `currency`, `onBudget`, `startingBalanceCents` and the three above (#713) |
 
 ### The withholding-agent flag
 
@@ -250,6 +268,7 @@ checks them (below).
 | 400 `withholding_agent_already_set` | `{ "field": "domesticWithholdingAgent" }` |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "domestic_withholding_requires_agent" }`: the flag would break that trade, the earliest by date then id |
 | 400 `tax_regime_not_applicable` | `{ "field", "type" }` or `{ "field", "taxCountry" }` |
+| 400 `unknown_field` | `{ "field": "name" }`: any key but `domesticWithholdingAgent`; this `PATCH` renames nothing (#713) |
 
 ### The regime history
 
@@ -296,6 +315,7 @@ change, and changes start on 1 January).
 | 400 `tax_regime_required` | `{ "field": "taxRegime", "taxCountry": "IT" }`: `PUT` with an empty list in an `IT` workspace |
 | 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code": "tax_kind_not_allowed_in_regime" }`: the new history would break that trade; `code` is the trade's own failing code (`domestic_withholding_requires_agent` too, on a first regime) |
 | 400 `invalid_date` | `{ "value" }` |
+| 400 `unknown_field` | `{ "field": "validfrom" }` or, in a `PUT` entry, `{ "field": "taxRegimes[1].regim" }`: a key the body or the entry does not take (#713) |
 
 ### Closing a brokerage account
 
@@ -309,6 +329,7 @@ it. Otherwise nothing is closed (#703, #729):
 | Error | Details | When |
 | --- | --- | --- |
 | 409 `account_not_empty` | `{ "balanceCents": 0, "laterRows": { "count": 1, "firstDate": "2027-04-01" }, "holdsPositions": true, "scheduled": { "count": 1, "scheduledTransactionId": "0b9e6c7a-3f1d-4e52-9a8b-6c2d1e4f7a90", "nextDueDate": "2027-02-15" } }`: the balance as of today, in the account's currency; the rows dated after today (transactions, and trades that move no cash), with the earliest one's date (`null` when none); whether a security is held today; the scheduled transactions on it, with the id and next due date of the one due first (earliest next due date, then lowest id; both `null` when `count` is 0, #741) | any of those is not empty |
+| 400 `unknown_field` | `{ "field": "closedAt" }` | any key in the body: closing takes none (#713) |
 | 422 `amount_total_overflow` | `{ "accountId", "label": "balanceCents" }` | the balance is beyond the safe range of minor units (rows stored before the cap of #651) |
 | 404 | | the account is not found, or is already closed |
 
@@ -321,7 +342,8 @@ closed account, and `insufficient_quantity` only on an open one.
 
 ## Instruments
 
-The catalog is shared by every workspace: an instrument added by one household is found by all.
+The shared catalog is open to every workspace: an instrument added by one household is found by
+all (an asset with no ISIN and no ticker is a workspace's own instead: [Private instruments](#private-instruments)).
 A row is a **listing**: the same ISIN can trade on several exchanges, in different currencies, and
 appears once per exchange. A row cannot be changed or removed through the API, since other
 workspaces may already use it.
@@ -347,7 +369,7 @@ workspaces may already use it.
 | `exchange` | the exchange's ISO 10383 market identifier code (MIC), exactly 4 letters or digits, such as `XMIL` or `XETR`; upper-cased |
 | `name` | required, up to 200 characters |
 | `type` | `stock`, `fund` (ETFs included), `etc_etn`, `government_bond`, `bond`, `certificate`, `cash`, `other`. The split follows the lines tax rules draw, since a row is never updated |
-| `currency` | three letters, upper-cased; the currency the instrument is quoted in |
+| `currency` | an ISO 4217 code the runtime lists as in use, upper-cased (the same check as an account's, #595); the currency the instrument is quoted in |
 | `assetClass` | optional free text, up to 64 characters |
 | `priceFactorE6` | optional, default `1000000` (a factor of 1); `10000` (0.01) for a bond quoted in percent of nominal or a price in pence |
 
@@ -355,7 +377,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 
 ```json
 {
-  "id": "6af8fb3b-…", "isin": null, "ticker": "WORLD1", "exchange": "XMIL",
+  "id": "6af8fb3b-…", "workspaceId": null, "isin": null, "ticker": "WORLD1", "exchange": "XMIL",
   "name": "World equity ETF", "type": "fund", "currency": "EUR", "assetClass": null,
   "priceFactorE6": 1000000
 }
@@ -370,7 +392,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 | 400 `invalid_isin` | `{ "isin" }`: wrong shape or check digit |
 | 400 `invalid_ticker`, `invalid_exchange` | `{ "ticker" }`, `{ "exchange" }` |
 | 400 `invalid_instrument_type` | `{ "type" }` |
-| 400 `invalid_currency` | `{ "currency" }`: not three letters |
+| 400 `invalid_currency` | `{ "currency" }` as sent: not an ISO 4217 code in use (`XYZ`, the withdrawn `VEF`) |
 | 400 `invalid_instrument_field` | `{ "field" }` (a missing name, or a field that is not a string) or `{ "field", "maxLength" }` |
 | 400 `invalid_price_factor` | `{ "label": "priceFactorE6", "value" }`: not a positive safe integer |
 
@@ -383,6 +405,149 @@ case, an exact ticker first, then by name. At most 20 rows:
 `{ "minLength": 2 }`. There is no endpoint that lists the whole catalog.
 
 `GET /instruments/:instrumentId` returns one row, or 404.
+
+Every instrument row carries `workspaceId`: `null` for the shared catalog, the workspace's id for
+a private instrument. The `/instruments` routes run with no workspace, so they find shared
+instruments only: a private instrument is a 404 there, even for a member of its workspace, and a
+search never returns one.
+
+### Private instruments
+
+An asset with no ISIN and no exchange ticker (real estate, a company pension fund, private
+company shares) is a **private instrument**: it belongs to one workspace, which can trade it and
+record its prices, and no other workspace can find it or point a trade or a price at it. Like a
+shared instrument, it cannot be changed or removed through the API; it goes with its workspace
+when the workspace is deleted.
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `POST /workspaces/:workspaceId/instruments` | `owner`, `editor` | 201, the row |
+| `GET /workspaces/:workspaceId/instruments` | any member | 200 `{ "instruments": [ … ] }`: the workspace's private instruments, by name; never the shared catalog |
+| `GET /workspaces/:workspaceId/instruments/:instrumentId` | any member | 200, the row: a shared instrument or one of the workspace's own; 404 for another workspace's, an unknown or a malformed id |
+
+```json
+{ "name": "Flat in town", "type": "other", "currency": "EUR", "assetClass": "Real estate" }
+```
+
+The body takes `name`, `type`, `currency`, `assetClass` and `priceFactorE6`, with the same rules
+and errors as [Adding an instrument](#adding-an-instrument). `isin`, `ticker` and `exchange` must be
+left out (or `null`): any other value is 400 `invalid_instrument_field` `{ "field" }`. A name is
+unique among the workspace's private instruments, ignoring case and the spaces around it: a second
+one answers 409 `name_taken` and writes nothing. Another workspace's names, and the shared
+catalog's, never conflict, so a private instrument may be named like a shared one. The answer:
+
+```json
+{
+  "id": "0b6c1d52-…", "workspaceId": "4e1f…", "isin": null, "ticker": null, "exchange": null,
+  "name": "Flat in town", "type": "other", "currency": "EUR", "assetClass": "Real estate",
+  "priceFactorE6": 1000000
+}
+```
+
+A trade names a private instrument by its `instrumentId` like any other; in another workspace the
+same id is `unknown_instrument`.
+
+## Prices
+
+An instrument without automatic quotes (some government bonds, funds, a private instrument such as
+real estate) gets its closing prices from the workspace itself: typed one date at a time, or
+imported from a CSV file. Such a price is the workspace's own (`"origin": "own"`): no other
+workspace sees it, and it never changes a shared price fetched from a provider (`"origin":
+"shared"`), which every workspace reads. On a date with both, the workspace's own price is the one
+that values the instrument ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md),
+"Precedence"). Every path below starts with `/workspaces/:workspaceId/instruments/:instrumentId/prices`.
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `GET …/prices?from=&to=` | any member | 200 `{ "prices": [ … ] }`: own and shared prices from `from` to `to`, both optional and included, by date, the shared one first on a date that has both; a `to` before `from` is 400 `invalid_date` with `{ "field": "to", "value" }`, as on `GET /fx-rates` |
+| `PUT …/prices/:date` `{ "closeE6" }` | `owner`, `editor` | 201 with the price when the date had no own price; 200 when it replaced another close, or already had this one (then nothing is written) |
+| `DELETE …/prices/:date` | `owner`, `editor` | 204; 404 `{ "error": "price not found" }` when the date has no own price, even if it has a shared one, which is never deleted |
+| `POST …/prices/import?locale=` with a `text/csv` body | `owner`, `editor` | 200 `{ "inserted", "replaced", "unchanged", "from", "to" }`: how many dates were new, had another close, or already had this one, and the first and last date of the file |
+
+A price object:
+
+```json
+{ "priceDate": "2026-03-31", "closeE6": 101500000, "source": "manual", "origin": "own" }
+```
+
+`closeE6` is the close as quoted × 10^6, like a trade's `priceE6`: a bond quoted in percent of its
+nominal has its close in percent too. It is a safe integer, zero or more. `source` is `manual` for a
+typed price, `csv` for an imported one and `provider` for a shared one. The instrument must be a
+shared one or one of the workspace's private instruments: another workspace's private instrument,
+an unknown or a malformed id answers 404 `{ "error": "instrument not found" }`, the same body as
+every other route's missing row.
+
+**The file.** Two columns, the date (`YYYY-MM-DD`) and the close, read in the locale given by
+`?locale=` (`en`, a dot for decimals, when left out; a tag of at most 35 characters, with no
+extension such as `-u-` and no private-use `-x-` part): a close with a comma, such as `"101,50"` in
+`it-IT`, is quoted as in any CSV file. A first line reading `date,close` is a header and is skipped;
+blank lines are skipped. The body is `content-type: text/csv`, at most 1 MiB and 20,000 rows, and an
+import counts toward the per-user file import limit (`apps/api/README.md`, "Rate limits").
+
+```csv
+date,close
+2026-03-30,101.25
+2026-03-31,101.5
+```
+
+The file is stored whole or not at all. The first line that breaks a rule refuses it with 400
+`{ "error": "invalid_price_file", "details": { "line", "column", "reason" } }`, the line counted
+from 1 with the header and blank lines, the column 1 for the date and 2 for the close. `reason` is
+one of `missing_column`, `extra_column`, `invalid_date` (not a real date, or a date after today,
+then with `"max": "<today>"` in `details` too), `duplicate_date`
+(a date an earlier line gave), `invalid_price_format`, `invalid_price` (negative, or beyond the safe
+range) and `no_rows` (no price in the file). Importing the same file again answers every date as
+`unchanged`. An imported price replaces the workspace's own price of the same date, typed or
+imported, when its close differs.
+
+**Dates.** A price is dated today or earlier in the workspace's time zone, with no lower limit: a
+price from 1850 is accepted, and a price dated before an instrument's first buy values nothing. A
+later date is 400 `invalid_date` with `{ "field": "date", "max": "<today>" }`; in a file, the
+line's `reason` is `invalid_date` with `max`.
+
+| Code | When |
+| --- | --- |
+| `invalid_date` | the date in the path (`{ "field": "date" }`) is not a real `YYYY-MM-DD` date, or is after today in the workspace's time zone (`{ "field": "date", "max" }`); `from` or `to` is not a real date (`{ "field", "value" }`) or is given twice (`{ "field" }`), or `to` is before `from` (`{ "field": "to", "value" }`) |
+| `invalid_price` | `closeE6` is missing, not an integer, negative or beyond the safe range |
+| `unknown_field`, `invalid_body` | a `PUT` body with another field than `closeE6`, or one that is not a JSON object |
+| `invalid_price_file` | a line of the file breaks a rule (above) |
+| `too_many_rows` | the file has more than 20,000 rows (`{ "max": 20000 }`) |
+| `invalid_locale` | `?locale=` is not a locale tag, is longer than 35 characters, or has an extension or private-use part (`{ "value" }`) |
+
+A body of another type than `text/csv` on the import answers 415. Each `PUT` or `DELETE` that
+changes a price writes one entry in the workspace's audit log, and each import that changes any
+price one summary entry. Prices are not synced from devices yet.
+
+## Exchange rates
+
+The euro reference rates the European Central Bank publishes every working day, shared by every
+workspace like the catalog. The server fetches them by itself (see apps/api/README.md,
+"Exchange rates"); the API only reads what is stored, and no request ever fetches anything.
+
+`GET /fx-rates?quote=USD&from=2026-11-01&to=2026-11-30` — any signed-in user, member of a
+workspace or not. `quote` is required; `from` and `to` are optional and both included. The rates of
+that currency, oldest first, exactly as published:
+
+```json
+{
+  "base": "EUR",
+  "quote": "USD",
+  "rates": [
+    { "date": "2026-11-19", "rateE10": 10992000000 },
+    { "date": "2026-11-20", "rateE10": 10990000000 }
+  ]
+}
+```
+
+`rateE10` is the units of `quote` for one euro × 10^10 (1.0990 dollars for one euro is
+`10990000000`), never inverted ([ADR 0019](adr/0019-market-data-prices-rates-and-returns.md)). A
+rate exists only for days the ECB publishes one: no weekends, no TARGET holidays. A currency with no
+stored rate answers an empty list.
+
+| Error | Details |
+| --- | --- |
+| 400 `invalid_currency` | `{ "currency" }`: missing, not a currency code in use (upper case), or `EUR` itself |
+| 400 `invalid_date` | `{ "field", "value" }`: `from` or `to` not a `YYYY-MM-DD` calendar date, or `to` before `from` (`field` is `to`) |
 
 ## Portfolios
 
@@ -418,6 +583,8 @@ accounts its trades are on, and one account can hold several portfolios.
   name.
 - A portfolio with trades cannot be deleted: 409 `portfolio_has_trades`; archive it instead.
 - A body with no name, or with nothing to change, is a plain 400.
+- Any other key (`archive`, `archivedAt`, `id`, `workspaceId`) is 400 `unknown_field` with
+  `{ "field" }`, on create and on `PATCH` alike, and nothing is written (#713).
 
 ## Trades
 
@@ -484,27 +651,41 @@ dividend, fee or tax; or both legs of a transfer; or a split, entered once. The 
 `{ "trades": [ … ] }`: one trade, two legs, or one row per holding the split covers, in the
 [replay order](#the-replay-order).
 
-Every request carries `type` and `tradeDate`, and optionally `occurredAt` and `memo`. A field
-that no trade request has is a plain 400 (`"invalid trade: fee is not a field of this
-request"`), so a misspelt field is never dropped silently, and so is an amount the kind of request
-does not take (`quantityE8` on a split). An amount left out is 0. One gap: a non-amount field that
-belongs to another kind of request is ignored rather than refused (`accountId`, `portfolioId`,
-`id` or `taxKind` at the top of a transfer or a split; `from` or `to` on a buy).
+Every request carries `type` and `tradeDate`, and optionally `occurredAt` and `memo`. A request
+takes only its own fields, so nothing sent is ever dropped silently (#594):
+
+- a field that no trade request has is 400 `unknown_field` with `{ "field" }` (`"fee"`, or
+  `"from.fees"` inside a transfer's leg);
+- a field of another kind of request is 400 `invalid_trade` naming it: `from` or `to` on a buy,
+  `accountId`, `portfolioId`, `id` or `taxKind` at the top of a transfer or a split, `quantityE8`
+  on a split or a dividend, `gainTaxCents` on a buy, `grossCents` on a fee. The table below lists
+  what each type takes. `null` reads as left out, so a field of another kind sent as `null` is not
+  refused. `taxKind` on anything but a tax keeps its own code,
+  `tax_kind_not_allowed_for_trade_type`;
+- a field of the wrong JSON type (a string for an amount, an id that is not a UUID, a `type` or
+  `taxKind` that is none of the listed ones, a leg that is not an object) is 400 `invalid_field`
+  with `{ "field" }`;
+- a body that is not a JSON object is 400 `invalid_body`;
+- a required field left out (or `null`) is 400 `invalid_trade` naming it (#600).
+
+An optional amount left out is 0.
 
 **Buy, sell, dividend, fee, tax.** `accountId` (a brokerage account) and `portfolioId` are
-required; `id` is an optional client-generated UUID. Then, by type:
+required; `id` is an optional client-generated UUID; `occurredAt`, `memo` and `taxKind` are taken
+by every one. Then, by type:
 
 | Type | Required | Optional | Rules |
 | --- | --- | --- | --- |
-| `buy` | `instrumentId`, `quantityE8` > 0 | `priceE6` (default 0), `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
-| `sell` | as a buy | as a buy, plus `gainTaxCents` | the portfolio must hold the units on that date |
-| `dividend` (a coupon too) | `instrumentId` | `grossCents` (default 0), `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
+| `buy` | `instrumentId`, `quantityE8` > 0, `priceE6` > 0 | `grossCents`, `feesCents`, `transactionTaxCents`, `accruedInterestCents`, `withholdingDomesticCents` | `grossCents` defaults to quantity × price × price factor, rounded once half away from zero; send the broker's figure when it differs. Accrued interest only on a `bond` or `government_bond`; a domestic withholding only with accrued interest, and not above it |
+| `sell` | `instrumentId`, `quantityE8` > 0, `priceE6` ≥ 0 | as a buy, plus `gainTaxCents` | the portfolio must hold the units on that date. A price of 0 closes a worthless position: the gross is 0 and the whole cost removed is a realized loss |
+| `dividend` (a coupon too) | `instrumentId`, `grossCents` > 0 | `feesCents`, `withholdingForeignCents`, `withholdingDomesticCents` | the two withholdings together not above the gross |
 | `fee` | `feesCents` > 0 | `instrumentId` | without an instrument, a fee on the whole account (custody) |
 | `tax` | `taxKind`, `grossCents` > 0 | `instrumentId` | a `gain_tax_adjustment`'s `grossCents` is signed and not 0: positive is a refund, negative extra tax |
 
-A buy or a sale without `priceE6`, and a dividend without `grossCents`, are accepted today: the
-missing amount is 0, so a buy or a sale at a price of 0 and a dividend of 0 are recorded as sent.
-Requiring them is tracked in #600.
+A buy at a price of 0 is refused (`invalid_trade`, `field: "priceE6"`), and so is a dividend of 0
+(`field: "grossCents"`). Shares received for free are a transfer in from outside the app at their
+tax cost; bonus shares (one free share for every ten held) are a split of 10:11
+([domain guide](domain-guide.md#what-each-trade-needs)).
 
 **Transfer of securities.** Units move between two portfolios of one account, between two
 accounts, or into or out of the app. No `accountId` or `portfolioId` at the top: each leg carries
@@ -551,24 +732,37 @@ first.
 
 Nothing is written until every check has passed:
 
-1. the body's shape (plain 400) and the length of `memo`;
-2. the instrument exists (`unknown_instrument`);
-3. the rows the request stands for are built: a transfer's legs, or a split's rows for the
+1. the body's shape: `invalid_body`, `unknown_field`, a field of another kind of request
+   (`invalid_trade`), a wrong JSON type (`invalid_field`), the length of `memo`
+   (`text_too_long`);
+2. the fields the type requires (`invalid_trade` naming the first one missing);
+3. the quantity: a safe integer (`invalid_quantity`) above 0 (`invalid_trade` with
+   `field: "quantity"` on a buy or a sale, `"quantityE8"` on a transfer);
+4. the price of a buy or a sale: a safe integer not below 0 (`invalid_price`), and above 0 on a
+   buy (`invalid_trade`, `field: "priceE6"`); a dividend's gross not 0 and a split's ratio two
+   positive integers (`invalid_trade` naming the field);
+5. the instrument exists (`unknown_instrument`), and the gross of a buy or a sale sent without
+   one is computed from quantity × price;
+6. the rows the request stands for are built: a transfer's legs, or a split's rows for the
    holdings on its date (`split_without_holdings`); a client-generated id is not taken (409
    `id_taken`);
-4. each account exists in the workspace and is a brokerage account, the instrument is in its
+7. each account exists in the workspace and is a brokerage account, the instrument is in its
    currency, each portfolio exists and, unless the row is a split row, a transfer's outgoing leg
    or a row already stored there, is not archived (`portfolio_archived`);
-5. the trade's own rules (amounts not negative, a tax kind only on a tax, accrued interest only
-   on a bond, withholdings not above what they are withheld from);
-6. `occurredAt` falls on `tradeDate` in the workspace's time zone;
-7. in an `IT` workspace, the account's tax regime on the trade date
-   ([domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account));
-8. the workspace's whole history of the instrument, every account and portfolio, is replayed with
-   the new rows: no portfolio may hold a negative quantity at any date, every split must cover
-   every holding, a transfer's legs must match.
+8. the trade's amounts: signs (`negative_amount_not_allowed`) and caps (`amount_too_large`), a tax
+   kind only on a tax, accrued interest only on a bond, withholdings not above what they are
+   withheld from;
+9. `occurredAt` falls on `tradeDate` in the workspace's time zone;
+10. in an `IT` workspace, the account's tax regime on the trade date
+    ([domain guide](domain-guide.md#tax-regimes-of-a-brokerage-account));
+11. the workspace's whole history of the instrument, every account and portfolio, is replayed with
+    the new rows: no portfolio may hold a negative quantity at any date, every split must cover
+    every holding, a transfer's legs must match, no position's quantity may leave the safe range.
 
-Step 8 runs under a lock on the workspace's history of that instrument, so two concurrent
+So the first error names the field actually wrong (#662): a buy with a negative quantity is
+`invalid_trade` with `field: "quantity"`, not a refusal of the negative gross computed from it.
+
+Step 11 runs under a lock on the workspace's history of that instrument, so two concurrent
 requests can never each pass on their own and together oversell.
 
 ### Validation codes
@@ -577,6 +771,9 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 
 | Code | Details | When |
 | --- | --- | --- |
+| `invalid_body` | `{}` | the body is not a JSON object (an array, a string, a number, `null`); on an edit, also a body that changes nothing |
+| `unknown_field` | `{ "field" }` | a field no trade request has, or `id` on an edit; `"from.fees"` inside a leg |
+| `invalid_field` | `{ "field" }` | a field of the wrong JSON type or value: an amount that is not a number, an id or a filter that is not a UUID, a `type` or `taxKind` that is none of the listed ones, a leg that is not an object |
 | `unknown_account` | `{ "accountId" }` | not an account of this workspace |
 | `account_not_brokerage` | `{ "accountId", "accountType" }` | trades go on brokerage accounts only |
 | `unknown_portfolio` | `{ "portfolioId" }` | not a portfolio of this workspace |
@@ -587,7 +784,7 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `tax_kind_not_allowed_for_trade_type` | `{ "type", "taxKind" }` | `taxKind` on anything but a tax |
 | `accrued_interest_not_allowed` | `{ "instrumentType" }` (`""` without an instrument) | accrued interest on an instrument that is not a bond |
 | `withholding_exceeds_gross` | `{ "field", "withheld", "gross" }` | a dividend's withholdings above its gross (`field: "withholding"`), or a bond trade's domestic withholding above its accrued interest (`field: "withholdingDomesticCents"`) |
-| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a fee or a tax of 0, a field the type does not use, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
+| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a required field missing, a field of another kind of request or one the type does not use, a quantity of 0 or less, a buy's price of 0, a dividend of 0, a fee or a tax of 0, a split ratio that is not two positive integers, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
 | `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet; a new trade only, an edit of a trade there is not checked |
 | `tax_kind_not_allowed_in_regime` | `{ "regime", "field" }`, plus `taxKind` for a tax | gain tax, an adjustment or a managed result tax the regime on that date does not allow |
 | `domestic_withholding_requires_agent` | `{ "field": "withholdingDomesticCents" }` | a domestic withholding on a bond trade's accrued interest at a broker that is not an Italian withholding agent |
@@ -598,13 +795,15 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `split_leaves_no_quantity` | `{ "accountId", "instrumentId", "date" }` | the split rounds a whole position with a cost down to zero units |
 | `invalid_date` | `{ "value" }` | `tradeDate` is not a real date |
 | `invalid_amount`, `invalid_quantity`, `invalid_price` | `{ "label", "value" }` | not a safe integer (a decimal number, or too large); a negative price |
+| `invalid_quantity` | `{ "label": "positionQuantity", "value", "tradeId", "accountId", "portfolioId" }` | a position's quantity, a portfolio's or an account's, would leave the safe range (about 90 million units) at `tradeId`: the buy, the split row of that holding or the incoming leg of a transfer that pushes it over (#662). `accountId` and `portfolioId` name the position, since a request that adds several rows (a split's rows, a transfer's legs) names each of them `null` |
 | `amount_too_large` | `{ "label", "max", "value" }` | an amount, a cost or the cash leg they add up to above 10^12 minor units (€10,000,000,000.00; ADR 0002, #651); `label` is the field, or `cash`. An edit checks the whole trade, so a memo-only edit of a trade stored above the cap before #651 is refused too |
 | 422 `amount_total_overflow` | `{ "label", "tradeId" }` | a running total of a position (`label`: `costBasisCents`, or the total, such as `standaloneFeesCents`) would leave the safe range of minor units while replaying `tradeId`; only trades stored before the cap can do it (ADR 0002, #651). The positions of the account or portfolio answer it too |
 | 409 `id_taken` | `{ "tradeId" }` | the client-generated id is already used, in this workspace or any other |
 
 `invalid_trade`'s `details.field` is usually a field of the request (`feesCents`, `grossCents`,
 `costBasisCents`, `occurredAt`, …), but some checks report the core's own name instead:
-`quantity` for `quantityE8`, `price` for `priceE6`, `date` for `tradeDate`, and `currency`,
+`quantity` for a buy's or a sale's `quantityE8` (a transfer's is `quantityE8`), `price` for a
+`priceE6` on a trade that takes none, `date` for `tradeDate`, and `currency`,
 `priceFactor` and `transferTradeId`, which are not request fields at all (the account's or the
 instrument's currency and price factor, the link between a transfer's legs). A client that shows
 the field to the user maps both kinds of name.
@@ -612,6 +811,14 @@ the field to the user maps both kinds of name.
 The `insufficient_quantity` details name the trade where the holding would go negative, which is
 not always the one being recorded: a backdated sale, or an edit or deletion of an earlier buy,
 makes a *later* trade oversell, and that later trade is the one named.
+
+**`details.tradeId` always names a stored trade, or is `null`** (#662). It is `null` when the trade
+at fault is one the request itself adds: the trade being recorded (with or without a
+client-generated `id`), either leg of a new transfer, a split's new row. The id the server would
+have given it names no trade, so it is never shown. An edit names the trade being edited by its own
+id, since it is stored; a split edit that adds a row for a new holding names that row `null`.
+The one exception is 409 `id_taken`, whose `details.tradeId` echoes the client id the request
+itself sent, so the client can find the trade an earlier attempt recorded.
 
 ```json
 {
@@ -626,7 +833,7 @@ makes a *later* trade oversell, and that later trade is the one named.
 ### Listing trades
 
 `GET /workspaces/:workspaceId/trades` — any member. Optional filters `?portfolioId=`,
-`?accountId=`, `?instrumentId=` (UUIDs, else a plain 400), combined with AND. The answer is
+`?accountId=`, `?instrumentId=` (UUIDs, else 400 `invalid_field` naming the filter), combined with AND. The answer is
 `{ "trades": [ … ] }` in the replay order.
 
 ### The replay order
@@ -637,9 +844,12 @@ result to the cent (ADR 0011):
 1. `tradeDate`;
 2. on the same date, split rows first: a split applies at the start of its ex-date, so a sale of
    the new units that day comes after it;
-3. `occurredAt`, to the millisecond; a trade with no time counts as midnight UTC of its date
-   (in Europe/Rome, 01:00 or 02:00 local time, so a trade given an earlier local time sorts
-   before it);
+3. `occurredAt`, to the millisecond; a trade with no time counts as the start of its date in the
+   workspace's time zone (local midnight; the moment the clocks jump where a daylight saving
+   change skips midnight; the first midnight where the clocks go back across it and midnight
+   comes twice), so it comes before every timed trade of that date (#596). Some older trades
+   recorded without a time carry the time they were sorted at until now, so their order and every
+   amount stay as shown (migration 0038);
 4. `createdAt`, when the trade was recorded;
 5. `id`.
 
@@ -697,7 +907,7 @@ trade never changes: delete it and record another.
 
 | The trade is | The edit may carry |
 | --- | --- |
-| a buy, sell, dividend, fee or tax | any field of its create request but `id` |
+| a buy, sell, dividend, fee or tax | any field its type's create request takes but `id` (the table in [Recording a trade](#recording-a-trade)) |
 | a transfer leg | `instrumentId`, `tradeDate`, `occurredAt`, `memo`, `quantityE8` (the units moved, positive), and `from` / `to` with any of `{ accountId, portfolioId, feesCents, costBasisCents }` for the legs it has |
 | a split row | `tradeDate`, `occurredAt`, `memo`, `splitFrom`, `splitTo` |
 
@@ -708,11 +918,16 @@ trade never changes: delete it and record another.
 - **The gross of a buy or a sell.** An edit that changes `quantityE8`, `priceE6` or `instrumentId`
   without `grossCents` computes the gross again from them, as a create does: send the broker's
   figure again with the edit to keep it.
+- **The price and the gross only when they change.** The quantity, the price and a dividend's
+  gross are checked again (steps 3 and 4) only when the edit changes the quantity, the price or
+  the gross. A buy recorded at a price of 0, or a dividend of 0, before #600 refused them keeps
+  taking every other edit (its memo, its date); an edit that changes one of those three must give
+  it a price above 0, or a gross.
 - **The history is checked again.** The edited rows go through every check of a create, and the
   whole history of every instrument the edit touches (the old one and the new one) is replayed;
   an edit that would make any portfolio oversell, at any date, is refused.
 - **The tax regime only when something it reads changes.** In an `IT` workspace an edited row is
-  checked against the regime again (step 7) only when its date, account, instrument, tax kind, gain
+  checked against the regime again (step 10) only when its date, account, instrument, tax kind, gain
   tax, transaction tax, either withholding or, on a tax, its amount changes. An edit of the memo,
   the time, the quantity, the price or the portfolio alone skips that check, so a trade recorded
   before its account's regime history changed keeps taking those edits. While an account has no
@@ -732,12 +947,18 @@ trade never changes: delete it and record another.
 
 | Error | When |
 | --- | --- |
-| plain 400 `"invalid trade: nothing to change"` | `{}`, or `type` alone |
-| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it), a different `type` sent with other fields (`field: "type"`), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
+| 400 `invalid_body` | not a JSON object; or an edit that changes nothing: `{}`, only `null` legs, or the trade's own `type` alone (checked after the 409s below, #596) |
+| 400 `unknown_field`, `invalid_field` `{ "field" }` | as on create; `id` is `unknown_field`. Unlike create, a field of another kind with the wrong JSON type (`gainTaxCents: "5"` on a buy) is `invalid_field`, not `invalid_trade`: the body is read before the trade's type is known (to be made uniform in #663) |
+| 400 `invalid_trade` `{ "field" }` | a field the trade's type does not take (`field` names it: `from` on a buy, `accountId` on a transfer, `instrumentId` on a split, `grossCents` on a fee), a different `type`, alone or with other fields (`field: "type"`, #596), `instrumentId: null` on a trade that needs one, `from` or `to` on a transfer without that leg |
 | 400, the create codes | the edited trade breaks a rule, or the history no longer replays |
 | 404 | no trade of this workspace has this id |
+| 409 `account_closed` | a row of the group is on a closed account, or the edit moves one to a closed account |
 | 409 `reconciled` | a cash leg of the group is reconciled |
 | 409 `concurrent_change` | another request moved the trade to another instrument meanwhile; nothing was written, retry |
+
+The closed account and the reconciled cash leg are checked before anything else, `type` included:
+an edit sending only `type`, the trade's own or another, answers 409 `account_closed` or
+`reconciled` on such a trade, never `invalid_body` or `invalid_trade`.
 
 ### Deleting a trade
 
@@ -765,15 +986,23 @@ second trade. Split rows always get ids from the server.
 | `GET /workspaces/:workspaceId/portfolios/:portfolioId/positions` | any member | the portfolio's positions, an archived portfolio included |
 | `GET /workspaces/:workspaceId/accounts/:accountId/positions` | any member | the account's positions, across its portfolios |
 
-Positions are worked out from the trades on every request, never stored. Both answer:
+Positions are worked out from the trades on every request, never stored. They are **as of a
+date**, by default today in the workspace's time zone, the same day every balance is as of
+(#702, #719): only trades dated on or before it are replayed. Trades dated after today are left
+out of positions and cost basis, and are still listed by `GET …/trades`, so a sale recorded
+ahead, dated next year, leaves today's quantity, cost and totals as they are, as the brokerage
+account's cash leaves out its proceeds until that day. `?asOf=YYYY-MM-DD` asks for another date, past or future;
+a malformed one is 400 `invalid_date`. Both answer:
 
 ```json
-{ "positions": [ { … }, … ], "summaries": [ { … }, … ] }
+{ "asOf": "2026-11-21", "positions": [ { … }, … ], "summaries": [ { … }, … ] }
 ```
 
-- **`positions`**: one row per account and instrument the portfolio (or account) has ever had a
-  trade of, sorted by account then instrument id. A position sold out stays, with quantity 0, for
-  its totals.
+- **`asOf`**: the date the positions are as of.
+- **`positions`**: one row per account and instrument the portfolio (or account) has a trade of
+  dated on or before `asOf`, sorted by account then instrument id. A position sold out stays,
+  with quantity 0, for its totals. Trades dated after `asOf` are still listed by
+  `GET …/trades`.
 - **`summaries`**: one row per currency, the totals of every position plus the fees and taxes
   recorded without an instrument. Amounts in different currencies are never added together.
 
@@ -781,7 +1010,7 @@ A position row:
 
 | Field | Meaning |
 | --- | --- |
-| `accountId`, `instrument` | the account, and the instrument's catalog row |
+| `accountId`, `instrument` | the account, and the instrument's row (`workspaceId` set for a private instrument) |
 | `currency` | the account's currency; every amount in the row is in it |
 | `quantityE8` | units held: the portfolio's own, or the account's |
 | `costBasisCents` | the cost of the units held. For a portfolio, its share of the account's cost |

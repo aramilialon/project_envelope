@@ -58,8 +58,10 @@ export async function sendIfTextTooLong(reply: FastifyReply, checks: readonly Te
  *   a number, `null`), and `unknown_field` with `details.field` for the first key that is not in
  *   `allowed`: a misspelt field, or one the request cannot change (an id, the account). Either is
  *   a 400 through `sendIfValidationError` or the global error handler.
+ * @param where what `details.field` starts with, for an object nested in the body: `"from."` names
+ *   an unknown key `fees` of a trade's `from` leg `from.fees` (#594).
  */
-export function strictBody(body: unknown, allowed: ReadonlySet<string>): Record<string, unknown> {
+export function strictBody(body: unknown, allowed: ReadonlySet<string>, where = ""): Record<string, unknown> {
   if (body === undefined) {
     return {};
   }
@@ -69,9 +71,17 @@ export function strictBody(body: unknown, allowed: ReadonlySet<string>): Record<
   const fields = body as Record<string, unknown>;
   const unknown = Object.keys(fields).find((key) => !allowed.has(key));
   if (unknown !== undefined) {
-    throw new ValidationError("unknown_field", `"${unknown}" is not a field of this request`, { field: unknown });
+    throw new ValidationError("unknown_field", `"${where}${unknown}" is not a field of this request`, { field: `${where}${unknown}` });
   }
   return fields;
+}
+
+/**
+ * A field of the right name but the wrong JSON type or value (#655): a 400 `invalid_field` with
+ * `details.field` naming it, through `sendIfValidationError` or the global error handler.
+ */
+export function invalidField(field: string): ValidationError {
+  return new ValidationError("invalid_field", `${field} has the wrong type or value`, { field });
 }
 
 /** What the global error handler answers: a status and a body that never carries an error's own message. */
@@ -132,6 +142,22 @@ export function isAccountClosedViolation(error: unknown): boolean {
   }
   const { constraint } = error as { constraint?: unknown };
   return constraint === ACCOUNT_CLOSED_CONSTRAINT;
+}
+
+/**
+ * The constraint migrations 0034 and 0035's triggers name when a price or a trade points at an
+ * instrument the caller cannot see: an unknown id, or another workspace's private instrument
+ * (#505). A foreign key check ignores Row-Level Security, so the trigger is what refuses it.
+ */
+export const INSTRUMENT_NOT_FOUND_CONSTRAINT = "instrument_not_found";
+
+/** Whether `error` is PostgreSQL refusing a row whose instrument the caller cannot see. */
+export function isInstrumentNotFoundViolation(error: unknown): boolean {
+  if (sqlStateOf(error) !== CHECK_VIOLATION) {
+    return false;
+  }
+  const { constraint } = error as { constraint?: unknown };
+  return constraint === INSTRUMENT_NOT_FOUND_CONSTRAINT;
 }
 
 /** Fastify's own client errors keep their status; their body names the status, not Fastify's message. */

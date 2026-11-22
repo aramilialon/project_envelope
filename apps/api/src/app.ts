@@ -16,14 +16,16 @@ import { registerBudgetRoutes } from "./routes/budget.ts";
 import { registerCategoriesRoutes } from "./routes/categories.ts";
 import { registerDaysOfBufferRoutes } from "./routes/days-of-buffer.ts";
 import { registerDeviceTokensRoutes } from "./routes/device-tokens.ts";
+import { registerFxRatesRoutes } from "./routes/fx-rates.ts";
 import { registerGoalsRoutes } from "./routes/goals.ts";
 import { registerHealthRoute } from "./routes/health.ts";
 import { registerImportRoutes } from "./routes/import.ts";
-import { registerInstrumentsRoutes } from "./routes/instruments.ts";
+import { registerInstrumentsRoutes, registerWorkspaceInstrumentsRoutes } from "./routes/instruments.ts";
 import { registerMeRoute } from "./routes/me.ts";
 import { registerMyWorkspacesRoute } from "./routes/my-workspaces.ts";
 import { registerPortfoliosRoutes } from "./routes/portfolios.ts";
 import { registerPositionsRoutes } from "./routes/positions.ts";
+import { registerPricesRoutes } from "./routes/prices.ts";
 import { registerQuickAssignRoutes } from "./routes/quick-assign.ts";
 import { registerReconciliationRoutes } from "./routes/reconciliation.ts";
 import { registerScheduledTransactionsRoutes } from "./routes/scheduled-transactions.ts";
@@ -107,12 +109,15 @@ export function buildApp(config: Config, queue?: QueueDriver, vapidPublicKey?: s
   if (vapidPublicKey) {
     registerDeviceTokensRoutes(fastify, pool, vapidPublicKey);
   }
+  registerFxRatesRoutes(fastify, pool);
   registerGoalsRoutes(fastify, pool);
   registerImportRoutes(fastify, pool);
   registerInstrumentsRoutes(fastify, pool);
+  registerWorkspaceInstrumentsRoutes(fastify, pool);
   registerMyWorkspacesRoute(fastify, pool);
   registerPortfoliosRoutes(fastify, pool);
   registerPositionsRoutes(fastify, pool);
+  registerPricesRoutes(fastify, pool);
   registerQuickAssignRoutes(fastify, pool);
   registerReconciliationRoutes(fastify, pool);
   registerScheduledTransactionsRoutes(fastify, pool, queue);

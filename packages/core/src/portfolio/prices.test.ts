@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
-import { priceSeriesAt, resolvePrice, type PriceCandidate, type PriceOrigin } from "./prices.ts";
-import { toPrice } from "./quantity.ts";
+import { externalFlows } from "./external-flows.ts";
+import { computePositions, valuePosition, type PositionTrade } from "./positions.ts";
+import { priceSeriesAt, resolvePrice, type PriceCandidate, type PriceOrigin, type ResolvedPrice } from "./prices.ts";
+import { ONE_UNIT, PRICE_FACTOR_ONE, toPrice, type Quantity } from "./quantity.ts";
+import { moneyWeightedReturn, timeWeightedReturn } from "./returns.ts";
 
 function candidate(priceDate: string, closeE6: number, origin: PriceOrigin): PriceCandidate {
   return { priceDate, closeE6: toPrice(closeE6), origin };
@@ -127,5 +130,80 @@ describe("priceSeriesAt", () => {
 
   it("refuses a malformed date", () => {
     assert.throws(() => priceSeriesAt(candidates, ["2026-01-31", "2026-13-01"]), (error) => isValidationError(error, "invalid_date"));
+  });
+});
+
+describe("a price has no lower date limit (#83)", () => {
+  // One buy of 10 units at €100 on 10 March 2025, valued at three own prices; the figures must
+  // not change when an old price (1850) or one dated before the buy is added.
+  const buy: PositionTrade = {
+    id: "buy",
+    accountId: "account",
+    portfolioId: "portfolio",
+    instrumentId: "fund",
+    type: "buy",
+    date: "2025-03-10",
+    occurredAt: "2025-03-10T10:00:00Z",
+    createdAt: "2025-03-10T10:00:00Z",
+    currency: "EUR",
+    quantity: (10 * ONE_UNIT) as Quantity,
+    price: toPrice(100_000000),
+    priceFactor: PRICE_FACTOR_ONE,
+    grossCents: 100_000,
+    feesCents: 0,
+    transactionTaxCents: 0,
+    accruedInterestCents: 0,
+    withholdingForeignCents: 0,
+    withholdingDomesticCents: 0,
+    gainTaxCents: 0,
+    taxKind: null,
+    costBasisCents: null,
+    splitFrom: null,
+    splitTo: null,
+    transferTradeId: null,
+  };
+  const base = [
+    candidate("2025-03-10", 100_000000, "own"),
+    candidate("2025-03-31", 105_000000, "own"),
+    candidate("2025-04-30", 110_000000, "own"),
+  ];
+  const start = "2025-02-28";
+  const dates = ["2025-03-10", "2025-03-31", "2025-04-30"];
+
+  /** The position's value on each date, and the time- and money-weighted returns from `start` to the last date. */
+  function figures(candidates: readonly PriceCandidate[]) {
+    const valueOn = (date: string, price: ResolvedPrice | null): number | null => {
+      const position = computePositions([buy], { asOf: date }).accounts[0];
+      if (position === undefined || position.quantity === 0) return 0;
+      return price === null ? null : valuePosition(position, price.closeE6).valueCents;
+    };
+    const [startPrice = null] = priceSeriesAt(candidates, [start]);
+    const startValue = { date: start, valueCents: valueOn(start, startPrice) };
+    const valuations = priceSeriesAt(candidates, dates).map((price, index) => ({ date: dates[index]!, valueCents: valueOn(dates[index]!, price) }));
+    const flows = externalFlows([buy], () => null);
+    return {
+      values: valuations.map((valuation) => valuation.valueCents),
+      twr: timeWeightedReturn({ start: startValue, valuations, flows }),
+      mwr: moneyWeightedReturn({ start: startValue, end: valuations[valuations.length - 1]!, flows }),
+    };
+  }
+
+  it("values the position and computes both returns from the prices around the buy", () => {
+    const expected = figures(base);
+    assert.deepEqual(expected.values, [100_000, 105_000, 110_000]);
+    assert.equal(expected.twr.status, "known");
+    assert.equal(expected.mwr.status, "known");
+  });
+
+  it("a price dated 1850 is a valid price, and changes neither the value nor either return", () => {
+    const old = candidate("1850-01-01", 1_000000, "own");
+    assert.deepEqual(resolvePrice([old, ...base], "1900-01-01"), { closeE6: 1_000000, priceDate: "1850-01-01", origin: "own" });
+    assert.deepEqual(figures([old, ...base]), figures(base));
+  });
+
+  it("a price dated before the first buy changes neither the value nor either return", () => {
+    const before = candidate("2025-01-15", 50_000000, "own");
+    assert.deepEqual(figures([before, ...base]), figures(base));
+    assert.deepEqual(figures([candidate("1850-01-01", 1_000000, "shared"), before, ...base]), figures(base));
   });
 });

@@ -1,6 +1,7 @@
 // Entry point of @envelope/core: everything the apps are allowed to use.
-export type { ValidationErrorCode } from "./errors.ts";
+export type { ValidationErrorCode, ValidationErrorDetail } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
+export { isAssignedCountryCode, ISO_3166_1_ALPHA2_CODES } from "./country.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
   assertAmount,
@@ -45,6 +46,7 @@ export type {
   DerivedResults,
   PortfolioPosition,
   PortfolioSummary,
+  PositionOptions,
   Positions,
   PositionSummary,
   PositionTotals,
@@ -64,8 +66,17 @@ export {
 } from "./portfolio/positions.ts";
 export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
-export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
-export { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
+export type { PriceCsvRow, PriceFileProblem } from "./portfolio/price-csv.ts";
+export { assertLocale, assertPriceDate, MAX_LOCALE_LENGTH, MAX_PRICE_CSV_ROWS, parsePriceCsv } from "./portfolio/price-csv.ts";
+export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeFigures, TradeRegimeContext } from "./portfolio/trades.ts";
+export {
+  checkAccountTradesAgainstRegime,
+  checkRegimeChange,
+  checkTradeEntry,
+  checkTradeFigures,
+  checkTradeRegime,
+  tradeCashCents,
+} from "./portfolio/trades.ts";
 export type {
   ExternalFlow,
   MoneyWeightedInput,
@@ -80,9 +91,11 @@ export type { ExternalFlowKind, PriceLookup, TradeFlow } from "./portfolio/exter
 export { externalFlows } from "./portfolio/external-flows.ts";
 export type { AmountInCurrency, Conversion, FxRate, FxRateTable, RateOnDate } from "./market-data/fx.ts";
 export { convertAmount, convertSum, FX_BASE_CURRENCY, FX_RATE_DECIMALS, fxRateTable, rateOn, valueIn } from "./market-data/fx.ts";
+export type { EcbRatesFileProblem, EcbReferenceRates } from "./market-data/ecb.ts";
+export { ECB_RATES_FILE_MAX_CHARS, parseEcbReferenceRates } from "./market-data/ecb.ts";
 export { assertTextLength, MAX_FREE_TEXT_LENGTH, MAX_NAME_LENGTH, textLength } from "./text.ts";
 export type { LocalDate, Month, RecurUnit } from "./month.ts";
-export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth } from "./month.ts";
+export { advanceDate, assertDate, assertMonth, compareMonths, daysBetween, monthOf, monthRange, shiftMonth, startOfLocalDay } from "./month.ts";
 export type {
   Activity,
   Assignment,
@@ -96,6 +109,8 @@ export type {
   ScheduledItem,
 } from "./budget/budget-month.ts";
 export { computeBudgetMonth, incomeReceived } from "./budget/budget-month.ts";
+export type { CardTransaction } from "./budget/card-balance.ts";
+export { owedAsOf } from "./budget/card-balance.ts";
 export type { AggregatedTransactions, BudgetAccount, BudgetTransaction, Split } from "./budget/transactions.ts";
 export { aggregateTransactions, UNASSIGNED } from "./budget/transactions.ts";
 export type {
@@ -152,7 +167,14 @@ export type { BudgetProblem, BudgetProblemCategory, BudgetProblemInput, BudgetPr
 export { computeBudgetProblems } from "./presentation/budgetProblems.ts";
 export type { AccountsPanelGroups, ExcludedAmount, PanelAccount } from "./presentation/accountsPanel.ts";
 export { groupAccountsForPanel } from "./presentation/accountsPanel.ts";
-export type { InstrumentInput, InstrumentSearch, InstrumentTextField, InstrumentType, NormalizedInstrument } from "./portfolio/instrument.ts";
+export type {
+  InstrumentInput,
+  InstrumentSearch,
+  InstrumentTextField,
+  InstrumentType,
+  NormalizedInstrument,
+  PrivateInstrumentInput,
+} from "./portfolio/instrument.ts";
 export {
   assertIsin,
   INSTRUMENT_FIELD_MAX_LENGTH,
@@ -162,6 +184,7 @@ export {
   isinCheckDigit,
   isValidIsin,
   normalizeInstrument,
+  normalizePrivateInstrument,
   parseInstrumentSearch,
 } from "./portfolio/instrument.ts";
 export type {

@@ -12,15 +12,38 @@ import {
 import { addTaxRegime, listTaxRegimes, replaceTaxRegimes, setWithholdingAgent } from "../accounts/tax-regimes.ts";
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
+import { sendIfTextTooLong, sendIfValidationError, strictBody } from "../errors.ts";
 import { isUuid } from "../ids.ts";
+
+/**
+ * The fields each write to an account takes (#713). Every body is strict: a key that is not one of
+ * the request's own fields (a misspelt `onbudget`, an `id`, the `currency` an account keeps once
+ * created) is a 400 `unknown_field` naming it, before anything else is checked or written.
+ */
+const CREATE_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "type",
+  "currency",
+  "onBudget",
+  "startingBalanceCents",
+  "taxRegime",
+  "taxRegimeValidFrom",
+  "domesticWithholdingAgent",
+]);
+const PATCH_KEYS: ReadonlySet<string> = new Set(["domesticWithholdingAgent"]);
+/** Closing an account takes no field: no body, or `{}`. */
+const CLOSE_KEYS: ReadonlySet<string> = new Set();
+const TAX_REGIME_KEYS: ReadonlySet<string> = new Set(["regime", "validFrom"]);
+const TAX_REGIME_HISTORY_KEYS: ReadonlySet<string> = new Set(["taxRegimes"]);
+/** One entry of `PUT .../tax-regimes`' `taxRegimes`, named `taxRegimes[0].field` when refused. */
+const TAX_REGIME_ENTRY_KEYS: ReadonlySet<string> = new Set(["validFrom", "regime"]);
 
 export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = withWriteAccess(preHandler);
 
   app.post("/workspaces/:workspaceId/accounts", { preHandler: writePreHandler }, async (request, reply) => {
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const body = strictBody(request.body, CREATE_KEYS);
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const type = body.type;
     const currency = typeof body.currency === "string" ? body.currency : "";
@@ -79,6 +102,7 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
   });
 
   app.patch("/workspaces/:workspaceId/accounts/:accountId/close", { preHandler: writePreHandler }, async (request, reply) => {
+    strictBody(request.body, CLOSE_KEYS);
     const { accountId } = request.params as { accountId: string };
     const result = await closeAccount(request.db!, request.workspace!.id, accountId);
     if (result.status === "not_found") {
@@ -101,7 +125,7 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     if (!accountId) {
       return;
     }
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const body = strictBody(request.body, PATCH_KEYS);
     if (typeof body.domesticWithholdingAgent !== "boolean") {
       await reply.code(400).send({ error: "invalid account change: domesticWithholdingAgent (a boolean) is required" });
       return;
@@ -141,7 +165,7 @@ export function registerAccountsRoutes(app: FastifyInstance, pool: DbPool): void
     if (!accountId) {
       return;
     }
-    const body = (request.body ?? {}) as Record<string, unknown>;
+    const body = strictBody(request.body, TAX_REGIME_KEYS);
     if (!isTaxRegime(body.regime) || (body.validFrom !== undefined && typeof body.validFrom !== "string")) {
       await reply.code(400).send({
         error: "invalid tax regime: regime (self_declared, administered or managed) is required, validFrom a YYYY-MM-DD date when given",
@@ -210,14 +234,23 @@ async function accountIdOr404(params: unknown, reply: FastifyReply): Promise<str
   return undefined;
 }
 
+/**
+ * `PUT .../tax-regimes`' history, or undefined for one of the wrong shape.
+ *
+ * @throws ValidationError `invalid_body` or `unknown_field` (#713) for a key the body, or one of its
+ *   entries (`taxRegimes[0].regim`), does not have.
+ */
 function parseHistory(body: unknown): TaxRegimeEntry[] | undefined {
-  const list = (body as { taxRegimes?: unknown } | null)?.taxRegimes;
+  const list = strictBody(body, TAX_REGIME_HISTORY_KEYS).taxRegimes;
   if (!Array.isArray(list)) {
     return undefined;
   }
   const history: TaxRegimeEntry[] = [];
-  for (const item of list) {
-    const { validFrom, regime } = (item ?? {}) as { validFrom?: unknown; regime?: unknown };
+  for (const [index, item] of list.entries()) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      return undefined;
+    }
+    const { validFrom, regime } = strictBody(item, TAX_REGIME_ENTRY_KEYS, `taxRegimes[${index}].`);
     if (typeof validFrom !== "string" || !isTaxRegime(regime)) {
       return undefined;
     }

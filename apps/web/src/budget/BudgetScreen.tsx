@@ -453,6 +453,7 @@ function BudgetMonthScreen({ workspaceId, currentWorkspace, initialMonth }: Budg
       <PaymentCategoryDetail
         categoryName={category.name}
         available={category.available}
+        cashOverspending={category.cashOverspending}
         uncovered={category.uncovered}
         owed={category.owed}
         {...(category.hasStartingBalance !== undefined ? { hasStartingBalance: category.hasStartingBalance } : {})}

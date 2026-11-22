@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { assertKnownCurrency, TAX_REGIME_COUNTRY, ValidationError } from "@envelope/core";
+import { assertKnownCurrency, isAssignedCountryCode, TAX_REGIME_COUNTRY, ValidationError } from "@envelope/core";
 
 import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
@@ -61,11 +61,13 @@ export async function createWorkspace(pool: DbPool, userId: string, input: Creat
   return { id, name: input.name, role: "owner", baseCurrency: input.baseCurrency, timeZone: input.timeZone, taxCountry: null };
 }
 
-const REGION_NAMES = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
-
-/** An ISO 3166-1 alpha-2 code `Intl` knows as a region, the same way the currency and time zone are checked. */
+/**
+ * An officially assigned ISO 3166-1 alpha-2 code (#711). Not `Intl`'s regions: they include `ZZ`,
+ * `EU`, `UN` and other codes that are no country. Only writes are checked: a workspace that
+ * already holds such a code keeps reading it back.
+ */
 function assertValidTaxCountry(taxCountry: string): void {
-  if (!/^[A-Z]{2}$/.test(taxCountry) || REGION_NAMES.of(taxCountry) === undefined) {
+  if (!isAssignedCountryCode(taxCountry)) {
     throw new ValidationError("invalid_tax_country", `"${taxCountry}" is not an ISO 3166-1 alpha-2 country code`, {
       taxCountry,
     });
@@ -96,7 +98,7 @@ export interface TaxCountryChange extends WorkspaceSettings {
  * regime: each takes no new trade until it has one, while the trades it already has stay
  * editable in every field the regime rules do not read.
  *
- * @throws ValidationError "invalid_tax_country" for a code that is not a known ISO 3166-1 alpha-2 region.
+ * @throws ValidationError "invalid_tax_country" for a code that is not an assigned ISO 3166-1 alpha-2 code (#711).
  */
 export async function setWorkspaceTaxCountry(
   db: DbPool | DbClient,

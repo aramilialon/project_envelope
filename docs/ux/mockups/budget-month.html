@@ -591,8 +591,10 @@ button{cursor:pointer}
       // €500.00, €45.67 spent on it and covered by "Pharmacy and health", €300.00 paid from the
       // checking account with nothing assigned here: the card owes €245.67, available is
       // -€254.33 (cash overspending) and "to cover" is €500.00: cash overspending + uncovered,
-      // max(0, max(0, owed) - available). Its bar draws that cash overspending as a red part past
-      // the end (#726); the strip's "Owes nothing" switch shows the case with no debt left.
+      // max(0, owed - available) with owed signed (#660: a card in credit, owed < 0, may hold
+      // its payment category down to minus its credit with nothing to cover). Its bar draws that
+      // cash overspending as a red part past the end (#726); the strip's "Owes nothing" switch
+      // shows the case with no debt left.
       { id: 'tv', name: 'Travel card', payment: true, card: 'tv', carried: 0, assigned: 0, paid: -30000, cardBase: -24567, lastAssigned: 0, lastSpent: 0,
         start: { date: 'Sep 1', amount: -50000 },
         txs: [['Sep 20', 'Card payment', 'Checking', -30000], ['Sep 1', 'Starting balance', 'Travel card', -50000, 'start']] }
@@ -910,7 +912,7 @@ button{cursor:pointer}
     return '<span class="goal' + (t.need > 0 ? ' need' : '') + '"><span class="meter"><i style="width:' + t.pct + '%"></i></span>' + esc(t.text) + '</span>';
   }
   // "To cover" is always the whole amount to cover: cash overspending + uncovered,
-  // max(0, max(0, owed) - available), the uncovered debt plus what was paid beyond what was set
+  // max(0, owed - available) with owed signed (#660), the uncovered debt plus what was paid beyond what was set
   // aside (#699). The line shows whenever there is
   // any, also with no debt left at all.
   function debtLine(x) {

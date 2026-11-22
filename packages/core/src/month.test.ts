@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "./errors.ts";
-import { advanceDate, assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth } from "./month.ts";
+import { advanceDate, assertDate, assertMonth, compareMonths, monthOf, monthRange, shiftMonth, startOfLocalDay } from "./month.ts";
 
 describe("months", () => {
   it("shifts forward, across the end of the year", () => {
@@ -100,5 +100,50 @@ describe("advanceDate", () => {
 
   it("rejects an invalid date, the same as assertDate", () => {
     assert.throws(() => advanceDate("2026-02-30", 1, "month"), (error) => isValidationError(error, "invalid_date"));
+  });
+});
+
+describe("startOfLocalDay", () => {
+  it("is local midnight in Europe/Rome, in winter and in summer", () => {
+    assert.equal(startOfLocalDay("2026-01-10", "Europe/Rome"), "2026-01-09T23:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-07-10", "Europe/Rome"), "2026-07-09T22:00:00.000Z");
+  });
+
+  it("follows the daylight saving change on the day it happens, which is after midnight in Europe/Rome", () => {
+    // The clocks change at 02:00 or 03:00: midnight still has the offset of the day before.
+    assert.equal(startOfLocalDay("2026-03-29", "Europe/Rome"), "2026-03-28T23:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-03-30", "Europe/Rome"), "2026-03-29T22:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-10-25", "Europe/Rome"), "2026-10-24T22:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-10-26", "Europe/Rome"), "2026-10-25T23:00:00.000Z");
+  });
+
+  it("is midnight UTC in UTC, and moves the right way far east and far west", () => {
+    assert.equal(startOfLocalDay("2026-01-10", "UTC"), "2026-01-10T00:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-01-10", "Pacific/Kiritimati"), "2026-01-09T10:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-01-10", "Pacific/Pago_Pago"), "2026-01-10T11:00:00.000Z");
+  });
+
+  it("starts the day when the clocks jump where midnight does not exist, as PostgreSQL does", () => {
+    // America/Santiago and America/Havana move from 00:00 straight to 01:00.
+    assert.equal(startOfLocalDay("2026-09-06", "America/Santiago"), "2026-09-06T04:00:00.000Z");
+    assert.equal(startOfLocalDay("2026-03-08", "America/Havana"), "2026-03-08T05:00:00.000Z");
+    // Santiago going back at 24:00 to 23:00 of the day before: the new day starts an hour later.
+    assert.equal(startOfLocalDay("2026-04-05", "America/Santiago"), "2026-04-05T04:00:00.000Z");
+  });
+
+  it("takes the first midnight where the clocks go back across it, which PostgreSQL's AT TIME ZONE does not", () => {
+    // Atlantic/Azores goes back from 01:00 (UTC+0) to 00:00 (UTC-1): midnight at 00:00Z and at 01:00Z.
+    assert.equal(startOfLocalDay("2026-10-25", "Atlantic/Azores"), "2026-10-25T00:00:00.000Z");
+    // America/Havana goes back from 01:00 (UTC-4) to 00:00 (UTC-5): midnight at 04:00Z and at 05:00Z.
+    assert.equal(startOfLocalDay("2026-11-01", "America/Havana"), "2026-11-01T04:00:00.000Z");
+  });
+
+  it("keeps an offset in seconds from before standard time", () => {
+    assert.equal(startOfLocalDay("1890-01-01", "Europe/Rome"), "1889-12-31T23:10:04.000Z");
+  });
+
+  it("refuses a malformed date and an unknown time zone", () => {
+    assert.throws(() => startOfLocalDay("2026-02-30", "Europe/Rome"), (error) => isValidationError(error, "invalid_date"));
+    assert.throws(() => startOfLocalDay("2026-02-10", "Europe/Nowhere"), (error) => isValidationError(error, "invalid_time_zone"));
   });
 });

@@ -255,10 +255,20 @@ function sortRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return [...rows].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
-/** The oracle: every position of the workspace, replayed by the core from the model's trades. */
-export function oraclePositions(model: WorkspaceModel): Positions {
+/** Every position of the workspace as of `asOf`, replayed by the core from the model's trades. */
+export interface PositionsOracle {
+  readonly asOf: string;
+  readonly positions: Positions;
+}
+
+/**
+ * The oracle: every position of the workspace as of the walk's today, which the checks then ask
+ * the API for by name (`?asOf=`), so a walk running across midnight compares the same day (#719).
+ */
+export function oraclePositions(model: WorkspaceModel): PositionsOracle {
+  const asOf = walkToday();
   try {
-    return computePositions(model.positionTrades());
+    return { asOf, positions: computePositions(model.positionTrades(), { asOf }) };
   } catch (error) {
     if (isValidationError(error)) {
       fail(`the API accepted a trade history of ${model.persona} that the core refuses: ${error.code} ${show(error.details)}`);
@@ -267,12 +277,12 @@ export function oraclePositions(model: WorkspaceModel): Positions {
   }
 }
 
-export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity, oracle: Positions): Promise<PositionResponse> {
-  const response = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/positions`))) as PositionResponse;
+export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity, oracle: PositionsOracle): Promise<PositionResponse> {
+  const response = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/positions?asOf=${oracle.asOf}`))) as PositionResponse;
   const own: Positions = {
-    accounts: oracle.accounts.filter((row) => row.accountId === account.id),
+    accounts: oracle.positions.accounts.filter((row) => row.accountId === account.id),
     portfolios: [],
-    charges: oracle.charges.filter((charge) => charge.accountId === account.id),
+    charges: oracle.positions.charges.filter((charge) => charge.accountId === account.id),
   };
   expectEqual(
     { positions: sortRows(response.positions.map(actualPositionRow)), summaries: response.summaries.map(actualSummary) },
@@ -282,13 +292,13 @@ export async function checkAccountPositions(ctx: CheckContext, model: WorkspaceM
   return response;
 }
 
-export async function checkPortfolioPositions(ctx: CheckContext, model: WorkspaceModel, portfolioHandle: string, oracle: Positions): Promise<PositionResponse> {
+export async function checkPortfolioPositions(ctx: CheckContext, model: WorkspaceModel, portfolioHandle: string, oracle: PositionsOracle): Promise<PositionResponse> {
   const { id } = model.portfolio(portfolioHandle);
-  const response = (await get(ctx, model, wsPath(model, `/portfolios/${id}/positions`))) as PositionResponse;
+  const response = (await get(ctx, model, wsPath(model, `/portfolios/${id}/positions?asOf=${oracle.asOf}`))) as PositionResponse;
   const own: Positions = {
     accounts: [],
-    portfolios: oracle.portfolios.filter((row) => row.portfolioId === id),
-    charges: oracle.charges.filter((charge) => charge.portfolioId === id),
+    portfolios: oracle.positions.portfolios.filter((row) => row.portfolioId === id),
+    charges: oracle.positions.charges.filter((charge) => charge.portfolioId === id),
   };
   expectEqual(
     { positions: sortRows(response.positions.map(actualPositionRow)), summaries: response.summaries.map(actualSummary) },
@@ -451,7 +461,7 @@ export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnT
       cardTransfers: aggregated.cardTransfers,
       cardBalances: cards.map((card) => ({
         paymentCategoryId: model.category(card.paymentCategory!).id,
-        owed: -records.filter((r) => r.accountId === card.id && compareMonths(monthOf(r.budgetDate), month) <= 0).reduce((sum, r) => sum + amountOf(r), 0),
+        transactions: records.filter((r) => r.accountId === card.id).map((r) => ({ date: r.budgetDate, amount: amountOf(r) })),
         hasStartingBalance: false,
       })),
       scheduledItems: [],
@@ -478,8 +488,11 @@ export function balancesAtEndOf(model: WorkspaceModel, byAccount: ReadonlyMap<st
  * A budget month against the oracle. Given the on-budget cash accounts' balances at the end of
  * `month` (`balances`, read from the API), also the model-free budget invariant (#650):
  * unassigned + every category's available + assigned in future + credit overspending + reserved
- * = the balance of the on-budget cash accounts (cards excluded) at the end of the month, less the
- * income dated in it or before but after today (not received yet, so it counts nowhere).
+ * = the balance of the on-budget cash accounts (cards excluded) at the end of the month, less
+ * every positive split on them dated in it or before but after today: income, a refund, a
+ * categorized transfer in (not received yet, so it counts nowhere, #668). A card's refund dated
+ * after today moves nothing between its category and the payment category, so it leaves the sum
+ * alone. The refund term cannot fire yet: the walk never dates a transaction after today.
  */
 export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel, month: string, balances?: ReadonlyMap<string, number>): Promise<BudgetMonthResponse> {
   const actual = (await get(ctx, model, wsPath(model, `/budget-months/${month}`))) as BudgetMonthResponse;
@@ -491,9 +504,12 @@ export async function checkBudgetMonth(ctx: CheckContext, model: WorkspaceModel,
       actual.creditOverspending +
       actual.reserved;
     const today = walkToday();
-    const notReceived = oracleAggregated(model)
-      .income.filter((i) => compareMonths(i.month, month) <= 0 && i.date !== undefined && i.date > today)
-      .reduce((sum, i) => sum + i.amount, 0);
+    const aggregated = oracleAggregated(model);
+    const notReceived =
+      aggregated.income.filter((i) => compareMonths(i.month, month) <= 0 && i.date !== undefined && i.date > today).reduce((sum, i) => sum + i.amount, 0) +
+      aggregated.activity
+        .filter((a) => a.paymentCategoryId === undefined && a.amount > 0 && compareMonths(a.month, month) <= 0 && a.date !== undefined && a.date > today)
+        .reduce((sum, a) => sum + a.amount, 0);
     const cash = model.budgetCashAccounts().reduce((sum, account) => sum + (balances.get(account.id) ?? fail(`no balance read for ${account.handle}`)), 0) - notReceived;
     if (budgeted !== cash) fail(`budget invariant of ${model.persona} in ${month}: the budget holds ${budgeted}, the on-budget accounts ${cash} at the end of the month`);
   }

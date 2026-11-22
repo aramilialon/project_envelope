@@ -35,6 +35,7 @@ export type ValidationErrorCode =
   | "invalid_recurrence"
   | "invalid_currency"
   | "invalid_fx_rate"
+  | "invalid_rates_file"
   | "invalid_time_zone"
   | "brokerage_on_budget"
   | "account_currency_not_base"
@@ -82,16 +83,26 @@ export type ValidationErrorCode =
   | "tax_regime_conflicts_with_trade"
   | "withholding_agent_already_set"
   | "duplicate_price"
+  | "invalid_price_file"
+  | "too_many_rows"
+  | "invalid_locale"
   | "invalid_body"
   | "unknown_field"
   | "invalid_field"
   | "amount_needs_splits";
 
+/**
+ * A value in a `ValidationError`'s details. `null` stands for something the
+ * error names but that has no value yet: the API's `tradeId` of a trade the
+ * request itself is recording (#662).
+ */
+export type ValidationErrorDetail = string | number | null;
+
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
-  readonly details: Readonly<Record<string, string | number>>;
+  readonly details: Readonly<Record<string, ValidationErrorDetail>>;
 
-  constructor(code: ValidationErrorCode, message: string, details: Record<string, string | number> = {}) {
+  constructor(code: ValidationErrorCode, message: string, details: Record<string, ValidationErrorDetail> = {}) {
     super(message);
     this.name = "ValidationError";
     this.code = code;

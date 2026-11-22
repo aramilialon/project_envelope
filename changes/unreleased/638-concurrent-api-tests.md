@@ -1,0 +1,4 @@
+Changed
+
+- `apps/api`: the migration runner holds a PostgreSQL advisory lock while it reads and applies migrations (`#638`, [ADR 0016](docs/adr/0016-integration-test-files-run-concurrently.md)), so two processes starting at once against the same database (two API instances, or an instance and `pnpm migrate`) apply each migration once instead of failing or applying it twice.
+- Development: the API's integration test files run concurrently (`#638`, ADR 0016), by default as many at once as the machine has cores minus one, or `API_TEST_CONCURRENCY`; the full run on a 6-core machine went from 436 s to about 150 s. The random walk is split into one test file per seed or check, and `migrate.test.ts` works on a throwaway database of its own. `apps/api/README.md` lists what makes a test file safe to run alongside the others.

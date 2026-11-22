@@ -6,7 +6,7 @@
  *   health check and requests with a bad or missing token included, so neither can be used to
  *   load the database or the token verifier without limit;
  * - per user, as a preHandler right after the user mapper, keyed on the verified user id (never
- *   on a claim read from an unverified token): every request, then writes, then file imports, each
+ *   on a claim read from an unverified token): every request, then writes, then file imports (a statement or a price file), each
  *   with its own, stricter limit.
  *
  * A request over a limit gets 429 `too_many_requests` through the global error handler, with
@@ -21,8 +21,14 @@ import { TooManyRequestsError } from "./errors.ts";
 
 const WRITE_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-/** The file import (#55), the most expensive write: parsing a whole file and matching duplicates. */
-const IMPORT_ROUTE = "/workspaces/:workspaceId/accounts/:accountId/import";
+/**
+ * The file imports, the most expensive writes: a bank statement (#55), parsed and matched against
+ * the account's transactions, and a file of closing prices (#83), up to 20,000 rows at once.
+ */
+const IMPORT_ROUTES: ReadonlySet<string> = new Set([
+  "/workspaces/:workspaceId/accounts/:accountId/import",
+  "/workspaces/:workspaceId/instruments/:instrumentId/prices/import",
+]);
 
 /**
  * How many distinct keys (addresses, or users) each limiter's in-memory store keeps; the least
@@ -87,7 +93,7 @@ export function createUserRateLimitPreHandler(fastify: FastifyInstance, config: 
     await check(limiters.all, request, reply);
     if (WRITE_METHODS.has(request.method)) {
       await check(limiters.writes, request, reply);
-      if (request.routeOptions.url === IMPORT_ROUTE) {
+      if (request.routeOptions.url !== undefined && IMPORT_ROUTES.has(request.routeOptions.url)) {
         await check(limiters.imports, request, reply);
       }
     }

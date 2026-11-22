@@ -1,14 +1,15 @@
-import { MAX_FREE_TEXT_LENGTH } from "@envelope/core";
+import { assertTextLength, MAX_FREE_TEXT_LENGTH, ValidationError } from "@envelope/core";
 import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/workspace-membership.ts";
 import type { DbPool } from "../db/pool.ts";
-import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
+import { invalidField, sendIfValidationError, strictBody } from "../errors.ts";
 import {
   createTrades,
   deleteTrade,
   listTrades,
   TAX_KINDS,
+  TRADE_REQUEST_FIELDS,
   TRADE_TYPES,
   ConcurrentTradeChangeError,
   TradeIdTakenError,
@@ -42,225 +43,261 @@ const AMOUNT_FIELDS = [
 ] as const;
 
 /**
- * Every field a create request may carry, whatever its type (which of them a type takes is checked
- * further on); anything else is a plain 400, so a misspelt field is never silently dropped.
+ * Every field a create request may carry, whatever its type: anything else is a 400
+ * `unknown_field`, so a misspelt field is never silently dropped. Which of them a type takes is
+ * `TRADE_REQUEST_FIELDS`'s to say (#594). `costBasisCents` belongs to a transfer's leg: at the top
+ * level it is a field of another kind of request (`invalid_trade`), as it was before #594.
  */
-const CREATE_KEYS: ReadonlySet<string> = new Set([
-  "id",
-  "type",
-  "accountId",
-  "portfolioId",
-  "instrumentId",
-  "tradeDate",
-  "occurredAt",
-  "memo",
-  "taxKind",
-  "from",
-  "to",
-  ...AMOUNT_FIELDS,
-]);
+const CREATE_KEYS: ReadonlySet<string> = new Set(["type", "costBasisCents", ...Object.values(TRADE_REQUEST_FIELDS).flat()]);
 const CREATE_LEG_KEYS: ReadonlySet<string> = new Set(["id", "accountId", "portfolioId", "feesCents", "costBasisCents"]);
 
-/** A request body that cannot be read as a trade: answered with a plain 400, like other routes. */
-class BadRequest extends Error {}
+/** The fields an edit may carry: those of a create request but `id`; which a trade's type takes is the repository's to say. */
+const PATCH_KEYS: ReadonlySet<string> = new Set([...CREATE_KEYS].filter((key) => key !== "id"));
+const LEG_PATCH_KEYS: ReadonlySet<string> = new Set(["accountId", "portfolioId", "feesCents", "costBasisCents"]);
 
-function uuidField(body: Record<string, unknown>, field: string, required: boolean): string | undefined {
+/**
+ * The fields a create request of each type cannot do without (#600), in the order a missing one is
+ * named. A transfer also needs a `from` leg, a `to` leg or both, each with its account and portfolio.
+ */
+const REQUIRED_FIELDS: Readonly<Record<TradeType, readonly string[]>> = {
+  buy: ["tradeDate", "accountId", "portfolioId", "instrumentId", "quantityE8", "priceE6"],
+  sell: ["tradeDate", "accountId", "portfolioId", "instrumentId", "quantityE8", "priceE6"],
+  dividend: ["tradeDate", "accountId", "portfolioId", "instrumentId", "grossCents"],
+  fee: ["tradeDate", "accountId", "portfolioId", "feesCents"],
+  tax: ["tradeDate", "accountId", "portfolioId", "taxKind", "grossCents"],
+  transfer: ["tradeDate", "instrumentId", "quantityE8"],
+  split: ["tradeDate", "instrumentId", "splitFrom", "splitTo"],
+};
+
+/** A field the request needs and does not have (#600): a 400 `invalid_trade` naming it. */
+function missingField(field: string): ValidationError {
+  return new ValidationError("invalid_trade", `${field} is required`, { field });
+}
+
+/** Whether a field is absent: left out, or `null`, which a create reads as left out. */
+function absent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+/**
+ * A UUID field, or undefined when absent.
+ *
+ * @throws ValidationError "invalid_field" (details: field, `where` + its name) for anything but a UUID.
+ */
+function uuidField(body: Record<string, unknown>, field: string, where = ""): string | undefined {
   const value = body[field];
-  if (value === undefined || value === null) {
-    if (required) throw new BadRequest(`${field} is required`);
-    return undefined;
-  }
-  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
-    throw new BadRequest(`${field} must be a UUID`);
-  }
+  if (absent(value)) return undefined;
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) throw invalidField(`${where}${field}`);
   return value.toLowerCase();
 }
 
-function stringField(body: Record<string, unknown>, field: string, required: boolean): string | undefined {
+/**
+ * A string field, or undefined when absent.
+ *
+ * @throws ValidationError "invalid_field" for anything but a string.
+ */
+function stringField(body: Record<string, unknown>, field: string): string | undefined {
   const value = body[field];
-  if (value === undefined || value === null) {
-    if (required) throw new BadRequest(`${field} is required`);
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new BadRequest(`${field} must be a string`);
-  }
+  if (absent(value)) return undefined;
+  if (typeof value !== "string") throw invalidField(field);
   return value;
 }
 
 /**
- * The amounts present in `body`. Each must be a JSON number; whether it is a safe integer, and
- * whether the type uses it, is `@envelope/core`'s to say (with a stable code).
+ * `taxKind`, or undefined when absent.
+ *
+ * @throws ValidationError "invalid_field" for anything but one of `TAX_KINDS`.
  */
-function amountFields(body: Record<string, unknown>, allowed: readonly (typeof AMOUNT_FIELDS)[number][]): TradeAmountsInput {
+function taxKindField(body: Record<string, unknown>): TaxKind | undefined {
+  const value = body.taxKind;
+  if (absent(value)) return undefined;
+  if (typeof value !== "string" || !TAX_KINDS.includes(value as TaxKind)) throw invalidField("taxKind");
+  return value as TaxKind;
+}
+
+/**
+ * The amounts present in `body`, each a JSON number; whether it is a safe integer, and in range,
+ * is `@envelope/core`'s to say (with a stable code).
+ *
+ * @throws ValidationError "invalid_field" for an amount that is not a JSON number.
+ */
+function amountFields(body: Record<string, unknown>, where = ""): TradeAmountsInput {
   const amounts: Record<string, number> = {};
   for (const field of AMOUNT_FIELDS) {
     const value = body[field];
-    if (value === undefined || value === null) continue;
-    if (!allowed.includes(field)) {
-      throw new BadRequest(`${field} is not part of this kind of request`);
-    }
-    if (typeof value !== "number") {
-      throw new BadRequest(`${field} must be a number`);
-    }
+    if (absent(value)) continue;
+    if (typeof value !== "number") throw invalidField(`${where}${field}`);
     amounts[field] = value;
   }
   return amounts as TradeAmountsInput;
 }
 
-function commonFields(body: Record<string, unknown>): { tradeDate: string; occurredAt?: string; memo?: string } {
-  const tradeDate = stringField(body, "tradeDate", true)!;
-  const occurredAt = stringField(body, "occurredAt", false);
-  const memo = stringField(body, "memo", false);
-  return { tradeDate, ...(occurredAt === undefined ? {} : { occurredAt }), ...(memo === undefined ? {} : { memo }) };
+/**
+ * A transfer leg's object, or undefined when absent.
+ *
+ * @throws ValidationError "invalid_field" (`from` or `to`) for anything but a JSON object, and
+ *   "unknown_field" (`from.fees`) for a key a leg does not have.
+ */
+function legObject(body: Record<string, unknown>, field: "from" | "to", known: ReadonlySet<string>): Record<string, unknown> | undefined {
+  const raw = body[field];
+  if (absent(raw)) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) throw invalidField(field);
+  return strictBody(raw, known, `${field}.`);
 }
 
-function legField(body: Record<string, unknown>, field: "from" | "to"): TransferLegInput | undefined {
-  const raw = body[field];
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    throw new BadRequest(`${field} must be an object`);
-  }
-  const leg = raw as Record<string, unknown>;
-  rejectUnknownKeys(leg, CREATE_LEG_KEYS, `${field}.`);
+/** The memo's length (#507): 400 `text_too_long`, checked with the rest of the body's shape. */
+function checkMemo(memo: string | null | undefined): void {
+  if (typeof memo === "string") assertTextLength(memo, MAX_FREE_TEXT_LENGTH, "memo");
+}
+
+/** A transfer leg of a create request, its fields read and its account and portfolio required. */
+function legInput(leg: Record<string, unknown>, field: "from" | "to"): TransferLegInput {
+  const where = `${field}.`;
+  const id = uuidField(leg, "id", where);
+  const accountId = uuidField(leg, "accountId", where);
+  const portfolioId = uuidField(leg, "portfolioId", where);
   // costBasisCents is accepted on either leg so the core can name it when it is misplaced.
-  const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
-  const id = uuidField(leg, "id", false);
+  const { feesCents, costBasisCents } = amountFields(leg, where);
   return {
-    accountId: uuidField(leg, "accountId", true)!,
-    portfolioId: uuidField(leg, "portfolioId", true)!,
+    accountId: accountId!,
+    portfolioId: portfolioId!,
     ...(id === undefined ? {} : { id }),
-    ...(amounts.feesCents === undefined ? {} : { feesCents: amounts.feesCents }),
-    ...(amounts.costBasisCents === undefined ? {} : { costBasisCents: amounts.costBasisCents }),
+    ...(feesCents === undefined ? {} : { feesCents }),
+    ...(costBasisCents === undefined ? {} : { costBasisCents }),
   };
 }
 
-/** Reads a create request: one trade, a transfer (its legs in `from` and `to`) or a split. */
-function parseEntry(body: Record<string, unknown>): TradeEntryInput {
-  rejectUnknownKeys(body, CREATE_KEYS, "");
+/**
+ * Reads a create request: one trade, a transfer (its legs in `from` and `to`) or a split. The
+ * checks run in the order the domain expert ruled (#594, #600, #662), so that the first error names
+ * the field actually wrong:
+ * 1. the shape: a body that is not a JSON object (`invalid_body`), a field no trade request has
+ *    (`unknown_field`), a `type` that is none of them (`invalid_field`), a field of another kind of
+ *    request (`invalid_trade` naming it: `from` on a buy, `accountId` on a split, `gainTaxCents` on a
+ *    buy), a field of the wrong JSON type (`invalid_field`), a `memo` too long (`text_too_long`);
+ * 2. the fields the type needs (`invalid_trade` naming the first one missing).
+ * The quantity, the price and the amounts come next, in the repository.
+ */
+function parseEntry(raw: unknown): TradeEntryInput {
+  const body = strictBody(raw, CREATE_KEYS);
+  if (absent(body.type)) throw missingField("type");
   const type = body.type;
-  if (typeof type !== "string" || !TRADE_TYPES.includes(type as TradeType)) {
-    throw new BadRequest(`type must be one of ${TRADE_TYPES.join(", ")}`);
+  if (typeof type !== "string" || !TRADE_TYPES.includes(type as TradeType)) throw invalidField("type");
+  const taken = TRADE_REQUEST_FIELDS[type as TradeType];
+  for (const [field, value] of Object.entries(body)) {
+    if (field !== "type" && !absent(value) && !taken.includes(field)) {
+      throw new ValidationError("invalid_trade", `a ${type} request does not take ${field}`, { field });
+    }
   }
-  const common = commonFields(body);
+
+  const id = uuidField(body, "id");
+  const accountId = uuidField(body, "accountId");
+  const portfolioId = uuidField(body, "portfolioId");
+  const instrumentId = uuidField(body, "instrumentId");
+  const tradeDate = stringField(body, "tradeDate");
+  const occurredAt = stringField(body, "occurredAt");
+  const memo = stringField(body, "memo");
+  const taxKind = taxKindField(body);
+  const amounts = amountFields(body);
+  const fromLeg = legObject(body, "from", CREATE_LEG_KEYS);
+  const toLeg = legObject(body, "to", CREATE_LEG_KEYS);
+  const from = fromLeg && legInput(fromLeg, "from");
+  const to = toLeg && legInput(toLeg, "to");
+  checkMemo(memo);
+
+  for (const field of REQUIRED_FIELDS[type as TradeType]) {
+    if (absent(body[field])) throw missingField(field);
+  }
+  const common = {
+    tradeDate: tradeDate!,
+    ...(occurredAt === undefined ? {} : { occurredAt }),
+    ...(memo === undefined ? {} : { memo }),
+  };
 
   if (type === "split") {
-    const { splitFrom, splitTo } = amountFields(body, ["splitFrom", "splitTo"]);
-    if (splitFrom === undefined || splitTo === undefined) {
-      throw new BadRequest("a split needs splitFrom and splitTo");
-    }
-    return { kind: "split", ...common, instrumentId: uuidField(body, "instrumentId", true)!, splitFrom, splitTo };
+    return { kind: "split", ...common, instrumentId: instrumentId!, splitFrom: amounts.splitFrom!, splitTo: amounts.splitTo! };
   }
 
   if (type === "transfer") {
-    // A transfer's fees and cost belong to its legs; its quantity is the units moved.
-    const { quantityE8 } = amountFields(body, ["quantityE8"]);
-    if (quantityE8 === undefined) {
-      throw new BadRequest("a transfer needs quantityE8, the units moved");
+    if (!fromLeg && !toLeg) {
+      throw new ValidationError("invalid_trade", "a transfer needs a from leg, a to leg or both", { field: "from" });
     }
-    const from = legField(body, "from");
-    const to = legField(body, "to");
-    if (!from && !to) {
-      throw new BadRequest("a transfer needs a from leg, a to leg or both");
+    for (const [field, leg] of [["from", fromLeg], ["to", toLeg]] as const) {
+      for (const key of ["accountId", "portfolioId"]) {
+        if (leg && absent(leg[key])) throw missingField(`${field}.${key}`);
+      }
     }
     return {
       kind: "transfer",
       ...common,
-      instrumentId: uuidField(body, "instrumentId", true)!,
-      quantityE8,
+      instrumentId: instrumentId!,
+      quantityE8: amounts.quantityE8!,
       ...(from ? { from } : {}),
       ...(to ? { to } : {}),
     };
   }
 
-  const taxKind = stringField(body, "taxKind", false);
-  if (taxKind !== undefined && !TAX_KINDS.includes(taxKind as TaxKind)) {
-    throw new BadRequest(`taxKind must be one of ${TAX_KINDS.join(", ")}`);
-  }
-  const id = uuidField(body, "id", false);
-  const instrumentId = uuidField(body, "instrumentId", type !== "fee" && type !== "tax");
   const entry: SingleTradeInput = {
     kind: "single",
     type: type as SingleTradeInput["type"],
     ...common,
     ...(id === undefined ? {} : { id }),
-    accountId: uuidField(body, "accountId", true)!,
-    portfolioId: uuidField(body, "portfolioId", true)!,
+    accountId: accountId!,
+    portfolioId: portfolioId!,
     instrumentId: instrumentId ?? null,
-    ...amountFields(body, AMOUNT_FIELDS),
-    ...(taxKind === undefined ? {} : { taxKind: taxKind as TaxKind }),
+    ...amounts,
+    ...(taxKind === undefined ? {} : { taxKind }),
   };
   return entry;
 }
 
-/** The fields an edit may carry; which of them a trade's type takes is the repository's to say. */
-const PATCH_KEYS: ReadonlySet<string> = new Set([
-  "type",
-  "accountId",
-  "portfolioId",
-  "instrumentId",
-  "tradeDate",
-  "occurredAt",
-  "memo",
-  "taxKind",
-  "from",
-  "to",
-  ...AMOUNT_FIELDS,
-]);
-const LEG_PATCH_KEYS: ReadonlySet<string> = new Set(["accountId", "portfolioId", "feesCents", "costBasisCents"]);
-
-function rejectUnknownKeys(body: Record<string, unknown>, known: ReadonlySet<string>, where: string): void {
-  for (const key of Object.keys(body)) {
-    if (!known.has(key)) {
-      throw new BadRequest(`${where}${key} is not a field of this request`);
-    }
-  }
-}
-
 /** A field an edit may clear: absent is undefined, `null` is null. */
-function clearable<T>(body: Record<string, unknown>, field: string, read: (body: Record<string, unknown>, field: string, required: boolean) => T | undefined): T | null | undefined {
-  return body[field] === null ? null : read(body, field, false);
+function clearable<T>(body: Record<string, unknown>, field: string, read: (body: Record<string, unknown>, field: string) => T | undefined): T | null | undefined {
+  return body[field] === null ? null : read(body, field);
 }
 
-function legPatchField(body: Record<string, unknown>, field: "from" | "to"): TransferLegPatch | undefined {
-  const raw = body[field];
-  if (raw === undefined || raw === null) return undefined;
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    throw new BadRequest(`${field} must be an object`);
-  }
-  const leg = raw as Record<string, unknown>;
-  rejectUnknownKeys(leg, LEG_PATCH_KEYS, `${field}.`);
-  const amounts = amountFields(leg, ["feesCents", "costBasisCents"]);
-  const accountId = uuidField(leg, "accountId", false);
-  const portfolioId = uuidField(leg, "portfolioId", false);
+/** A transfer leg of an edit, every field optional. */
+function legPatch(body: Record<string, unknown>, field: "from" | "to"): TransferLegPatch | undefined {
+  const leg = legObject(body, field, LEG_PATCH_KEYS);
+  if (!leg) return undefined;
+  const where = `${field}.`;
+  const accountId = uuidField(leg, "accountId", where);
+  const portfolioId = uuidField(leg, "portfolioId", where);
+  const { feesCents, costBasisCents } = amountFields(leg, where);
   return {
     ...(accountId === undefined ? {} : { accountId }),
     ...(portfolioId === undefined ? {} : { portfolioId }),
-    ...(amounts.feesCents === undefined ? {} : { feesCents: amounts.feesCents }),
-    ...(amounts.costBasisCents === undefined ? {} : { costBasisCents: amounts.costBasisCents }),
+    ...(feesCents === undefined ? {} : { feesCents }),
+    ...(costBasisCents === undefined ? {} : { costBasisCents }),
   };
 }
 
-/** Reads an edit: any field of a create request but `id`; `null` clears `occurredAt`, `memo` and `instrumentId`. */
-function parsePatch(body: Record<string, unknown>): TradePatchInput {
-  rejectUnknownKeys(body, PATCH_KEYS, "");
-  const type = stringField(body, "type", false);
-  const taxKind = stringField(body, "taxKind", false);
-  if (taxKind !== undefined && !TAX_KINDS.includes(taxKind as TaxKind)) {
-    throw new BadRequest(`taxKind must be one of ${TAX_KINDS.join(", ")}`);
-  }
-  const accountId = uuidField(body, "accountId", false);
-  const portfolioId = uuidField(body, "portfolioId", false);
+/**
+ * Reads an edit: any field of a create request but `id` (`unknown_field`, as any field no request
+ * has); `null` clears `occurredAt`, `memo` and `instrumentId`. A field of the wrong JSON type is
+ * `invalid_field`, a `memo` too long `text_too_long`, and an edit that changes nothing (`{}`, or
+ * only `null` legs) `invalid_body`, so it writes no audit log entry; `type` alone goes on to the
+ * repository (#596), which checks it once it has the trade. Which fields
+ * the trade's type takes is the repository's to check (`invalid_trade`), once it has the trade.
+ */
+function parsePatch(raw: unknown): TradePatchInput {
+  const body = strictBody(raw, PATCH_KEYS);
+  const type = stringField(body, "type");
+  const taxKind = taxKindField(body);
+  const accountId = uuidField(body, "accountId");
+  const portfolioId = uuidField(body, "portfolioId");
   const instrumentId = clearable(body, "instrumentId", uuidField);
-  const tradeDate = stringField(body, "tradeDate", false);
+  const tradeDate = stringField(body, "tradeDate");
   const occurredAt = clearable(body, "occurredAt", stringField);
   const memo = clearable(body, "memo", stringField);
-  const from = legPatchField(body, "from");
-  const to = legPatchField(body, "to");
+  const amounts = amountFields(body);
+  const from = legPatch(body, "from");
+  const to = legPatch(body, "to");
+  checkMemo(memo);
   const patch: TradePatchInput = {
-    ...amountFields(body, AMOUNT_FIELDS),
+    ...amounts,
     ...(type === undefined ? {} : { type }),
-    ...(taxKind === undefined ? {} : { taxKind: taxKind as TaxKind }),
+    ...(taxKind === undefined ? {} : { taxKind }),
     ...(accountId === undefined ? {} : { accountId }),
     ...(portfolioId === undefined ? {} : { portfolioId }),
     ...(instrumentId === undefined ? {} : { instrumentId }),
@@ -270,25 +307,13 @@ function parsePatch(body: Record<string, unknown>): TradePatchInput {
     ...(from === undefined ? {} : { from }),
     ...(to === undefined ? {} : { to }),
   };
-  // An edit that changes nothing (`{}`, `type` alone, or only `null` legs) is refused, so it
-  // writes no audit log entry.
-  if (Object.keys(patch).every((key) => key === "type")) {
-    throw new BadRequest("nothing to change");
+  // An edit that changes nothing (`{}`, or only `null` legs) is refused, so it writes no audit log
+  // entry. `type` alone is checked against the trade's own (#596): `invalid_trade` when it differs,
+  // `invalid_body` when it is the same (`updateTrade` answers "nothing_to_change").
+  if (Object.keys(patch).length === 0) {
+    throw new ValidationError("invalid_body", "the edit changes nothing");
   }
   return patch;
-}
-
-/**
- * The request body as an object of fields.
- *
- * @throws BadRequest for anything but a plain JSON object: a missing body, an array, a string,
- *   a number, `null`.
- */
-function bodyObject(body: unknown): Record<string, unknown> {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new BadRequest("the body must be a JSON object");
-  }
-  return body as Record<string, unknown>;
 }
 
 async function sendConcurrentChange(reply: FastifyReply): Promise<void> {
@@ -297,10 +322,6 @@ async function sendConcurrentChange(reply: FastifyReply): Promise<void> {
 
 async function sendReconciled(reply: FastifyReply, action: "edited" | "deleted"): Promise<void> {
   await reply.code(409).send({ error: `a trade whose cash leg is reconciled cannot be ${action}; unlock it first`, code: "reconciled" });
-}
-
-async function sendBadRequest(reply: FastifyReply, error: BadRequest): Promise<void> {
-  await reply.code(400).send({ error: `invalid trade: ${error.message}` });
 }
 
 /**
@@ -312,48 +333,32 @@ async function sendBadRequest(reply: FastifyReply, error: BadRequest): Promise<v
  * broker's own figure must be sent again with the edit to keep it. An edit that changes a cash
  * leg's amount, account or date sends a cleared leg back to pending. Owners and editors write;
  * `read_only` members read.
+ *
+ * Every refusal is a stable code with its `details` (#594, #600, #662): a body the route cannot
+ * read is `invalid_body`, `unknown_field`, `invalid_field` or `invalid_trade` (`parseEntry`,
+ * `parsePatch`), thrown to the global error handler like `strictBody`'s own.
  */
 export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = withWriteAccess(preHandler);
   const base = "/workspaces/:workspaceId/trades";
 
-  app.get(base, { preHandler }, async (request, reply) => {
+  app.get(base, { preHandler }, async (request) => {
     const query = (request.query ?? {}) as Record<string, unknown>;
-    try {
-      const portfolioId = uuidField(query, "portfolioId", false);
-      const accountId = uuidField(query, "accountId", false);
-      const instrumentId = uuidField(query, "instrumentId", false);
-      const trades = await listTrades(request.db!, request.workspace!.id, {
-        ...(portfolioId === undefined ? {} : { portfolioId }),
-        ...(accountId === undefined ? {} : { accountId }),
-        ...(instrumentId === undefined ? {} : { instrumentId }),
-      });
-      return { trades };
-    } catch (error) {
-      if (error instanceof BadRequest) {
-        await reply.code(400).send({ error: `invalid filter: ${error.message}` });
-        return;
-      }
-      throw error;
-    }
+    // A filter that is not a UUID is a 400 `invalid_field` naming it.
+    const portfolioId = uuidField(query, "portfolioId");
+    const accountId = uuidField(query, "accountId");
+    const instrumentId = uuidField(query, "instrumentId");
+    const trades = await listTrades(request.db!, request.workspace!.id, {
+      ...(portfolioId === undefined ? {} : { portfolioId }),
+      ...(accountId === undefined ? {} : { accountId }),
+      ...(instrumentId === undefined ? {} : { instrumentId }),
+    });
+    return { trades };
   });
 
   app.post(base, { preHandler: writePreHandler }, async (request, reply) => {
-    let entry: TradeEntryInput;
-    try {
-      entry = parseEntry(bodyObject(request.body));
-    } catch (error) {
-      if (error instanceof BadRequest) {
-        await sendBadRequest(reply, error);
-        return;
-      }
-      throw error;
-    }
-    if (await sendIfTextTooLong(reply, [["memo", entry.memo, MAX_FREE_TEXT_LENGTH]])) {
-      return;
-    }
-
+    const entry = parseEntry(request.body);
     try {
       const trades = await createTrades(request.db!, request.workspace!.id, request.userId ?? null, entry);
       await reply.code(201).send({ trades });
@@ -371,20 +376,7 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
 
   app.patch(`${base}/:tradeId`, { preHandler: writePreHandler }, async (request, reply) => {
     const { tradeId } = request.params as { tradeId: string };
-    let patch: TradePatchInput;
-    try {
-      patch = parsePatch(bodyObject(request.body));
-    } catch (error) {
-      if (error instanceof BadRequest) {
-        await sendBadRequest(reply, error);
-        return;
-      }
-      throw error;
-    }
-    if (await sendIfTextTooLong(reply, [["memo", patch.memo, MAX_FREE_TEXT_LENGTH]])) {
-      return;
-    }
-
+    const patch = parsePatch(request.body);
     try {
       const result = await updateTrade(request.db!, request.workspace!.id, request.userId ?? null, tradeId, patch);
       if (result === "not_found") {
@@ -393,6 +385,11 @@ export function registerTradesRoutes(app: FastifyInstance, pool: DbPool): void {
       }
       if (result === "reconciled") {
         await sendReconciled(reply, "edited");
+        return;
+      }
+      if (result === "nothing_to_change") {
+        // `type` alone, the trade's own: the same refusal as `{}` (#594, #596).
+        await sendIfValidationError(reply, new ValidationError("invalid_body", "the edit changes nothing"));
         return;
       }
       return { trades: result };
