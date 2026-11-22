@@ -1,5 +1,5 @@
 // Entry point of @envelope/core: everything the apps are allowed to use.
-export type { ValidationErrorCode } from "./errors.ts";
+export type { ValidationErrorCode, ValidationErrorDetail } from "./errors.ts";
 export { isValidationError, ValidationError } from "./errors.ts";
 export type { Cents, CurrencyCode, Locale } from "./money.ts";
 export {
@@ -65,8 +65,15 @@ export {
 } from "./portfolio/positions.ts";
 export type { PriceCandidate, PriceOrigin, ResolvedPrice } from "./portfolio/prices.ts";
 export { priceSeriesAt, resolvePrice } from "./portfolio/prices.ts";
-export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeRegimeContext } from "./portfolio/trades.ts";
-export { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./portfolio/trades.ts";
+export type { AccountRegime, RegimeChange, RegimeCheckedTrade, TradeFigures, TradeRegimeContext } from "./portfolio/trades.ts";
+export {
+  checkAccountTradesAgainstRegime,
+  checkRegimeChange,
+  checkTradeEntry,
+  checkTradeFigures,
+  checkTradeRegime,
+  tradeCashCents,
+} from "./portfolio/trades.ts";
 export type {
   ExternalFlow,
   MoneyWeightedInput,

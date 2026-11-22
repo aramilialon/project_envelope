@@ -87,11 +87,18 @@ export type ValidationErrorCode =
   | "invalid_field"
   | "amount_needs_splits";
 
+/**
+ * A value in a `ValidationError`'s details. `null` stands for something the
+ * error names but that has no value yet: the API's `tradeId` of a trade the
+ * request itself is recording (#662).
+ */
+export type ValidationErrorDetail = string | number | null;
+
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;
-  readonly details: Readonly<Record<string, string | number>>;
+  readonly details: Readonly<Record<string, ValidationErrorDetail>>;
 
-  constructor(code: ValidationErrorCode, message: string, details: Record<string, string | number> = {}) {
+  constructor(code: ValidationErrorCode, message: string, details: Record<string, ValidationErrorDetail> = {}) {
     super(message);
     this.name = "ValidationError";
     this.code = code;

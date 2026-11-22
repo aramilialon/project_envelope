@@ -6,7 +6,15 @@ import { MAX_AMOUNT_CENTS } from "../money.ts";
 import type { PositionTrade } from "./positions.ts";
 import type { Price, Quantity } from "./quantity.ts";
 import { amountOf, PRICE_FACTOR_HUNDREDTH } from "./quantity.ts";
-import { checkAccountTradesAgainstRegime, checkRegimeChange, checkTradeEntry, checkTradeRegime, tradeCashCents } from "./trades.ts";
+import {
+  checkAccountTradesAgainstRegime,
+  checkRegimeChange,
+  checkTradeEntry,
+  checkTradeFigures,
+  checkTradeRegime,
+  tradeCashCents,
+} from "./trades.ts";
+import type { TradeFigures } from "./trades.ts";
 import type { RegimeCheckedTrade } from "./trades.ts";
 
 type Amounts = Pick<
@@ -468,5 +476,65 @@ describe("checkAccountTradesAgainstRegime (#653)", () => {
       () => checkAccountTradesAgainstRegime([managedTax], { history, domesticWithholdingAgent: true }),
       (error: unknown) => isValidationError(error, "tax_regime_conflicts_with_trade") && error.details.code === "tax_kind_not_allowed_in_regime",
     );
+  });
+});
+
+describe("checkTradeFigures (#600, #662)", () => {
+  const figures = (fields: Partial<TradeFigures> & Pick<TradeFigures, "type">): TradeFigures => ({
+    quantity: 0,
+    price: 0,
+    grossCents: 0,
+    splitFrom: null,
+    splitTo: null,
+    ...fields,
+  });
+  const invalidTrade = (field: string) => (error: unknown) => isValidationError(error, "invalid_trade") && error.details.field === field;
+
+  it("takes a buy at a positive price and a sale at any price from 0 up", () => {
+    checkTradeFigures(figures({ type: "buy", quantity: 10e8, price: 1 }));
+    checkTradeFigures(figures({ type: "sell", quantity: 10e8, price: 25e6 }));
+    // A delisted holding sold for nothing: the whole cost is a realized loss.
+    checkTradeFigures(figures({ type: "sell", quantity: 100e8, price: 0 }));
+  });
+
+  it("refuses a buy at a price of 0, naming priceE6", () => {
+    assert.throws(() => checkTradeFigures(figures({ type: "buy", quantity: 10e8, price: 0 })), invalidTrade("priceE6"));
+  });
+
+  it("refuses a negative or fractional price as invalid_price, on a buy and a sale alike", () => {
+    for (const type of ["buy", "sell"] as const) {
+      assert.throws(() => checkTradeFigures(figures({ type, quantity: 1e8, price: -1 })), (e) => isValidationError(e, "invalid_price"));
+      assert.throws(() => checkTradeFigures(figures({ type, quantity: 1e8, price: 0.5 })), (e) => isValidationError(e, "invalid_price"));
+    }
+  });
+
+  it("checks the quantity before the price: a bad quantity is named even with a bad price", () => {
+    for (const type of ["buy", "sell"] as const) {
+      assert.throws(() => checkTradeFigures(figures({ type, quantity: -5e8, price: -1 })), invalidTrade("quantity"));
+      assert.throws(() => checkTradeFigures(figures({ type, quantity: 0, price: 0 })), invalidTrade("quantity"));
+      assert.throws(() => checkTradeFigures(figures({ type, quantity: 0.5, price: -1 })), (e) => isValidationError(e, "invalid_quantity"));
+    }
+  });
+
+  it("refuses a dividend of 0, and leaves a negative one to checkTradeEntry", () => {
+    assert.throws(() => checkTradeFigures(figures({ type: "dividend", grossCents: 0 })), invalidTrade("grossCents"));
+    checkTradeFigures(figures({ type: "dividend", grossCents: 1 }));
+    checkTradeFigures(figures({ type: "dividend", grossCents: -1 }));
+  });
+
+  it("refuses a transfer that moves no units, and a split ratio that is not two positive integers", () => {
+    assert.throws(() => checkTradeFigures(figures({ type: "transfer", quantity: 0 })), invalidTrade("quantityE8"));
+    assert.throws(() => checkTradeFigures(figures({ type: "transfer", quantity: -1 })), invalidTrade("quantityE8"));
+    assert.throws(() => checkTradeFigures(figures({ type: "transfer", quantity: 2 ** 53 })), (e) => isValidationError(e, "invalid_quantity"));
+    checkTradeFigures(figures({ type: "transfer", quantity: 1 }));
+    assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: 0, splitTo: 2 })), invalidTrade("splitFrom"));
+    assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: 1, splitTo: 1.5 })), invalidTrade("splitTo"));
+    assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: 1, splitTo: null })), invalidTrade("splitTo"));
+    checkTradeFigures(figures({ type: "split", splitFrom: 10, splitTo: 11 }));
+  });
+
+  it("has no figure to check on a fee or a tax", () => {
+    checkTradeFigures(figures({ type: "fee" }));
+    checkTradeFigures(figures({ type: "tax" }));
   });
 });

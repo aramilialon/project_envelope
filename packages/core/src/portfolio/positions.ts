@@ -279,10 +279,15 @@ function plus(a: Cents, b: Cents, label: string): Cents {
   return sum;
 }
 
-/** Names the trade being replayed in an "amount_total_overflow" that does not name one yet. */
+/**
+ * Names the trade being replayed in a running total's overflow that does not name one yet: an
+ * "amount_total_overflow", or an "invalid_quantity" of a position's quantity (#662), which only a
+ * running total can raise here, since `checkTrade` has already checked each trade's own quantity.
+ */
 function namingTrade(error: unknown, trade: PositionTrade): unknown {
-  if (!isValidationError(error, "amount_total_overflow") || error.details.tradeId !== undefined) return error;
-  return new ValidationError("amount_total_overflow", `trade ${trade.id}: ${error.message}`, { ...error.details, tradeId: trade.id });
+  if (!isValidationError(error) || error.details.tradeId !== undefined) return error;
+  if (error.code !== "amount_total_overflow" && error.code !== "invalid_quantity") return error;
+  return new ValidationError(error.code, `trade ${trade.id}: ${error.message}`, { ...error.details, tradeId: trade.id });
 }
 
 function add(totals: MutableTotals, key: keyof PositionTotals, amount: Cents): void {
@@ -496,9 +501,31 @@ function portfolioOf(state: AccountState, portfolioId: string): PortfolioState {
   return portfolio;
 }
 
-function changeQuantity(state: AccountState, portfolio: PortfolioState, delta: number): void {
-  portfolio.quantity = toQuantity(portfolio.quantity + delta);
-  state.quantity = toQuantity(state.quantity + delta);
+/**
+ * The label of an "invalid_quantity" raised by a position's running quantity, the portfolio's or
+ * the account's, leaving the safe range (#662). Its details carry the account and the portfolio of
+ * the position, since a request may add several rows (split rows, transfer legs) whose `tradeId`
+ * is null; the replay adds the trade's id to it.
+ */
+const POSITION_QUANTITY = "positionQuantity";
+
+function positionQuantity(state: AccountState, portfolioId: string, value: number): Quantity {
+  try {
+    return toQuantity(value, POSITION_QUANTITY);
+  } catch (error) {
+    if (!isValidationError(error, "invalid_quantity")) throw error;
+    throw new ValidationError(error.code, `portfolio ${portfolioId} of account ${state.accountId}: ${error.message}`, {
+      ...error.details,
+      accountId: state.accountId,
+      portfolioId,
+    });
+  }
+}
+
+function changeQuantity(state: AccountState, portfolioId: string, delta: number): void {
+  const portfolio = portfolioOf(state, portfolioId);
+  portfolio.quantity = positionQuantity(state, portfolioId, portfolio.quantity + delta);
+  state.quantity = positionQuantity(state, portfolioId, state.quantity + delta);
 }
 
 function requireQuantity(state: AccountState, trade: PositionTrade, requested: number): PortfolioState {
@@ -560,7 +587,12 @@ function applySplits(state: AccountState, date: LocalDate, splits: readonly Posi
     const portfolio = portfolioOf(state, split.portfolioId);
     // Toward zero, to 8 decimals.
     const scaled = (BigInt(portfolio.quantity) * BigInt(split.splitTo ?? 1)) / BigInt(split.splitFrom ?? 1);
-    changeQuantity(state, portfolio, toQuantity(Number(scaled)) - portfolio.quantity);
+    try {
+      changeQuantity(state, split.portfolioId, positionQuantity(state, split.portfolioId, Number(scaled)) - portfolio.quantity);
+    } catch (error) {
+      // The split row of the holding that leaves the safe range, not the date's first one (#662).
+      throw namingTrade(error, split);
+    }
   }
   if (state.quantity === 0 && state.cost !== 0) {
     throw new ValidationError(
@@ -656,7 +688,7 @@ function replayInstrument(
         case "buy": {
           const cost = plus(trade.grossCents, trade.feesCents, "cost");
           state.cost = plus(state.cost, cost, "costBasisCents");
-          changeQuantity(state, portfolio, trade.quantity);
+          changeQuantity(state, trade.portfolioId, trade.quantity);
           add(totals, "costInCents", cost);
           add(totals, "tradeFeesCents", trade.feesCents);
           add(totals, "transactionTaxCents", trade.transactionTaxCents);
@@ -668,7 +700,7 @@ function replayInstrument(
         case "sell": {
           requireQuantity(state, trade, trade.quantity);
           const removed = removeCost(state, trade.quantity);
-          changeQuantity(state, portfolio, -trade.quantity);
+          changeQuantity(state, trade.portfolioId, -trade.quantity);
           const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
           add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
           add(totals, "costSoldCents", removed);
@@ -699,13 +731,13 @@ function replayInstrument(
               const moved = -trade.quantity as Quantity;
               requireQuantity(state, trade, moved);
               add(totals, "costTransferredOutCents", removeCost(state, moved));
-              changeQuantity(state, portfolio, trade.quantity);
+              changeQuantity(state, trade.portfolioId, trade.quantity);
             } else {
               // In from outside the app: the units bring the cost they carry.
               const cost = trade.costBasisCents ?? 0;
               state.cost = plus(state.cost, cost, "costBasisCents");
               add(totals, "costInCents", cost);
-              changeQuantity(state, portfolio, trade.quantity);
+              changeQuantity(state, trade.portfolioId, trade.quantity);
             }
             break;
           }
@@ -727,8 +759,13 @@ function replayInstrument(
             target.cost = plus(target.cost, removed, "costBasisCents");
             add(targetPortfolio.totals, "costInCents", removed);
           }
-          changeQuantity(source, sourcePortfolio, outgoing.quantity);
-          changeQuantity(target, targetPortfolio, incoming.quantity);
+          changeQuantity(source, outgoing.portfolioId, outgoing.quantity);
+          try {
+            changeQuantity(target, incoming.portfolioId, incoming.quantity);
+          } catch (error) {
+            // The leg that adds the units, whichever leg sorts first (#662).
+            throw namingTrade(error, incoming);
+          }
           break;
         }
       }
