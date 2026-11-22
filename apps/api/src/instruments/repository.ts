@@ -26,7 +26,7 @@ export interface Instrument {
 }
 
 /** Which uniqueness rule a duplicate broke, so the route can answer with a stable 409 `code`. */
-export type InstrumentConflict = "isin_taken" | "ticker_taken";
+export type InstrumentConflict = "isin_taken" | "ticker_taken" | "name_taken";
 
 export class InstrumentConflictError extends Error {
   readonly code: InstrumentConflict;
@@ -48,6 +48,7 @@ const UNIQUE_VIOLATION = "23505";
 const CONFLICT_BY_CONSTRAINT: Readonly<Record<string, InstrumentConflict>> = {
   instruments_isin_exchange_key: "isin_taken",
   instruments_ticker_exchange_key: "ticker_taken",
+  instruments_workspace_name_key: "name_taken",
 };
 
 const COLUMNS = `id, workspace_id, isin, ticker, exchange, name, type, currency, asset_class, price_factor_e6`;
@@ -88,8 +89,9 @@ function toInstrument(row: InstrumentRow): Instrument {
  * workspace's id).
  *
  * @throws InstrumentConflictError when the same ISIN on the same exchange, or the same ticker on
- *   the same exchange, is already there — decided by the unique indexes, so two concurrent
- *   requests cannot both succeed.
+ *   the same exchange, is already in the shared catalog, or when the workspace already has a
+ *   private instrument with the same name, ignoring case (`name_taken`) — decided by the unique
+ *   indexes, so two concurrent requests cannot both succeed.
  */
 export async function createInstrument(
   db: DbPool | DbClient,

@@ -22,8 +22,11 @@ ALTER TABLE instruments ADD CONSTRAINT instruments_identifier_check CHECK (
   END
 );
 
--- GET /workspaces/:workspaceId/instruments lists a workspace's own instruments.
-CREATE INDEX instruments_workspace_idx ON instruments (workspace_id, lower(name)) WHERE workspace_id IS NOT NULL;
+-- A workspace's private instrument names are unique, ignoring case (the API trims them first), so
+-- a holding is never ambiguous in that workspace's lists; the index also serves
+-- GET /workspaces/:workspaceId/instruments. Scoped to one workspace: another workspace's names, and
+-- the shared catalog's, are never compared, so a 409 tells a workspace nothing it cannot see.
+CREATE UNIQUE INDEX instruments_workspace_name_key ON instruments (workspace_id, lower(name)) WHERE workspace_id IS NOT NULL;
 
 -- Row-Level Security with one policy per command, as `prices` (migration 0034): every caller reads
 -- the shared rows and its own workspace's, and inserts a shared row or one of its own workspace's.

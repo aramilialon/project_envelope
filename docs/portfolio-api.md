@@ -412,7 +412,10 @@ when the workspace is deleted.
 
 The body takes `name`, `type`, `currency`, `assetClass` and `priceFactorE6`, with the same rules
 and errors as [Adding an instrument](#adding-an-instrument). `isin`, `ticker` and `exchange` must be
-left out (or `null`): any other value is 400 `invalid_instrument_field` `{ "field" }`. The answer:
+left out (or `null`): any other value is 400 `invalid_instrument_field` `{ "field" }`. A name is
+unique among the workspace's private instruments, ignoring case and the spaces around it: a second
+one answers 409 `name_taken` and writes nothing. Another workspace's names, and the shared
+catalog's, never conflict, so a private instrument may be named like a shared one. The answer:
 
 ```json
 {

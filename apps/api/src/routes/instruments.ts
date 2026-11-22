@@ -104,7 +104,8 @@ const SHARED_ONLY_FIELDS = ["isin", "ticker", "exchange"] as const;
  * that workspace only. Owners and editors add one; every member lists them and reads one. Reading
  * one by id also finds a shared instrument, so a client can show whatever instrument a trade of
  * the workspace points at; another workspace's private instrument is a 404, exactly as an unknown
- * id. As in the shared catalog, nothing updates or deletes an instrument: trades and prices point
+ * id. A private instrument's name is unique in its workspace, ignoring case (409 `name_taken`).
+ * As in the shared catalog, nothing updates or deletes an instrument: trades and prices point
  * at it. Deleting the workspace deletes its private instruments.
  */
 export function registerWorkspaceInstrumentsRoutes(app: FastifyInstance, pool: DbPool): void {
@@ -148,6 +149,10 @@ export function registerWorkspaceInstrumentsRoutes(app: FastifyInstance, pool: D
       const created = await createInstrument(request.db!, request.userId, instrument, request.workspace!.id);
       await reply.code(201).send(created);
     } catch (error) {
+      if (error instanceof InstrumentConflictError) {
+        await reply.code(409).send({ error: "another instrument of this workspace already has this name", code: error.code });
+        return;
+      }
       if (await sendIfValidationError(reply, error)) return;
       throw error;
     }

@@ -590,6 +590,37 @@ describe("instruments routes (#76)", () => {
       assert.deepEqual(rows, []);
     });
 
+    it("refuses a second private instrument with the same name in one workspace, whatever its case or spaces, as name_taken", async () => {
+      const token = await ctx.realm.getUserToken();
+      const name = `${namePrefix} Holiday home`;
+      const first = await postPrivate(token, ctx.workspaceId, { name, type: "other", currency: "EUR" });
+      assert.equal(first.statusCode, 201, first.body);
+      for (const duplicateName of [name, name.toUpperCase(), `  ${name.toLowerCase()}  `]) {
+        const duplicate = await postPrivate(token, ctx.workspaceId, { name: duplicateName, type: "fund", currency: "USD" });
+        assert.equal(duplicate.statusCode, 409, duplicateName);
+        assert.equal(duplicate.json().code, "name_taken");
+      }
+      const { rows } = await superuserPool.query("SELECT 1 FROM instruments WHERE workspace_id = $1 AND lower(name) = lower($2)", [
+        ctx.workspaceId,
+        name,
+      ]);
+      assert.equal(rows.length, 1);
+
+      // Another workspace may use the same name: the names of one workspace are never compared
+      // with another's, so the answer tells it nothing.
+      const inB = await postPrivate(tokenB, workspaceB, { name, type: "other", currency: "EUR" });
+      assert.equal(inB.statusCode, 201, inB.body);
+    });
+
+    it("accepts a private instrument named like a shared one", async () => {
+      const token = await ctx.realm.getUserToken();
+      const name = `${namePrefix} Listed and private`;
+      const sharedOne = await post(token, { isin: randomIsin(), name, type: "stock", currency: "EUR" });
+      assert.equal(sharedOne.statusCode, 201, sharedOne.body);
+      const privateOne = await postPrivate(token, ctx.workspaceId, { name, type: "stock", currency: "EUR" });
+      assert.equal(privateOne.statusCode, 201, privateOne.body);
+    });
+
     it("has no endpoint that updates or deletes a private instrument", async () => {
       const token = await ctx.realm.getUserToken();
       const created = await postPrivate(token, ctx.workspaceId, { name: `${namePrefix} Fixed flat`, type: "other", currency: "EUR" });
