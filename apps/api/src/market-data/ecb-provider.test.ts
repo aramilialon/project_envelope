@@ -153,6 +153,20 @@ describe("createEcbFileFetcher (#85)", () => {
     assert.equal(await fetchFile(body.length)(ECB_RECENT_FILE, AbortSignal.timeout(2000)), body);
   });
 
+  it("refuses a declared oversized body without waiting for any of it", { timeout: 5000 }, async () => {
+    // Headers only, the body never sent: reading it would wait for the 2-second limit (TimeoutError).
+    let unanswered: ServerResponse | undefined;
+    answer = (_request, response) => {
+      unanswered = response;
+      response.writeHead(200, { "content-type": "text/xml", "content-length": "1000000" });
+      response.flushHeaders();
+    };
+    const started = Date.now();
+    await assertFetchError("too_large", 1000);
+    assert.ok(Date.now() - started < 1000, "refused from the declared length, not after reading");
+    unanswered?.destroy();
+  });
+
   it("stops reading a body that grows past the cap without declaring its length", async () => {
     answer = (_request, response) => {
       response.writeHead(200, { "content-type": "text/xml" });
@@ -168,7 +182,7 @@ describe("createEcbFileFetcher (#85)", () => {
     await assertFetchError("not_utf8");
   });
 
-  it("gives up when the job's time limit passes, whether the answer or its body never comes", async () => {
+  it("gives up when the job's time limit passes, whether the answer or its body never comes", { timeout: 5000 }, async () => {
     answer = () => {
       // never answers
     };

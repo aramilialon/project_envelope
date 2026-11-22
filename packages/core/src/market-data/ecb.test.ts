@@ -149,6 +149,13 @@ describe("parseEcbReferenceRates: the whole file is refused", () => {
     assertRefused(historyFile(day("2026-01-02", '<Cube currency="USD" rate="1.1"></Cube>')), "malformed");
   });
 
+  it("for a closing tag with attributes or a self-closing slash, where a plain one would close the day", () => {
+    for (const closing of ['</Cube foo="1">', "</Cube/>"]) {
+      const text = historyFile(`<Cube time="2026-01-02">${good}${closing}`);
+      assertRefused(text, "malformed", { offset: text.indexOf(closing) });
+    }
+  });
+
   it("for a second outer Cube, or a closing tag with nothing open", () => {
     assertRefused(`${historyFile(day("2026-01-02", good))}<Cube></Cube>`, "malformed");
     assertRefused(`</Cube>${historyFile(day("2026-01-02", good))}`, "malformed");
