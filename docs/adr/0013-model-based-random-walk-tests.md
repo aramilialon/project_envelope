@@ -34,7 +34,7 @@ Each route of `apps/api` has integration tests, and each milestone a smoke test 
 
 ## Consequences
 
-- A walk takes seconds, not milliseconds: the CI step count is a trade-off between depth and the length of the test run, measured and recorded in `walk.test.ts`.
+- A walk takes seconds, not milliseconds: the CI step count is a trade-off between depth and the length of the test run, measured and recorded in `src/test-helpers/walk/suite.ts` (`walk.test.ts` until the walk was split into one file per seed or check, ADR 0016).
 - The walk is test code that knows the API's request and response shapes; a change to a route's contract changes the walk too, as it changes the route's own tests.
 - A bug found by the walk is reported with its seed and a minimal log, filed as an issue, and excluded by name until it is fixed; the exclusion list is the record of what the walk cannot cover yet.
 - The walk's personas and weights are part of the test: changing a weight changes which operations a seed generates, so a recorded seed reproduces only with the operation set it was recorded with. A log, unlike a seed, keeps replaying.
