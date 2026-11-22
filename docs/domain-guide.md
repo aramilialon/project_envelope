@@ -360,7 +360,14 @@ money goes; the off-budget leg never has a category.
 Transfers between two on-budget accounts, or between two off-budget accounts, never carry a
 category. Nor does any other transaction on an off-budget account (a fee, interest, a payment into
 the broker from outside the app): the budget never counts it, and a category given to one is
-refused (`category_not_allowed`, #710).
+refused (`category_not_allowed`, #710). A scheduled transaction on an off-budget account keeps its
+category, which tells a scheduled outflow from scheduled income, but recording it drops the
+category.
+
+**Example.** A €4.00 custody fee is scheduled monthly on the broker account, under "Bank fees".
+Recorded, it is one transaction of one split of −400 with no category: the broker account's balance
+goes down by €4.00 and the budget does not change. Entering the same fee by hand with "Bank fees"
+as its category (`categoryId`) is refused with 400 `category_not_allowed`.
 
 This is how an investment is planned: the household gives the monthly amount to an "Investments"
 category, and the transfer to the broker spends it.

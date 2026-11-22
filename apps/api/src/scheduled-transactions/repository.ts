@@ -281,6 +281,27 @@ export async function recordScheduledTransaction(
   if (!existing) {
     return undefined;
   }
+  // A scheduled split's own amount is always positive (a reservation, or income expected to
+  // arrive); a real outflow split is negative, the same sign flip `listScheduledEventsForMonth`
+  // (#325) already does — income (`categoryId: null`, #347) stays positive either way, the same
+  // convention a real income transaction's own split already uses.
+  const signed = existing.splits.map((s) => ({
+    categoryId: s.categoryId,
+    amountCents: s.categoryId === null ? s.amountCents : -s.amountCents,
+    ...(s.memo ? { memo: s.memo } : {}),
+  }));
+  // On an off-budget account a transaction has no category (#710): recording drops it, writing one
+  // split of the signed total with the first split's memo. The scheduled row keeps its category,
+  // which is what tells a scheduled outflow from scheduled income.
+  const { rows: accountRows } = await db.query<{ on_budget: boolean }>("SELECT on_budget FROM accounts WHERE id = $1 AND workspace_id = $2", [
+    existing.accountId,
+    workspaceId,
+  ]);
+  const firstMemo = existing.splits[0]?.memo;
+  const splits =
+    accountRows[0]?.on_budget === false
+      ? [{ categoryId: null, amountCents: signed.reduce((sum, s) => sum + s.amountCents, 0), ...(firstMemo ? { memo: firstMemo } : {}) }]
+      : signed;
   const transaction = await createTransaction(
     db,
     {
@@ -289,17 +310,7 @@ export async function recordScheduledTransaction(
       occurredAt: existing.nextDueDate,
       ...(existing.payee ? { payee: existing.payee } : {}),
       ...(existing.memo ? { memo: existing.memo } : {}),
-      // Written as scheduled, category included, on an off-budget account too (#710).
-      fromSchedule: true,
-      // A scheduled split's own amount is always positive (a reservation, or income expected to
-      // arrive); a real outflow split is negative, the same sign flip `listScheduledEventsForMonth`
-      // (#325) already does — income (`categoryId: null`, #347) stays positive either way, the
-      // same convention a real income transaction's own split already uses.
-      splits: existing.splits.map((s) => ({
-        categoryId: s.categoryId,
-        amountCents: s.categoryId === null ? s.amountCents : -s.amountCents,
-        ...(s.memo ? { memo: s.memo } : {}),
-      })),
+      splits,
     },
     queue,
   );

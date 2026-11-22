@@ -11,6 +11,7 @@ import { after, before, describe, it } from "node:test";
 
 import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
+import { fireDueScheduledTransactions } from "../scheduled-transactions/repository.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
 
@@ -283,21 +284,60 @@ describe("a category on a transaction of an off-budget account (#710)", () => {
     assert.deepEqual(await splitsOf(transactionId), [[null, -600]]);
   });
 
-  it("still records a scheduled outflow on the account as scheduled, its category included", async () => {
-    // A scheduled outflow is told from scheduled income by its category; recording one is left as it was (#710's report).
-    const scheduled = await app.fastify.inject({
-      method: "POST",
-      url: `/workspaces/${workspaceId}/scheduled-transactions`,
-      headers: auth,
-      payload: { accountId: offBudgetId, nextDueDate: "2026-09-20", recurEvery: 1, recurUnit: "month", splits: [{ categoryId, amountCents: 700 }] },
-    });
-    assert.equal(scheduled.statusCode, 201, scheduled.body);
+  it("records a scheduled custody fee on the account as one split with no category, leaving the budget as it was", async () => {
+    // A scheduled outflow is told from scheduled income by its category, so the schedule keeps it;
+    // recording drops it on an off-budget account (#710, the domain guide's €4.00 custody fee).
+    const broker = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Broker', 'brokerage', 'EUR', false) RETURNING id",
+      [workspaceId],
+    );
+    const brokerId = broker.rows[0]!.id;
+    const bankFees = await superuserPool.query<{ id: string }>(
+      "INSERT INTO categories (workspace_id, group_id, name, sort_order) SELECT $1, group_id, 'Bank fees', 2 FROM categories WHERE id = $2 RETURNING id",
+      [workspaceId, categoryId],
+    );
+    const schedule = async (nextDueDate: string) => {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/scheduled-transactions`,
+        headers: auth,
+        payload: {
+          accountId: brokerId,
+          nextDueDate,
+          recurEvery: 1,
+          recurUnit: "month",
+          payee: "Broker",
+          splits: [{ categoryId: bankFees.rows[0]!.id, amountCents: 400, memo: "Custody" }],
+        },
+      });
+      assert.equal(response.statusCode, 201, response.body);
+      return response.json().id as string;
+    };
+    const budget = async () =>
+      (await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/budget-months/2026-09`, headers: auth })).json();
+    const before = await budget();
+
     const recorded = await app.fastify.inject({
       method: "POST",
-      url: `/workspaces/${workspaceId}/scheduled-transactions/${scheduled.json().id as string}/record`,
+      url: `/workspaces/${workspaceId}/scheduled-transactions/${await schedule("2026-09-20")}/record`,
       headers: auth,
     });
     assert.equal(recorded.statusCode, 201, recorded.body);
-    assert.deepEqual(await splitsOf(recorded.json().transaction.id as string), [[categoryId, -700]]);
+    assert.deepEqual(recorded.json().transaction.splits.map((s: { categoryId: string | null; amountCents: number; memo: string | null }) => [s.categoryId, s.amountCents, s.memo]), [
+      [null, -400, "Custody"],
+    ]);
+    const { rows } = await superuserPool.query<{ balance: string }>(
+      "SELECT coalesce(sum(s.amount_cents), 0) AS balance FROM splits s JOIN transactions t ON t.id = s.transaction_id WHERE t.account_id = $1",
+      [brokerId],
+    );
+    assert.equal(Number(rows[0]!.balance), -400);
+    assert.deepEqual(await budget(), before);
+
+    // Fired by the hourly job, the same: no refusal, so the run goes on.
+    const fired = await schedule("2026-09-21");
+    const results = await fireDueScheduledTransactions(superuserPool, workspaceId, "2026-09-21");
+    const firedResult = results.find((r) => r.scheduledTransaction.id === fired);
+    assert.ok(firedResult, "the schedule fired");
+    assert.deepEqual(await splitsOf(firedResult.transaction.id), [[null, -400]]);
   });
 });

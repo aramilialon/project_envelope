@@ -94,13 +94,6 @@ export interface CreateTransactionInput {
   /** Optional cross-check (a receipt or statement total): if given, must equal the sum of `splits`. */
   readonly amountCents?: number;
   readonly externalId?: string;
-  /**
-   * Recording a scheduled transaction (`recordScheduledTransaction`): its splits are written as
-   * scheduled, so a category on an off-budget account is not refused (#710). A scheduled outflow
-   * is told from scheduled income by its category, so one on an off-budget account has one;
-   * refusing it here would leave it due forever and stop the automatic firing.
-   */
-  readonly fromSchedule?: boolean;
 }
 
 export interface UpdateTransactionInput {
@@ -274,9 +267,7 @@ export async function createTransaction(
   input: CreateTransactionInput,
   queue?: QueueDriver,
 ): Promise<TransactionRecord> {
-  if (input.fromSchedule !== true) {
-    await assertNoCategoryOffBudget(db, input.workspaceId, input.accountId, input.splits);
-  }
+  await assertNoCategoryOffBudget(db, input.workspaceId, input.accountId, input.splits);
   validateSplits(input.splits, input.amountCents);
   await assertNotCardIncome(db, input.workspaceId, input.accountId, input.splits);
 
