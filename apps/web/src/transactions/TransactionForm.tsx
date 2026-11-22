@@ -381,6 +381,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       return;
     }
 
+    // One Idempotency-Key per submit attempt (#559): this attempt's request, if it is sent again,
+    // is recorded once.
+    const idempotencyKey = crypto.randomUUID();
     setSubmitting(true);
     try {
       if (kind === "transfer") {
@@ -421,7 +424,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             // No category on an optional one leaves the money "Unassigned", income to assign.
             ...(transferRule !== "none" && categoryId ? { categoryId } : {}),
             status: cleared ? "cleared" : "pending",
-          });
+          }, idempotencyKey);
         }
       } else {
         let splits: SplitInput[];
@@ -473,7 +476,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             ...(memo ? { memo } : {}),
             status: cleared ? "cleared" : "pending",
             splits,
-          });
+          }, idempotencyKey);
         }
       }
       onSaved();
