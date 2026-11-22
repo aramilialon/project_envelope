@@ -1,4 +1,4 @@
-import { cardDebt, formatMoney } from "@envelope/core";
+import { cardAmountAsked, cardDebt, formatMoney } from "@envelope/core";
 import { useIntl } from "react-intl";
 
 import { cardPartAskedSentence } from "./cardPartAsked.ts";
@@ -77,12 +77,13 @@ export default function PaymentCategoryDetail({
 }: Props) {
   const intl = useIntl();
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
-  const debt = cardDebt({ available, cashOverspending, uncovered, ...(owed !== undefined ? { owed } : {}) });
+  const card = { available, cashOverspending, uncovered, ...(owed !== undefined ? { owed } : {}) };
+  const debt = cardDebt(card);
   const covered = debt.toCover <= 0;
   // #731: what assigning here asks — the card's to cover less what is asked on categories for it,
   // the same figure as its "To do" item (`cardAmountAsked`); the meter keeps the whole to cover.
   const asked = askedOnCategories ?? [];
-  const assignAmount = Math.max(0, debt.toCover - asked.reduce((sum, p) => sum + p.amountCents, 0));
+  const assignAmount = cardAmountAsked(card, asked);
   /** The card's credit, when it has one (#660): what the card owes the user, `-owed`. */
   const credit = Math.max(0, -debt.owed);
   const inCredit = credit > 0;

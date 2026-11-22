@@ -195,6 +195,24 @@ describe("MoveMoneyForm (#328)", () => {
     expect(screen.queryByText("The card's debt is fully covered.")).toBeNull();
   });
 
+  it("'Assign' on a card with nothing to cover does not say its debt is included in what a category still needs (#731)", () => {
+    // Restaurants: €30 on the Visa, €10 scheduled; the Visa owes €50 and already holds €50.
+    const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
+    const visa = categoryIn({
+      categoryId: "visa",
+      name: "Visa payment",
+      available: 5_000,
+      uncovered: 0,
+      owed: 5_000,
+      isPaymentCategory: true,
+      overspendingBy: [{ categoryId: "restaurants", name: "Restaurants", amount: 3_000 }],
+    });
+    renderForm({ kind: "assignTo", categoryId: "visa" }, { groups: [{ id: "g1", name: "Home", categories: [restaurants, visa] }], unassignedCents: 100_000 });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "10.00" } });
+    expect(screen.getByText(/Visa payment/, { selector: ".ba span" })).toBeInTheDocument();
+    expect(screen.queryByText(/of the card's debt is included in what/)).toBeNull();
+  });
+
   it("'Move money' on a card whose whole debt is asked on a category preselects no amount (#731)", () => {
     const restaurants = categoryIn({ categoryId: "restaurants", name: "Restaurants", available: -4_000, creditOverspending: 3_000, reserved: 1_000 });
     const visa = categoryIn({

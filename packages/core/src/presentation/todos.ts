@@ -168,7 +168,9 @@ export function cardPartsAskedOnCategories(
  * was not paid beyond what was set aside, the same figure), less what is asked on ordinary
  * categories for it (`cardPartsAskedOnCategories`), never below zero.
  */
-export function cardAmountAsked(card: CategoryMonth, askedOnCategories: readonly CardPartAsked[]): Cents {
+export function cardAmountAsked(
+  card: Pick<CategoryMonth, "available" | "uncovered" | "owed" | "cashOverspending">,
+  askedOnCategories: readonly CardPartAsked[]): Cents {
   const elsewhere = askedOnCategories.reduce((sum, p) => sum + p.amountCents, 0);
   const toCover = card.cashOverspending > 0 ? cardDebt(card).toCover : card.uncovered;
   return Math.max(0, toCover - elsewhere);

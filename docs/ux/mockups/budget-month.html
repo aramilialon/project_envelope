@@ -1192,7 +1192,8 @@ button{cursor:pointer}
       var gap = y.c.payment ? cardNeed(byId, to) : needOf(y), asked = y.c.payment ? askedOn(byId, to) : [];
       if (gap > 0 && !(amount >= gap && asked.length)) lines.push('<div class="ba note">' + (amount >= gap ? (y.c.payment ? 'The card\'s debt is fully covered.' : y.credit > 0 && y.short > 0 ? 'The overspending and the scheduled transactions are covered. ' + f(y.credit) + ' of this amount covers card spending and moves to the card.' : y.credit > 0 ? (amount > gap ? 'The part overspent in cash is covered. The other ' + f(Math.min(amount - gap, y.credit)) + ' covers card spending and moves to the card.' : 'The part overspent in cash is covered.') : y.real < 0 ? 'The overspending is covered.' : 'The scheduled transactions are covered.') : f(gap - amount) + ' is still missing.') + '</div>');
       // #731: part of the card's debt is asked on categories instead.
-      if (asked.length) lines.push('<div class="ba note">' + esc(askedSub(asked)) + '</div>');
+      // Only while the card has something to cover (needOf, the card's to cover).
+      if (asked.length && needOf(y) > 0) lines.push('<div class="ba note">' + esc(askedSub(asked)) + '</div>');
     }
     var warn = from === null && amount > r ? 'Unassigned will go below zero: you are assigning money that has not arrived yet.' : '';
     return { amount: amount, from: from, to: to, month: month, lines: lines.join(''), warn: warn };
@@ -1238,8 +1239,8 @@ button{cursor:pointer}
   var QK = [
     ['targets', 'Fund the targets', 'Brings each category up to what its target asks this month.'],
     ['res', 'Cover the scheduled transactions', 'Adds what is missing to the categories that are short for the month\'s scheduled transactions.'],
-    ['over', 'Cover overspending', 'Covers what categories spent in cash beyond what was available, and what is missing for their scheduled transactions. Card spending is already part of the cards\' debt.'],
-    ['debt', 'Cover the cards\' debt', 'Sets aside what is missing to pay the cards, starting balance included.'],
+    ['over', 'Cover overspending', 'Covers what categories spent in cash beyond what was available, and what is missing for their scheduled transactions. A category short for its scheduled transactions gets its card spending too, which moves to the card.'],
+    ['debt', 'Cover the cards\' debt', 'Sets aside what is missing to pay the cards, starting balance included. Card spending of a category short for its scheduled transactions is covered by “Cover overspending” instead.'],
     ['lastA', 'As assigned last month', 'Brings each category\'s assigned amount up to at least August\'s.'],
     ['lastS', 'As spent last month', 'Brings each category\'s assigned amount up to at least what was spent in it in August.']
   ];

@@ -1,4 +1,4 @@
-import { amountNeededToCover, cardAmountAsked, cardPartsAskedOnCategories, formatMoney, parseAmount, reservationShortfall } from "@envelope/core";
+import { amountNeededToCover, cardAmountAsked, cardDebt, cardPartsAskedOnCategories, formatMoney, parseAmount, reservationShortfall } from "@envelope/core";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useIntl } from "react-intl";
 import { useAuth } from "react-oidc-context";
@@ -302,8 +302,9 @@ export default function MoveMoneyForm({ workspaceId, month, unassignedCents, ass
           </div>,
         );
       }
-      // #731: part of the card's debt is asked on categories instead, so assigning here asks less.
-      if (askedElsewhere.length > 0) {
+      // #731: part of the card's debt is asked on categories instead, so assigning here asks less;
+      // said only while the card still has something to cover.
+      if (askedElsewhere.length > 0 && cardDebt(destination).toCover > 0) {
         lines.push(
           <div className="ba note" key="askedElsewhere">
             {cardPartAskedSentence(intl, money, askedElsewhere, nameOf)}
