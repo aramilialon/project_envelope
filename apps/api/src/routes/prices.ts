@@ -23,14 +23,15 @@ const DEFAULT_CSV_LOCALE = "en";
 const EARLIEST_DATE = "0100-01-01";
 const LATEST_DATE = "9999-12-31";
 
+/** The same body the malformed-id check (`rejectMalformedIdParams`) and the other routes send. */
 async function sendInstrumentNotFound(reply: FastifyReply): Promise<void> {
-  await reply.code(404).send({ error: "instrument_not_found" });
+  await reply.code(404).send({ error: "instrument not found" });
 }
 
 /**
  * The instrument named in the path, when the workspace can see it: a shared one or the
  * workspace's own private one (#505). Another workspace's private instrument, an unknown or a
- * malformed id answer 404 `instrument_not_found` alike, and the route stops there (`undefined`).
+ * malformed id answer 404 "instrument not found" alike, and the route stops there (`undefined`).
  */
 async function instrumentOf(request: FastifyRequest, reply: FastifyReply): Promise<string | undefined> {
   const { instrumentId } = request.params as { instrumentId: string };
@@ -92,13 +93,14 @@ function audited(instrumentId: string, price: PriceRecord): Record<string, unkno
  * - `PUT .../prices/:date` `{ closeE6 }`: sets the own price of that date; 201 when it is new,
  *   200 when it replaced one or was already that close.
  * - `DELETE .../prices/:date`: removes the own price of that date (204); a date with no own price,
- *   even one with a shared price, is 404 `price_not_found`.
+ *   even one with a shared price, is 404 "price not found".
  * - `POST .../prices/import?locale=` with a `text/csv` body: sets every row's own price at once,
  *   or none of them; counts toward the per-user import limit.
  *
  * Writes are for owners and editors (403 for `read_only`). The instrument must be shared or the
- * workspace's own private one; anything else is 404 `instrument_not_found`. A price is dated
- * today or earlier in the workspace's time zone (#715). Each PUT or DELETE that changes a row
+ * workspace's own private one; anything else is 404 "instrument not found". A price is dated
+ * today or earlier in the workspace's time zone, with no lower limit (#715): a later date is 400
+ * `invalid_date` with `{ field: "date", max: today }`, in a file the line's `reason` with `max`. Each PUT or DELETE that changes a row
  * writes one audit log entry, and each import that changes any row one summary entry. Prices are
  * not a sync entity yet (ADR 0019).
  */
@@ -120,6 +122,10 @@ export function registerPricesRoutes(app: FastifyInstance, pool: DbPool): void {
       try {
         const from = queryDate(query, "from", EARLIEST_DATE);
         const to = queryDate(query, "to", LATEST_DATE);
+        if (to < from) {
+          // The same rule as GET /fx-rates.
+          throw new ValidationError("invalid_date", "to is before from", { field: "to", value: to });
+        }
         const prices = await listPrices(request.db!, request.workspace!.id, instrumentId, from, to);
         return { prices };
       } catch (error) {
@@ -178,7 +184,7 @@ export function registerPricesRoutes(app: FastifyInstance, pool: DbPool): void {
         assertDate(date);
         const before = await ownPrice(request, instrumentId, date);
         if (!before || !(await deleteWorkspacePrice(request.db!, workspaceId, instrumentId, date))) {
-          await reply.code(404).send({ error: "price_not_found" });
+          await reply.code(404).send({ error: "price not found" });
           return;
         }
         await recordAuditLog(request.db!, {

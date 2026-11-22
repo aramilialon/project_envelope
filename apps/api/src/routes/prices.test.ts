@@ -198,13 +198,20 @@ describe("prices routes (#83)", () => {
       assert.equal(array.json().error, "invalid_body");
     });
 
-    it("refuses a malformed date with invalid_date", async () => {
+    it("refuses a malformed date with invalid_date naming the field", async () => {
       const instrumentId = await sharedInstrument();
       for (const date of ["2026-02-30", "31-03-2026", "today"]) {
         const response = await put(url(instrumentId, `/${date}`), { closeE6: 1 });
         assert.equal(response.statusCode, 400, date);
-        assert.equal(response.json().error, "invalid_date", date);
+        assert.deepEqual(response.json(), { error: "invalid_date", details: { field: "date" } }, date);
       }
+    });
+
+    it("has no lower date limit: a price dated 1850 is accepted", async () => {
+      const instrumentId = await sharedInstrument();
+      const response = await put(url(instrumentId, "/1850-01-01"), { closeE6: 1_500000 });
+      assert.equal(response.statusCode, 201);
+      assert.deepEqual(await storedOwn(instrumentId), [{ price_date: "1850-01-01", close_e6: "1500000", source: "manual" }]);
     });
 
     it("accepts today and refuses tomorrow in the workspace's time zone, also where today is ahead of UTC", async () => {
@@ -215,14 +222,14 @@ describe("prices routes (#83)", () => {
         assert.equal((await put(url(instrumentId, `/${today}`), { closeE6: 1 })).statusCode, 201, timeZone);
         const future = await put(url(instrumentId, `/${tomorrow}`), { closeE6: 1 });
         assert.equal(future.statusCode, 400, timeZone);
-        assert.deepEqual(future.json(), { error: "price_date_in_future", details: { max: today } }, timeZone);
+        assert.deepEqual(future.json(), { error: "invalid_date", details: { field: "date", max: today } }, timeZone);
       }
     });
 
     it("checks the instrument before the date and the body", async () => {
       const response = await put(url(randomUUID(), "/2999-01-01"), { closeE6: -1 });
       assert.equal(response.statusCode, 404);
-      assert.deepEqual(response.json(), { error: "instrument_not_found" });
+      assert.deepEqual(response.json(), { error: "instrument not found" });
     });
   });
 
@@ -248,10 +255,10 @@ describe("prices routes (#83)", () => {
         window.json().prices.map((price: { priceDate: string; origin: string }) => `${price.priceDate} ${price.origin}`),
         ["2026-03-30 shared", "2026-03-30 own"],
       );
-      assert.deepEqual((await get(url(instrumentId, "?from=2026-04-01&to=2026-03-01"))).json(), { prices: [] });
+      assert.deepEqual((await get(url(instrumentId, "?from=2026-03-31&to=2026-03-31"))).json().prices.length, 1);
     });
 
-    it("refuses a malformed or repeated from or to with invalid_date naming it", async () => {
+    it("refuses a malformed or repeated from or to, and a to before from, with invalid_date naming it", async () => {
       const instrumentId = await sharedInstrument();
       const malformed = await get(url(instrumentId, "?from=2026-13-01"));
       assert.equal(malformed.statusCode, 400);
@@ -259,11 +266,14 @@ describe("prices routes (#83)", () => {
       const repeated = await get(url(instrumentId, "?to=2026-01-01&to=2026-02-01"));
       assert.equal(repeated.statusCode, 400);
       assert.deepEqual(repeated.json(), { error: "invalid_date", details: { field: "to" } });
+      const backwards = await get(url(instrumentId, "?from=2026-04-01&to=2026-03-01"));
+      assert.equal(backwards.statusCode, 400);
+      assert.deepEqual(backwards.json(), { error: "invalid_date", details: { field: "to", value: "2026-03-01" } });
     });
   });
 
   describe("DELETE a price", () => {
-    it("removes the own price (204, one audit entry), and answers 404 price_not_found when there is none", async () => {
+    it("removes the own price (204, one audit entry), and answers 404 price not found when there is none", async () => {
       const instrumentId = await sharedInstrument();
       await put(url(instrumentId, "/2026-03-31"), { closeE6: 5_000000 });
       const removed = await del(url(instrumentId, "/2026-03-31"));
@@ -278,16 +288,16 @@ describe("prices routes (#83)", () => {
 
       const again = await del(url(instrumentId, "/2026-03-31"));
       assert.equal(again.statusCode, 404);
-      assert.deepEqual(again.json(), { error: "price_not_found" });
+      assert.deepEqual(again.json(), { error: "price not found" });
       assert.equal((await auditEntries(instrumentId)).length, entries.length);
     });
 
-    it("never deletes a shared price: a date with only a shared price is price_not_found", async () => {
+    it("never deletes a shared price: a date with only a shared price is price not found", async () => {
       const instrumentId = await sharedInstrument();
       await sharedPrice(instrumentId, "2026-03-31", 7_000000);
       const response = await del(url(instrumentId, "/2026-03-31"));
       assert.equal(response.statusCode, 404);
-      assert.deepEqual(response.json(), { error: "price_not_found" });
+      assert.deepEqual(response.json(), { error: "price not found" });
       assert.equal((await get(url(instrumentId))).json().prices.length, 1);
     });
 
@@ -352,11 +362,11 @@ describe("prices routes (#83)", () => {
 
     it("refuses the whole file at the first bad line, naming it, and stores nothing", async () => {
       const instrumentId = await sharedInstrument();
-      const { tomorrow } = await todayAndTomorrow();
+      const { today, tomorrow } = await todayAndTomorrow();
       const cases: [string, Record<string, unknown>][] = [
         ["date,close\n2026-03-30,10\n2026-03-31,ten\n", { line: 3, column: 2, reason: "invalid_price_format" }],
         ["2026-03-30,10\n\n2026-02-30,10\n", { line: 3, column: 1, reason: "invalid_date" }],
-        [`2026-03-30,10\n${tomorrow},10\n`, { line: 2, column: 1, reason: "price_date_in_future" }],
+        [`2026-03-30,10\n${tomorrow},10\n`, { line: 2, column: 1, reason: "invalid_date", max: today }],
         ["2026-03-30,10\n2026-03-30,11\n", { line: 2, column: 1, reason: "duplicate_date" }],
         ["2026-03-30,-10\n", { line: 1, column: 2, reason: "invalid_price" }],
         ["2026-03-30\n", { line: 1, column: 2, reason: "missing_column" }],
@@ -370,6 +380,36 @@ describe("prices routes (#83)", () => {
       }
       assert.deepEqual(await storedOwn(instrumentId), []);
       assert.deepEqual(await auditEntries(instrumentId), []);
+    });
+
+    it("accepts a file dated today and refuses one dated tomorrow in the workspace's time zone, also where today is ahead of UTC", async () => {
+      // Between them, the two zones put the local date on another day than UTC's at every hour.
+      for (const timeZone of ["Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+        await superuserPool.query("UPDATE workspaces SET time_zone = $1 WHERE id = $2", [timeZone, workspaceA]);
+        const instrumentId = await sharedInstrument();
+        const { today, tomorrow } = await todayAndTomorrow();
+        const accepted = await importCsv(url(instrumentId, "/import"), `date,close\n${today},10\n`);
+        assert.equal(accepted.statusCode, 200, timeZone);
+        assert.deepEqual(await storedOwn(instrumentId), [{ price_date: today, close_e6: "10000000", source: "csv" }], timeZone);
+        const refused = await importCsv(url(instrumentId, "/import"), `date,close\n${tomorrow},10\n`);
+        assert.equal(refused.statusCode, 400, timeZone);
+        assert.deepEqual(
+          refused.json(),
+          { error: "invalid_price_file", details: { line: 2, column: 1, reason: "invalid_date", max: today } },
+          timeZone,
+        );
+      }
+    });
+
+    it("has no lower date limit: a file dated 1850 imports", async () => {
+      const instrumentId = await sharedInstrument();
+      const response = await importCsv(url(instrumentId, "/import"), "1850-01-01,1.5\n1850-01-02,1.25\n");
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.json().inserted, 2);
+      assert.deepEqual(
+        (await storedOwn(instrumentId)).map((price) => price.price_date),
+        ["1850-01-01", "1850-01-02"],
+      );
     });
 
     it("refuses a file of more than the maximum number of rows with too_many_rows", async () => {
@@ -404,6 +444,14 @@ describe("prices routes (#83)", () => {
       const badLocale = await importCsv(url(instrumentId, "/import?locale=%3F%3F"), "2026-03-30,10\n");
       assert.equal(badLocale.statusCode, 400);
       assert.deepEqual(badLocale.json(), { error: "invalid_locale", details: { value: "??" } });
+      // Bounded, so that a client cannot fill the cache of separators per locale with tags of its own.
+      const overLong = "en-US-abcdefgh-bcdefghi-cdefghij-defghijk"; // well-formed, 41 characters
+      const privateUse = "en-x-a1b2c3d4";
+      for (const value of [overLong, privateUse, "it-IT-u-nu-arab"]) {
+        const response = await importCsv(url(instrumentId, `/import?locale=${encodeURIComponent(value)}`), "2026-03-30,10\n");
+        assert.equal(response.statusCode, 400, value);
+        assert.deepEqual(response.json(), { error: "invalid_locale", details: { value } }, value);
+      }
       assert.deepEqual(await storedOwn(instrumentId), []);
     });
 
@@ -466,23 +514,22 @@ describe("prices routes (#83)", () => {
       );
     });
 
-    it("answers 404 instrument_not_found for another workspace's private instrument, an unknown id, and stores nothing", async () => {
+    it("answers 404 instrument not found for another workspace's private instrument, an unknown or a malformed id, and stores nothing", async () => {
       const ofB = await privateInstrument(workspaceB);
-      for (const instrumentId of [ofB, randomUUID()]) {
+      // A malformed id is answered by the check every route's id parameters get (#512), with the same body.
+      for (const instrumentId of [ofB, randomUUID(), "not-an-id"]) {
         for (const response of [
           await get(url(instrumentId)),
           await put(url(instrumentId, "/2026-03-31"), { closeE6: 1 }),
           await del(url(instrumentId, "/2026-03-31")),
           await importCsv(url(instrumentId, "/import"), "2026-03-31,1\n"),
         ]) {
-          assert.equal(response.statusCode, 404);
-          assert.deepEqual(response.json(), { error: "instrument_not_found" });
+          assert.equal(response.statusCode, 404, instrumentId);
+          assert.deepEqual(response.json(), { error: "instrument not found" }, instrumentId);
         }
       }
       const { rows } = await superuserPool.query("SELECT 1 FROM prices WHERE instrument_id = $1", [ofB]);
       assert.equal(rows.length, 0);
-      // A malformed id is a 404 too, from the check every route's id parameters get (#512).
-      assert.equal((await get(url("not-an-id"))).statusCode, 404);
     });
 
     it("never shows one workspace's prices to another, nor lets it delete them", async () => {
