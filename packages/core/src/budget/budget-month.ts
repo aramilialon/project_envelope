@@ -20,9 +20,13 @@
  *    is gone from M (rule 3), but a later month's assignment paid for by that
  *    later month's own income is not blamed on M (#488). Income dated after
  *    today counts nowhere until its date: it is expected income, not money
- *    received. Spending dated after today does count, against its category,
- *    from its own month on (the cautious side). `today` is an input
- *    (`BudgetInput.today`), so the function stays pure.
+ *    received. The same holds for every positive activity amount (a refund, a
+ *    categorized transfer in from an off-budget account), split by split
+ *    (#668): dated after today, it counts nowhere — not in its category, not
+ *    in any month, and on a card it moves nothing between the category and the
+ *    payment category — until its date. Spending dated after today does count,
+ *    against its category, from its own month on (the cautious side). `today`
+ *    is an input (`BudgetInput.today`), so the function stays pure.
  * 2. A category's positive available balance rolls over to the next month.
  * 3. Money assigned to future months is already assigned: it reduces
  *    unassigned money immediately, as far as the later months' own income
@@ -98,6 +102,12 @@ export interface Assignment {
 export interface Activity {
   readonly categoryId: string;
   readonly month: Month;
+  /**
+   * The day it happened, in the workspace's time zone, inside `month`. A positive amount dated after
+   * `BudgetInput.today` counts nowhere until its date (rule 1, #668); without a date, it counts as
+   * dated on the first day of its month. A negative amount counts whatever its date.
+   */
+  readonly date?: LocalDate;
   readonly amount: Cents;
   readonly paymentCategoryId?: string;
 }
@@ -168,8 +178,8 @@ export interface BudgetInput {
   /** Transfers between two cards' payment categories. */
   readonly cardTransfers?: readonly CardTransfer[];
   /**
-   * Today, in the workspace's time zone (rule 1): income dated after it has not been received
-   * yet and counts nowhere. Required, so that no caller silently counts every income as received.
+   * Today, in the workspace's time zone (rule 1): income and positive activity dated after it have
+   * not been received yet and count nowhere. Required, so that no caller silently counts every income as received.
    */
   readonly today: LocalDate;
 }
@@ -307,6 +317,11 @@ function validate(input: BudgetInput, month: Month): void {
     count(item.amount, "activity", { month: item.month, categoryId: item.categoryId });
     if (!regular.has(item.categoryId)) unknown(item.categoryId);
     if (item.paymentCategoryId !== undefined && !payment.has(item.paymentCategoryId)) unknown(item.paymentCategoryId);
+    if (item.date !== undefined && monthOf(item.date) !== item.month) {
+      throw new ValidationError("invalid_date", `activity dated "${item.date}" is not in its month "${item.month}"`, {
+        value: item.date,
+      });
+    }
   }
   for (const item of input.cardPayments ?? []) {
     assertMonth(item.month);
@@ -526,9 +541,9 @@ function computeMonth(
 }
 
 /**
- * Whether income dated `date` has been received by `today`, both days in the workspace's time zone
- * (rule 1): income counts from its own date on, never before. The one rule the budget month and
- * every preview of incoming money share (#650, #700).
+ * Whether money coming in dated `date` has been received by `today`, both days in the workspace's
+ * time zone (rule 1): income, and every positive split (#668), counts from its own date on, never
+ * before. The one rule the budget month and every preview of incoming money share (#650, #700).
  */
 export function incomeReceived(date: LocalDate, today: LocalDate): boolean {
   return date <= today;
@@ -548,7 +563,10 @@ export function computeBudgetMonth(input: BudgetInput, month: Month): BudgetMont
   const creditBy = new Map<string, Map<string, Cents>>();
   const paymentsBy = new Map<string, Cents>();
   for (const a of input.assignments) addTo(assignedBy, key(a.categoryId, a.month), a.amount);
-  for (const a of input.activity) {
+  // Rule 1 (#668): money coming in dated after today counts nowhere until its date, split by split;
+  // spending counts at once.
+  const activity = input.activity.filter((a) => a.amount <= 0 || incomeReceived(a.date ?? `${a.month}-01`, input.today));
+  for (const a of activity) {
     addTo(activityBy, key(a.categoryId, a.month), a.amount);
     if (a.paymentCategoryId !== undefined) {
       const k = key(a.categoryId, a.month);
