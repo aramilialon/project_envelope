@@ -6,6 +6,8 @@ import { MAX_AMOUNT_CENTS } from "../money.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
+import { owedAsOf } from "./card-balance.ts";
+import { shiftMonth } from "../month.ts";
 import type { BudgetAccount, BudgetTransaction } from "./transactions.ts";
 import { aggregateTransactions, UNASSIGNED } from "./transactions.ts";
 
@@ -347,6 +349,10 @@ describe("budget invariant with accounts and credit cards", () => {
   // not moved any real cash either, only reduced a category's own reported available.
   it("balances on 300 random histories", () => {
     const random = mulberry32(7);
+    // How many months checked a payment category held negative by a card in credit (#660), so
+    // that the test is not vacuous.
+    let inCredit = 0;
+    let carriedNegative = 0;
     const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)] as T;
     const amount = (max: number) => Math.floor(random() * max) + 1;
     const months = ["2026-01", "2026-02", "2026-03", "2026-04"];
@@ -457,9 +463,21 @@ describe("budget invariant with accounts and credit cards", () => {
       }
 
       const aggregated = aggregateTransactions(accounts, transactions);
-      // A starting balance (or any card debt tracked outside the budget) is external to
-      // the invariant: it must never move money between the budget and the cash accounts.
-      const cardBalances = paymentCategoryIds.map((id) => ({ paymentCategoryId: id, owed: amount(300000) }));
+      // Each card's real balance comes from its own transactions, after a starting balance (or a
+      // card in credit from the start) dated in the first month: refunds after a payment leave a
+      // card in credit now and then (#660). A starting balance is external to the invariant: it
+      // must never move money between the budget and the cash accounts.
+      const cardBalances = paymentCategoryIds.map((id) => {
+        const accountId = id === "visa-payment" ? "visa" : "amex";
+        const start = pick([0, amount(300000), -amount(30000)]);
+        return {
+          paymentCategoryId: id,
+          transactions: [
+            { date: "2026-01-01", amount: 0 - start },
+            ...transactions.filter((t) => t.accountId === accountId).map((t) => ({ date: t.date, amount: t.amount })),
+          ],
+        };
+      });
       // Today falls inside the history most of the time, so some income is not received yet.
       const today = random() < 0.25 ? "2026-12-31" : date();
       const input: BudgetInput = {
@@ -477,33 +495,54 @@ describe("budget invariant with accounts and credit cards", () => {
         scheduledItems: Array.from({ length: 5 }, () => ({ categoryId: pick(categoryIds), amount: amount(50000) })),
         today,
       };
-      const month = pick(months);
+      // Every month of the history, so that a card's credit carried from one month into the next
+      // is checked on both sides (#660), and a month before negative income as well as its own (#782).
+      let previous: ReturnType<typeof computeBudgetMonth> | undefined;
+      for (const month of months) {
+        const result = computeBudgetMonth(input, month);
 
-      const result = computeBudgetMonth(input, month);
+        const budgeted =
+          result.unassigned +
+          [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
+          result.assignedInFuture +
+          result.creditOverspending +
+          result.reserved;
+        const cashBalance = transactions
+          .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
+          .filter((t) => t.date.slice(0, 7) <= month)
+          .reduce((sum, t) => sum + t.amount - notReceived(t, today), 0);
 
-      const budgeted =
-        result.unassigned +
-        [...result.categories, ...result.paymentCategories].reduce((sum, c) => sum + c.available, 0) +
-        result.assignedInFuture +
-        result.creditOverspending +
-        result.reserved;
-      const cashBalance = transactions
-        .filter((t) => t.accountId === "checking" || t.accountId === "wallet")
-        .filter((t) => t.date.slice(0, 7) <= month)
-        .reduce((sum, t) => sum + t.amount - notReceived(t, today), 0);
+        assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);
 
-      assert.equal(budgeted, cashBalance, `invariant violated on run ${run}, month ${month}`);
-
-      for (const card of result.paymentCategories) {
-        const owed = cardBalances.find((b) => b.paymentCategoryId === card.categoryId)?.owed ?? 0;
-        assert.ok(card.uncovered >= 0, `uncovered went negative on run ${run}, month ${month}`);
-        assert.equal(
-          card.uncovered,
-          Math.max(0, owed - Math.max(0, card.available)),
-          `uncovered formula mismatch on run ${run}, month ${month}`,
-        );
+        for (const card of result.paymentCategories) {
+          const own = cardBalances.find((b) => b.paymentCategoryId === card.categoryId)?.transactions ?? [];
+          const owed = owedAsOf(own, month);
+          const credit = Math.max(0, -owed);
+          assert.equal(card.owed, owed, `owed mismatch on run ${run}, month ${month}`);
+          assert.ok(card.uncovered >= 0, `uncovered went negative on run ${run}, month ${month}`);
+          assert.equal(
+            card.uncovered,
+            Math.max(0, owed - Math.max(0, card.available)),
+            `uncovered formula mismatch on run ${run}, month ${month}`,
+          );
+          // Rule 9 (#660): only the part beyond the card's credit is cash overspending, and what
+          // carries over into this month is no lower than minus the card's credit at the end of
+          // the month before.
+          assert.equal(card.cashOverspending, Math.max(0, -card.available - credit), `cash overspending on run ${run}, month ${month}`);
+          const previousCredit = Math.max(0, -owedAsOf(own, shiftMonth(month, -1)));
+          assert.ok(card.carriedOver >= -previousCredit, `carried over below the credit on run ${run}, month ${month}`);
+          if (card.available < 0 && credit > 0) inCredit++;
+          if (card.carriedOver < 0) carriedNegative++;
+          // What the month before kept: its available, less only its cash overspending.
+          const before = previous?.paymentCategories.find((c) => c.categoryId === card.categoryId);
+          const kept = before === undefined ? 0 : before.available < 0 ? before.available + before.cashOverspending : before.available;
+          assert.equal(card.carriedOver, kept, `carried over on run ${run}, month ${month}`);
+        }
+        previous = result;
       }
     }
+    assert.ok(inCredit > 10, `only ${inCredit} months had a payment category held negative by a card in credit`);
+    assert.ok(carriedNegative > 5, `only ${carriedNegative} months carried a card's credit over`);
   });
 });
 

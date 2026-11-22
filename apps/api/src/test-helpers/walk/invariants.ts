@@ -461,7 +461,7 @@ export function oracleBudgetMonth(model: WorkspaceModel, month: string): ReturnT
       cardTransfers: aggregated.cardTransfers,
       cardBalances: cards.map((card) => ({
         paymentCategoryId: model.category(card.paymentCategory!).id,
-        owed: -records.filter((r) => r.accountId === card.id && compareMonths(monthOf(r.budgetDate), month) <= 0).reduce((sum, r) => sum + amountOf(r), 0),
+        transactions: records.filter((r) => r.accountId === card.id).map((r) => ({ date: r.budgetDate, amount: amountOf(r) })),
         hasStartingBalance: false,
       })),
       scheduledItems: [],

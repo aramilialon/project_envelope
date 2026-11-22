@@ -1,15 +1,14 @@
 import {
   aggregateTransactions,
-  compareMonths,
   computeBudgetMonth,
   computeBudgetProblems,
-  monthOf,
   UNASSIGNED,
   type Assignment,
   type BudgetAccount,
   type BudgetProblem,
   type BudgetTransaction,
   type CardBalance,
+  type CardTransaction,
   type CategoryMonth,
   type Split,
 } from "@envelope/core";
@@ -119,8 +118,8 @@ function toBudgetTransaction(transaction: TransactionRecord, accountByTransactio
  * the one combination no ordinary transaction produces (spending uses a
  * regular category; a card payment is a transfer with no category at all).
  * `packages/core`'s own docs are explicit that this is not an `Activity`: it
- * feeds only `owedAsOf`, never `aggregateTransactions`, which would otherwise
- * reject it (a payment category is never a valid `Activity.categoryId`). The
+ * feeds only the card's balance (`CardBalance.transactions`, read by core's
+ * `owedAsOf`), never `aggregateTransactions`, which would otherwise reject it (a payment category is never a valid `Activity.categoryId`). The
  * rule itself (`isStartingBalanceSplit`) lives in `transactions/repository.ts`,
  * shared with `listTransactionEventsForMonth`'s own exclusion of the same thing (#326).
  */
@@ -134,20 +133,12 @@ function isStartingBalance(transaction: TransactionRecord, paymentCategoryIdByAc
 }
 
 /**
- * A credit card's real, external balance as of `month` (inclusive): the sum
- * of its own account's transactions dated up to and including that month —
- * never derived from activity or card payments (`packages/core`'s own
- * `CardBalance` doc). Positive = owed.
+ * A credit card's own account transactions, every one of them, starting balance included: core
+ * reads the card's real balance at the end of each month from them (`owedAsOf`, #660), never from
+ * activity or card payments.
  */
-function owedAsOf(transactions: readonly TransactionRecord[], accountId: string, month: string): number {
-  let balance = 0;
-  for (const transaction of transactions) {
-    if (transaction.accountId !== accountId) continue;
-    if (compareMonths(monthOf(transaction.budgetDate), month) > 0) continue;
-    balance += totalOf(transaction);
-  }
-  // `0 - balance`, not `-balance`: a card with no transactions owes 0, never -0 (#699 returns it).
-  return 0 - balance;
+function cardTransactionsOf(transactions: readonly TransactionRecord[], accountId: string): CardTransaction[] {
+  return transactions.filter((t) => t.accountId === accountId).map((t) => ({ date: t.budgetDate, amount: totalOf(t) }));
 }
 
 function joinCategory(
@@ -226,7 +217,7 @@ export async function getBudgetMonth(db: DbPool | DbClient, workspaceId: string,
     .filter((a) => a.paymentCategoryId !== null)
     .map((a) => ({
       paymentCategoryId: a.paymentCategoryId as string,
-      owed: owedAsOf(transactions, a.id, month),
+      transactions: cardTransactionsOf(transactions, a.id),
       hasStartingBalance: transactions.some((t) => t.accountId === a.id && isStartingBalance(t, paymentCategoryIdByAccountId)),
     }));
 

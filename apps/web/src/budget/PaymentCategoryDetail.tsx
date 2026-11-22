@@ -6,8 +6,10 @@ import "./RowDetail.css";
 
 interface Props {
   readonly categoryName: string;
-  /** The payment category's own available amount — `BudgetGroupCategory.available`; negative when the card was paid beyond what was set aside. */
+  /** The payment category's own available amount — `BudgetGroupCategory.available`; negative when the card was paid beyond what was set aside, or is in credit. */
   readonly available: number;
+  /** The payment category's cash overspending — `BudgetGroupCategory.cashOverspending`: what was paid beyond what was set aside and beyond the card's credit (#660). */
+  readonly cashOverspending: number;
   /** How much of the card's real balance no assigned money covers yet. */
   readonly uncovered: number;
   /** The card's real debt, what is owed on it (#699) — `BudgetGroupCategory.owed`; undefined when the API does not know it. */
@@ -52,6 +54,7 @@ interface Props {
 export default function PaymentCategoryDetail({
   categoryName,
   available,
+  cashOverspending,
   uncovered,
   owed,
   hasStartingBalance,
@@ -66,7 +69,7 @@ export default function PaymentCategoryDetail({
 }: Props) {
   const intl = useIntl();
   const money = (cents: number) => formatMoney(cents, { locale: intl.locale, currency });
-  const debt = cardDebt({ available, uncovered, ...(owed !== undefined ? { owed } : {}) });
+  const debt = cardDebt({ available, cashOverspending, uncovered, ...(owed !== undefined ? { owed } : {}) });
   const covered = debt.toCover <= 0;
 
   /**

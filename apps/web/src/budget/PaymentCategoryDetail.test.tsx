@@ -12,6 +12,7 @@ function renderDetail(overrides: Partial<Parameters<typeof PaymentCategoryDetail
     <PaymentCategoryDetail
       categoryName="Visa payment"
       available={50_000}
+      cashOverspending={0}
       uncovered={0}
       owed={0}
       currency="EUR"
@@ -28,7 +29,7 @@ describe("PaymentCategoryDetail (#329)", () => {
   it("a card paid beyond what was set aside: its real debt, set aside never negative, a neutral line for the excess, and the whole amount to cover (#699)", () => {
     // The domain guide's worked example: opened owing €500, €45.67 spent on it (covered), €300
     // paid from checking, nothing assigned to the payment category.
-    const { onAssignFromUnassigned } = renderDetail({ available: -25_433, uncovered: 24_567, owed: 24_567, hasStartingBalance: true });
+    const { onAssignFromUnassigned } = renderDetail({ available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567, hasStartingBalance: true });
 
     const row = (label: string) => screen.getByText(label).closest(".qa")!;
     expect(row("Card balance")).toHaveTextContent("€245.67");
@@ -43,7 +44,7 @@ describe("PaymentCategoryDetail (#329)", () => {
   });
 
   it("explains what was paid beyond what was set aside first, then the starting balance, without saying it takes nothing from unassigned money (#699)", () => {
-    renderDetail({ available: -25_433, uncovered: 24_567, owed: 24_567, hasStartingBalance: true });
+    renderDetail({ available: -25_433, cashOverspending: 25_433, uncovered: 24_567, owed: 24_567, hasStartingBalance: true });
 
     const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
     expect(sentences).toEqual([
@@ -54,7 +55,7 @@ describe("PaymentCategoryDetail (#329)", () => {
   });
 
   it("a card paid exactly its debt from cash (owed 0, available −€300): only the paid-beyond sentence, and €300.00 to cover (#699)", () => {
-    renderDetail({ available: -30_000, uncovered: 0, owed: 0, hasStartingBalance: true });
+    renderDetail({ available: -30_000, cashOverspending: 30_000, uncovered: 0, owed: 0, hasStartingBalance: true });
 
     const sentences = [...document.querySelectorAll(".explain")].map((p) => p.textContent);
     expect(sentences).toEqual([
@@ -66,6 +67,23 @@ describe("PaymentCategoryDetail (#329)", () => {
     expect(row("Paid beyond what was set aside")).toHaveTextContent("€300.00");
     expect(row("To cover")).toHaveTextContent("€300.00");
     expect(screen.getByRole("button", { name: "Assign €300.00 from unassigned money" })).toBeInTheDocument();
+  });
+
+  it("a card in credit holding its payment category at minus the credit: nothing to cover, no paid-beyond line (#660)", () => {
+    renderDetail({ available: -3_000, cashOverspending: 0, uncovered: 0, owed: -3_000 });
+
+    expect(screen.queryByText(/more than was set aside for it/)).not.toBeInTheDocument();
+    expect(screen.queryByText("To cover")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Assign/ })).not.toBeInTheDocument();
+  });
+
+  it("a card in credit by €10 with its payment category at −€50: €40.00 paid beyond and to cover (#660)", () => {
+    renderDetail({ available: -5_000, cashOverspending: 4_000, uncovered: 0, owed: -1_000 });
+
+    const row = (label: string) => screen.getByText(label).closest(".qa")!;
+    expect(row("Paid beyond what was set aside")).toHaveTextContent("€40.00");
+    expect(row("To cover")).toHaveTextContent("€40.00");
+    expect(screen.getByRole("button", { name: "Assign €40.00 from unassigned money" })).toBeInTheDocument();
   });
 
   it("keeps the starting-balance sentence whole when nothing was paid beyond what was set aside", () => {

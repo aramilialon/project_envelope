@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { isValidationError } from "../errors.ts";
+import { owing } from "../testing/card-balance.ts";
 import { mulberry32 } from "../testing/random.ts";
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
 import { shiftMonth } from "../month.ts";
@@ -374,7 +375,7 @@ describe("computeBudgetMonth", () => {
         { categoryId: "groceries", month: "2026-11", date: "2026-11-28", amount: 3000, paymentCategoryId: "visa-payment" },
       ],
       // The card's real debt counts every transaction to the end of the month, the refund included.
-      cardBalances: [{ paymentCategoryId: "visa-payment", owed: 5000 }],
+      cardBalances: [{ paymentCategoryId: "visa-payment", transactions: owing(5000, "2026-11-28") }],
       today: "2026-11-21",
     };
 

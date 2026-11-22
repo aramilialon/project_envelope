@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import type { BudgetInput, CategoryMonth } from "./budget-month.ts";
 import { computeBudgetMonth } from "./budget-month.ts";
+import { owing } from "../testing/card-balance.ts";
 
 /** Finds a category in a list, failing the test if it is missing. */
 function find(categories: readonly CategoryMonth[], id: string): CategoryMonth {
@@ -160,7 +161,7 @@ describe("credit cards", () => {
 
   describe("a starting balance (or any uncovered card debt) shows as uncovered, not swept away", () => {
     it("with nothing assigned yet: available 0, uncovered the full balance, unassigned untouched", () => {
-      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }] });
+      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, transactions: owing(120000, "2026-09-01") }] });
 
       const september = computeBudgetMonth(input, "2026-09");
       const card = find(september.paymentCategories, CARD);
@@ -173,7 +174,7 @@ describe("credit cards", () => {
     it("assigning money to the payment category reduces uncovered directly", () => {
       const input = budget({
         assignments: [{ categoryId: CARD, month: "2026-09", amount: 20000 }],
-        cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }],
+        cardBalances: [{ paymentCategoryId: CARD, transactions: owing(120000, "2026-09-01") }],
       });
 
       const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
@@ -187,7 +188,7 @@ describe("credit cards", () => {
         assignments: [{ categoryId: CARD, month: "2026-09", amount: 20000 }],
         cardPayments: [{ paymentCategoryId: CARD, month: "2026-09", amount: 30000 }],
         // The card's real balance already reflects the payment: 1200 owed − 300 paid = 900.
-        cardBalances: [{ paymentCategoryId: CARD, owed: 90000 }],
+        cardBalances: [{ paymentCategoryId: CARD, transactions: owing(90000, "2026-09-01") }],
       });
 
       const september = computeBudgetMonth(input, "2026-09");
@@ -210,7 +211,7 @@ describe("credit cards", () => {
     });
 
     it("exposes the card's real balance as `owed` (#699), only on the payment category", () => {
-      const september = computeBudgetMonth(budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000 }] }), "2026-09");
+      const september = computeBudgetMonth(budget({ cardBalances: [{ paymentCategoryId: CARD, transactions: owing(120000, "2026-09-01") }] }), "2026-09");
       assert.equal(find(september.paymentCategories, CARD).owed, 120000);
       assert.equal(find(september.categories, "groceries").owed, undefined);
     });
@@ -222,7 +223,7 @@ describe("credit cards", () => {
         assignments: [{ categoryId: "groceries", month: "2026-09", amount: 10000 }],
         activity: [{ categoryId: "groceries", month: "2026-09", amount: -4567, paymentCategoryId: CARD }],
         cardPayments: [{ paymentCategoryId: CARD, month: "2026-09", amount: 30000 }],
-        cardBalances: [{ paymentCategoryId: CARD, owed: 50000 + 4567 - 30000, hasStartingBalance: true }],
+        cardBalances: [{ paymentCategoryId: CARD, transactions: owing(50000 + 4567 - 30000, "2026-09-01"), hasStartingBalance: true }],
       });
 
       const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
@@ -298,7 +299,7 @@ describe("credit cards", () => {
     });
 
     it("reports hasStartingBalance exactly as given", () => {
-      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, owed: 120000, hasStartingBalance: true }] });
+      const input = budget({ cardBalances: [{ paymentCategoryId: CARD, transactions: owing(120000, "2026-09-01"), hasStartingBalance: true }] });
       const card = find(computeBudgetMonth(input, "2026-09").paymentCategories, CARD);
       assert.equal(card.hasStartingBalance, true);
     });

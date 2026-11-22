@@ -31,6 +31,12 @@ export interface BudgetProblemCategory {
   readonly groupName?: string;
   readonly available: Cents;
   readonly uncovered: Cents;
+  /**
+   * A payment category's card balance (`CategoryMonth.owed`), absent on an ordinary category: a
+   * card in credit holds its payment category negative by up to that credit without it being
+   * overspent (#660).
+   */
+  readonly owed?: Cents;
 }
 
 export interface BudgetProblemInput {
@@ -51,13 +57,15 @@ export function computeBudgetProblems(input: BudgetProblemInput): BudgetProblem[
   const problems: BudgetProblem[] = [];
 
   for (const category of input.categories) {
-    if (category.available < 0) {
+    // A card in credit (#660): its payment category is overspent only beyond the card's credit.
+    const overspent = -category.available - Math.max(0, -(category.owed ?? 0));
+    if (overspent > 0) {
       problems.push({
         kind: "overspent_category",
         categoryId: category.categoryId,
         ...(category.name !== undefined ? { name: category.name } : {}),
         ...(category.groupName !== undefined ? { groupName: category.groupName } : {}),
-        amountCents: -category.available,
+        amountCents: overspent,
       });
     }
     if (category.uncovered > 0) {
