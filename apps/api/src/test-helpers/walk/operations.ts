@@ -339,8 +339,8 @@ function windingDown(model: WorkspaceModel, progress: number): AccountEntity | u
  * `account_not_empty` with the figures the rule read; an account already closed is not found.
  * Weighted high but generated mostly when an account is empty (a new one, or one `sweepAccount`
  * emptied), so it closes before another step writes to it again and the walk goes on to write to
- * it (`writes`, ADR 0018). Never the last open on-budget cash account or brokerage account, so
- * the walk can still budget and trade.
+ * it (`writes`, ADR 0018). Never the last open on-budget cash account or brokerage account while
+ * it is empty, so the walk can still budget and trade.
  */
 const closeAccount: OperationSpec<CloseAccountParams> = {
   writes: NONE,
@@ -365,8 +365,12 @@ const closeAccount: OperationSpec<CloseAccountParams> = {
     const ready = empty.filter((account) => account.type !== "brokerage" || traded(account));
     const pool = ready.length > 0 ? ready : progress >= LATE ? empty : [];
     if (pool.length > 0 && closed.length < MAX_CLOSED_ACCOUNTS) return { account: random.pick(pool).handle };
-    // Now and then an account that is not empty: refused, with the figures.
-    const full = candidates.filter((account) => !isEmpty(account));
+    // Mostly, while there is one, a brokerage account whose cash a sweep took and that still holds
+    // a security, refused for that alone (`holdsPositions`), the last one included since it stays
+    // open; now and then any other account that is not empty: refused, with the figures.
+    const full = open.filter((account) => !isEmpty(account));
+    const holdingOnly = full.filter((account) => model.closeRule(account).balanceCents === 0);
+    if (holdingOnly.length > 0 && random.chance(0.8)) return { account: random.pick(holdingOnly).handle };
     return full.length > 0 && random.chance(0.35) ? { account: random.pick(full).handle } : undefined;
   },
   request: (model, p) => ({ method: "PATCH", path: ws(model, `/accounts/${model.account(p.account).id}/close`) }),
@@ -840,10 +844,12 @@ const sweepAccount: OperationSpec<TransferParams> = {
     const cash = model.budgetCashAccounts();
     const candidates = model.openAccounts().filter((account) => model.balanceOf(account) !== 0);
     if (candidates.length === 0) return undefined;
-    // Mostly the brokerage account winding down, once it holds no security (`windingDown`).
+    // Mostly the brokerage account winding down, once it holds no security (`windingDown`), else
+    // often one that still holds some, whose close is then refused for that alone.
     const winding = windingDown(model, progress);
     const soldOut = winding !== undefined && candidates.includes(winding) && !model.closeRule(winding).holdsPositions;
-    const account = soldOut && random.chance(0.8) ? winding : random.pick(candidates);
+    const holding = candidates.filter((account) => account.type === "brokerage" && model.closeRule(account).holdsPositions);
+    const account = soldOut && random.chance(0.8) ? winding : holding.length > 0 && random.chance(0.5) ? random.pick(holding) : random.pick(candidates);
     const balance = model.balanceOf(account);
     const brokers = account.type === "brokerage" ? model.brokerageAccounts() : [];
     const others = [...brokers, ...cash].filter((other) => other !== account);
@@ -2011,7 +2017,7 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
     // A brokerage account's cash withdrawn, then the account closed (sold out) or refused (still
     // holding securities), then written to by the trades (#735).
     sweepAccount: 2,
-    closeAccount: 4,
+    closeAccount: 8,
     addTaxRegime: 2,
     replaceTaxRegimes: 3,
     setWithholdingAgent: 1,
@@ -2037,8 +2043,8 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
   },
   mixed: {
     createAccount: 1,
-    sweepAccount: 2,
-    closeAccount: 4,
+    sweepAccount: 3,
+    closeAccount: 8,
     // No tax country: a regime is refused as not applicable, and must change nothing.
     addTaxRegime: 1,
     createPortfolio: 1,
