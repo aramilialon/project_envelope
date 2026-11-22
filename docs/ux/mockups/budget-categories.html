@@ -138,7 +138,7 @@ body{background:var(--desk);color:var(--ink);font-family:var(--font);font-size:1
 <script>
 (function () {
   var nf = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' });
-  function f(c) { return nf.format(c / 100); }
+  function f(c) { return nf.format(c / 100).replace('-', '−'); }
   function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   // Sample data — the same household as budget-month.html, trimmed to two groups.
