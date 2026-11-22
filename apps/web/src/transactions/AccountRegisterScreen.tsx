@@ -485,7 +485,8 @@ export default function AccountRegisterScreen() {
   const markItems: RegisterTodoItem[] = transactions
     // A row dated after today has not reached the bank yet, so it is not waiting for it either (#702).
     .filter((t) => t.status === "pending" && !isAfterToday(t.budgetDate, today))
-    .map((t) => ({ kind: "markPending", transactionId: t.id, payee: t.payee ?? "", date: t.budgetDate, amountCents: Math.abs(totalOf(t)) }));
+    // A trade's cash leg often has no payee: it reads as its trade, as in the register (#657).
+    .map((t) => ({ kind: "markPending", transactionId: t.id, payee: t.payee ?? (t.trade !== null ? tradeLabel(intl, t.trade) : ""), date: t.budgetDate, amountCents: Math.abs(totalOf(t)) }));
   const registerTodoItems: RegisterTodoItem[] = [...recordItems, ...markItems];
 
   const laterHeading = intl.formatMessage({ id: "register.later", defaultMessage: "Later" });
@@ -553,10 +554,13 @@ export default function AccountRegisterScreen() {
           </button>
         </td>
         <td>
-          <button type="button" className="open-row" onClick={() => changeSheet({ transaction })}>
-            {transaction.payee ?? ""}
-            {transaction.memo && <small>{transaction.memo}</small>}
-          </button>
+          {/* A trade's cash leg may have neither payee nor memo: an empty cell, never an unnamed button (#657). */}
+          {(transaction.payee !== null || transaction.memo) && (
+            <button type="button" className="open-row" onClick={() => changeSheet({ transaction })}>
+              {transaction.payee ?? ""}
+              {transaction.memo && <small>{transaction.memo}</small>}
+            </button>
+          )}
         </td>
         <td>
           {/* An off-budget account's own rows have no category: an empty cell, never an unnamed button (#652). */}

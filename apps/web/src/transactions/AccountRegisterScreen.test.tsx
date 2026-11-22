@@ -295,9 +295,31 @@ describe("AccountRegisterScreen (#54, #333)", () => {
 
         expect(await screen.findByRole("heading", { name: "Edit transaction" })).toBeInTheDocument();
         expect(screen.getByLabelText("Amount")).toBeDisabled();
-        expect(screen.getByText("Change it on the trade.")).toBeInTheDocument();
+        expect(screen.getByText("This transaction belongs to “Buy · 10.5 × WEQ”: its amount and date change on the trade.")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
         expect(screen.getByLabelText("Memo")).toBeEnabled();
+      });
+
+      it("leaves the payee cell empty, with no unnamed button, when it has neither payee nor memo", async () => {
+        renderScreen([buy], [], [EU_BROKER]);
+        const row = (await screen.findByRole("button", { name: "Buy · 10.5 × WEQ" })).closest("tr")!;
+        const payeeCell = row.querySelectorAll("td")[2]!;
+        expect(payeeCell).toHaveTextContent(/^$/);
+        expect(within(payeeCell).queryByRole("button")).not.toBeInTheDocument();
+        // Every button left in the row has a name.
+        for (const button of within(row).getAllByRole("button")) {
+          expect(button).toHaveAccessibleName();
+        }
+      });
+
+      it("keeps the payee cell's button for its memo alone", async () => {
+        renderScreen([{ ...buy, memo: "Monthly plan" }], [], [EU_BROKER]);
+        expect(await screen.findByRole("button", { name: "Monthly plan" })).toBeInTheDocument();
+      });
+
+      it("names its trade in the To do when it has no payee", async () => {
+        renderScreen([{ ...buy, status: "pending" }], [], [EU_BROKER]);
+        expect(await screen.findByRole("button", { name: /^Mark Buy · 10\.5 × WEQ/ })).toBeInTheDocument();
       });
 
       it("titles a reconciled one's sheet after its trade", async () => {
