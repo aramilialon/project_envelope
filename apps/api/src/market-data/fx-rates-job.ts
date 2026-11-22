@@ -6,8 +6,11 @@
  * - Scheduled at 15:30 and 21:30 UTC on working days (`FX_RATES_FETCH_CRON`): the ECB publishes
  *   around 16:00 Central European Time (15:00 UTC in winter, 14:00 in summer); the second run
  *   catches a late publication or a failed first run.
- * - Enqueued once at startup too, deduplicated by the UTC day (`fx-rates:ecb:<date>`), so a new
- *   server has rates within a minute rather than at the next scheduled run.
+ * - Enqueued once at startup too, unless the newest stored day is today or yesterday (UTC), so a
+ *   new server, or one stopped for days, has rates within a minute rather than at the next
+ *   scheduled run, while frequent restarts do not fetch again. The startup job carries a
+ *   deduplication key of the UTC day (`fx-rates:ecb:<date>`), which keeps a second one out only
+ *   while the first is still pending or running (the queue's exclusive policy).
  * - `MARKET_DATA_FETCH_ENABLED=false` turns all of it off: nothing scheduled or enqueued, and a
  *   delivery still pending (or a schedule left from an earlier start with fetching on) returns
  *   without fetching. The administration command (`import-fx-rates.ts`) loads a downloaded file
@@ -15,15 +18,20 @@
  *
  * The handler reads the newest stored day (no flag needed: every caller reads rates), asks the
  * provider for what follows it within `timeoutMs`, then writes through `writeFxRates`, which
- * sets the system-job flag (app.is_system_job) for its own statements only. A repeat delivery of the same job id is
- * discarded by the queue module before the handler runs (`processed_jobs`); a second job on the
- * same day finds the same rows and changes nothing.
+ * sets the system-job flag (app.is_system_job) for its own statements only. A repeat delivery of
+ * the same job id is discarded by the queue module before the handler runs (`processed_jobs`); a
+ * second job on the same day finds the same rows and changes nothing. A failure is logged here,
+ * with a refused file's `code` and `details` (`reason`, `currency`, `date`, `offset`), before it
+ * goes back to the queue for a retry: the queue does not log a job's error itself.
  */
+import { daysBetween, isValidationError, type LocalDate } from "@envelope/core";
+
 import type { DbClient } from "../db/pool.ts";
 import type { JobHandler } from "../queue/driver.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { FX_RATES_FETCH_JOB, type FxRatesFetchJobData } from "../queue/job-types.ts";
-import { latestFxRateDate, writeFxRates } from "./fx-rates-repository.ts";
+import { type FxRatesWriteResult, latestFxRateDate, writeFxRates } from "./fx-rates-repository.ts";
+import { EcbFetchError } from "./ecb-provider.ts";
 import type { MarketDataProvider } from "./provider.ts";
 
 /** Minute 30 of 15:00 and 21:00 UTC, Monday to Friday (the queue's cron runs in UTC). */
@@ -39,6 +47,7 @@ const CHANGED_RATES_LOGGED = 20;
 export interface JobLogger {
   info(object: Record<string, unknown>, message: string): void;
   warn(object: Record<string, unknown>, message: string): void;
+  error(object: Record<string, unknown>, message: string): void;
 }
 
 export interface FxRatesFetchOptions {
@@ -57,8 +66,14 @@ export function createFxRatesFetchHandler(options: FxRatesFetchOptions): JobHand
       return;
     }
     const since = await latestFxRateDate(db);
-    const rates = await provider.fetchFxRates({ since }, AbortSignal.timeout(timeoutMs));
-    const result = await writeFxRates(db, rates, provider.id);
+    let result: FxRatesWriteResult;
+    try {
+      const rates = await provider.fetchFxRates({ since }, AbortSignal.timeout(timeoutMs));
+      result = await writeFxRates(db, rates, provider.id);
+    } catch (error) {
+      log.error({ provider: provider.id, since, ...describeFailure(error) }, "exchange rates not stored: the fetch or the file failed");
+      throw error;
+    }
     if (result.changed.length > 0) {
       log.warn(
         { count: result.changed.length, changed: result.changed.slice(0, CHANGED_RATES_LOGGED) },
@@ -72,23 +87,54 @@ export function createFxRatesFetchHandler(options: FxRatesFetchOptions): JobHand
   };
 }
 
+/** What a failure's log line says about it: a refusal's stable code and details, or the error's name and message. */
+function describeFailure(error: unknown): Record<string, unknown> {
+  if (isValidationError(error)) {
+    return { code: error.code, details: error.details, error: error.message };
+  }
+  if (error instanceof EcbFetchError) {
+    return { code: error.code, error: error.message };
+  }
+  return error instanceof Error ? { code: error.name, error: error.message } : { error: String(error) };
+}
+
 /** The deduplication key of the startup run: one per UTC day. */
 export function fxRatesStartupKey(now: Date): string {
   return `fx-rates:ecb:${now.toISOString().slice(0, 10)}`;
 }
 
 /**
- * Registers the job's handler, and, when fetching is on, its schedule and one run now. With
- * fetching off, the handler is still registered, so a delivery left from an earlier start is
- * answered (without fetching) rather than retried forever, and one log line says rates are not
- * fetched.
+ * Whether a startup run is needed: no rate stored, or the newest stored day is before yesterday
+ * (UTC). A day after today (a clock behind) needs none either.
  */
-export async function registerFxRatesJob(queue: QueueDriver, options: FxRatesFetchOptions, now: Date = new Date()): Promise<void> {
+export function fxRatesStartupRunNeeded(latest: LocalDate | null, now: Date): boolean {
+  return latest === null || daysBetween(latest, now.toISOString().slice(0, 10)) > 1;
+}
+
+export interface FxRatesStartup {
+  /** The newest stored day (`latestFxRateDate` on the server's pool). */
+  readonly latestRateDate: () => Promise<LocalDate | null>;
+  readonly now?: Date;
+}
+
+/**
+ * Registers the job's handler, and, when fetching is on, its schedule and one run now unless the
+ * stored rates are already recent (`fxRatesStartupRunNeeded`). With fetching off, the handler is
+ * still registered, so a delivery left from an earlier start is answered (without fetching)
+ * rather than retried forever, and one log line says rates are not fetched.
+ */
+export async function registerFxRatesJob(queue: QueueDriver, options: FxRatesFetchOptions, startup: FxRatesStartup): Promise<void> {
+  const now = startup.now ?? new Date();
   await queue.work(FX_RATES_FETCH_JOB, createFxRatesFetchHandler(options));
   if (!options.enabled) {
     options.log.info({}, "MARKET_DATA_FETCH_ENABLED is false: exchange rates are not fetched; load a file with fx-rates:import");
     return;
   }
   await queue.schedule(FX_RATES_FETCH_JOB, FX_RATES_FETCH_CRON);
+  const latest = await startup.latestRateDate();
+  if (!fxRatesStartupRunNeeded(latest, now)) {
+    options.log.info({ latest }, "exchange rates are recent: no fetch at startup, the next one is the scheduled one");
+    return;
+  }
   await queue.enqueue(FX_RATES_FETCH_JOB, {}, { deduplicationKey: fxRatesStartupKey(now) });
 }

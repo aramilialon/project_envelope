@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { after, afterEach, before, describe, it } from "node:test";
 
+import Fastify from "fastify";
+
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
 import type { EnqueueOptions, QueueDriver } from "../queue/index.ts";
@@ -11,7 +13,14 @@ import { processJob } from "../queue/postgres-driver.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { createEcbProvider, ECB_HISTORY_FILE, type EcbFile } from "./ecb-provider.ts";
-import { createFxRatesFetchHandler, FX_RATES_FETCH_CRON, fxRatesStartupKey, type JobLogger, registerFxRatesJob } from "./fx-rates-job.ts";
+import {
+  createFxRatesFetchHandler,
+  FX_RATES_FETCH_CRON,
+  fxRatesStartupKey,
+  fxRatesStartupRunNeeded,
+  type JobLogger,
+  registerFxRatesJob,
+} from "./fx-rates-job.ts";
 import { writeFxRates } from "./fx-rates-repository.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -25,12 +34,13 @@ if (!databaseUrl) {
 const fixture = (name: string): Promise<string> => readFile(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 
 /** Every line the job logged, by level. */
-function recordingLogger(): JobLogger & { lines: { level: "info" | "warn"; object: Record<string, unknown>; message: string }[] } {
-  const lines: { level: "info" | "warn"; object: Record<string, unknown>; message: string }[] = [];
+function recordingLogger(): JobLogger & { lines: { level: "info" | "warn" | "error"; object: Record<string, unknown>; message: string }[] } {
+  const lines: { level: "info" | "warn" | "error"; object: Record<string, unknown>; message: string }[] = [];
   return {
     lines,
     info: (object, message) => lines.push({ level: "info", object, message }),
     warn: (object, message) => lines.push({ level: "warn", object, message }),
+    error: (object, message) => lines.push({ level: "error", object, message }),
   };
 }
 
@@ -201,6 +211,28 @@ describe("fx-rates-fetch job (#85)", () => {
     assert.equal((await storedRates()).length, 0);
   });
 
+  it("writes a refused file's reason, currency and date to the server log (pino, as main.ts wires it), then fails the job", async () => {
+    const provider = createEcbProvider({
+      fetchFile: async () => (await fixture("ecb-hist-90d.xml")).replace('currency="USD" rate="1.0991"', 'currency="USD" rate="900719.9254740992"'),
+    });
+    const written: string[] = [];
+    const server = Fastify({ logger: { level: "info", stream: { write: (line: string) => void written.push(line) } } });
+    try {
+      const log = server.log.child({ job: FX_RATES_FETCH_JOB });
+      await assert.rejects(deliver(createFxRatesFetchHandler({ enabled: true, provider, log })), /too large to store/);
+    } finally {
+      await server.close();
+    }
+    assert.equal((await storedRates()).length, 0);
+    const line = written.map((text) => JSON.parse(text) as Record<string, unknown>).find((entry) => entry.level === 50);
+    assert.ok(line, `no error line in ${written.join("")}`);
+    assert.equal(line.job, "fx-rates-fetch");
+    assert.equal(line.provider, "ecb");
+    assert.equal(line.code, "invalid_rates_file");
+    const details = line.details as Record<string, unknown>;
+    assert.deepEqual([details.reason, details.currency, details.date], ["rate_out_of_range", "USD", "2026-11-20"]);
+  });
+
   it("leaves the system-job flag off once the rates are written, for anything later in the same transaction", async () => {
     const client = await appPool.connect();
     try {
@@ -345,7 +377,11 @@ describe("registerFxRatesJob (#85)", () => {
 
   it("with fetching on: registers the handler, the cron at 15:30 and 21:30 UTC on working days, and one run now, deduplicated by the UTC day", async () => {
     const { queue, calls } = recordingQueue();
-    await registerFxRatesJob(queue, { enabled: true, provider: neverFetches, log: recordingLogger() }, new Date("2026-11-22T23:30:00+01:00"));
+    await registerFxRatesJob(
+      queue,
+      { enabled: true, provider: neverFetches, log: recordingLogger() },
+      { latestRateDate: async () => null, now: new Date("2026-11-22T23:30:00+01:00") },
+    );
     assert.equal(FX_RATES_FETCH_CRON, "30 15,21 * * 1-5");
     assert.deepEqual(calls, [
       { method: "work", args: ["fx-rates-fetch"] },
@@ -358,9 +394,54 @@ describe("registerFxRatesJob (#85)", () => {
   it("with fetching off: registers only the handler, schedules and enqueues nothing, and says so once", async () => {
     const { queue, calls } = recordingQueue();
     const log = recordingLogger();
-    await registerFxRatesJob(queue, { enabled: false, provider: neverFetches, log });
+    let read = false;
+    await registerFxRatesJob(
+      queue,
+      { enabled: false, provider: neverFetches, log },
+      {
+        latestRateDate: async () => {
+          read = true;
+          return null;
+        },
+      },
+    );
     assert.deepEqual(calls, [{ method: "work", args: ["fx-rates-fetch"] }]);
+    assert.equal(read, false);
     assert.equal(log.lines.length, 1);
     assert.match(log.lines[0]?.message ?? "", /MARKET_DATA_FETCH_ENABLED is false/);
+  });
+
+  it("skips the startup run when the newest stored day is today or yesterday (UTC), and says so; schedules all the same", async () => {
+    for (const latest of ["2026-11-22", "2026-11-21", "2026-11-23"]) {
+      const { queue, calls } = recordingQueue();
+      const log = recordingLogger();
+      // Now is 23:30 on 2026-11-22 in UTC (00:30 the next day in Rome); the last day is after it (a clock behind).
+      await registerFxRatesJob(
+        queue,
+        { enabled: true, provider: neverFetches, log },
+        { latestRateDate: async () => latest, now: new Date("2026-11-23T00:30:00+01:00") },
+      );
+      assert.deepEqual(calls.map((call) => call.method), ["work", "schedule"], latest);
+      assert.match(log.lines.at(-1)?.message ?? "", /recent: no fetch at startup/);
+    }
+  });
+
+  it("runs at startup when the newest stored day is two days old or more (a weekend, a server stopped for days)", async () => {
+    for (const latest of ["2026-11-20", "2025-01-02"]) {
+      const { queue, calls } = recordingQueue();
+      await registerFxRatesJob(
+        queue,
+        { enabled: true, provider: neverFetches, log: recordingLogger() },
+        { latestRateDate: async () => latest, now: new Date("2026-11-22T12:00:00Z") },
+      );
+      assert.deepEqual(calls.at(-1), { method: "enqueue", args: ["fx-rates-fetch", {}, { deduplicationKey: "fx-rates:ecb:2026-11-22" }] }, latest);
+    }
+  });
+
+  it("decides from the UTC day, not the server's local one", () => {
+    // 00:30 on 2026-11-23 in Rome is 23:30 on 2026-11-22 in UTC: 2026-11-21 is still yesterday.
+    assert.equal(fxRatesStartupRunNeeded("2026-11-21", new Date("2026-11-23T00:30:00+01:00")), false);
+    assert.equal(fxRatesStartupRunNeeded("2026-11-20", new Date("2026-11-23T00:30:00+01:00")), true);
+    assert.equal(fxRatesStartupRunNeeded(null, new Date("2026-11-23T00:30:00+01:00")), true);
   });
 });

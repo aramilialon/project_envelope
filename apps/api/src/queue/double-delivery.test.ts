@@ -153,7 +153,7 @@ describe("double-delivery harness (#37)", () => {
             return readFile(new URL("../market-data/fixtures/ecb-hist.xml", import.meta.url), "utf8");
           },
         }),
-        log: { info: () => {}, warn: () => {} },
+        log: { info: () => {}, warn: () => {}, error: () => {} },
       }),
       async countEffects() {
         return fxFetches;

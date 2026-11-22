@@ -3,6 +3,7 @@ import { loadConfig, loadMarketDataConfig, loadPushConfig, loadQueueConfig } fro
 import { createPool } from "./db/pool.ts";
 import { createEcbFileFetcher, createEcbProvider } from "./market-data/ecb-provider.ts";
 import { registerFxRatesJob } from "./market-data/fx-rates-job.ts";
+import { latestFxRateDate } from "./market-data/fx-rates-repository.ts";
 import { createPriceProvider } from "./market-data/registry.ts";
 import { createBudgetRecomputeHandler } from "./notifications/budget-recompute-job.ts";
 import { createPushDrivers } from "./notifications/index.ts";
@@ -33,12 +34,17 @@ async function main(): Promise<void> {
 
   const app = buildApp(config, queue, pushConfig.vapidPublicKey);
 
-  // The exchange rates job fetches only when MARKET_DATA_FETCH_ENABLED is on, its default.
-  await registerFxRatesJob(queue, {
-    enabled: marketData.fetchEnabled,
-    provider: createEcbProvider({ fetchFile: createEcbFileFetcher({ baseUrl: marketData.ecbBaseUrl }) }),
-    log: app.fastify.log.child({ job: FX_RATES_FETCH_JOB }),
-  });
+  // The exchange rates job fetches only when MARKET_DATA_FETCH_ENABLED is on, its default; its
+  // startup run is skipped when the stored rates are already from today or yesterday (UTC).
+  await registerFxRatesJob(
+    queue,
+    {
+      enabled: marketData.fetchEnabled,
+      provider: createEcbProvider({ fetchFile: createEcbFileFetcher({ baseUrl: marketData.ecbBaseUrl }) }),
+      log: app.fastify.log.child({ job: FX_RATES_FETCH_JOB }),
+    },
+    { latestRateDate: () => latestFxRateDate(queuePool) },
+  );
 
   await app.fastify.listen({ host: config.host, port: config.port });
   // One machine-readable line with the address actually bound, whatever LOG_LEVEL says: with
