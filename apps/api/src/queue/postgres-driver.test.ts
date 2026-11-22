@@ -17,14 +17,22 @@ if (!databaseUrl) {
   );
 }
 
-async function waitUntil(check: () => boolean, timeoutMs = 10_000): Promise<void> {
+/**
+ * Polls `check` until it returns true, failing with `description` after `timeoutMs` (#641): a
+ * test waits for a state of the job tables, never for a fixed time.
+ */
+async function waitFor(description: string, check: () => Promise<boolean>, timeoutMs = 10_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  while (!(await check())) {
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out after ${timeoutMs} ms waiting for ${description}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`condition not met within ${timeoutMs}ms`);
 }
+
+/** The shortest polling interval pg-boss allows, so the one test that waits for a real delivery waits little (#641). */
+const TEST_POLLING_INTERVAL_SECONDS = 0.5;
 
 describe("postgres queue driver", () => {
   let superuserPool: DbPool;
@@ -43,96 +51,139 @@ describe("postgres queue driver", () => {
     await superuserPool.end();
   });
 
+  /**
+   * pg-boss's own rows for one job type, read as the superuser. Every test uses a job type of its
+   * own, so another test file running at the same time (ADR 0016) never adds rows here.
+   */
+  async function jobRows(jobType: string): Promise<{ id: string; data: { n?: number }; state: string; singleton_key: string | null }[]> {
+    const { rows } = await superuserPool.query<{ id: string; data: { n?: number }; state: string; singleton_key: string | null }>(
+      "SELECT id, data, state, singleton_key FROM pgboss.job WHERE name = $1 ORDER BY (data->>'n')::int NULLS LAST",
+      [jobType],
+    );
+    return rows;
+  }
+
+  /** Removes the jobs a test left waiting with no worker, its own job type's only. */
+  async function deleteJobs(jobType: string): Promise<void> {
+    await superuserPool.query("DELETE FROM pgboss.job WHERE name = $1", [jobType]);
+  }
+
   it("enqueues a job and a registered worker processes it", async () => {
-    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
-    await driver.start();
-    const jobType = `test-job-${randomUUID()}`;
-
-    let received: { greeting: string } | undefined;
-    await driver.work<{ greeting: string }>(jobType, async (data) => {
-      received = data;
+    // The one test that waits for pg-boss to really deliver a job, through a worker it registers.
+    const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool, {
+      pollingIntervalSeconds: TEST_POLLING_INTERVAL_SECONDS,
     });
-    await driver.enqueue(jobType, { greeting: "hello" });
+    await driver.start();
+    try {
+      const jobType = `test-job-${randomUUID()}`;
 
-    await waitUntil(() => received !== undefined);
-    assert.deepEqual(received, { greeting: "hello" });
+      let received: { greeting: string } | undefined;
+      await driver.work<{ greeting: string }>(jobType, async (data) => {
+        received = data;
+      });
+      const jobId = await driver.enqueue(jobType, { greeting: "hello" });
+      assert.ok(jobId, "the enqueue must have created a job");
 
-    await driver.stop();
+      // processed_jobs gets the job's id in the same transaction as the handler's own work (#36).
+      await waitFor(`job ${jobId} to be marked processed in processed_jobs`, async () => {
+        const { rows } = await appPool.query("SELECT 1 FROM processed_jobs WHERE job_id = $1", [jobId]);
+        return rows.length === 1;
+      });
+      assert.deepEqual(received, { greeting: "hello" });
+    } finally {
+      await driver.stop();
+    }
   });
 
   it("ignores a second enqueue with the same deduplication key while the first is still unprocessed", async () => {
+    // No worker: both jobs stay "created" (never started) for as long as the test lasts, so the
+    // job table itself shows that the duplicate was never created, not merely slow to arrive.
     const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
     const jobType = `test-dedupe-${randomUUID()}`;
+    try {
+      const first = await driver.enqueue(jobType, { n: 1 }, { deduplicationKey: "dedupe-key" });
+      const duplicate = await driver.enqueue(jobType, { n: 2 }, { deduplicationKey: "dedupe-key" });
+      const other = await driver.enqueue(jobType, { n: 3 }, { deduplicationKey: "other-key" });
 
-    const received: { n: number }[] = [];
-    // A run date in the near future keeps both enqueue calls "still pending" (never started)
-    // long enough to prove the second one was rejected, not just processed very quickly.
-    const runAt = new Date(Date.now() + 2000);
-    await driver.enqueue(jobType, { n: 1 }, { deduplicationKey: "dedupe-key", runAt });
-    await driver.enqueue(jobType, { n: 2 }, { deduplicationKey: "dedupe-key", runAt });
-    await driver.enqueue(jobType, { n: 3 }, { deduplicationKey: "other-key", runAt });
-
-    await driver.work<{ n: number }>(jobType, async (data) => {
-      received.push(data);
-    });
-
-    await waitUntil(() => received.length >= 2);
-    await new Promise((resolve) => setTimeout(resolve, 500)); // give a would-be third delivery a chance to arrive
-    assert.equal(received.length, 2, "the duplicate-keyed job must never have been created, not merely slow to arrive");
-    assert.deepEqual(
-      received.map((r) => r.n).sort(),
-      [1, 3],
-    );
-
-    await driver.stop();
+      assert.equal(duplicate, null, "the duplicate-keyed enqueue must report that it created nothing");
+      assert.ok(first && other && first !== other, "each distinct key must create a job of its own");
+      const rows = await jobRows(jobType);
+      assert.deepEqual(
+        rows.map((r) => ({ id: r.id, n: r.data.n, state: r.state, key: r.singleton_key })),
+        [
+          { id: first, n: 1, state: "created", key: "dedupe-key" },
+          { id: other, n: 3, state: "created", key: "other-key" },
+        ],
+        "the duplicate-keyed job must never have been created",
+      );
+    } finally {
+      await deleteJobs(jobType);
+      await driver.stop();
+    }
   });
 
   it("writes the job in the caller's own transaction, rolling back together with it", async () => {
     const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
-    const jobType = `test-outbox-${randomUUID()}`;
-
-    let received = false;
-    await driver.work<object>(jobType, async () => {
-      received = true;
-    });
-
-    const workspaceId = randomUUID();
-    const client = await superuserPool.connect();
     try {
-      await client.query("BEGIN");
-      await client.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Rolled back', 'EUR', 'UTC')", [
-        workspaceId,
-      ]);
-      await driver.enqueue(jobType, { workspaceId }, {}, client);
-      await client.query("ROLLBACK");
+      const jobType = `test-outbox-${randomUUID()}`;
+
+      async function enqueueWithWorkspace(n: number, outcome: "COMMIT" | "ROLLBACK"): Promise<string> {
+        const workspaceId = randomUUID();
+        const client = await superuserPool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Outbox test', 'EUR', 'UTC')", [
+            workspaceId,
+          ]);
+          await driver.enqueue(jobType, { n, workspaceId }, {}, client);
+          await client.query(outcome);
+        } finally {
+          client.release();
+        }
+        return workspaceId;
+      }
+
+      const rolledBack = await enqueueWithWorkspace(1, "ROLLBACK");
+      const committed = await enqueueWithWorkspace(2, "COMMIT");
+      try {
+        // The committed write is the control: it proves the job table is where an enqueue through
+        // the caller's transaction lands, so the rolled-back one's absence there means something.
+        assert.deepEqual(
+          (await jobRows(jobType)).map((r) => r.data.n),
+          [2],
+          "only the job written inside the committed transaction may have been queued",
+        );
+        const { rows } = await superuserPool.query<{ id: string }>("SELECT id FROM workspaces WHERE id = ANY($1)", [[rolledBack, committed]]);
+        assert.deepEqual(
+          rows.map((r) => r.id),
+          [committed],
+          "the rolled-back transaction's own write must be gone too",
+        );
+      } finally {
+        await superuserPool.query("DELETE FROM workspaces WHERE id = ANY($1)", [[rolledBack, committed]]);
+        await deleteJobs(jobType);
+      }
     } finally {
-      client.release();
+      await driver.stop();
     }
-
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // long enough for at least one poll if the job had survived
-    assert.equal(received, false, "a job written inside a rolled-back transaction must not have been queued");
-
-    await driver.stop();
   });
 
   it("registers a periodic schedule without throwing", async () => {
     const driver = createPostgresQueueDriver(queueConnectionString(databaseUrl), appPool);
     await driver.start();
-    const jobType = `test-schedule-${randomUUID()}`;
+    try {
+      const jobType = `test-schedule-${randomUUID()}`;
 
-    await driver.schedule(jobType, "0 0 1 * *", { monthly: true });
+      await driver.schedule(jobType, "0 0 1 * *", { monthly: true });
 
-    const { rows } = await superuserPool.query<{ cron: string }>(
-      "SELECT cron FROM pgboss.schedule WHERE name = $1",
-      [jobType],
-    );
-    assert.equal(rows[0]?.cron, "0 0 1 * *");
-
-    await driver.stop();
+      const { rows } = await superuserPool.query<{ cron: string }>("SELECT cron FROM pgboss.schedule WHERE name = $1", [jobType]);
+      assert.equal(rows[0]?.cron, "0 0 1 * *");
+    } finally {
+      await driver.stop();
+    }
   });
-
 });
 
 /**
@@ -255,7 +306,7 @@ describe("processJob, the retention sweep next to a slow handler (#85)", () => {
       await released;
     });
     try {
-      await waitUntil(() => slowStarted);
+      await waitFor("the slow handler to start", async () => slowStarted);
       const otherJobId = randomUUID();
       const other = processJob(appPool, `test-${randomUUID()}`, otherJobId, {}, async () => {});
       const outcome = await Promise.race([
