@@ -2,6 +2,10 @@
 
 The reference for every 0.1.7 screen, so every other issue in this milestone can stay generic about layout, interaction and visuals. Open the mockups in [`mockups/`](mockups/) in a browser; this page is the inventory, the navigation structure, the component catalog and the accessibility baseline that tie them together. The visual tokens and principles themselves are defined once in [`docs/design.md`, "User interface"](../design.md#user-interface) — this page does not repeat them, only indexes what draws on them.
 
+## Language of the mockups
+
+The mockups are in English, the source language of every interface string, from #622 on ([ADR 0015](../adr/0015-english-first-translations.md)); the other languages are written from that copy by the `translator` agent. Until then they were in Italian. Italian copy approved before this change: `git show be8c552:docs/ux/mockups/<file>` (`be8c552` is the last commit with Italian mockups). It is the source for `packages/i18n/locales/it.json` on the screens approved then, except where the translation glossary (`packages/i18n/glossary.md`) records a later decision.
+
 ## Screen inventory
 
 | Screen | Mockup | Covers (0.1.7 issue) |
@@ -28,9 +32,9 @@ The reference for every 0.1.7 screen, so every other issue in this milestone can
 
 Sign-in is the one screen this issue adds: every other screen above already had a mockup before 0.1.7 started. A screen whose 0.1.7 issue is not in this table has no mockup yet — stop and ask for one, or propose it in its own pull request (`CLAUDE.md`).
 
-The "+ Add account" form also offers a brokerage type ("Conto titoli", always off budget, so it has no "On budget" choice, `#74`), which the onboarding's first-account step in `settings-first-run.html` does not draw.
+The "+ Add account" form also offers a brokerage type ("Brokerage", always off budget, so it has no "On budget" choice, `#74`), which the onboarding's first-account step in `settings-first-run.html` does not draw.
 
-In a workspace whose tax country is Italy (`IT`) only, the same form asks a brokerage account's tax regime (`#508`), composed from the pieces it already uses: a second `.types`/`.opt` radiogroup ("Regime fiscale": Dichiarativo, Amministrato, Gestito) with no preselection, a one-line hint under each regime and one under the group, and — for "Dichiarativo" only — a `.chk` checkbox, "Il broker è un sostituto d'imposta italiano", with its own hint (an administered or managed account's broker always is one). The screens to set the tax country and to see or correct the regime history have no mockup yet (`#516`).
+In a workspace whose tax country is Italy (`IT`) only, the same form asks a brokerage account's tax regime (`#508`), composed from the pieces it already uses: a second `.types`/`.opt` radiogroup ("Tax regime": Self-declared, Administered, Managed) with no preselection, a one-line hint under each regime and one under the group, and — for "Self-declared" only — a `.chk` checkbox, "The broker is an Italian withholding agent", with its own hint (an administered or managed account's broker always is one). The screens to set the tax country and to see or correct the regime history have no mockup yet (`#516`).
 
 ## Navigation structure
 
@@ -67,7 +71,7 @@ Extracted from patterns already repeated across the mockups — name them this w
 
 ### Translation keys, not literal text (ADR 0004)
 
-Mockups show the Italian translation as literal strings because they have no build step; real screens never do. Every string a component or screen needs is a stable, dot-namespaced key resolved through the catalog, for example:
+Mockups show their English copy as literal strings because they have no build step; real screens never do: that copy becomes each string's English `defaultMessage` (ADR 0015). Every string a component or screen needs is a stable, dot-namespaced key resolved through the catalog, for example:
 
 - `signIn.tagline`, `signIn.action`, `signIn.error.generic` (the lead sentence; the technical detail below it is the identity provider's own untranslated message, not a key of its own — `#49`)
 - `workspacePicker.tagline`, `workspacePicker.empty`, `workspaceSwitcher.label` (`#50`)
@@ -90,7 +94,7 @@ Already the convention in every mockup; keep it when a screen becomes real code:
 
 ## Screenshots
 
-[`screenshots/`](screenshots/) holds the reference screenshots the repository README shows. Every one of them is taken in both themes, as `<name>-light.png` and `<name>-dark.png`, and a change to a screen (or mockup) that one of them shows refreshes both in the same pull request. Built screens are shot from the real running app over the demo workspace (`scripts/screenshot-demo.ts`, in English); the portfolio, which has no screen yet, and the three-phone composite from the mockups (`scripts/screenshot-mockups.ts`, in Italian), which also makes the README's two mixed images, `budget-month-split.png` and `phones-mixed.png`. Which screenshot comes from where, and the commands, are in [`scripts/README.md`, "Reference screenshots"](../../scripts/README.md#reference-screenshots).
+[`screenshots/`](screenshots/) holds the reference screenshots the repository README shows. Every one of them is taken in both themes, as `<name>-light.png` and `<name>-dark.png`, and a change to a screen (or mockup) that one of them shows refreshes both in the same pull request. Built screens are shot from the real running app over the demo workspace (`scripts/screenshot-demo.ts`, in English); the portfolio, which has no screen yet, and the three-phone composite from the mockups (`scripts/screenshot-mockups.ts`, in English too), which also makes the README's two mixed images, `budget-month-split.png` and `phones-mixed.png`. Which screenshot comes from where, and the commands, are in [`scripts/README.md`, "Reference screenshots"](../../scripts/README.md#reference-screenshots).
 
 ## Screens still to design
 
