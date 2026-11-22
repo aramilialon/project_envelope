@@ -149,12 +149,21 @@ export const REFUSAL_ALLOWLIST: ReadonlySet<string> = new Set([
   "invalid_trade",
   "withholding_exceeds_gross",
   "reconciled",
-  // An edit of a trade in the `IT` workspace (`ANY`) that moves it to a date or an account whose
-  // regime, or broker, does not allow its taxes (#508, #653). A new trade, a regime change and a
-  // new account are predicted exactly instead, with these codes and the others of the regime rules.
-  "tax_kind_not_allowed_in_regime",
-  "domestic_withholding_requires_agent",
 ]);
+
+/**
+ * The regime rules' codes (#508, #653) that an `ANY` trade write may also get in the `IT`
+ * workspace, and there only: an edit that moves a trade, or a split that gives an account a row,
+ * to a date or an account whose regime, or broker, does not allow its taxes. A new trade, a regime
+ * change and a new account are predicted exactly instead, with these codes and the regime rules'
+ * others.
+ */
+const REGIME_CODES: readonly string[] = ["tax_kind_not_allowed_in_regime", "domestic_withholding_requires_agent"];
+
+function withRegimeCodes(model: WorkspaceModel, prediction: Prediction): Prediction {
+  if (model.taxCountry !== WALK_TAX_COUNTRY || prediction.kind !== "any") return prediction;
+  return { kind: "any", alsoAllowed: [...(prediction.alsoAllowed ?? []), ...REGIME_CODES] };
+}
 
 /**
  * Operations left out because of a bug the walk found in the API and that is not fixed yet. Each
@@ -796,23 +805,39 @@ const brokerToBroker = transferSpec((model, random) => {
 }, 300_000);
 
 /**
- * Empties an account that holds money, so the walk can close it (#735): its whole balance moves
- * to another on-budget cash account, or a card's debt is paid off from one. Each is a transfer
- * like any other, refused when it writes to an account already closed.
+ * Moves the whole cash balance of one account, so the walk can close it (#735): an account's money
+ * goes to an on-budget cash account, or a card's debt is paid off from one; a brokerage account's
+ * cash goes to another brokerage account or, where the workspace budgets, to an on-budget cash
+ * account. A brokerage account that still holds securities is left with them, so its close is
+ * refused `holdsPositions: true`; one sold out can be closed. Each is a transfer like any other,
+ * refused when it writes to an account already closed; money going off budget takes a category.
  */
 const sweepAccount: OperationSpec<TransferParams> = {
   ...transferSpec(() => undefined, 0),
   generate(model, { random, progress }) {
     const cash = model.budgetCashAccounts();
-    const candidates = model.openAccounts().filter((account) => account.type !== "brokerage" && model.balanceOf(account) !== 0);
+    const candidates = model.openAccounts().filter((account) => model.balanceOf(account) !== 0);
     if (candidates.length === 0) return undefined;
     const account = random.pick(candidates);
     const balance = model.balanceOf(account);
-    const others = cash.filter((other) => other !== account);
+    const brokers = account.type === "brokerage" ? model.brokerageAccounts() : [];
+    const others = [...brokers, ...cash].filter((other) => other !== account);
     if (others.length === 0) return undefined;
     const other = random.pick(others);
     const [source, destination] = balance > 0 ? [account, other] : [other, account];
-    return { source: source.handle, destination: destination.handle, amountCents: Math.abs(balance), occurredAt: random.occurredAt(progress) };
+    const offBudget = source.onBudget && !destination.onBudget;
+    const category = !offBudget
+      ? undefined
+      : destination.type === "brokerage"
+        ? investmentsCategory(model)
+        : random.pick(model.ordinaryCategories()).handle;
+    return {
+      source: source.handle,
+      destination: destination.handle,
+      amountCents: Math.abs(balance),
+      occurredAt: random.occurredAt(progress),
+      ...(category === undefined ? {} : { category }),
+    };
   },
 };
 
@@ -1384,9 +1409,13 @@ function sellFields(model: WorkspaceModel, random: WalkRandom, progress: number,
     amounts.accruedInterestCents = random.int(100, 3_000);
     if (random.chance(0.5)) amounts.withholdingDomesticCents = Math.floor(amounts.accruedInterestCents * 0.125);
   }
+  // Now and then on a brokerage account closed since (ADR 0018): a closed account holds nothing, so
+  // a sale there is refused `account_closed` before its quantity is looked at.
+  const closed = model.closedAccounts().filter((account) => account.type === "brokerage");
+  const account = closed.length > 0 && random.chance(0.15) ? random.pick(closed) : model.accountById(holding.accountId);
   return {
     type: "sell",
-    account: model.accountById(holding.accountId).handle,
+    account: account.handle,
     portfolio: model.handleOf(holding.portfolioId)!,
     instrument: instrument.handle,
     tradeDate,
@@ -1470,7 +1499,7 @@ const split: OperationSpec<SplitParams> = {
   // The rows a split stands for are the API's to work out (every holding at the start of its date),
   // so its accounts too: a closed one that held the instrument then refuses it (ADR 0018).
   writes: NONE,
-  predict: (model, p) => anyOrClosedHolder(model, p.instrument),
+  predict: (model, p) => withRegimeCodes(model, anyOrClosedHolder(model, p.instrument)),
   accept(model, p, body) {
     // Which holdings the rows cover is checked by the positions oracle; each row keeps what was sent.
     const { trades } = body as { trades: TradeJson[] };
@@ -1676,9 +1705,12 @@ const editTrade: OperationSpec<EditTradeParams> = {
     const entity = model.trade(p.trade);
     if (model.isTradeLocked(entity)) return { kind: "refuse", status: 409, code: "reconciled" };
     // A split moved to another date may cover a closed account it did not before.
-    return entity.record.type === "split" && entity.record.instrumentId !== null
-      ? anyOrClosedHolder(model, instrumentHandle(model, entity.record.instrumentId))
-      : ANY;
+    return withRegimeCodes(
+      model,
+      entity.record.type === "split" && entity.record.instrumentId !== null
+        ? anyOrClosedHolder(model, instrumentHandle(model, entity.record.instrumentId))
+        : ANY,
+    );
   },
   accept(model, p, body) {
     const group = model.tradeGroup(model.trade(p.trade));
@@ -1920,6 +1952,9 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
   // The investor's workspace is the walk's `IT` one (#676): its tax regimes change as it goes.
   investor: {
     createAccount: 1,
+    // A brokerage account's cash withdrawn, then the account closed (sold out) or refused (still
+    // holding securities), then written to by the trades (#735).
+    sweepAccount: 2,
     closeAccount: 4,
     addTaxRegime: 2,
     replaceTaxRegimes: 3,
@@ -1946,7 +1981,7 @@ export const PROFILES: Readonly<Record<Persona, Readonly<Record<string, number>>
   },
   mixed: {
     createAccount: 1,
-    sweepAccount: 1,
+    sweepAccount: 2,
     closeAccount: 4,
     // No tax country: a regime is refused as not applicable, and must change nothing.
     addTaxRegime: 1,

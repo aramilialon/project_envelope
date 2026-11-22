@@ -7,8 +7,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { InstrumentCatalog, WorkspaceModel, type TransactionJson, type WalkUser } from "./model.ts";
-import { predictOperation, WALK_TAX_COUNTRY, type Params } from "./operations.ts";
+import { InstrumentCatalog, WorkspaceModel, type TradeJson, type TransactionJson, type WalkUser } from "./model.ts";
+import { predictOperation, REFUSAL_ALLOWLIST, WALK_TAX_COUNTRY, type Params } from "./operations.ts";
 
 const user: WalkUser = { userId: "u", token: async () => "token" };
 
@@ -188,5 +188,85 @@ describe("the walk's prediction of the tax regime rules (#676)", () => {
       status: 400,
       code: "tax_regime_not_applicable",
     });
+  });
+});
+
+/** A buy of 1 unit of i1 on the account, in portfolio p1, with no cash leg. */
+function buy(id: string, accountId: string): TradeJson {
+  return {
+    id,
+    accountId,
+    portfolioId: "portfolio",
+    instrumentId: "stock",
+    type: "buy",
+    tradeDate: "2026-02-10",
+    occurredAt: null,
+    quantityE8: 100_000_000,
+    priceE6: 10_000_000,
+    grossCents: 1_000,
+    feesCents: 0,
+    transactionTaxCents: 0,
+    accruedInterestCents: 0,
+    withholdingForeignCents: 0,
+    withholdingDomesticCents: 0,
+    gainTaxCents: 0,
+    taxKind: null,
+    costBasisCents: null,
+    splitFrom: null,
+    splitTo: null,
+    transferTradeId: null,
+    memo: null,
+    createdAt: "2026-02-10T10:00:00.000Z",
+    cashCents: -1_000,
+    cashTransactionId: null,
+    locked: false,
+  };
+}
+
+describe("the walk's scope for the regime rules it does not predict (#676)", () => {
+  const REGIME_CODES = ["tax_kind_not_allowed_in_regime", "domestic_withholding_requires_agent"];
+  const split = { instrument: "i1", tradeDate: "2026-03-02", splitFrom: 1, splitTo: 2 };
+
+  it("lets an edit of a trade and a split in the IT workspace be refused with them, and nothing else", () => {
+    const model = investor();
+    model.addTrades([buy("bought", "agent")]);
+    assert.deepEqual(predict(model, "editTrade", { trade: "tr1", patch: { memo: "memo 1" } }), { kind: "any", alsoAllowed: REGIME_CODES });
+    assert.deepEqual(predict(model, "split", split), { kind: "any", alsoAllowed: REGIME_CODES });
+    for (const code of REGIME_CODES) assert.equal(REFUSAL_ALLOWLIST.has(code), false, code);
+  });
+
+  it("does not let them through in a workspace with no tax country", () => {
+    const model = investor();
+    model.taxCountry = null;
+    model.addTrades([buy("bought", "agent")]);
+    assert.deepEqual(predict(model, "editTrade", { trade: "tr1", patch: { memo: "memo 1" } }), { kind: "any" });
+    assert.deepEqual(predict(model, "split", split), { kind: "any" });
+  });
+});
+
+describe("the walk's prediction for closing a brokerage account (#735)", () => {
+  it("refuses one with no cash that still holds a security, with holdsPositions, and closes it once sold out", () => {
+    const model = investor();
+    model.addTrades([buy("bought", "agent")]);
+    assert.deepEqual(predict(model, "closeAccount", { account: "a1" }), {
+      kind: "refuse",
+      status: 409,
+      code: "account_not_empty",
+      details: {
+        balanceCents: 0,
+        holdsPositions: true,
+        laterRows: { count: 0, firstDate: null },
+        scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null },
+      },
+    });
+    model.removeTrades(["tr1"]);
+    assert.deepEqual(predict(model, "closeAccount", { account: "a1" }), { kind: "accept" });
+  });
+
+  it("refuses a sale on a closed one as closed before its quantity", () => {
+    const model = investor();
+    model.account("a1").closed = true;
+    const sale = { type: "sell", account: "a1", portfolio: "p1", instrument: "i1", tradeDate: "2026-02-10", amounts: { quantityE8: 100_000_000, priceE6: 10_000_000 } };
+    assert.deepEqual(predict(model, "sell", sale), CLOSED);
   });
 });
