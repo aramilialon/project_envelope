@@ -770,7 +770,9 @@ button{cursor:pointer}
   // its scheduled transactions are missing. With card overspending it asks that too only when its
   // scheduled transactions are missing money (#731): money assigned here goes to the card first,
   // so the card part must be covered for anything to reach them; its card then asks that much
-  // less (askedOn). Otherwise its card overspending is asked on the card. A payment category asks
+  // less (askedOn); cash + credit + short is the minimum among assignments, and if the card already
+  // held enough, the extra credit part stays set aside on the card (only a move from the card's
+  // payment category avoids it). Otherwise its card overspending is asked on the card. A payment category asks
   // for what was paid beyond what was set aside plus the debt still uncovered.
   function needOf(x) {
     if (x.c.payment) return x.cash + x.uncovered;

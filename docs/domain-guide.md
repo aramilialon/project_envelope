@@ -248,6 +248,10 @@ What a category asks for (its "To do" item, "Move money" and quick assign's "Cov
   asked only its cash overspending, and its reservation shortfall came back only after its card
   spending had been covered some other way.
 
+A category with credit overspending C and a reservation shortfall R asks cash + C + R, the minimum
+among assignments. If its card already held enough, the extra C stays set aside on the card; only
+a move from the card's payment category avoids it.
+
 Every action that assigns to a card asks the same net amount, max(0, to cover − the card spending
 asked on categories): its "To do" item, the "Assign" button in its payment category, the amount
 "Move money" preselects for it and quick assign's "Cover the cards' debt", each with the line saying
