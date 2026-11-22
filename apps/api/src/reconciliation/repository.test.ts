@@ -8,6 +8,7 @@ import { closeAccount } from "../accounts/repository.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbClient, type DbPool } from "../db/pool.ts";
 import { confirmStagedTransactions } from "../import/repository.ts";
+import { applyIncomingChange, lockUploadTransactions, type ApplyOutcome, type IncomingChange } from "../sync/apply.ts";
 import { createTransaction, createTransfer, deleteTransaction, getTransaction, updateTransaction } from "../transactions/repository.ts";
 import { getReconciliationCandidates, reconcileAccount, unlockReconciledTransaction } from "./repository.ts";
 
@@ -476,6 +477,65 @@ describe("reconciliation repository", () => {
       return rows[0]!.id;
     }
 
+    /**
+     * Three sessions in a chain: `holder` runs and keeps its transaction open; `middle` starts and must
+     * wait on it; `last` starts and must wait on `middle`. Then each commits in turn (rolled back if it
+     * threw). A deadlock would fail `middle` or `last` with 40P01.
+     */
+    async function chain<H, M, L>(
+      holder: (db: DbClient) => Promise<H>,
+      middle: (db: DbClient) => Promise<M>,
+      last: (db: DbClient) => Promise<L>,
+    ): Promise<{ held: H; middle: Outcome<M>; last: Outcome<L> }> {
+      const clients = [await pool.connect(), await pool.connect(), await pool.connect()] as const;
+      const open = new Set<DbClient>();
+      try {
+        const pids: number[] = [];
+        for (const client of clients) {
+          await client.query("SET lock_timeout = '30s'");
+          pids.push(await pidOf(client));
+        }
+        const [first, second, third] = clients;
+        await first.query("BEGIN");
+        open.add(first);
+        const held = await holder(first);
+        await second.query("BEGIN");
+        open.add(second);
+        const middleOutcome = settle(middle(second));
+        await waitUntilBlocked(pids[1]!, pids[0]!, middleOutcome);
+        await third.query("BEGIN");
+        open.add(third);
+        const lastOutcome = settle(last(third));
+        await waitUntilBlocked(pids[2]!, pids[1]!, lastOutcome);
+        await first.query("COMMIT");
+        open.delete(first);
+        const middleResult = await middleOutcome;
+        await second.query(middleResult.ok ? "COMMIT" : "ROLLBACK");
+        open.delete(second);
+        const lastResult = await lastOutcome;
+        await third.query(lastResult.ok ? "COMMIT" : "ROLLBACK");
+        open.delete(third);
+        return { held, middle: middleResult, last: lastResult };
+      } finally {
+        for (const client of open) await client.query("ROLLBACK").catch(() => {});
+        for (const client of clients) client.release();
+      }
+    }
+
+    /** Applies an upload as the sync route does: every transaction it touches locked first, then each change in the device's order. */
+    async function upload(db: DbClient, changes: readonly IncomingChange[]): Promise<ApplyOutcome[]> {
+      await lockUploadTransactions(db, workspaceId, changes);
+      const outcomes: ApplyOutcome[] = [];
+      for (const change of changes) {
+        outcomes.push(await applyIncomingChange(db, workspaceId, change));
+      }
+      return outcomes;
+    }
+
+    function memoChange(entityId: string, value: string): IncomingChange {
+      return { id: randomUUID(), entityId, fieldName: "transactions.memo", hlc: { physical: Date.now(), counter: 0, deviceId: "device-554" }, value };
+    }
+
     async function clearedTransaction(acct: string, occurredAt: string, amountCents: number): Promise<string> {
       const transaction = await createTransaction(pool, {
         workspaceId,
@@ -487,7 +547,7 @@ describe("reconciliation repository", () => {
       return transaction.id;
     }
 
-    function reconcile(db: DbClient, acct: string, ticked: readonly string[], statementBalanceCents: number) {
+    function reconcile(db: DbPool | DbClient, acct: string, ticked: readonly string[], statementBalanceCents: number) {
       return reconcileAccount(db, workspaceId, { accountId: acct, date: "2026-03-31", statementBalanceCents, tickedTransactionIds: ticked, userId });
     }
 
@@ -605,6 +665,92 @@ describe("reconciliation repository", () => {
       );
       assert.deepEqual(waited, { ok: true, value: [{ stagedTransactionId: stagedId, outcome: "duplicate_cleared", transactionId: id }] });
       assert.equal((await getTransaction(pool, workspaceId, id))?.status, "reconciled");
+    });
+
+    /** Two cleared transactions on a new account, the lower id first. */
+    async function twoClearedTransactions(): Promise<{ acct: string; low: string; high: string }> {
+      const acct = await newAccount();
+      const ids = [await clearedTransaction(acct, "2026-03-05", -1000), await clearedTransaction(acct, "2026-03-06", -2000)].sort();
+      return { acct, low: ids[0]!, high: ids[1]! };
+    }
+
+    it("an import confirming two duplicates in descending id order and a reconciliation ticking both do not deadlock", async () => {
+      const { acct, low, high } = await twoClearedTransactions();
+      const staged: string[] = [];
+      for (const [id, amount, date] of [[high, -2000, "2026-03-06"], [low, -1000, "2026-03-05"]] as const) {
+        const { rows } = await pool.query<{ id: string }>(
+          "INSERT INTO staged_transactions (workspace_id, account_id, occurred_at, amount_cents, duplicate_of) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+          [workspaceId, acct, date, amount, id],
+        );
+        staged.push(rows[0]!.id);
+      }
+      // An edit holds the higher row. Locking the rows one by one in the decisions' order, the import
+      // would wait for it holding nothing; the reconciliation would lock the lower row and wait too;
+      // the import would then get the higher row and wait for the lower one: a deadlock. Locked up
+      // front in id order, the import holds the lower row while it waits, and the reconciliation queues behind it.
+      const { middle, last } = await chain(
+        (db) => updateTransaction(db, workspaceId, high, { memo: "held" }),
+        (db) => confirmStagedTransactions(db, workspaceId, acct, staged.map((stagedTransactionId) => ({ stagedTransactionId, kind: "income" as const }))),
+        (db) => reconcile(db, acct, [low, high], -3000),
+      );
+      assert.ok(middle.ok, `the import failed: ${middle.ok ? "" : String(middle.error)}`);
+      assert.deepEqual(
+        middle.value.map((outcome) => outcome.outcome),
+        ["duplicate_cleared", "duplicate_cleared"],
+      );
+      assert.ok(last.ok, `the reconciliation failed: ${last.ok ? "" : String(last.error)}`);
+      assert.equal(last.value.outcome, "reconciled");
+    });
+
+    it("a sync upload waits for a reconciliation holding the row, then answers locked and records nothing", async () => {
+      const acct = await newAccount();
+      const id = await clearedTransaction(acct, "2026-03-05", -1000);
+      const change = memoChange(id, "from a device");
+      const { waited } = await race(
+        (db) => reconcile(db, acct, [id], -1000),
+        (db) => upload(db, [change]),
+      );
+      assert.deepEqual(waited, { ok: true, value: ["locked"] });
+      const after = await getTransaction(pool, workspaceId, id);
+      assert.equal(after?.status, "reconciled");
+      assert.equal(after?.memo, null);
+      const { rows } = await pool.query("SELECT 1 FROM change_log WHERE workspace_id = $1 AND id = $2", [workspaceId, change.id]);
+      assert.equal(rows.length, 0);
+    });
+
+    it("a sync upload changing two rows in descending id order and a reconciliation ticking both do not deadlock", async () => {
+      const { acct, low, high } = await twoClearedTransactions();
+      const { middle, last } = await chain(
+        (db) => updateTransaction(db, workspaceId, high, { memo: "held" }),
+        (db) => upload(db, [memoChange(high, "high"), memoChange(low, "low")]),
+        (db) => reconcile(db, acct, [low, high], -3000),
+      );
+      assert.deepEqual(middle, { ok: true, value: ["applied", "applied"] });
+      assert.ok(last.ok, `the reconciliation failed: ${last.ok ? "" : String(last.error)}`);
+      assert.equal(last.value.outcome, "reconciled");
+      assert.equal((await getTransaction(pool, workspaceId, high))?.memo, "high");
+      assert.equal((await getTransaction(pool, workspaceId, low))?.memo, "low");
+    });
+
+    it("an unlock waits for another unlock of the same row, then answers not_reconciled", async () => {
+      const acct = await newAccount();
+      const id = await clearedTransaction(acct, "2026-03-05", -1000);
+      await reconcile(pool, acct, [id], -1000);
+      const auditCount = async (): Promise<number> =>
+        (
+          await pool.query<{ count: number }>(
+            "SELECT count(*)::int AS count FROM audit_log WHERE workspace_id = $1 AND action = 'reconciliation.unlock'",
+            [workspaceId],
+          )
+        ).rows[0]!.count;
+      const before = await auditCount();
+      const { held, waited } = await race(
+        (db) => unlockReconciledTransaction(db, workspaceId, id, userId),
+        (db) => unlockReconciledTransaction(db, workspaceId, id, userId),
+      );
+      assert.ok(typeof held !== "string", `expected a record, got "${String(held)}"`);
+      assert.deepEqual(waited, { ok: true, value: "not_reconciled" });
+      assert.equal(await auditCount(), before + 1);
     });
 
     it("an edit, a close of the account and a reconciliation of the same row all finish, without a deadlock", async () => {
