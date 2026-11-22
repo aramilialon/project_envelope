@@ -218,6 +218,19 @@ describe("idempotency keys and assignment batches, as envelope_app (#559)", () =
         client.release();
       }
     });
+
+    it("puts back a lock timeout the transaction had set itself, not the default", async () => {
+      const client = await begin(workspaceA);
+      try {
+        await client.query("SET LOCAL lock_timeout = '30s'");
+        await claimIdempotencyKey(client, keyInput(randomUUID(), hash("own timeout")));
+        const { rows } = await client.query<{ lock_timeout: string }>("SHOW lock_timeout");
+        assert.equal(rows[0]!.lock_timeout, "30s");
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+      }
+    });
   });
 
   describe("a batchId claimed by two requests at once", () => {

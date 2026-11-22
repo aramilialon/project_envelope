@@ -40,16 +40,19 @@ export type IdempotencyClaimOutcome =
 
 /**
  * Runs `claim` (a single INSERT that may wait on another transaction's uncommitted row) under
- * `CLAIM_LOCK_TIMEOUT`, then puts lock_timeout back to the connection's default, so the rest of the
- * request waits on its locks as it always did (the API sets lock_timeout nowhere else, and the
- * claims come first). A timeout aborts the transaction; the 409 it maps to rolls it back.
+ * `CLAIM_LOCK_TIMEOUT`, then puts back the lock_timeout the transaction had before, so the rest of
+ * the request waits on its locks as it always did, whatever set that value. A timeout aborts the
+ * transaction; the 409 it maps to rolls it back.
  *
- * `SET LOCAL` with constants, not `set_config`: the system-job allowlist test
- * (db/system-job-allowlist.test.ts) only lets a `set_config` name an `app.*` setting.
+ * `SET LOCAL` with a quoted literal, not `set_config`: the system-job allowlist test
+ * (db/system-job-allowlist.test.ts) only lets a `set_config` name an `app.*` setting, and `SET`
+ * takes no bind parameters.
  *
  * @throws RequestInProgressError when the wait runs out.
  */
 export async function withClaimLockTimeout<T>(db: DbClient, claim: () => Promise<T>): Promise<T> {
+  const { rows } = await db.query<{ lock_timeout: string }>("SELECT current_setting('lock_timeout') AS lock_timeout");
+  const saved = rows[0]!.lock_timeout;
   await db.query(`SET LOCAL lock_timeout = '${CLAIM_LOCK_TIMEOUT}'`);
   let result: T;
   try {
@@ -60,7 +63,7 @@ export async function withClaimLockTimeout<T>(db: DbClient, claim: () => Promise
     }
     throw error;
   }
-  await db.query("SET LOCAL lock_timeout TO DEFAULT");
+  await db.query(`SET LOCAL lock_timeout = ${db.escapeLiteral(saved)}`);
   return result;
 }
 
