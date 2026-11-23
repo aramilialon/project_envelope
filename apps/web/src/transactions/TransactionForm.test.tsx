@@ -14,6 +14,9 @@ import type { Transaction } from "./api.ts";
 import TransactionForm from "./TransactionForm.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
+
+/** The Idempotency-Key a create sends (#559): a fresh UUID per submit attempt. */
+const IDEMPOTENCY_KEY = expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const CHECKING: Account = {
@@ -77,9 +80,29 @@ describe("TransactionForm (#54)", () => {
         payee: "Supermarket",
         status: "pending",
         splits: [{ categoryId: "cat-groceries", amountCents: -1250 }],
-      }),
+      }, IDEMPOTENCY_KEY),
     );
     expect(onSaved).toHaveBeenCalledOnce();
+  });
+
+  it("sends a new Idempotency-Key for each submit attempt (#559)", async () => {
+    const createTransaction = vi
+      .spyOn(transactionsApi, "createTransaction")
+      .mockRejectedValueOnce(new ApiError("POST failed: 500", 500, "internal_error", {}))
+      .mockResolvedValueOnce({} as Transaction);
+    renderForm();
+
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "12.50" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(createTransaction).toHaveBeenCalledTimes(2));
+    const [first, second] = createTransaction.mock.calls.map((call) => call[4]);
+    expect(first).toEqual(IDEMPOTENCY_KEY);
+    expect(second).toEqual(IDEMPOTENCY_KEY);
+    expect(second).not.toBe(first);
   });
 
   it("lets a new transaction's own date be set, unlike an existing one's (#408)", async () => {
@@ -92,7 +115,7 @@ describe("TransactionForm (#54)", () => {
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "cat-groceries" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
-    await waitFor(() => expect(createTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", expect.objectContaining({ occurredAt: "2026-09-02" })));
+    await waitFor(() => expect(createTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", expect.objectContaining({ occurredAt: "2026-09-02" }), IDEMPOTENCY_KEY));
   });
 
   it("requires a category for an outflow", async () => {
@@ -123,7 +146,7 @@ describe("TransactionForm (#54)", () => {
         "t",
         "ws-1",
         "acc-checking",
-        expect.objectContaining({ splits: [{ categoryId: null, amountCents: 10000 }] }),
+        expect.objectContaining({ splits: [{ categoryId: null, amountCents: 10000 }] }), IDEMPOTENCY_KEY,
       ),
     );
   });
@@ -176,7 +199,7 @@ describe("TransactionForm (#54)", () => {
         occurredAt: expect.any(String),
         amountCents: 5000,
         status: "pending",
-      }),
+      }, IDEMPOTENCY_KEY),
     );
   });
 
@@ -229,7 +252,7 @@ describe("TransactionForm (#54)", () => {
       expect(createTransfer).toHaveBeenCalledWith(
         "t",
         "ws-1",
-        expect.objectContaining({ destinationAccountId: "acc-brokerage", categoryId: "cat-groceries" }),
+        expect.objectContaining({ destinationAccountId: "acc-brokerage", categoryId: "cat-groceries" }), IDEMPOTENCY_KEY,
       ),
     );
   });
@@ -301,7 +324,7 @@ describe("TransactionForm (#54)", () => {
             { categoryId: "cat-groceries", amountCents: -2000 },
             { categoryId: "cat-restaurants", amountCents: -1000 },
           ],
-        }),
+        }), IDEMPOTENCY_KEY,
       ),
     );
   });
@@ -711,7 +734,7 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
         occurredAt: "2026-09-01",
         amountCents: 500_000,
         status: "pending",
-      }),
+      }, IDEMPOTENCY_KEY),
     );
   });
 
@@ -811,7 +834,7 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
       expect(createTransfer).toHaveBeenCalledWith(
         "t",
         "ws-1",
-        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-checking", categoryId: "cat-groceries" }),
+        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-checking", categoryId: "cat-groceries" }), IDEMPOTENCY_KEY,
       ),
     );
   });
@@ -845,7 +868,7 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
       expect(createTransfer).toHaveBeenCalledWith(
         "t",
         "ws-1",
-        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-visa", categoryId: "cat-groceries" }),
+        expect.objectContaining({ sourceAccountId: "acc-broker", destinationAccountId: "acc-visa", categoryId: "cat-groceries" }), IDEMPOTENCY_KEY,
       ),
     );
   });

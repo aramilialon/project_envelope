@@ -73,8 +73,18 @@ export interface AssignmentEntryInput {
   readonly amountCents: number;
 }
 
-export async function createAssignments(accessToken: string, workspaceId: string, entries: readonly AssignmentEntryInput[]): Promise<void> {
-  await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/assignments`, { entries });
+/**
+ * Sends the batch under a `batchId` the client makes (#559, ADR 0008 and ADR 0020): the same batch
+ * sent again under it appends nothing and gets the first reply. A caller that retries a batch passes
+ * the same id again.
+ */
+export async function createAssignments(
+  accessToken: string,
+  workspaceId: string,
+  entries: readonly AssignmentEntryInput[],
+  batchId: string = crypto.randomUUID(),
+): Promise<void> {
+  await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/assignments`, { batchId, entries });
 }
 
 /** The scheduled transactions endpoints (#330): `apps/api/src/scheduled-transactions/repository.ts`'s own response shapes, mirrored. A split's `categoryId` is always a real category — a scheduled transaction is never income yet (`#347`). */

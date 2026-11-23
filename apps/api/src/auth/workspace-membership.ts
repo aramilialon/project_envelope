@@ -22,6 +22,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { assertIdempotentReplyStored } from "../idempotency/route.ts";
 import { isUuid } from "../ids.ts";
 
 export type WorkspaceRole = "owner" | "editor" | "read_only";
@@ -39,6 +40,14 @@ export function registerWorkspaceScope(app: FastifyInstance): void {
   });
 
   app.addHook("onSend", async (request, reply, payload) => {
+    // A success on a claimed Idempotency-Key must have stored its reply (#559): otherwise roll back
+    // and fail, rather than commit a key that would replay nothing.
+    try {
+      assertIdempotentReplyStored(request, reply.statusCode);
+    } catch (error) {
+      await releaseRequestTransaction(request, "ROLLBACK");
+      throw error;
+    }
     await releaseRequestTransaction(request, reply.statusCode < 400 ? "COMMIT" : "ROLLBACK");
     return payload;
   });

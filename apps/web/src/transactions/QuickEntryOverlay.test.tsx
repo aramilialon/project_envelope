@@ -14,6 +14,9 @@ import type { Transaction } from "./api.ts";
 import QuickEntryOverlay from "./QuickEntryOverlay.tsx";
 
 const { useAuth } = vi.hoisted(() => ({ useAuth: vi.fn() }));
+
+/** The Idempotency-Key a save sends (#559): a fresh UUID. */
+const IDEMPOTENCY_KEY = expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
 vi.mock("react-oidc-context", () => ({ useAuth }));
 
 const CHECKING: Account = {
@@ -95,7 +98,7 @@ describe("QuickEntryOverlay (#367)", () => {
       expect(createTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-checking", {
         occurredAt: expect.any(String),
         splits: [{ categoryId: "cat-groceries", amountCents: -1200 }],
-      }),
+      }, IDEMPOTENCY_KEY),
     );
     expect(await screen.findByText("Expense saved")).toBeInTheDocument();
     expect(document.querySelector(".toast")).toHaveTextContent("€12.00 with Checking. Groceries now has €38.00 available.");

@@ -16,7 +16,14 @@ import type { PushDrivers } from "../notifications/repository.ts";
 import { appConnectionString, ensureAppRoleLogin } from "../test-helpers/app-role.ts";
 import { createIsolatedDatabase, type IsolatedDatabase } from "../test-helpers/isolated-database.ts";
 import { assertEveryJobTypeCovered, assertSingleDelivery, defineDoubleDeliveryCase, type DoubleDeliveryCase } from "./double-delivery.ts";
-import { ALL_JOB_TYPES, BUDGET_RECOMPUTE_JOB, FX_RATES_FETCH_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./job-types.ts";
+import { createIdempotencyKeysSweepHandler } from "../idempotency/sweep-job.ts";
+import {
+  ALL_JOB_TYPES,
+  BUDGET_RECOMPUTE_JOB,
+  FX_RATES_FETCH_JOB,
+  IDEMPOTENCY_KEYS_SWEEP_JOB,
+  SCHEDULED_TRANSACTIONS_FIRE_JOB,
+} from "./job-types.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -160,7 +167,30 @@ describe("double-delivery harness (#37)", () => {
       },
     });
 
-    cases = [budgetRecomputeCase, scheduledTransactionsFireCase, fxRatesFetchCase];
+    // The idempotency keys sweep (#559) deletes rows a second run would not find anyway, so counting
+    // rows cannot tell one delivery from two: its effect is the run itself, counted at its log line.
+    // An expired key of the fixture's workspace is there for the first run to delete.
+    await superuserPool.query(
+      `INSERT INTO idempotency_keys (workspace_id, key, user_id, operation, request_hash, response_status, response_body, created_at)
+       VALUES ($1, $2, $3, 'test', $4, 201, '{}', now() - interval '2 days')`,
+      [workspaceId, randomUUID(), userId, Buffer.alloc(32)],
+    );
+    const sweepRuns: Record<string, unknown>[] = [];
+    const idempotencyKeysSweepCase = defineDoubleDeliveryCase({
+      jobType: IDEMPOTENCY_KEYS_SWEEP_JOB,
+      data: {},
+      handler: createIdempotencyKeysSweepHandler(appPool, { info: (object) => sweepRuns.push(object), error: () => {} }),
+      async countEffects() {
+        const { rows } = await superuserPool.query<{ count: string }>("SELECT count(*) FROM idempotency_keys WHERE workspace_id = $1", [
+          workspaceId,
+        ]);
+        assert.equal(Number(rows[0]!.count), 0, "the expired key is gone");
+        assert.deepEqual(sweepRuns, [{ workspaces: 1, deleted: 1 }]);
+        return sweepRuns.length;
+      },
+    });
+
+    cases = [budgetRecomputeCase, scheduledTransactionsFireCase, fxRatesFetchCase, idempotencyKeysSweepCase];
   });
 
   after(async () => {

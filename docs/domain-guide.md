@@ -518,8 +518,8 @@ Where the app converts an amount from one currency to another, it follows these 
   unit), then converted like any other amount: 3 shares at $33.335 are $100.01, and at USD 2 that
   is €50.01, the same on the position's line and in the total.
 - **Amounts in one currency are added up first, then converted once.** A sum does not depend on how
-  its amounts are split; returns, which follow each flow of money on its own date, convert each one
-  at the rate of its own date.
+  its amounts are split; returns convert the flows of each date, added up per currency and kind,
+  at that date's rate.
 
 **Examples.** With rates for 20 November 2026 of USD 1.0812, JPY 162.53 and GBP 0.8450 per euro:
 $1,080.00 is €998.89; ¥10,000 is €61.53; £1,000.00 is $1,279.53 (1,000 × 1.0812 ÷ 0.8450). The
@@ -964,16 +964,22 @@ on 20 September, because it divides the gain by the money weighted by days held.
 **Money-weighted return (MWR, XIRR)** answers how the household's own money did, given exactly
 when it went in and out: the rate that brings the household's flows to zero (the opposite of the
 portfolio's flows, the value at the start paid in on the start date and the value at the end
-received on the end date), each flow timed in calendar years from the first (see Periods). It is
-found by bisection, on the figure shown (the yearly rate from a year on, the period's own rate
-before), from just above −100% to +1000%; no rate in that range makes it unknown, and money never
-received back at all is exactly −100%. With flows that change sign several times there can be more
-than one such rate; the figure is the one bisection finds from those bounds, always the same for
-the same flows. €10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1
-January 2026 is 8.02% a year. The MWR assumes money stays invested at that rate, so when nothing is
-held at the end the period ends at the last money received: €10,000 paid in on 30 September,
-€10,100 back on 10 October and a €50 dividend on 20 October is 3.01% over the period, not 4.70% as
-it would be over the whole of October.
+received on the end date), each flow timed in calendar years from the start of its clock (see
+Periods). It is found by bisection, on the figure shown (the yearly rate from a year on, the
+period's own rate before), from just above −100% to +1000%; no rate in that range makes it
+unknown, and money never received back at all (nothing received after the clock starts) is exactly −100%. With flows that
+change sign several times there can be more than one such rate; the figure is the one nearest 0.
+€10,000 paid in on 1 January 2025, €5,000 on 1 July 2025 and €16,000 back on 1 January 2026 is
+8.02% a year. The MWR assumes money stays invested at that rate, so the period ends at the last
+money received, and a payment after it, such as a fee after the final sale, is discounted back to
+it: €10,000 paid in on 30 September, €10,100 back on 10 October and a €50 dividend on 20 October,
+with nothing held at the end, is 3.01% over the period, not 4.70% as it would be over the whole of
+October. Bought for €10,000 on 1 September, sold for a net €10,100 on 30 September, with a €5 fee
+on 15 October, is about 0.95% over the period. A period of no length (the first day anything is
+held is the end date itself) is the value at the end ÷ the money put in − 1, any money paid or
+received while nothing was held included: bought for €10,010 including fees and worth €10,000 that
+evening is −0.10%, not −100%; with a €5 fee paid earlier in the month while nothing was held it is
+−0.15%, while the TWR stays −0.10%.
 
 **Periods.** Time is counted in calendar years, not days ÷ 365: the whole anniversaries, plus the
 days since the last one over the days to the next (a 29 February anniversary is 28 February in a
@@ -982,10 +988,67 @@ year that is not a leap year). 1 January to 1 July is 181/365 of a year in 2025 
 (1 + R)^(1 ÷ years) − 1): calendar 2024 at +10% is 10.00% a year, and 10,000 on 31 December 2022
 growing to 12,100 on 31 December 2024 is 10.00% a year; 1 January to 31 December 2024, 365 days,
 is still the period's own figure. A shorter period shows the return over the period itself, so
-€10,000 growing to €10,100 over 30 days is 1.00% either way. The TWR's period starts on its start
-date when the portfolio holds something then, otherwise on the first date it holds something; the
-MWR's on the household's first flow. The figure is `returnE6`, in millionths; the screen rounds
-`returnE6` to 0.01 percentage points, half to even.
+€10,000 growing to €10,100 over 30 days is 1.00% either way. The TWR's clock runs only while
+something is held: from the start date, or the first day ending with a value above 0, to the day
+the value is back to 0, stretch by stretch, the years added up. Held through 2024 for +10% and
+empty through 2025 is 10.00% a year over the two years, as is empty through 2024 and held through
+2025 for +10%. The MWR's clock runs from the start date, or the first day ending with a value
+above 0, to the last money received; money paid or received before it is carried forward to it, and
+money after it discounted back. A €50 dividend on 3 September while nothing is held, €10,000 paid
+in on 10 September and €10,100 at the end of the month is 1.51%, not 2.04%.
+The figure is `returnE6`, in millionths; the screen rounds `returnE6` to 0.01 percentage points,
+half to even.
+
+**Nothing held.** A return measures money that was invested; a period in which the portfolio is
+worth nothing at the end of every day it is valued on (its start, every day with a flow, every
+month end, its end) has no return, time-weighted or money-weighted (`no_capital`), and shows only
+its gain. A month with only a €5 fee has a gain of −5.00 and no return; one with a €5 fee and a
+€50 dividend, +45.00 and no return (not +900%); a position bought for €10,010 and sold for €9,980
+on the same day, −30.00 and no return. Bought for €10,000 on 5 October and sold for a net €10,100
+on 20 October is held, 1.00% either way. A position that was worth something and ends at 0 is a
+total loss, −100%. No other percentage takes the place of a missing return: the gain already
+includes every cost, and dividing it by the previous value or by the money put in is undefined or
+−100% in exactly these months.
+
+**Month by month** (#89). Each month is valued at the end of its last day, the current month at
+the end of today in the workspace's time zone, and shows its value, its net contributions (every
+flow except dividends and coupons), its income (the net dividends and coupons), its gain (value −
+the previous month's value − net contributions + income, exact to the cent) and its two returns.
+The figures over several months come from one calculation over the whole range, never from the
+rounded monthly figures linked together. In the example above, September's gain is 12,300 −
+10,000 − 2,000 = 300 and October's 12,100 − 12,300 − 0 + 50 = −150.
+
+- **A month with nothing held**, before the first buy or after the last sale, shows its value
+  (0), its contributions, its income and its gain (0 when nothing moved), and no returns, since
+  there is nothing to measure. Over a range, the gain is the sum of the months' gains; the TWR
+  leaves out the money that moves while nothing is held, the MWR counts it, as the household paid
+  or received it.
+- **A missing price or rate** makes the value unknown, never a partial sum of the positions that
+  have one, and every figure that needs it unknown too; the app lists what is missing, with the
+  earliest date that lacks it.
+- **The current month** is valued at the end of today; trades dated after today are not counted
+  yet.
+- **Flows in another currency**: the amounts of one date and one currency are added up,
+  contributions and income apart, then converted once at that date's rate. Two fees of $0.01 on the
+  same day, at USD 1.6, are $0.02, converted once to €0.01, not €0.01 each (€0.02).
+
+A worked example in two currencies, base currency euro: a euro ETF in a euro account and a dollar
+stock in a dollar account, in one portfolio.
+
+| Date | Event | ETF price | Stock price | USD per € | Value (€) |
+| --- | --- | --- | --- | --- | --- |
+| 3 Aug | Buy 100 ETF at €100 | 100 | | | 10,000.00 |
+| 31 Aug | | 100 | | | 10,000.00 |
+| 10 Sep | Buy 10 stock at $200 + $5 fees: flow $2,005 = €1,604 | 105 | 200 | 1.25 | 10,500 + 1,600 = 12,100.00 |
+| 30 Sep | | 106 | 210 | 1.20 | 10,600 + 1,750 = 12,350.00 |
+| 15 Oct | Dividend $25 − $5 withheld: flow −$20 = −€16 | (106) | (210) | 1.25 | 10,600 + 1,680 = 12,280.00 |
+| 31 Oct (Sat) | | 104 | 220 (30 Oct) | 1.10 (30 Oct) | 10,400 + 2,000 = 12,400.00 |
+
+September: net contributions 1,604, gain 12,350 − 10,000 − 1,604 = 746, TWR
+(12,100 − 1,604) ÷ 10,000 × 12,350 ÷ 12,100 − 1 = 7.1286%, MWR 6.7465%. October: income 16, gain
+12,400 − 12,350 − 0 + 16 = 66, TWR 12,296 ÷ 12,350 × 12,400 ÷ 12,280 − 1 = 0.5357%, MWR 0.5348%.
+The two months: gain 812 (746 + 66), TWR 7.7025% and MWR 7.1673%, each from one calculation over
+both months.
 
 ### Target allocation and thresholds
 
