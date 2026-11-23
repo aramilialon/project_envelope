@@ -340,14 +340,20 @@ function windingDown(model: WorkspaceModel, progress: number): AccountEntity | u
 }
 
 /**
- * One of `items`, now and then (`chance`) one on a closed account when there is one, so that the
- * rows a closed account kept (its trades, its cleared and reconciled transactions) are written to
- * as well (#735, ADR 0018).
+ * One of `items`, now and then (`chance`) one on a closed account or the account winding down when
+ * there is one, so that a closed account keeps cleared and reconciled rows, and the rows it kept
+ * (its trades, its cleared and reconciled transactions) are written to as well (#735, ADR 0018).
  */
-function pickPreferringClosed<T>(model: WorkspaceModel, random: WalkRandom, items: readonly T[], accountId: (item: T) => string, chance: number): T {
-  const closed = new Set(model.closedAccounts().map((account) => account.id));
-  const onClosed = items.filter((item) => closed.has(accountId(item)));
-  return random.pick(onClosed.length > 0 && random.chance(chance) ? onClosed : items);
+function pickFavouringClosing<T>(
+  model: WorkspaceModel,
+  random: WalkRandom,
+  progress: number,
+  items: readonly T[],
+  accountId: (item: T) => string,
+): T {
+  const closing = new Set([...model.closedAccounts(), ...[windingDown(model, progress)].filter((a) => a !== undefined)].map((account) => account.id));
+  const favoured = items.filter((item) => closing.has(accountId(item)));
+  return random.pick(favoured.length > 0 && random.chance(0.25) ? favoured : items);
 }
 
 /**
@@ -994,9 +1000,9 @@ const ownAccount = (model: WorkspaceModel, p: { tx: string }): readonly string[]
 const clearTransaction: OperationSpec<TxParams> = {
   writes: ownAccount,
   closedFirst: true,
-  generate(model, { random }) {
+  generate(model, { random, progress }) {
     const pending = [...model.transactions.values()].filter((e) => e.record.status === "pending");
-    return pending.length === 0 ? undefined : { tx: random.pick(pending).handle };
+    return pending.length === 0 ? undefined : { tx: pickFavouringClosing(model, random, progress, pending, (e) => e.record.accountId).handle };
   },
   request(model, p) {
     const { record } = model.transaction(p.tx);
@@ -1172,7 +1178,7 @@ const reconcile: OperationSpec<ReconcileParams> = {
     }
     const cleared = [...model.transactions.values()].filter((e) => e.record.status === "cleared");
     if (cleared.length === 0) return undefined;
-    const anchor = pickPreferringClosed(model, random, cleared, (e) => e.record.accountId, 0.25);
+    const anchor = pickFavouringClosing(model, random, progress, cleared, (e) => e.record.accountId);
     const account = model.accountById(anchor.record.accountId);
     const date = anchor.record.budgetDate;
     const eligible = cleared.filter((e) => e.record.accountId === account.id && e.record.budgetDate <= date);
@@ -1203,9 +1209,9 @@ const reconcile: OperationSpec<ReconcileParams> = {
 
 const unlock: OperationSpec<TxParams> = {
   writes: ownAccount,
-  generate(model, { random }) {
+  generate(model, { random, progress }) {
     const reconciled = [...model.transactions.values()].filter((e) => e.record.status === "reconciled");
-    return reconciled.length === 0 ? undefined : { tx: pickPreferringClosed(model, random, reconciled, (e) => e.record.accountId, 0.25).handle };
+    return reconciled.length === 0 ? undefined : { tx: pickFavouringClosing(model, random, progress, reconciled, (e) => e.record.accountId).handle };
   },
   request: (model, p) => ({ method: "POST", path: ws(model, `/transactions/${model.transaction(p.tx).record.id}/unlock-reconciliation`) }),
   predict: () => ACCEPT,
@@ -1857,9 +1863,9 @@ const deleteTrade: OperationSpec<TradeParams> = {
   trade: true,
   writes: groupWrites,
   closedFirst: true,
-  generate(model, { random }) {
+  generate(model, { random, progress }) {
     const trades = [...model.trades.values()];
-    return trades.length === 0 ? undefined : { trade: pickPreferringClosed(model, random, trades, (t) => t.record.accountId, 0.25).handle };
+    return trades.length === 0 ? undefined : { trade: pickFavouringClosing(model, random, progress, trades, (t) => t.record.accountId).handle };
   },
   request: (model, p) => ({ method: "DELETE", path: ws(model, `/trades/${model.trade(p.trade).record.id}`) }),
   predict: (model, p) => (model.isTradeLocked(model.trade(p.trade)) ? { kind: "refuse", status: 409, code: "reconciled" } : ANY),
