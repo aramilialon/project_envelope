@@ -146,7 +146,19 @@ function expectedTransaction(model: WorkspaceModel, record: TransactionJson): un
 
 /** An account's transactions from the API, checked against the model. */
 export async function checkAccountTransactions(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity): Promise<TransactionJson[]> {
-  const { transactions } = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/transactions`))) as { transactions: TransactionJson[] };
+  // The list comes one page at a time (#560): every page, following nextCursor, or the check
+  // would compare the first page with the whole model once an account passes the page size.
+  const transactions: TransactionJson[] = [];
+  let cursor: string | null = null;
+  do {
+    const query: string = cursor === null ? "?limit=500" : `?limit=500&cursor=${encodeURIComponent(cursor)}`;
+    const page = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/transactions${query}`))) as {
+      transactions: TransactionJson[];
+      nextCursor: string | null;
+    };
+    transactions.push(...page.transactions);
+    cursor = page.nextCursor;
+  } while (cursor !== null);
   for (const record of transactions) {
     // The budget date is the instant's date in the workspace's time zone.
     if (record.budgetDate !== localDateOf(record.occurredAt)) {
