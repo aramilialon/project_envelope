@@ -1159,6 +1159,7 @@ describe("apps/api/migrations, applied to a real database", () => {
         [{ type: "fee", quantity_e8: 0, price_e6: 0, gross_cents: 5 }, "trades_fee_check"],
         [{ type: "tax", quantity_e8: 0, price_e6: 0 }, "trades_tax_check"],
         [{ type: "split", quantity_e8: 0, price_e6: 0, gross_cents: 0, split_from: 1 }, "trades_split_check"],
+        [{ type: "split", quantity_e8: 0, price_e6: 0, gross_cents: 0, split_from: 2, split_to: 2 }, "trades_split_identity_check"],
         [{ type: "transfer", price_e6: 0, gross_cents: 0 }, "trades_transfer_check"],
         [{ type: "transfer", price_e6: 0, gross_cents: 0, cost_basis_cents: 5, transfer_trade_id: workspaceA.tradeId }, "trades_transfer_check"],
         [{ type: "fee", instrument_id: null, quantity_e8: 0, price_e6: 0, gross_cents: 0 }, "trades_fee_check"],

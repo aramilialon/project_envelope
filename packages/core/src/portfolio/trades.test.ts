@@ -533,6 +533,18 @@ describe("checkTradeFigures (#600, #662)", () => {
     checkTradeFigures(figures({ type: "split", splitFrom: 10, splitTo: 11 }));
   });
 
+  it("refuses a split whose two figures are equal, which changes nothing (#712)", () => {
+    for (const ratio of [1, 2, 7]) {
+      assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: ratio, splitTo: ratio })), invalidTrade("splitTo"));
+    }
+    // A ratio that is not reduced still changes the quantity.
+    checkTradeFigures(figures({ type: "split", splitFrom: 2, splitTo: 4 }));
+    checkTradeFigures(figures({ type: "split", splitFrom: 2, splitTo: 1 }));
+    // Two figures that are both wrong name the first, not the equality.
+    assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: 0, splitTo: 0 })), invalidTrade("splitFrom"));
+    assert.throws(() => checkTradeFigures(figures({ type: "split", splitFrom: -3, splitTo: -3 })), invalidTrade("splitFrom"));
+  });
+
   it("has no figure to check on a fee or a tax", () => {
     checkTradeFigures(figures({ type: "fee" }));
     checkTradeFigures(figures({ type: "tax" }));
