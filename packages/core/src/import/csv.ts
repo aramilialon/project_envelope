@@ -10,10 +10,10 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import type { Cents } from "../money.ts";
+import type { Cents, CurrencyCode } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
 import { parseDecimalAmount, swapDayMonth } from "./parsing.ts";
-import type { ImportRow } from "./row.ts";
+import type { ImportOptions, ImportRow } from "./row.ts";
 
 export type CsvDateFormat = "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
 export type DecimalSeparator = "." | ",";
@@ -93,8 +93,8 @@ function parseCsvDate(text: string, format: CsvDateFormat): LocalDate {
   return date;
 }
 
-function parseCsvAmount(text: string, decimalSeparator: DecimalSeparator): Cents {
-  return parseDecimalAmount(text, decimalSeparator);
+function parseCsvAmount(text: string, decimalSeparator: DecimalSeparator, currency: CurrencyCode): Cents {
+  return parseDecimalAmount(text, decimalSeparator, currency);
 }
 
 function field(columns: readonly string[], index: number): string {
@@ -102,9 +102,12 @@ function field(columns: readonly string[], index: number): string {
 }
 
 /**
+ * Amounts are read in the minor units of `options.currency`, the account's (#671). A CSV file
+ * states no currency, so it is never refused for one (#672).
+ *
  * @throws ValidationError for a malformed date, amount, or a row with too few columns.
  */
-export function parseCsv(content: string, mapping: CsvMapping): CsvRow[] {
+export function parseCsv(content: string, mapping: CsvMapping, options: ImportOptions): CsvRow[] {
   const lines = content.split(/\r\n|\r|\n/).filter((line) => line.trim().length > 0);
   const dataLines = mapping.hasHeaderRow ? lines.slice(1) : lines;
 
@@ -116,14 +119,14 @@ export function parseCsv(content: string, mapping: CsvMapping): CsvRow[] {
 
     let amountCents: Cents;
     if ("amountColumn" in mapping) {
-      amountCents = parseCsvAmount(field(columns, mapping.amountColumn), mapping.decimalSeparator);
+      amountCents = parseCsvAmount(field(columns, mapping.amountColumn), mapping.decimalSeparator, options.currency);
     } else {
       const outflowText = field(columns, mapping.outflowColumn);
       const inflowText = field(columns, mapping.inflowColumn);
       if (inflowText) {
-        amountCents = parseCsvAmount(inflowText, mapping.decimalSeparator);
+        amountCents = parseCsvAmount(inflowText, mapping.decimalSeparator, options.currency);
       } else if (outflowText) {
-        amountCents = -Math.abs(parseCsvAmount(outflowText, mapping.decimalSeparator));
+        amountCents = -Math.abs(parseCsvAmount(outflowText, mapping.decimalSeparator, options.currency));
       } else {
         amountCents = 0;
       }

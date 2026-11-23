@@ -19,10 +19,11 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import { assertAmount, type Cents } from "../money.ts";
+import type { Cents, CurrencyCode } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
-import type { ImportRow } from "./row.ts";
-import { findTagBlocks } from "./tag-blocks.ts";
+import { assertFileCurrency, scaleDecimalAmount } from "./parsing.ts";
+import type { ImportOptions, ImportRow } from "./row.ts";
+import { findTagBlocks, findTagElements } from "./tag-blocks.ts";
 
 /** The ISO 20022 convention for "no value" on an otherwise-mandatory reference field. */
 const NOT_PROVIDED = "NOTPROVIDED";
@@ -55,14 +56,41 @@ function parseCamtDate(entry: string, dateTag: string): LocalDate | undefined {
   return dt;
 }
 
-function parseCamtAmount(entry: string): Cents {
+function parseCamtAmount(entry: string, currency: CurrencyCode): Cents {
   const text = extractText(entry, "Amt");
-  if (!text || !/^\d+(\.\d+)?$/.test(text)) {
+  // A plain magnitude: the sign is the entry's credit/debit indicator, never a "-".
+  const amount = text === undefined || text.startsWith("-") ? null : scaleDecimalAmount(text, currency);
+  if (amount === null) {
     throw new ValidationError("invalid_amount_format", `not a valid CAMT.053 amount: "${text ?? ""}"`, {});
   }
-  const cents = Math.round(Number(text) * 100);
-  assertAmount(cents);
-  return cents;
+  return amount;
+}
+
+/** The `Ccy` attribute of an opening tag's attribute text (` Ccy="EUR"`), when it has one. */
+function ccyAttribute(attributes: string): string | undefined {
+  const match = /(?:^|\s)Ccy\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(attributes);
+  return match ? (match[1] ?? match[2]) : undefined;
+}
+
+/**
+ * Every currency the file states for the money it imports: each statement's account currency
+ * (`<Stmt><Acct><Ccy>`) and each entry's own amount currency (`<Ntry><Amt Ccy="…">`, the entry's
+ * first `<Amt>`; the amounts under its transaction details, which may be the original amount in
+ * another currency, are not read).
+ */
+function statedCurrencies(content: string, entries: readonly string[]): string[] {
+  const currencies: string[] = [];
+  for (const statement of extractAllBlocks(content, "Stmt")) {
+    const account = extractBlock(statement, "Acct");
+    const accountCurrency = account === undefined ? undefined : extractText(account, "Ccy");
+    if (accountCurrency !== undefined) currencies.push(accountCurrency);
+  }
+  for (const entry of entries) {
+    const amount = findTagElements(entry, "Amt", { attributes: true, limit: 1 })[0];
+    const amountCurrency = amount === undefined ? undefined : ccyAttribute(amount.attributes);
+    if (amountCurrency !== undefined) currencies.push(amountCurrency);
+  }
+  return currencies;
 }
 
 /** The other party's name: the creditor for an outgoing (debit) entry, the debtor for an incoming (credit) one. */
@@ -86,11 +114,19 @@ function extractRemittanceInfo(txDtls: string | undefined): string | undefined {
 }
 
 /**
- * @throws ValidationError "invalid_camt053_entry" for an entry missing a required date, amount or
- * credit/debit indicator; "invalid_amount_format"/"invalid_date" for a malformed one.
+ * Amounts are read in the minor units of `options.currency`, the account's (#671). A file that
+ * states another currency, for its statement's account or for any entry's amount, is refused
+ * whole, before any entry is read (#672); a file that states none is read in the account's
+ * currency.
+ *
+ * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency) for a
+ * stated currency other than the account's; "invalid_camt053_entry" for an entry missing a
+ * required date, amount or credit/debit indicator; "invalid_amount_format"/"invalid_date"/
+ * "amount_too_large" for a malformed one.
  */
-export function parseCamt053(content: string): ImportRow[] {
+export function parseCamt053(content: string, options: ImportOptions): ImportRow[] {
   const entries = extractAllBlocks(content, "Ntry");
+  for (const currency of statedCurrencies(content, entries)) assertFileCurrency(currency, options.currency);
 
   return entries.map((entry) => {
     const date = parseCamtDate(entry, "BookgDt") ?? parseCamtDate(entry, "ValDt");
@@ -101,8 +137,9 @@ export function parseCamt053(content: string): ImportRow[] {
     if (cdtDbtInd !== "CRDT" && cdtDbtInd !== "DBIT") {
       throw new ValidationError("invalid_camt053_entry", "a CAMT.053 entry is missing a valid CdtDbtInd", {});
     }
-    const magnitude = parseCamtAmount(entry);
-    const amountCents = cdtDbtInd === "DBIT" ? -magnitude : magnitude;
+    const magnitude = parseCamtAmount(entry, options.currency);
+    // A debit of zero is 0, never -0.
+    const amountCents = cdtDbtInd === "DBIT" && magnitude !== 0 ? -magnitude : magnitude;
 
     const externalId = extractReference(entry, "AcctSvcrRef") ?? extractReference(entry, "NtryRef");
 

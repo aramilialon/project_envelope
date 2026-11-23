@@ -1,5 +1,14 @@
-import type { Cents } from "../money.ts";
+import type { Cents, CurrencyCode } from "../money.ts";
 import type { LocalDate } from "../month.ts";
+
+/**
+ * What every import parser needs to know about the account the file goes
+ * into: its currency, so amounts are read in its minor units (#671) and a
+ * file stating another currency is refused (#672).
+ */
+export interface ImportOptions {
+  readonly currency: CurrencyCode;
+}
 
 /**
  * A normalized row from any import source, before duplicate detection

@@ -14,9 +14,10 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import { assertAmount, type Cents } from "../money.ts";
+import type { Cents, CurrencyCode } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
-import type { ImportRow } from "./row.ts";
+import { assertFileCurrency, scaleDecimalAmount } from "./parsing.ts";
+import type { ImportOptions, ImportRow } from "./row.ts";
 import { findTagBlocks } from "./tag-blocks.ts";
 
 function extractTag(block: string, tag: string): string | undefined {
@@ -37,22 +38,38 @@ function parseOfxDate(text: string): LocalDate {
   return date;
 }
 
-function parseOfxAmount(text: string): Cents {
-  const trimmed = text.replace(/^\+/, "");
-  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+function parseOfxAmount(text: string, currency: CurrencyCode): Cents {
+  const amount = scaleDecimalAmount(text.replace(/^\+/, ""), currency);
+  if (amount === null) {
     throw new ValidationError("invalid_amount_format", `not a valid OFX TRNAMT: "${text}"`, { text });
   }
-  const cents = Math.round(Number(trimmed) * 100);
-  assertAmount(cents);
-  return cents;
+  return amount;
 }
 
 /**
+ * Every statement's `<CURDEF>`, the currency its amounts are in: one per statement
+ * (`<STMTRS>`, `<CCSTMTRS>`), and a file may hold several.
+ */
+function statedCurrencies(content: string): string[] {
+  // No nested quantifier and no backtracking past a "<" or line break: linear in the file (#675).
+  return Array.from(content.matchAll(/<CURDEF>([^<\r\n]*)/gi), (match) => match[1] ?? "");
+}
+
+/**
+ * Amounts are read in the minor units of `options.currency`, the account's (#671). A file whose
+ * statement states another currency in `<CURDEF>` is refused whole, before any of its amounts is
+ * read (#672); a file with no `<CURDEF>` is read in the account's currency.
+ *
  * A `<STMTTRN>` with no closing tag after it ends the file: it and anything after it are ignored.
  *
- * @throws ValidationError for a `<STMTTRN>` missing DTPOSTED or TRNAMT, or a malformed date or amount.
+ * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency) for a
+ *   `<CURDEF>` other than the account's currency; "invalid_ofx_transaction" for a `<STMTTRN>`
+ *   missing DTPOSTED or TRNAMT; "invalid_date"/"invalid_amount_format"/"amount_too_large" for a
+ *   malformed date or amount.
  */
-export function parseOfx(content: string): ImportRow[] {
+export function parseOfx(content: string, options: ImportOptions): ImportRow[] {
+  for (const currency of statedCurrencies(content)) assertFileCurrency(currency, options.currency);
+
   // A linear scan, not a lazy regular expression: see tag-blocks.ts (#675).
   const blocks = findTagBlocks(content, "STMTTRN");
 
@@ -64,7 +81,7 @@ export function parseOfx(content: string): ImportRow[] {
     }
 
     const date = parseOfxDate(dtposted);
-    const amountCents = parseOfxAmount(trnamt);
+    const amountCents = parseOfxAmount(trnamt, options.currency);
     const payee = extractTag(block, "NAME") ?? extractTag(block, "PAYEE") ?? "";
     const memo = extractTag(block, "MEMO");
     const externalId = extractTag(block, "FITID");

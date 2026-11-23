@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { isValidationError } from "../errors.ts";
 import { parseQif } from "./qif.ts";
 
+const EUR = { currency: "EUR" } as const;
 // Shaped like a real bank download: a card payment, an incoming transfer, and a salary
 // credit, each with a memo blob of bank-specific details glued together as free text.
 const REALISTIC_FIXTURE = `!Type:Bank
@@ -26,7 +27,7 @@ T1500,00
 
 describe("parseQif", () => {
   it("parses a realistic file, inferring DD/MM/YYYY and a comma decimal separator from its own data", () => {
-    const rows = parseQif(REALISTIC_FIXTURE);
+    const rows = parseQif(REALISTIC_FIXTURE, {}, EUR);
     assert.deepEqual(rows, [
       {
         date: "2026-09-21",
@@ -47,35 +48,35 @@ describe("parseQif", () => {
   it("asks for a dateFormat hint when every date could be either DD/MM or MM/DD", () => {
     const content = "!Type:Bank\nD05/06/2026\nPA\nT-10,00\n^\nD07/08/2026\nPB\nT-20,00\n^\n";
     assert.throws(
-      () => parseQif(content),
+      () => parseQif(content, {}, EUR),
       (error: unknown) => isValidationError(error, "ambiguous_date_format"),
     );
   });
 
   it("accepts an explicit dateFormat hint instead of guessing", () => {
     const content = "!Type:Bank\nD05/06/2026\nPA\nT-10,00\n^\n";
-    const rows = parseQif(content, { dateFormat: "MM/DD/YYYY" });
+    const rows = parseQif(content, { dateFormat: "MM/DD/YYYY" }, EUR);
     assert.equal(rows[0]?.date, "2026-05-06");
   });
 
   it("asks for a decimalSeparator hint when no amount has a clean two-digit tail", () => {
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-10\n^\nD22/09/2026\nPB\nT20\n^\n";
     assert.throws(
-      () => parseQif(content),
+      () => parseQif(content, {}, EUR),
       (error: unknown) => isValidationError(error, "ambiguous_decimal_separator"),
     );
   });
 
   it("accepts an explicit decimalSeparator hint instead of guessing", () => {
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-10\n^\n";
-    const rows = parseQif(content, { decimalSeparator: "." });
+    const rows = parseQif(content, { decimalSeparator: "." }, EUR);
     assert.equal(rows[0]?.amountCents, -1000);
   });
 
   it("rejects a transaction block missing its amount", () => {
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-10,00\n^\nD22/09/2026\nPB\n^\n";
     assert.throws(
-      () => parseQif(content),
+      () => parseQif(content, {}, EUR),
       (error: unknown) => isValidationError(error, "invalid_qif_transaction"),
     );
   });
@@ -84,7 +85,7 @@ describe("parseQif", () => {
     // A first, well-formed transaction settles the date format heuristic (day 21 > 12); the second's date is malformed.
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-10,00\n^\nDnot-a-date\nPB\nT-20,00\n^\n";
     assert.throws(
-      () => parseQif(content),
+      () => parseQif(content, {}, EUR),
       (error: unknown) => isValidationError(error, "invalid_date"),
     );
   });
@@ -93,12 +94,12 @@ describe("parseQif", () => {
     // A first, well-formed transaction settles the decimal separator heuristic; the second's amount is malformed.
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-10,00\n^\nD22/09/2026\nPB\nTnot-a-number\n^\n";
     assert.throws(
-      () => parseQif(content),
+      () => parseQif(content, {}, EUR),
       (error: unknown) => isValidationError(error, "invalid_amount_format"),
     );
   });
 
   it("returns an empty array for a file with no transactions", () => {
-    assert.deepEqual(parseQif("!Type:Bank\n"), []);
+    assert.deepEqual(parseQif("!Type:Bank\n", {}, EUR), []);
   });
 });
