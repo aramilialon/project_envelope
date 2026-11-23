@@ -16,13 +16,14 @@ import { decodeJwt } from "jose";
 import type { DbPool } from "../../db/pool.ts";
 import type { KeycloakTestRealm } from "../keycloak.ts";
 import type { WalkDriver, WalkResponse } from "./driver.ts";
-import { LAST_MONTH, WalkRandom } from "./generator.ts";
+import { LAST_MONTH, WalkRandom, WINDOW_START } from "./generator.ts";
 import {
   checkAccountPositions,
   checkAccountTransactions,
   checkBrokerageAccount,
   checkBudgetMonth,
   checkPortfolioPositions,
+  checkTaxRegimes,
   checkTrades,
   compareDigests,
   expectEqual,
@@ -36,7 +37,16 @@ import {
   type CheckContext,
 } from "./invariants.ts";
 import { amountOf, InstrumentCatalog, WorkspaceModel, type Persona, type Role, type TransactionJson, type WalkUser } from "./model.ts";
-import { operation, PROFILES, REFUSAL_ALLOWLIST, WRITE_KINDS_FOR_REFUSAL, type Op, type Prediction } from "./operations.ts";
+import {
+  operation,
+  predictOperation,
+  PROFILES,
+  REFUSAL_ALLOWLIST,
+  WALK_TAX_COUNTRY,
+  WRITE_KINDS_FOR_REFUSAL,
+  type Op,
+  type Prediction,
+} from "./operations.ts";
 
 export const PERSONAS: readonly Persona[] = ["household", "investor", "mixed"];
 const ROLES: readonly Role[] = ["owner", "editor", "read_only"];
@@ -59,6 +69,8 @@ export interface LoggedStep {
   readonly op: Op;
   /** The status the API answered when the log was written; informational on a replay. */
   status?: number;
+  /** The refusal's code (`refusalCode`); informational too, to count what a long walk ran into. */
+  code?: string;
   /** The handles the step gave out (an entity, its transfer partner, a trade's cash leg). */
   created?: string[];
 }
@@ -185,9 +197,18 @@ async function setUp(env: WalkEnvironment, models: Map<Persona, WorkspaceModel>,
       const checking = await expectCreated(driver, "POST", path("/accounts"), { name: "Checking", type: "checking", currency: "EUR" }, token);
       model.addAccount(checking as Parameters<WorkspaceModel["addAccount"]>[0]);
     }
+    // The investor's workspace is the walk's `IT` one (#676): every brokerage account there has a
+    // tax regime history and a withholding-agent flag, and its trades follow the regime rules.
+    const taxSettings = persona === "investor" ? { taxRegime: "administered", taxRegimeValidFrom: WINDOW_START, domesticWithholdingAgent: true } as const : undefined;
+    if (taxSettings) {
+      const settings = await driver.request("PATCH", path(""), { taxCountry: WALK_TAX_COUNTRY }, token);
+      if (settings.status !== 200) throw new Error(`setup: PATCH ${path("")} answered ${settings.status}: ${JSON.stringify(settings.body)}`);
+      model.taxCountry = WALK_TAX_COUNTRY;
+    }
     if (persona !== "household") {
-      const broker = await expectCreated(driver, "POST", path("/accounts"), { name: "Broker", type: "brokerage", currency: "EUR" }, token);
-      model.addAccount(broker as Parameters<WorkspaceModel["addAccount"]>[0]);
+      const broker = await expectCreated(driver, "POST", path("/accounts"), { name: "Broker", type: "brokerage", currency: "EUR", ...taxSettings }, token);
+      const regimes = taxSettings ? [{ validFrom: taxSettings.taxRegimeValidFrom, regime: taxSettings.taxRegime }] : [];
+      model.addAccount(broker as Parameters<WorkspaceModel["addAccount"]>[0], regimes);
       const portfolio = await expectCreated(driver, "POST", path("/portfolios"), { name: "Core" }, token);
       model.addPortfolio(portfolio.id as string);
     }
@@ -257,7 +278,7 @@ class Walk {
     const spec = operation(op.kind);
     const intruder = op.actor.startsWith("intruder:") ? this.model(op.actor.slice("intruder:".length) as Persona) : undefined;
     const prediction: Prediction =
-      op.actor === "read_only" ? { kind: "refuse", status: 403 } : intruder ? { kind: "refuse", status: 403 } : spec.predict(model, op.params, this.models);
+      op.actor === "read_only" || intruder ? { kind: "refuse", status: 403 } : predictOperation(op.kind, model, op.params, this.models);
     const request = spec.request(model, op.params, this.models);
     const token = intruder ? await intruder.users.owner.token() : await model.users[op.actor as Role].token();
 
@@ -274,6 +295,7 @@ class Walk {
 
     const response = await this.env.driver.request(request.method, request.path, request.body, token);
     logged.status = response.status;
+    if (response.status >= 400) logged.code = refusalCode(response.body);
     if (response.status >= 500) fail(`${request.method} ${request.path} answered ${response.status}: ${JSON.stringify(response.body)}`);
 
     if (prediction.kind === "syncOutcome") {
@@ -322,15 +344,25 @@ class Walk {
       if (response.status !== prediction.status || (prediction.code !== undefined && code !== prediction.code)) {
         fail(`${what}\n  expected ${prediction.status} ${prediction.code ?? "(any code)"}`);
       }
+      if (prediction.details !== undefined) {
+        const details = ((response.body ?? {}) as { details?: Record<string, unknown> }).details ?? {};
+        for (const [field, expected] of Object.entries(prediction.details)) {
+          expectEqual(details[field], expected, `details.${field} of ${what}`);
+        }
+      }
       return;
     }
-    if (response.status < 400 || response.status >= 500 || !REFUSAL_ALLOWLIST.has(code)) {
+    const allowed = REFUSAL_ALLOWLIST.has(code) || (prediction.kind === "any" && (prediction.alsoAllowed ?? []).includes(code));
+    if (response.status < 400 || response.status >= 500 || !allowed) {
       fail(`${what}\n  a refusal the walk does not predict must be a 4xx with a code from the allowlist`);
     }
   }
 
   /** The cheap checks after an accepted step: the touched accounts, positions and budget of its workspace. */
-  private async checkTouched(model: WorkspaceModel, touched: { accounts: Set<string>; portfolios: Set<string>; budget: boolean }): Promise<void> {
+  private async checkTouched(model: WorkspaceModel, touched: { accounts: Set<string>; portfolios: Set<string>; budget: boolean; regimes: Set<string> }): Promise<void> {
+    for (const handle of touched.regimes) {
+      await checkTaxRegimes(this.ctx, model, model.account(handle));
+    }
     const lists = new Map<string, TransactionJson[]>();
     for (const handle of touched.accounts) {
       const account = model.accounts.get(handle);

@@ -429,6 +429,37 @@ describe("writes to a closed account (#729)", () => {
       }
     });
 
+    it("refuses to close a brokerage account with no cash that still holds a security, and closes it once sold out and swept (#735)", async () => {
+      const accountId = await account("brokerage");
+      const checkingId = await account("checking");
+      const common = { accountId, portfolioId, instrumentId, quantityE8: units(1) };
+      const buy = await inject("POST", "/trades", { ...common, type: "buy", tradeDate: "2026-06-10", priceE6: price(50) });
+      assert.equal(buy.statusCode, 201, buy.body);
+      // The buy's cash, paid in from the budget: no cash left, one unit held.
+      const deposit = await inject("POST", "/transfers", {
+        sourceAccountId: checkingId,
+        destinationAccountId: accountId,
+        amountCents: 5_000,
+        occurredAt: "2026-06-10",
+        categoryId,
+      });
+      assert.equal(deposit.statusCode, 201, deposit.body);
+
+      const refused = await inject("PATCH", `/accounts/${accountId}/close`);
+      assert.equal(refused.statusCode, 409, refused.body);
+      assert.deepEqual(refused.json(), {
+        error: "account_not_empty",
+        details: { balanceCents: 0, holdsPositions: true, laterRows: { count: 0, firstDate: null }, scheduled: { count: 0, scheduledTransactionId: null, nextDueDate: null } },
+      });
+
+      // Sold out, then its cash swept back to the budget: nothing left, so it closes.
+      const sell = await inject("POST", "/trades", { ...common, type: "sell", tradeDate: "2026-06-11", priceE6: price(60) });
+      assert.equal(sell.statusCode, 201, sell.body);
+      const sweep = await inject("POST", "/transfers", { sourceAccountId: accountId, destinationAccountId: checkingId, amountCents: 6_000, occurredAt: "2026-06-12" });
+      assert.equal(sweep.statusCode, 201, sweep.body);
+      await close(accountId);
+    });
+
     it("answers a closed account of another workspace as unknown_account, never account_closed, so its state does not leak (#741)", async () => {
       const foreignWorkspaceId = randomUUID();
       foreignWorkspaceIds.push(foreignWorkspaceId);
