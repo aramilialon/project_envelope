@@ -203,6 +203,7 @@ for their regimes right away.
 | --- | --- |
 | 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
 | 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
+| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code" }`: setting `IT` back would leave that trade breaking its account's regime, the earliest by date then id across the workspace's accounts (#667) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -211,6 +212,19 @@ never refused for them: such an account keeps working, a new trade on it is refu
 regime (see below), and the trades it already has can still be edited in every field the regime
 rules do not read, their memo first of all ([Editing a trade](#editing-a-trade)). Its first regime
 is checked against those trades like any other change of the history. `GET /me/workspaces` lists each workspace's `taxCountry`.
+
+**Setting `IT` back reads the trades again (#667).** While a workspace is not `IT`, its trades are
+not checked against any regime. When its tax country becomes `IT` again (from another country or
+from none), every trade of each brokerage account that has a regime history is checked against that
+history and the account's withholding-agent flag by every trade rule, as an account's first regime
+checks them ([below](#brokerage-accounts-and-their-tax-regime)). If one breaks, the change is
+refused with `tax_regime_conflicts_with_trade`, naming the earliest such trade (by date, then id,
+across every account) and the code it would fail with, and nothing is written: edit or delete the
+trade while the workspace is not `IT`, then set it again. A closed account's trades are checked too.
+An account with no regime history is left to its first regime, which checks every trade. Setting
+`IT` on a workspace that already is `IT` checks nothing. The change holds the workspace, and each of
+those accounts, locked while it checks: a trade being recorded or edited waits for it, then is
+checked against the country it sets, and the change waits for a trade being written, then reads it.
 
 ## Brokerage accounts and their tax regime
 
@@ -308,11 +322,12 @@ recorded while the account had no regime were never checked against the broker e
 under the same account lock as the write, which a trade being recorded or edited on that account
 also waits for. `POST` can also add a
 period before the first one, but only when the first one starts on 1 January (it then becomes a
-change, and changes start on 1 January).
+change, and changes start on 1 January). When it does not, `tax_regime_change_not_year_start`
+names the date the request asked for, not the stored first period's (#714).
 
 | Error | Details |
 | --- | --- |
-| 400 `tax_regime_change_not_year_start` | `{ "validFrom": "2027-07-01" }` |
+| 400 `tax_regime_change_not_year_start` | `{ "validFrom": "2027-07-01" }`: on `POST`, always the requested date, also when it comes before a first period that does not start on 1 January (#714); on `PUT`, the period that breaks the rule |
 | 400 `tax_regime_duplicate_date` | `{ "validFrom" }` |
 | 400 `tax_regime_requires_withholding_agent` | `{ "regime" }`: any `administered` or `managed` period needs the flag set to true |
 | 400 `tax_regime_not_applicable` | `{ "field": "taxRegime", "type" }` (not a brokerage account) or `{ "field": "taxRegime", "taxCountry" }` (not an `IT` workspace) |
@@ -395,7 +410,7 @@ An instrument needs an ISIN, or a ticker with its exchange. The answer (201) is 
 | 400 `missing_exchange` | `{ "ticker" }` |
 | 400 `invalid_isin` | `{ "isin" }`: wrong shape or check digit |
 | 400 `invalid_ticker`, `invalid_exchange` | `{ "ticker" }`, `{ "exchange" }` |
-| 400 `invalid_instrument_type` | `{ "type" }` |
+| 400 `invalid_instrument_type` | `{ "type", "allowed": ["stock", "fund", "etc_etn", "government_bond", "bond", "certificate", "cash", "other"] }`: `allowed` lists every type, in that order (#712) |
 | 400 `invalid_currency` | `{ "currency" }` as sent: not an ISO 4217 code in use (`XYZ`, the withdrawn `VEF`) |
 | 400 `invalid_instrument_field` | `{ "field" }` (a missing name, or a field that is not a string) or `{ "field", "maxLength" }` |
 | 400 `invalid_price_factor` | `{ "label": "priceFactorE6", "value" }`: not a positive safe integer |
@@ -642,7 +657,7 @@ Every trade endpoint answers with trade objects. A buy of 20 units at €100.00 
 | `gainTaxCents` | sales only: the gain tax the broker withheld |
 | `taxKind` | taxes only: `stamp_duty`, `managed_result_tax`, `gain_tax_adjustment`, `other` |
 | `costBasisCents` | only on a transfer in from outside the app: the cost the units bring |
-| `splitFrom`, `splitTo` | a split's ratio from:to; 1:4 means 1 unit becomes 4 |
+| `splitFrom`, `splitTo` | a split's ratio from:to; 1:4 means 1 unit becomes 4; the two differ (#712) |
 | `transferTradeId` | the other leg of a transfer; null for a transfer from or to outside the app |
 | `cashCents` | the cash the trade moves on its account, positive in, negative out ([Cash legs](#cash-legs)) |
 | `cashTransactionId` | its cash leg, a transaction on the same account; null when it moves no cash |
@@ -727,7 +742,8 @@ The API writes one split row for every portfolio, in every account of the worksp
 the instrument at the start of that date (after every trade of earlier dates). Each holding's
 quantity is multiplied by `splitTo ÷ splitFrom`, rounded toward zero to 8 decimals; the cost does
 not change, so the average cost is divided by the ratio. A reverse split is written the other way
-round (10:1 means 10 units become 1). A split moves no cash. A trade recorded later that would
+round (10:1 means 10 units become 1). The two figures differ: a 1:1 split (or 2:2) changes nothing
+and is refused (`invalid_trade`, `field: "splitTo"`, #712). A split moves no cash. A trade recorded later that would
 make another portfolio hold the instrument on the split's date without a split row of its own is
 refused (`split_missing_for_portfolio`), so where a split is involved, record the trades before it
 first.
@@ -744,7 +760,8 @@ Nothing is written until every check has passed:
    `field: "quantity"` on a buy or a sale, `"quantityE8"` on a transfer);
 4. the price of a buy or a sale: a safe integer not below 0 (`invalid_price`), and above 0 on a
    buy (`invalid_trade`, `field: "priceE6"`); a dividend's gross not 0 and a split's ratio two
-   positive integers (`invalid_trade` naming the field);
+   positive integers that differ (`invalid_trade` naming the field, `splitTo` for a 1:1 ratio,
+   #712), before the holdings it covers are looked for and before the tax regime;
 5. the instrument exists (`unknown_instrument`), and the gross of a buy or a sale sent without
    one is computed from quantity × price;
 6. the rows the request stands for are built: a transfer's legs, or a split's rows for the
@@ -788,8 +805,8 @@ All 400 `{ "error": "<code>", "details": { … } }` unless marked 409.
 | `tax_kind_not_allowed_for_trade_type` | `{ "type", "taxKind" }` | `taxKind` on anything but a tax |
 | `accrued_interest_not_allowed` | `{ "instrumentType" }` (`""` without an instrument) | accrued interest on an instrument that is not a bond |
 | `withholding_exceeds_gross` | `{ "field", "withheld", "gross" }` | a dividend's withholdings above its gross (`field: "withholding"`), or a bond trade's domestic withholding above its accrued interest (`field: "withholdingDomesticCents"`) |
-| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a required field missing, a field of another kind of request or one the type does not use, a quantity of 0 or less, a buy's price of 0, a dividend of 0, a fee or a tax of 0, a split ratio that is not two positive integers, an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
-| `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet; a new trade only, an edit of a trade there is not checked |
+| `invalid_trade` | `{ "field" }`, or `{ "tradeId", "field" }` | a trade that breaks its type's shape: a required field missing, a field of another kind of request or one the type does not use, a quantity of 0 or less, a buy's price of 0, a dividend of 0, a fee or a tax of 0, a split ratio that is not two positive integers or whose two figures are equal (#712), an `occurredAt` not on the trade date, a transfer in with no `costBasisCents` (or a cost on any other leg), a transfer between the same holding, two legs that do not match |
+| `tax_regime_required` | `{ "accountId" }` | an `IT` workspace, and the account has no regime yet: a new trade, or an edit that moves a trade, a transfer's leg or a split's row into such an account (#680). An edit of a trade already on such an account is not checked |
 | `tax_kind_not_allowed_in_regime` | `{ "regime", "field" }`, plus `taxKind` for a tax | gain tax, an adjustment or a managed result tax the regime on that date does not allow |
 | `domestic_withholding_requires_agent` | `{ "field": "withholdingDomesticCents" }` | a domestic withholding on a bond trade's accrued interest at a broker that is not an Italian withholding agent |
 | `insufficient_quantity` | `{ "tradeId", "accountId", "portfolioId", "instrumentId", "date", "available", "requested" }`, quantities × 10^8 | the portfolio would hold less than zero at that trade |
@@ -938,7 +955,10 @@ trade never changes: delete it and record another.
   regime yet (a trade recorded before the workspace's tax country became `IT`), an edit of its
   trades is not checked against the regime at all, a split's or a transfer's included: the
   account's first regime checks every trade, so a trade no regime would accept can be fixed by an
-  edit before the regime is recorded.
+  edit before the regime is recorded. That holds only for an account the edited trade (or one of
+  its legs or split rows) was already on: an edit that moves a trade, a transfer's leg or a split's
+  row into another account with no regime is refused with `tax_regime_required`, as a new trade
+  there is (#680).
 - **Archived portfolios.** A trade already in an archived portfolio can still be edited there, or
   moved out of it. Moving a trade or a transfer's leg (either one) into an archived portfolio is
   `portfolio_archived`. A split moved to another date covers the holdings on that date, archived

@@ -59,7 +59,9 @@ export async function listTaxRegimes(
  * Returns undefined if the account is not in this workspace.
  *
  * @throws ValidationError "tax_regime_not_applicable" if the account is not a brokerage account
- * or the workspace's tax country is not `IT`; the codes of `validateTaxRegimeChange`;
+ * or the workspace's tax country is not `IT`; the codes of `validateTaxRegimeChange`, where
+ * "tax_regime_change_not_year_start" always names the requested date (#714), also when the new
+ * period starts before the stored first one and so turns that one into a change;
  * "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) when the new history would
  * break a trade of the account (`checkRegimeChange`). Nothing is written then.
  */
@@ -77,7 +79,7 @@ export async function addTaxRegime(
 
   const entry: TaxRegimeEntry = { validFrom: input.validFrom ?? account.today, regime: input.regime };
   const before = await loadHistory(db, workspaceId, accountId);
-  await checkChange(db, workspaceId, accountId, account, before, [...before, entry]);
+  await checkChange(db, workspaceId, accountId, account, before, [...before, entry], [entry]);
   await insertEntries(db, workspaceId, accountId, [entry], account.type);
   return entry;
 }
@@ -148,6 +150,50 @@ export async function setWithholdingAgent(
 }
 
 /**
+ * Checks every trade of the workspace's brokerage accounts that have a regime history against it,
+ * by the whole of `checkTradeRegime` (`checkAccountTradesAgainstRegime`, the rule of #653), when
+ * the workspace's tax country becomes `IT` again (#667): trades written while it was another
+ * country, or none, were not checked. An account with no history is left to its first regime,
+ * which checks every trade (`checkRegimeChange`). Closed accounts are checked too.
+ *
+ * The caller holds the workspace row FOR NO KEY UPDATE, which a trade being written waits for
+ * (trades/repository.ts, `checkRows`, FOR SHARE). The accounts are locked FOR NO KEY UPDATE in id
+ * order, the order `checkRegimes` locks them FOR SHARE, so no regime change runs meanwhile.
+ *
+ * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code)
+ *   for the first trade, by date then id across every account, that breaks a rule.
+ */
+export async function checkTradesAgainstRegimes(db: DbPool | DbClient, workspaceId: string): Promise<void> {
+  const { rows } = await db.query<{ id: string; domestic_withholding_agent: boolean | null }>(
+    `SELECT a.id, a.domestic_withholding_agent FROM accounts a
+     WHERE a.workspace_id = $1 AND a.type = 'brokerage'
+       AND EXISTS (SELECT 1 FROM account_tax_regimes r WHERE r.workspace_id = a.workspace_id AND r.account_id = a.id)
+     ORDER BY a.id
+     FOR NO KEY UPDATE OF a`,
+    [workspaceId],
+  );
+  let first: ValidationError | undefined;
+  for (const account of rows) {
+    try {
+      checkAccountTradesAgainstRegime(await loadTrades(db, workspaceId, account.id), {
+        history: await loadHistory(db, workspaceId, account.id),
+        domesticWithholdingAgent: account.domestic_withholding_agent,
+      });
+    } catch (error) {
+      if (!(error instanceof ValidationError)) throw error;
+      if (first === undefined || comesBefore(error, first)) first = error;
+    }
+  }
+  if (first !== undefined) throw first;
+}
+
+/** Whether the trade `a` names comes before the one `b` names, by date then id. */
+function comesBefore(a: ValidationError, b: ValidationError): boolean {
+  const key = (error: ValidationError): string => `${String(error.details.tradeDate)} ${String(error.details.tradeId)}`;
+  return key(a) < key(b);
+}
+
+/**
  * Locks the account row, as migration 0028's trigger does (FOR NO KEY UPDATE), so two changes to
  * the same account are checked one after the other; undefined if it is not in this workspace.
  */
@@ -170,6 +216,8 @@ async function lockAccount(db: DbPool | DbClient, workspaceId: string, accountId
  * history (trades/repository.ts, `checkRegimes`): no trade can slip in between this check and the
  * write.
  *
+ * `requested` is the entries an addition brings (#714), left out for a replacement.
+ *
  * @throws ValidationError the codes of `validateTaxRegimeChange`; "tax_regime_conflicts_with_trade".
  */
 async function checkChange(
@@ -179,11 +227,13 @@ async function checkChange(
   account: LockedAccount,
   before: readonly TaxRegimeEntry[],
   after: readonly TaxRegimeEntry[],
+  requested?: readonly TaxRegimeEntry[],
 ): Promise<void> {
   validateTaxRegimeChange({
     taxCountry: account.tax_country,
     domesticWithholdingAgent: account.domestic_withholding_agent,
     history: after,
+    requested,
   });
   checkRegimeChange(await loadTrades(db, workspaceId, accountId), {
     before,

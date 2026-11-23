@@ -1110,7 +1110,11 @@ describe("trades routes (#77)", () => {
     }
 
     async function patchTrade(tradeId: string, payload: Record<string, unknown>) {
-      return app.fastify.inject({ method: "PATCH", url: `/workspaces/${italian}/trades/${tradeId}`, headers: await auth(), payload });
+      return patchTradeIn(italian, tradeId, payload);
+    }
+
+    async function patchTradeIn(ws: string, tradeId: string, payload: Record<string, unknown>) {
+      return app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}/trades/${tradeId}`, headers: await auth(), payload });
     }
 
     /** A buy of one unit on 2025-02-01, then its sale on `tradeDate` with `gainTaxCents`. */
@@ -1271,13 +1275,16 @@ describe("trades routes (#77)", () => {
           ws,
         );
         buyIds.push(buy!.id);
+      }
+      await becomeItalian();
+      for (const broker of [foreign, agent]) {
         // A self-declared first regime written past the API, as before #653: the flag is still unset.
+        // After the switch to IT, which would otherwise check these trades against it (#667).
         await superuserPool.query(
           "INSERT INTO account_tax_regimes (workspace_id, account_id, valid_from, regime) VALUES ($1, $2, '2026-01-01', 'self_declared')",
           [ws, broker],
         );
       }
-      await becomeItalian();
 
       const setFlag = async (broker: string, domesticWithholdingAgent: boolean) =>
         app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}/accounts/${broker}`, headers: await auth(), payload: { domesticWithholdingAgent } });
@@ -1334,6 +1341,185 @@ describe("trades routes (#77)", () => {
       const accepted = await firstRegime();
       assert.equal(accepted.statusCode, 201, accepted.body);
       assert.deepEqual(await storedRegimes(broker), ["2026-01-01 self_declared"]);
+    });
+
+    it("checks a split's ratio before the regime, in an IT workspace (#712)", async () => {
+      const { ws, holdings, becomeItalian } = await workspaceBeforeIT();
+      const shares = await instrument("stock");
+      const broker = await account("brokerage", "EUR", ws, true);
+      await created({ type: "buy", accountId: broker, portfolioId: holdings, instrumentId: shares, priceE6: price(100), tradeDate: "2026-01-02", quantityE8: units(2) }, ws);
+      await becomeItalian();
+      const split = { type: "split", instrumentId: shares, tradeDate: "2026-01-15" };
+      assert.deepEqual(await rejected({ ...split, splitFrom: 0, splitTo: 2 }, "invalid_trade", ws), { field: "splitFrom" });
+      assert.deepEqual(await rejected({ ...split, splitFrom: 2, splitTo: 2 }, "invalid_trade", ws), { field: "splitTo" });
+      // A valid ratio reaches the regime: the account has none.
+      assert.deepEqual(await rejected({ ...split, splitFrom: 1, splitTo: 2 }, "tax_regime_required", ws), { accountId: broker });
+    });
+
+    it("refuses an edit that moves a trade into an account with no regime (#680)", async () => {
+      const withRegime = await brokerWith("administered", true);
+      const otherWithRegime = await brokerWith("administered", true);
+      const without = await account("brokerage", "EUR", italian, true);
+      const [buy] = await created(
+        { type: "buy", accountId: withRegime, portfolioId: growth, instrumentId: etf, priceE6: price(100), quantityE8: units(1), tradeDate: "2026-01-02" },
+        italian,
+      );
+      const moved = await patchTrade(buy!.id, { accountId: without });
+      assert.equal(moved.statusCode, 400, moved.body);
+      assert.deepEqual(moved.json(), { error: "tax_regime_required", details: { accountId: without } });
+      const { rows } = await superuserPool.query<{ account_id: string }>("SELECT account_id FROM trades WHERE id = $1", [buy!.id]);
+      assert.equal(rows[0]!.account_id, withRegime);
+
+      // A transfer's incoming leg moved there too.
+      const legs = await created(
+        {
+          type: "transfer",
+          instrumentId: etf,
+          tradeDate: "2026-01-05",
+          quantityE8: units(1),
+          from: { accountId: withRegime, portfolioId: growth },
+          to: { accountId: otherWithRegime, portfolioId: growth },
+        },
+        italian,
+      );
+      const incoming = await patchTrade(legs[0]!.id, { to: { accountId: without } });
+      assert.equal(incoming.statusCode, 400, incoming.body);
+      assert.deepEqual(incoming.json(), { error: "tax_regime_required", details: { accountId: without } });
+      // Moved into an account with a regime, a trade is checked and accepted.
+      const [later] = await created(
+        { type: "buy", accountId: withRegime, portfolioId: growth, instrumentId: etf, priceE6: price(100), quantityE8: units(1), tradeDate: "2026-01-10" },
+        italian,
+      );
+      const accepted = await patchTrade(later!.id, { accountId: otherWithRegime });
+      assert.equal(accepted.statusCode, 200, accepted.body);
+    });
+
+    it("re-checks every trade when the tax country is set back to IT, naming the earliest that breaks a rule (#667)", async () => {
+      const { ws, holdings, becomeItalian } = await workspaceBeforeIT();
+      await becomeItalian();
+      const setCountry = async (taxCountry: string | null) =>
+        app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}`, headers: await auth(), payload: { taxCountry } });
+      // In id order, the order the accounts are checked in: the later trade is on the first one.
+      const brokers = [await account("brokerage", "EUR", ws, true), await account("brokerage", "EUR", ws, true)].sort();
+      for (const broker of brokers) {
+        const regime = await app.fastify.inject({
+          method: "POST",
+          url: `/workspaces/${ws}/accounts/${broker}/tax-regimes`,
+          headers: await auth(),
+          payload: { validFrom: "2026-01-01", regime: "self_declared" },
+        });
+        assert.equal(regime.statusCode, 201, regime.body);
+      }
+      const noRegime = await account("brokerage", "EUR", ws, true);
+      const shares = await instrument("stock");
+      const base = { portfolioId: holdings, instrumentId: shares, priceE6: price(100), quantityE8: units(1) };
+      for (const broker of brokers) {
+        await created({ ...base, accountId: broker, type: "buy", tradeDate: "2026-01-05" }, ws);
+      }
+      assert.equal((await setCountry(null)).statusCode, 200);
+
+      // Written while the workspace is not IT: gain tax on a stock, which self_declared refuses.
+      const [later] = await created({ ...base, accountId: brokers[0], type: "sell", tradeDate: "2026-03-02", gainTaxCents: 100 }, ws);
+      const [earlier] = await created({ ...base, accountId: brokers[1], type: "sell", tradeDate: "2026-02-02", gainTaxCents: 100 }, ws);
+      // An account with no regime is left to its first one.
+      await created({ ...base, accountId: noRegime, type: "buy", tradeDate: "2026-01-05" }, ws);
+      await created({ ...base, accountId: noRegime, type: "sell", tradeDate: "2026-01-06", gainTaxCents: 100 }, ws);
+
+      const refused = await setCountry("IT");
+      assert.equal(refused.statusCode, 400, refused.body);
+      assert.deepEqual(refused.json(), {
+        error: "tax_regime_conflicts_with_trade",
+        details: { tradeId: earlier!.id, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime" },
+      });
+      const { rows } = await superuserPool.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [ws]);
+      assert.equal(rows[0]!.tax_country, null, "nothing is written");
+
+      // Fixed one at a time, while the workspace is not IT.
+      assert.equal((await patchTradeIn(ws, earlier!.id, { gainTaxCents: 0 })).statusCode, 200);
+      const second = await setCountry("IT");
+      assert.equal(second.statusCode, 400, second.body);
+      assert.equal(second.json().details.tradeId, later!.id);
+      assert.equal((await patchTradeIn(ws, later!.id, { gainTaxCents: 0 })).statusCode, 200);
+      const switched = await setCountry("IT");
+      assert.equal(switched.statusCode, 200, switched.body);
+      assert.deepEqual(switched.json().accountsWithoutTaxRegime, [noRegime]);
+    });
+
+    it("makes a trade wait for a change of the tax country, and the change wait for a trade (#667)", async () => {
+      const { ws, holdings, becomeItalian } = await workspaceBeforeIT();
+      await becomeItalian();
+      const broker = await account("brokerage", "EUR", ws, true);
+      const regime = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${ws}/accounts/${broker}/tax-regimes`,
+        headers: await auth(),
+        payload: { validFrom: "2026-01-01", regime: "self_declared" },
+      });
+      assert.equal(regime.statusCode, 201, regime.body);
+      const shares = await instrument("stock");
+      const base = { accountId: broker, portfolioId: holdings, instrumentId: shares, priceE6: price(100), quantityE8: units(1) };
+      await created({ ...base, type: "buy", tradeDate: "2026-01-05" }, ws);
+      await superuserPool.query("UPDATE workspaces SET tax_country = NULL WHERE id = $1", [ws]);
+      const sale = { ...base, type: "sell", tradeDate: "2026-02-02", gainTaxCents: 100 };
+
+      /** Waits until a session is blocked by `holderPid` (read before the blocked request starts). */
+      async function blockedBy(holderPid: number): Promise<void> {
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+          const { rows } = await superuserPool.query("SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))", [holderPid]);
+          if (rows.length > 0) return;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        assert.fail("no request waited for the workspace's row");
+      }
+
+      // (a) A change of the tax country in progress, holding the row as the API's does: a sale
+      // waits for it, then is checked against IT.
+      const holder = await superuserPool.connect();
+      try {
+        const { rows } = await holder.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        await holder.query("BEGIN");
+        await holder.query("SELECT 1 FROM workspaces WHERE id = $1 FOR NO KEY UPDATE", [ws]);
+        const pending = post(sale, ws);
+        try {
+          await blockedBy(rows[0]!.pid);
+          await holder.query("UPDATE workspaces SET tax_country = 'IT' WHERE id = $1", [ws]);
+        } finally {
+          await holder.query("COMMIT");
+        }
+        const refused = await pending;
+        assert.equal(refused.statusCode, 400, refused.body);
+        assert.equal(refused.json().error, "tax_kind_not_allowed_in_regime", refused.body);
+      } finally {
+        holder.release();
+      }
+
+      // (b) A trade being written, holding the row as the API's does: the change waits for it, then
+      // checks it.
+      await superuserPool.query("UPDATE workspaces SET tax_country = NULL WHERE id = $1", [ws]);
+      const writer = await superuserPool.connect();
+      try {
+        const { rows } = await writer.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        await writer.query("BEGIN");
+        await writer.query("SELECT 1 FROM workspaces WHERE id = $1 FOR SHARE", [ws]);
+        const pending = app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}`, headers: await auth(), payload: { taxCountry: "IT" } });
+        let inserted: string | undefined;
+        try {
+          await blockedBy(rows[0]!.pid);
+          const { rows: trade } = await writer.query<{ id: string }>(
+            `INSERT INTO trades (workspace_id, account_id, portfolio_id, instrument_id, type, trade_date, quantity_e8, price_e6, gross_cents, gain_tax_cents)
+             VALUES ($1, $2, $3, $4, 'sell', '2026-02-02', $5, $6, 10000, 100) RETURNING id`,
+            [ws, broker, holdings, shares, units(1), price(100)],
+          );
+          inserted = trade[0]!.id;
+        } finally {
+          await writer.query("COMMIT");
+        }
+        const refused = await pending;
+        assert.equal(refused.statusCode, 400, refused.body);
+        assert.deepEqual(refused.json().details, { tradeId: inserted, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime" });
+      } finally {
+        writer.release();
+      }
     });
 
     it("never lets a trade and a regime change racing on one account both through", async () => {
@@ -2308,6 +2494,18 @@ describe("trades routes (#77)", () => {
         const [row] = await created({ ...split, instrumentId: etf, splitFrom: 1, splitTo: 2 });
         // An edit to a date with no holdings and a ratio of 0: the ratio first.
         assert.deepEqual(await editRefused(row!.id, { tradeDate: "2025-01-01", splitTo: 0 }, "invalid_trade"), { field: "splitTo" });
+      });
+
+      it("refuses a split of 1:1, which changes nothing, on create and on edit (#712)", async () => {
+        const nothingHeld = await instrument();
+        const split = { type: "split", instrumentId: nothingHeld, tradeDate: "2026-02-01" };
+        // Before looking for holdings, as the other ratio checks.
+        assert.deepEqual(await rejected({ ...split, splitFrom: 1, splitTo: 1 }, "invalid_trade"), { field: "splitTo" });
+        const { etf } = await holding();
+        assert.deepEqual(await rejected({ ...split, instrumentId: etf, splitFrom: 2, splitTo: 2 }, "invalid_trade"), { field: "splitTo" });
+        const [row] = await created({ ...split, instrumentId: etf, splitFrom: 2, splitTo: 4 });
+        assert.deepEqual(await editRefused(row!.id, { splitTo: 2 }, "invalid_trade"), { field: "splitTo" });
+        assert.deepEqual(await editRefused(row!.id, { splitFrom: 4 }, "invalid_trade"), { field: "splitTo" });
       });
 
       it("refuses a transfer that moves no units before looking at its legs", async () => {

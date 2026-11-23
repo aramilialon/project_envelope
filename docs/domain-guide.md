@@ -709,7 +709,9 @@ moment they leave, so a trade later backdated in the source account changes the 
 cost too. A transfer's own fees are never part of the cost.
 
 A split ratio is written from:to: 1:4 means 1 unit becomes 4, and a reverse split 10:1 means 10
-units become 1. Every split row of one instrument on one date must have the same ratio, in every
+units become 1. The two figures differ: a 1:1 ratio (or 2:2) multiplies the quantity by exactly 1,
+touches no cost and no cash, and is refused as a split that changes nothing (`invalid_trade`,
+#712); the ones stored before were deleted, which changed no figure. Every split row of one instrument on one date must have the same ratio, in every
 account (`split_ratio_mismatch`), and each portfolio has at most one. If a split rounds one portfolio's quantity down to zero, its share of
 the cost moves to the other portfolios of the account; the account's cost does not change.
 
@@ -1165,7 +1167,9 @@ self-declared, then administered from 1 January 2024.
 2027. A sale on 20 December 2026 is under the administered regime, so the broker withholds the tax
 on its gain at the sale; a sale on 5 January 2027 is under the self-declared regime, so its gain
 goes into the investor's own annual return. Recording the switch does not change the 2026 sale. A
-switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start`).
+switch recorded "from 1 July 2027" is refused (`tax_regime_change_not_year_start`). So is a first
+regime recorded "from 1 June 2023", before the 15 March 2024 start: it would make that start a
+change in the middle of a year, and the refusal names 1 June 2023, the date asked for (#714).
 
 **Example.** The same account already holds a sale of a share on 10 February 2026, on which the
 broker withheld €26.00 of gain tax. Correcting the history to "self-declared since 2024" is refused
@@ -1201,11 +1205,16 @@ regime and the field; the withholding on accrued interest at a foreign broker is
 `domestic_withholding_requires_agent`. In an `IT` workspace, a brokerage account with no regime yet
 takes no new trade (`tax_regime_required`). A workspace can still become `IT` while some of its
 brokerage accounts have trades and no regime: the change lists those accounts, their trades keep
-taking any edit while the account has no regime, and the first regime recorded is checked against
+taking any edit while the account has no regime (but no trade can be moved into such an account
+from another, #680), and the first regime recorded is checked against
 every one of them by every rule above, the withholding on accrued interest included. A trade no
 regime would accept (gain tax on a share's sale with a self-declared regime in mind, say) is edited
 first, then the regime is recorded. Setting the withholding-agent flag later, on an account that
-already has a regime, is checked against its trades the same way. The worked examples below follow the tests in
+already has a regime, is checked against its trades the same way. A workspace that leaves `IT` and
+comes back has its trades checked again on its return: trades recorded meanwhile were checked
+against no regime, so every trade of each account with a regime history is checked by every rule
+above, and the return is refused, naming the earliest trade that breaks one, until it is edited
+(#667). The worked examples below follow the tests in
 `packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
 result tax, for one, is not).
 

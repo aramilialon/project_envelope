@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { assertKnownCurrency, isAssignedCountryCode, TAX_REGIME_COUNTRY, ValidationError } from "@envelope/core";
 
+import { checkTradesAgainstRegimes } from "../accounts/tax-regimes.ts";
 import { withUserScopedTransaction, type DbClient, type DbPool } from "../db/pool.ts";
 
 export interface CreateWorkspaceInput {
@@ -98,7 +99,13 @@ export interface TaxCountryChange extends WorkspaceSettings {
  * regime: each takes no new trade until it has one, while the trades it already has stay
  * editable in every field the regime rules do not read.
  *
- * @throws ValidationError "invalid_tax_country" for a code that is not an assigned ISO 3166-1 alpha-2 code (#711).
+ * Setting `IT` back on a workspace whose tax country was another, or none, checks every trade of
+ * its brokerage accounts that have a regime history (`checkTradesAgainstRegimes`, #667): trades
+ * written meanwhile were not checked, and the change is refused, with nothing written, naming the
+ * first trade that breaks a rule. Setting `IT` on a workspace that is already `IT` checks nothing.
+ *
+ * @throws ValidationError "invalid_tax_country" for a code that is not an assigned ISO 3166-1 alpha-2 code (#711);
+ *   "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) (#667).
  */
 export async function setWorkspaceTaxCountry(
   db: DbPool | DbClient,
@@ -107,6 +114,19 @@ export async function setWorkspaceTaxCountry(
 ): Promise<TaxCountryChange | undefined> {
   if (taxCountry !== null) {
     assertValidTaxCountry(taxCountry);
+  }
+  // FOR NO KEY UPDATE, the lock the UPDATE below takes anyway, taken first (#667): a trade being
+  // written reads the row FOR SHARE, so none is written between the check and the change. Not FOR
+  // UPDATE, which would also wait for the foreign-key checks of any insert in the workspace.
+  const { rows: current } = await db.query<{ tax_country: string | null }>(
+    "SELECT tax_country FROM workspaces WHERE id = $1 FOR NO KEY UPDATE",
+    [workspaceId],
+  );
+  if (current.length === 0) {
+    return undefined;
+  }
+  if (taxCountry === TAX_REGIME_COUNTRY && current[0]!.tax_country !== TAX_REGIME_COUNTRY) {
+    await checkTradesAgainstRegimes(db, workspaceId);
   }
   const { rows } = await db.query<{ id: string; name: string; base_currency: string; time_zone: string; tax_country: string | null }>(
     `UPDATE workspaces SET tax_country = $2 WHERE id = $1

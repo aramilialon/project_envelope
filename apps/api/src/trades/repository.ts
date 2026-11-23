@@ -847,8 +847,10 @@ function checkOccurredOnTradeDate(row: NewTradeRow, timeZone: string): void {
  * While an account has no regime history, an edit of its trades is not checked at all (#653): a
  * trade entered before its workspace's tax country became `IT` stays editable, a split's or a
  * transfer's rows included (their ids are new on every edit, so they cannot be matched to the stored
- * ones). The account's first regime checks every trade (`checkRegimeChange`). A new trade there is
- * still refused with `tax_regime_required`.
+ * ones). The account's first regime checks every trade (`checkRegimeChange`). The skip covers only
+ * an account that already held a row of the edited group as stored (#680): an edit that moves a
+ * trade, a transfer leg or a split row into another account with no regime history is refused with
+ * `tax_regime_required`, as a new trade there is.
  *
  * Each account checked is read `FOR SHARE`, the lock a regime history change takes `FOR NO KEY
  * UPDATE` (accounts/tax-regimes.ts): a trade written here and a history change to its account
@@ -878,7 +880,7 @@ async function checkRegimes(
   for (const accountId of accountIds) {
     const history = (await listTaxRegimes(db, workspaceId, accountId)) ?? [];
     if (history.length === 0) {
-      if (request === "edit") continue;
+      if (request === "edit" && previous.some((record) => record.accountId === accountId)) continue;
       throw new ValidationError("tax_regime_required", "a brokerage account in this workspace needs a tax regime before its trades", {
         accountId,
       });
@@ -978,8 +980,11 @@ async function checkRows(
   for (const row of rows) {
     checkTradeEntry(row, instrument?.type ?? null);
   }
+  // FOR SHARE (#667): a change of the tax country (workspaces/repository.ts,
+  // `setWorkspaceTaxCountry`) holds the row FOR NO KEY UPDATE while it checks every trade, so a
+  // trade written meanwhile waits and is then checked by the country it sets.
   const { rows: workspaceRows } = await db.query<{ tax_country: string | null; time_zone: string }>(
-    "SELECT tax_country, time_zone FROM workspaces WHERE id = $1",
+    "SELECT tax_country, time_zone FROM workspaces WHERE id = $1 FOR SHARE",
     [workspaceId],
   );
   const workspace = workspaceRows[0]!;
