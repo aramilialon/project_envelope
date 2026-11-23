@@ -171,6 +171,32 @@ export async function checkAccountTransactions(ctx: CheckContext, model: Workspa
   return transactions;
 }
 
+// --- Accounts: closed, withholding agent, tax regimes -----------------------------------------
+
+/**
+ * The workspace's accounts as the API lists them, against the model: every account the walk
+ * created, each closed exactly when the walk closed it (#729), with the withholding-agent flag it
+ * was created with (#508).
+ */
+export async function checkAccounts(ctx: CheckContext, model: WorkspaceModel): Promise<void> {
+  const { accounts } = (await get(ctx, model, wsPath(model, "/accounts"))) as {
+    accounts: { id: string; closedAt: string | null; domesticWithholdingAgent: boolean | null }[];
+  };
+  const view = (rows: readonly { id: string; closed: boolean; domesticWithholdingAgent: boolean | null }[]) =>
+    rows.map((row) => ({ id: row.id, closed: row.closed, domesticWithholdingAgent: row.domesticWithholdingAgent })).sort(byId);
+  expectEqual(
+    view(accounts.map((row) => ({ id: row.id, closed: row.closedAt !== null, domesticWithholdingAgent: row.domesticWithholdingAgent }))),
+    view([...model.accounts.values()]),
+    `accounts of ${model.persona}`,
+  );
+}
+
+/** An account's tax regime history as the API lists it (#508), against the model's, oldest first. */
+export async function checkTaxRegimes(ctx: CheckContext, model: WorkspaceModel, account: AccountEntity): Promise<void> {
+  const { taxRegimes } = (await get(ctx, model, wsPath(model, `/accounts/${account.id}/tax-regimes`))) as { taxRegimes: unknown };
+  expectEqual(taxRegimes, account.taxRegimes, `tax regimes of ${model.persona}/${account.handle} (${account.type})`);
+}
+
 function byId(a: unknown, b: unknown): number {
   const x = (a as { id: string }).id;
   const y = (b as { id: string }).id;
@@ -571,6 +597,10 @@ export function checkTransferPairs(transactions: readonly TransactionJson[], wha
 /** Every check of one workspace: run every k steps and at the end of a walk. */
 export async function fullCheck(ctx: CheckContext, model: WorkspaceModel): Promise<void> {
   const what = `full check of ${model.persona}`;
+  await checkAccounts(ctx, model);
+  for (const account of model.brokerageAccounts()) {
+    await checkTaxRegimes(ctx, model, account);
+  }
   const all: TransactionJson[] = [];
   const byAccount = new Map<string, TransactionJson[]>();
   for (const account of model.accounts.values()) {

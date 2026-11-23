@@ -12,12 +12,15 @@
  * the API against.
  */
 import {
+  computePositions,
   PRICE_FACTOR_ONE,
   toPriceFactor,
   tradeCashCents,
   type Price,
   type PositionTrade,
   type Quantity,
+  type RegimeCheckedTrade,
+  type TaxRegimeEntry,
 } from "@envelope/core";
 
 import { localMidnight } from "./generator.ts";
@@ -79,6 +82,12 @@ export interface AccountEntity {
   readonly currency: string;
   /** Handle of an on-budget card's payment category. */
   readonly paymentCategory: string | null;
+  /** A brokerage account's withholding-agent flag as the API stored it (#508); null when not recorded. */
+  readonly domesticWithholdingAgent: boolean | null;
+  /** Its tax regime history as the API stored it (#508), oldest first; empty outside an `IT` workspace. */
+  taxRegimes: TaxRegimeEntry[];
+  /** Closed through the API (#729): it still counts everywhere, and takes no writes (ADR 0018). */
+  closed: boolean;
 }
 
 export interface CategoryEntity {
@@ -166,6 +175,8 @@ export class WorkspaceModel {
 
   readonly persona: Persona;
   readonly workspaceId: string;
+  /** The workspace's tax country (#508): `IT` brings the tax regime rules; null has none. */
+  taxCountry: string | null = null;
   readonly users: Readonly<Record<Role, WalkUser>>;
   readonly instruments: InstrumentCatalog;
 
@@ -197,14 +208,27 @@ export class WorkspaceModel {
 
   // --- Accounts, categories, portfolios ---------------------------------------------------
 
-  addAccount(record: { id: string; type: AccountType; onBudget: boolean; currency: string; paymentCategoryId: string | null }): AccountEntity {
+  addAccount(
+    record: { id: string; type: AccountType; onBudget: boolean; currency: string; paymentCategoryId: string | null; domesticWithholdingAgent?: boolean | null },
+    taxRegimes: readonly TaxRegimeEntry[] = [],
+  ): AccountEntity {
     let paymentCategory: string | null = null;
     if (record.paymentCategoryId) {
       paymentCategory = this.nextHandle("c", record.paymentCategoryId);
       this.categories.set(paymentCategory, { handle: paymentCategory, id: record.paymentCategoryId, name: "payment", payment: true });
     }
     const handle = this.nextHandle("a", record.id);
-    const entity: AccountEntity = { handle, id: record.id, type: record.type, onBudget: record.onBudget, currency: record.currency, paymentCategory };
+    const entity: AccountEntity = {
+      handle,
+      id: record.id,
+      type: record.type,
+      onBudget: record.onBudget,
+      currency: record.currency,
+      paymentCategory,
+      domesticWithholdingAgent: record.domesticWithholdingAgent ?? null,
+      taxRegimes: sortRegimes(taxRegimes),
+      closed: false,
+    };
     this.accounts.set(handle, entity);
     return entity;
   }
@@ -472,6 +496,42 @@ export class WorkspaceModel {
   balanceOf(account: AccountEntity): number {
     return this.transactionsOf(account).reduce((sum, entity) => sum + amountOf(entity.record), 0);
   }
+
+  openAccounts(): AccountEntity[] {
+    return [...this.accounts.values()].filter((account) => !account.closed);
+  }
+
+  closedAccounts(): AccountEntity[] {
+    return [...this.accounts.values()].filter((account) => account.closed);
+  }
+
+  /**
+   * What the close rule (#703, #729) reads of an account: its balance and whether it holds a
+   * security, both today. Every date of the walk is in a past window, so "today" covers every
+   * transaction and trade, nothing is dated later, and the walk makes no scheduled transaction.
+   */
+  closeRule(account: AccountEntity): { balanceCents: number; holdsPositions: boolean } {
+    const positions = account.type === "brokerage" ? computePositions(this.positionTrades()).accounts : [];
+    return {
+      balanceCents: this.balanceOf(account),
+      holdsPositions: positions.some((position) => position.accountId === account.id && position.quantity !== 0),
+    };
+  }
+
+  /** The account's trades as the API reads them again when its regime history changes (#653). */
+  regimeCheckedTrades(account: AccountEntity): RegimeCheckedTrade[] {
+    return this.positionTrades()
+      .filter((trade) => trade.accountId === account.id)
+      .map((trade) => ({
+        ...trade,
+        instrumentType: trade.instrumentId === null ? null : (this.instruments.byId.get(trade.instrumentId)?.type ?? null),
+      }));
+  }
+}
+
+/** A regime history oldest first, as the API stores and lists it. */
+export function sortRegimes(history: readonly TaxRegimeEntry[]): TaxRegimeEntry[] {
+  return [...history].sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
 }
 
 /**

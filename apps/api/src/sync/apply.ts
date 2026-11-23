@@ -60,7 +60,9 @@ interface FieldApplier {
  * on-budget leg of a transfer to an off-budget account is refused (`uncategorized_transaction`),
  * and so is clearing it on the on-budget credit card leg of a transfer from one
  * (`card_income_not_supported`); clearing it on the on-budget cash leg of a transfer from an
- * off-budget account is allowed, and leaves that money unassigned.
+ * off-budget account is allowed, and leaves that money unassigned. It must also refuse a category
+ * on a split of a transaction, not a transfer leg, on an off-budget account, as
+ * `assertNoCategoryOffBudget` does (`category_not_allowed`, #710).
  *
  * A closed account takes no writes (#729, ADR 0018): `writesToClosedAccount` reads the account a
  * change's entity is on now. Wiring a field whose new value names an account, or that also writes
