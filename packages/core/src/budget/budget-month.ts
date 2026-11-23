@@ -48,9 +48,12 @@
  *    in id order, categories in `categoryIds` order. A transfer's projection is
  *    rule 8's formula read before any covered spending moves in: in date order,
  *    then id, min(T, max(0, held(A) − owed(A))), with held(A) carried over +
- *    assigned − payments − net refunds ± what earlier transfers moved. The part
- *    of each card's spending left uncovered is that category's credit
- *    overspending on that card (`overspendingBy`).
+ *    assigned − payments − net refunds ± what earlier transfers moved. The
+ *    projection never counts more than the transfer actually brings in.
+ *    Covered spending that reaches the paid card later can make it bring more;
+ *    that extra stays set aside for the charged card. The part of each card's
+ *    spending left uncovered is that category's credit overspending on that card
+ *    (`overspendingBy`).
  * 5. A card payment (a transfer from a cash account to the card) is spending
  *    of the payment category.
  * 6. A category still negative at the end of a month starts the next month at
@@ -278,7 +281,9 @@ export interface CategoryMonth {
    * attributable to this specific card, and how much — `apps/web`'s own "the uncovered debt comes
    * from card spending beyond what was available" sentence names them. A category overspent
    * across more than one card attributes to each card its own spending less what was covered on
-   * it (rule 4, #731), so the card named is the one whose spending is still uncovered.
+   * it (rule 4, #731), so the card named is the one whose spending is still uncovered. It explains
+   * the card's debt, not necessarily what is still to cover: money already set aside for the card
+   * may cover it (#803).
    * Always present for a payment category (possibly empty), absent for an ordinary one.
    */
   readonly overspendingBy?: readonly { readonly categoryId: string; readonly amount: Cents }[];
@@ -430,6 +435,44 @@ function sortedTransfers(transfers: readonly CardTransfer[] | undefined): CardTr
   return [...(transfers ?? [])].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
+/** What a month's card-to-card transfers move, card by card (`cardTransferFlows`). */
+export interface CardTransferFlows {
+  /** Money each card's payment category received from transfers, gross (never negative). */
+  readonly inflowBy: ReadonlyMap<string, Cents>;
+  /** Each card's net change from transfers: what came in less what went out. */
+  readonly deltaBy: ReadonlyMap<string, Cents>;
+}
+
+/**
+ * Rule 8 (#732): applies a month's card-to-card transfers, in date order then id, to what each
+ * payment category holds (`heldBy`), each moving min(T, max(0, held − owed)) from the paid card's to
+ * the charged card's, reading what the earlier ones left; a paid card whose balance is not in
+ * `owedBy` owes nothing. Rule 4 calls it on what is held before covered spending moves in (#803),
+ * `computePaymentCategories` on what is held after. Exported for the property tests only (not
+ * part of `src/index.ts`).
+ */
+export function cardTransferFlows(
+  transfers: readonly CardTransfer[] | undefined,
+  heldBy: ReadonlyMap<string, Cents>,
+  owedBy: ReadonlyMap<string, Cents>,
+): CardTransferFlows {
+  const held = new Map(heldBy);
+  const inflowBy = new Map<string, Cents>();
+  const deltaBy = new Map<string, Cents>();
+  for (const t of sortedTransfers(transfers)) {
+    const paidHeld = held.get(t.paidPaymentCategoryId) ?? 0;
+    // What the paid card still owes at the end of the month, signed; a card whose balance is not
+    // given counts as owing nothing, so only what its payment category holds can move.
+    const moved = Math.min(t.amount, Math.max(0, paidHeld - (owedBy.get(t.paidPaymentCategoryId) ?? 0)));
+    held.set(t.paidPaymentCategoryId, paidHeld - moved);
+    addTo(held, t.chargedPaymentCategoryId, moved);
+    addTo(inflowBy, t.chargedPaymentCategoryId, moved);
+    addTo(deltaBy, t.paidPaymentCategoryId, -moved);
+    addTo(deltaBy, t.chargedPaymentCategoryId, moved);
+  }
+  return { inflowBy, deltaBy };
+}
+
 interface MonthState {
   readonly categories: CategoryMonth[];
   readonly paymentCategories: CategoryMonth[];
@@ -462,21 +505,12 @@ function computePaymentCategories(
     const activity = (movedToPayment.get(id) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0);
     return { id, carriedOver, assigned, activity, available: carriedOver + assigned + activity };
   });
-  const availableById = new Map(pre.map((p): [string, Cents] => [p.id, p.available]));
-
   // Rule 8 (#732): in date order, then id; each transfer reads the available the earlier ones left.
-  const transferDelta = new Map<string, Cents>();
-  for (const t of sortedTransfers(data.cardTransfersBy.get(m))) {
-    const held = availableById.get(t.paidPaymentCategoryId) ?? 0;
-    // What the paid card still owes at the end of the month, signed; a card whose balance is not
-    // given counts as owing nothing, so only what its payment category holds can move.
-    const stillOwed = data.owedBy.get(t.paidPaymentCategoryId) ?? 0;
-    const moved = Math.min(t.amount, Math.max(0, held - stillOwed));
-    availableById.set(t.paidPaymentCategoryId, held - moved);
-    availableById.set(t.chargedPaymentCategoryId, (availableById.get(t.chargedPaymentCategoryId) ?? 0) + moved);
-    addTo(transferDelta, t.paidPaymentCategoryId, -moved);
-    addTo(transferDelta, t.chargedPaymentCategoryId, moved);
-  }
+  const transferDelta = cardTransferFlows(
+    data.cardTransfersBy.get(m),
+    new Map(pre.map((p): [string, Cents] => [p.id, p.available])),
+    data.owedBy,
+  ).deltaBy;
 
   return pre.map((p): CategoryMonth => {
     const delta = transferDelta.get(p.id) ?? 0;
@@ -570,25 +604,20 @@ function computeMonth(
   }
 
   // Rule 4 (#803): a card that a card-to-card transfer will bring money into needs that much less.
-  // Each transfer, in date order then id, is projected to move min(T, max(0, held − owed)) from
-  // the paid card, where held is what its payment category holds before any covered spending
-  // (carried, assigned, less payments and net refunds) plus what earlier transfers moved in or out.
-  {
-    const heldPre = new Map<string, Cents>(
-      paymentIds.map((id): [string, Cents] => [
-        id,
-        (carried.get(id) ?? 0) + (data.assignedBy.get(key(id, m)) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0) + (movedToPayment.get(id) ?? 0),
-      ]),
-    );
-    for (const t of sortedTransfers(data.cardTransfersBy.get(m))) {
-      const held = heldPre.get(t.paidPaymentCategoryId) ?? 0;
-      const moved = Math.min(t.amount, Math.max(0, held - (data.owedBy.get(t.paidPaymentCategoryId) ?? 0)));
-      heldPre.set(t.paidPaymentCategoryId, held - moved);
-      addTo(heldPre, t.chargedPaymentCategoryId, moved);
-      // Only what comes in counts: a card that passes money on holds more than it owes before it
-      // does, and still at least what it owes after, so it needs nothing either way.
-      addTo(projectedTransfer, t.chargedPaymentCategoryId, moved);
-    }
+  // Rule 8's transfers are projected on what each payment category holds before any covered
+  // spending (carried, assigned, less payments and net refunds). Only what comes in counts: a card
+  // that passes money on holds more than it owes before it does, and still at least what it owes
+  // after, so it needs nothing either way. The projection never counts more than the transfers
+  // actually bring in: covered spending can only raise what a paid card holds, and rule 8 moves no
+  // less from a card that holds more.
+  const heldPre = new Map<string, Cents>(
+    paymentIds.map((id): [string, Cents] => [
+      id,
+      (carried.get(id) ?? 0) + (data.assignedBy.get(key(id, m)) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0) + (movedToPayment.get(id) ?? 0),
+    ]),
+  );
+  for (const [id, inflow] of cardTransferFlows(data.cardTransfersBy.get(m), heldPre, data.owedBy).inflowBy) {
+    projectedTransfer.set(id, inflow);
   }
 
   const categories = input.categoryIds.map((id): CategoryMonth => {

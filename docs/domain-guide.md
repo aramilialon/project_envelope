@@ -375,6 +375,8 @@ spending on several cards, the covered part goes first to the cards that still n
 card that a transfer is paying money into needs that much less: each of the month's transfers is
 projected with the rule above, in date order then by id, from what the paid card's payment category
 holds before any covered spending moves in (carried over, assigned, less payments and net refunds).
+The projection never counts more than the transfer actually brings in. Covered spending that reaches
+the paid card later can make it bring more; that extra stays set aside for the charged card.
 
 *Example.* Card B holds €100 and owes nothing. B pays €500 of card A's debt; A owed €500 and holds
 €500. Groceries, with €100 assigned, spends €100 on B and €100 on card C.
