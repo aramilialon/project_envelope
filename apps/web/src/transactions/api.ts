@@ -30,8 +30,25 @@ export interface Transaction {
   /** The account of a transfer's other leg, or null when this is not a transfer leg (#599). */
   readonly transferAccountId: string | null;
   readonly externalId: string | null;
+  /** The trade this transaction is the cash leg of (ADR 0012), or null: its amount, account and date belong to the trade. */
+  readonly tradeId: string | null;
+  /** What that trade is (#657), read with the transaction; null when `tradeId` is. */
+  readonly trade: TransactionTrade | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
+}
+
+export type TradeType = "buy" | "sell" | "dividend" | "fee" | "tax" | "split" | "transfer";
+
+/** The trade behind a cash leg (#657): `apps/api/src/transactions/repository.ts`'s `TransactionTrade`. */
+export interface TransactionTrade {
+  readonly type: TradeType;
+  /** Units × 10^8 (ADR 0011); 0 for a type with no quantity. */
+  readonly quantityE8: number;
+  /** Null for an account-wide fee or tax. */
+  readonly instrumentId: string | null;
+  readonly instrumentName: string | null;
+  readonly instrumentTicker: string | null;
 }
 
 export interface CreateTransactionInput {

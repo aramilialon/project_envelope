@@ -48,6 +48,8 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#559** (2026-11-22, architect, follow-up): trades keep 409 `id_taken` on a repeated client id (ADR 0012) until the assistant's draft writes (0.4.2) need a replay; then they take the same header.
 - **#559** (2026-11-22, developer, review it): the user mapper reads the user first and upserts only when the row is missing or its email changed; its upsert on every request locked the user's row and made each request wait for the user's previous write in flight (found by #559's concurrent double-submit test).
 - **#559/#560** (2026-11-22, architect): migration numbers fixed in advance: 0039 for #559, 0040 for #560; #704 is built after #559.
+- **#657** (2026-11-22, ux-reviewer): the note on a trade's cash leg reads "This transaction belongs to “{trade}”: its amount and date change on the trade." instead of the triage's "Change it on the trade.", because one note covers several fields, the web app has no trade screen before 0.2.4, and the side sheet's title does not name the trade.
+- **#710** (2026-11-22, domain-expert): off-budget splits stored with a category before #710 are not migrated (they change no figure); a future on-/off-budget switch must clear or refuse such categories first.
 
 ### 0.2.0
 

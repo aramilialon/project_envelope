@@ -186,11 +186,12 @@ The tables write apostrophes straight (*d'imposta*) for easy searching; in a str
 | ISIN | Codice ISIN | ISIN | ISIN | Code ISIN | |
 | Ticker | Ticker | Kürzel | Ticker | Symbole | |
 | Market identifier code (MIC) | Codice del mercato (MIC) | Börsencode (MIC) | Código de mercado (MIC) | Code de marché (MIC) | |
-| Trade | Operazione | Vorgang | Operación | Opération | A buy, sell, dividend, fee, stock split or transfer of securities |
+| Trade | Operazione | Vorgang | Operación | Opération | A buy, sell, dividend, fee, tax, stock split or transfer of securities |
 | Buy / sell | Acquisto / vendita | Kauf / Verkauf | Compra / venta | Achat / vente | |
 | Dividend | Dividendo | Dividende | Dividendo | Dividende | |
 | Coupon | Cedola | Kupon | Cupón | Coupon | |
 | Fee | Commissione | Gebühr | Comisión | Frais (m. pl.) | |
+| Tax (a trade) | Imposta | Steuer | Impuesto | Impôt | A tax paid in the brokerage account, recorded as a trade (`trade.label.tax`) |
 | Stock split | Frazionamento | Aktiensplit | Split de acciones | Division d'actions | Not the split of a transaction across categories (*Suddivisione*) (maintainer decision, 2026-11-21) |
 | Transfer of securities | Trasferimento titoli | Depotübertrag | Traspaso de valores | Transfert de titres | |
 | Quantity (units held or traded) | Quote (f. pl.) | Stück | Participaciones | Parts | The interface term for the number of units: column headers, the trade form, positions (*Quote*, as in the portfolio mockup). *Quantità* stays the domain word in `docs/glossary.md` and is not used in the interface. For a bond quoted in percent the quantity is its nominal: label it *Valore nominale* (see Nominal) |

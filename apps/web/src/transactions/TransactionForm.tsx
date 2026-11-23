@@ -22,6 +22,7 @@ import {
   type UpdateTransactionInput,
 } from "./api.ts";
 import { accountClosedAddMessage, accountClosedChangeMessage, accountClosedDeleteMessage, closedAccountOf } from "./accountClosedMessages.ts";
+import { tradeLabel } from "./tradeLabel.ts";
 import { totalOf } from "./transactionAmount.ts";
 import "./TransactionForm.css";
 
@@ -94,12 +95,26 @@ function centsToInput(cents: number, locale: string, currency: string): string {
  * existing transaction outright — both legs together for a transfer, `apps/api`'s own
  * `deleteTransaction` handles that, not this form. A reconciled transaction is never handed to
  * this form — `AccountRegisterScreen` shows it read-only instead, with its own "Unlock" action.
+ * A trade's cash leg (`tradeId`, ADR 0012, #657) edits only its payee, memo and cleared status:
+ * its amount, date, kind and category are locked under a note naming the trade, and it has no
+ * "Delete". On an off-budget account, a transaction that is not a transfer has no category and
+ * no split (#710).
  */
 export default function TransactionForm({ workspaceId, accountId, accounts, categories, currency, today, transaction, onClose, onSaved }: Props) {
   const intl = useIntl();
   const auth = useAuth();
   const isEditing = transaction !== undefined;
   const isTransferLeg = transaction !== undefined && transaction.transferId !== null;
+  /** A trade's cash leg (ADR 0012, #657): only its payee, memo and cleared status are its own. */
+  const isCashLeg = transaction !== undefined && transaction.tradeId !== null;
+  const currentAccount = accounts.find((a) => a.id === accountId);
+  /**
+   * On an off-budget account a transaction that is not a transfer has no category and one line
+   * (#710): no category select, no split. A row stored with a category before #710 is sent back
+   * without it whenever it is saved, as the API asks (apps/api/README.md, "Categories on
+   * off-budget transactions stored before #710").
+   */
+  const offBudget = currentAccount !== undefined && !currentAccount.onBudget;
 
   const [kind, setKind] = useState<Kind>(kindOf(transaction));
   const [date, setDate] = useState(transaction?.budgetDate ?? today);
@@ -110,7 +125,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   // On a transfer leg, "" is "Unassigned" where the category is optional and "no choice yet"
   // where it is required; a leg with no category reads back as "".
   const [categoryId, setCategoryId] = useState(transaction?.splits.length === 1 ? (transaction.splits[0]!.categoryId ?? "") : "");
-  const [split, setSplit] = useState(!isTransferLeg && (transaction?.splits.length ?? 0) > 1);
+  const [split, setSplit] = useState(!isTransferLeg && !offBudget && (transaction?.splits.length ?? 0) > 1);
   const [lines, setLines] = useState<SplitLine[]>(
     !isTransferLeg && (transaction?.splits.length ?? 0) > 1
       ? transaction!.splits.map((s) => ({ categoryId: s.categoryId ?? "", amountStr: centsToInput(Math.abs(s.amountCents), intl.locale, currency) }))
@@ -144,7 +159,6 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
   // of the budget, so its on-budget leg's category follows `transferCategoryRule` (#378, #598):
   // whichever of the two accounts is on budget, since the category lands on that leg. On an
   // existing leg, only the on-budget one has a category to edit.
-  const currentAccount = accounts.find((a) => a.id === accountId);
   const otherAccount = accounts.find((a) => a.id === otherAccountId);
   const transferRuleOfAccounts: TransferCategoryRule =
     currentAccount !== undefined && otherAccount !== undefined && (!isEditing || currentAccount.onBudget)
@@ -335,6 +349,24 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     if (isAccountClosed(caught)) {
       return accountClosedMessage("save");
     }
+    if (caught instanceof ApiError && caught.code === "trade_owned_transaction") {
+      // #657: the amount, date and account of a trade's cash leg belong to the trade (ADR 0012).
+      return intl.formatMessage({
+        id: "transactions.form.tradeOwned",
+        defaultMessage: "This transaction belongs to a trade: its amount, date and account change on the trade.",
+      });
+    }
+    if (caught instanceof ApiError && caught.code === "category_not_allowed") {
+      // #710: a transaction on an off-budget account that is not a transfer has no category.
+      return intl.formatMessage({
+        id: "transactions.form.categoryNotAllowed",
+        defaultMessage: "On an off-budget account, a transaction has no category.",
+      });
+    }
+    if (caught instanceof ApiError && caught.code === "unsupported_transaction" && offBudget && kind !== "transfer") {
+      // #710: with no category, an off-budget transaction cannot be split across lines.
+      return intl.formatMessage({ id: "transactions.form.offBudgetOneLine", defaultMessage: "On an off-budget account, a transaction can't be split." });
+    }
     if (caught instanceof ApiError && caught.code === "card_income_not_supported") {
       // #548: income (an inflow with no category) on an on-budget credit card is not supported yet.
       return intl.formatMessage({
@@ -368,6 +400,20 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       return;
     }
     setError(null);
+
+    if (isCashLeg) {
+      // Only its payee, memo and cleared status: the rest belongs to the trade (#657).
+      setSubmitting(true);
+      try {
+        await saveChanges(transaction, editedFields(transaction));
+        onSaved();
+      } catch (caught) {
+        setError(saveErrorMessage(caught));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
 
     let amount: number;
     try {
@@ -454,6 +500,9 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
             setSubmitting(false);
             return;
           }
+        } else if (offBudget) {
+          // No category on an off-budget account (#710), a stored one included: it is sent back as none.
+          splits = [{ categoryId: null, amountCents: kind === "out" ? -amount : amount }];
         } else {
           if (kind === "out" && !categoryId) {
             setError(intl.formatMessage({ id: "transactions.form.chooseCategory", defaultMessage: "Choose a category." }));
@@ -543,6 +592,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
               value={date}
               onChange={(event) => setDate(event.target.value)}
               disabled={isEditing}
+              {...(isCashLeg ? { "aria-describedby": "tx-trade-note" } : {})}
               required
             />
           </div>
@@ -553,12 +603,22 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
               type="text"
               inputMode="decimal"
               value={amountStr}
-              disabled={isTransferLeg}
+              disabled={isTransferLeg || isCashLeg}
+              {...(isCashLeg ? { "aria-describedby": "tx-trade-note" } : {})}
               onChange={(event) => setAmountStr(event.target.value)}
               placeholder="0.00"
             />
           </div>
         </div>
+
+        {isCashLeg && (
+          <p className="hint" id="tx-trade-note">
+            {intl.formatMessage(
+              { id: "transactions.form.tradeNote", defaultMessage: "This transaction belongs to “{trade}”: its amount and date change on the trade." },
+              { trade: transaction?.trade ? tradeLabel(intl, transaction.trade) : "" },
+            )}
+          </p>
+        )}
 
         {kind === "transfer" && (
           <>
@@ -598,7 +658,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           <input id="tx-payee" type="text" value={payee} onChange={(event) => setPayee(event.target.value)} maxLength={MAX_FREE_TEXT_LENGTH} />
         </div>
 
-        {(kind === "transfer" ? transferRule !== "none" : !isTransferLeg) && !split && (
+        {(kind === "transfer" ? transferRule !== "none" : !isTransferLeg && !offBudget && !isCashLeg) && !split && (
           <div className="field">
             <label htmlFor="tx-category">{intl.formatMessage({ id: "transactions.form.category", defaultMessage: "Category" })}</label>
             <select
@@ -635,7 +695,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
           </p>
         )}
 
-        {kind === "out" && !isTransferLeg && (
+        {kind === "out" && !isTransferLeg && !offBudget && !isCashLeg && (
           <>
             {!split ? (
               <button type="button" className="plain" onClick={() => setSplit(true)}>
@@ -718,7 +778,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
               ? intl.formatMessage({ id: "transactions.form.save", defaultMessage: "Save" })
               : intl.formatMessage({ id: "transactions.form.add", defaultMessage: "Add" })}
           </button>
-          {isEditing && (
+          {isEditing && !isCashLeg && (
             <button type="button" className="plain danger" disabled={submitting} onClick={() => void handleDelete()}>
               {intl.formatMessage({ id: "transactions.form.delete", defaultMessage: "Delete" })}
             </button>

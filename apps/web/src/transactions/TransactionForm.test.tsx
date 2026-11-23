@@ -356,6 +356,8 @@ describe("TransactionForm (#54)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     };
@@ -387,6 +389,8 @@ describe("TransactionForm (#54)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: "bank-1",
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s9", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     };
@@ -449,6 +453,8 @@ describe("TransactionForm (#54)", () => {
       transferId: "t2-other",
       transferAccountId: "acc-savings",
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-10T00:00:00.000Z",
       splits: [{ id: "s2", categoryId: null, amountCents: -5000, memo: null }],
     };
@@ -480,6 +486,8 @@ describe("TransactionForm (#54)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     };
@@ -510,6 +518,8 @@ describe("TransactionForm (#54)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     };
@@ -537,6 +547,8 @@ describe("TransactionForm (#54)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -1200, memo: null }],
     };
@@ -563,13 +575,16 @@ describe("TransactionForm: each account in its own currency (#652)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-15T00:00:00.000Z",
       splits,
     };
   }
 
-  const YEN: Account = { ...BROKERAGE, id: "acc-yen", name: "Yen account", type: "savings", currency: "JPY" };
-  const DINAR: Account = { ...BROKERAGE, id: "acc-dinar", name: "Dinar account", type: "savings", currency: "KWD" };
+  // On budget, as in a workspace whose base currency is theirs: an off-budget account takes no category (#710).
+  const YEN: Account = { ...BROKERAGE, id: "acc-yen", name: "Yen account", type: "savings", currency: "JPY", onBudget: true };
+  const DINAR: Account = { ...BROKERAGE, id: "acc-dinar", name: "Dinar account", type: "savings", currency: "KWD", onBudget: true };
 
   it("pre-fills a yen amount with no decimals, and saves it unchanged or changed", async () => {
     const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
@@ -678,6 +693,8 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
       transferId: "leg-out",
       transferAccountId: "acc-broker",
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-12T00:00:00.000Z",
       splits: [{ id: "s-in", categoryId: null, amountCents: 500_000, memo: null }],
       ...overrides,
@@ -1053,6 +1070,8 @@ describe("TransactionForm in Italian (#599)", () => {
       transferId: null,
       transferAccountId: null,
       externalId: null,
+      tradeId: null,
+      trade: null,
       createdAt: "2026-09-12T00:00:00.000Z",
       splits: [{ id: "s-1", categoryId: "cat-groceries", amountCents: -1250, memo: null }],
     });
@@ -1075,6 +1094,8 @@ describe("TransactionForm: a write the API refuses because an account is closed 
     transferId: "t2-other",
     transferAccountId: "acc-savings",
     externalId: null,
+    tradeId: null,
+    trade: null,
     createdAt: "2026-09-10T00:00:00.000Z",
     splits: [{ id: "s2", categoryId: null, amountCents: -5000, memo: null }],
   };
@@ -1161,5 +1182,166 @@ describe("TransactionForm: a write the API refuses because an account is closed 
     addTransfer();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("We could not save this transaction.");
+  });
+});
+
+describe("TransactionForm: off-budget accounts (#710) and trade cash legs (#657)", () => {
+  const BROKER: Account = { ...CHECKING, id: "acc-broker", name: "Broker", type: "brokerage", onBudget: false };
+
+  function onBroker(overrides: Partial<Transaction> = {}): Transaction {
+    return {
+      id: "t-ob",
+      workspaceId: "ws-1",
+      accountId: "acc-broker",
+      occurredAt: "2026-09-15T00:00:00.000Z",
+      budgetDate: "2026-09-15",
+      payee: "Broker",
+      memo: null,
+      status: "pending",
+      transferId: null,
+      transferAccountId: null,
+      externalId: null,
+      tradeId: null,
+      trade: null,
+      createdAt: "2026-09-15T00:00:00.000Z",
+      splits: [{ id: "s1", categoryId: null, amountCents: -400, memo: null }],
+      ...overrides,
+    };
+  }
+
+  function renderOnBroker(transaction?: Transaction) {
+    return renderForm({ accountId: "acc-broker", accounts: [CHECKING, BROKER], ...(transaction ? { transaction } : {}) });
+  }
+
+  it("asks for no category and offers no split on an off-budget account, and saves one line with none", async () => {
+    const createTransaction = vi.spyOn(transactionsApi, "createTransaction").mockResolvedValue({} as Transaction);
+    const { onSaved } = renderOnBroker();
+
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Split across categories" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "4.00" } });
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Custody fee" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(createTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-broker", {
+      occurredAt: "2026-09-01",
+      payee: "Custody fee",
+      status: "pending",
+      splits: [{ categoryId: null, amountCents: -400 }],
+    }, IDEMPOTENCY_KEY);
+  });
+
+  it("sends a row stored with a category before #710 back without it, even when only its memo changes", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    const { onSaved } = renderOnBroker(onBroker({ splits: [{ id: "s1", categoryId: "cat-groceries", amountCents: -400, memo: null }] }));
+
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Custody" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-broker", "t-ob", {
+      memo: "Custody",
+      splits: [{ categoryId: null, amountCents: -400 }],
+      amountCents: -400,
+    });
+  });
+
+  it("folds a split row stored before #710 into one line with no category, at its total", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    renderOnBroker(
+      onBroker({
+        splits: [
+          { id: "s1", categoryId: "cat-groceries", amountCents: -300, memo: null },
+          { id: "s2", categoryId: "cat-restaurants", amountCents: -100, memo: null },
+        ],
+      }),
+    );
+
+    expect(screen.getByLabelText("Amount")).toHaveValue("4.00");
+    expect(screen.queryByLabelText("Line 1 category")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-broker", "t-ob", {
+        splits: [{ categoryId: null, amountCents: -400 }],
+        amountCents: -400,
+      }),
+    );
+  });
+
+  it("leaves an unchanged off-budget row alone", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    const { onSaved } = renderOnBroker(onBroker());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(updateTransaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["category_not_allowed", { field: "categoryId" }, "On an off-budget account, a transaction has no category."],
+    ["unsupported_transaction", {}, "On an off-budget account, a transaction can't be split."],
+  ])("says why the API refused an off-budget row (%s)", async (code, details, message) => {
+    vi.spyOn(transactionsApi, "createTransaction").mockRejectedValue(new ApiError("POST failed: 400", 400, code, details));
+    renderOnBroker();
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "4.00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  });
+
+  const BUY = onBroker({
+    id: "t-leg",
+    payee: null,
+    tradeId: "trade-1",
+    trade: { type: "buy", quantityE8: 1_000_000_000, instrumentId: "i-1", instrumentName: "World equity ETF", instrumentTicker: "WEQ" },
+    splits: [{ id: "s1", categoryId: null, amountCents: -100_000, memo: null }],
+  });
+
+  it("locks a cash leg's amount, date, kind and category, with no Delete, and says where to change them", () => {
+    renderOnBroker(BUY);
+
+    expect(screen.getByLabelText("Amount")).toBeDisabled();
+    expect(screen.getByLabelText("Date")).toBeDisabled();
+    for (const kind of ["Outflow", "Inflow", "Transfer"]) {
+      expect(screen.getByRole("radio", { name: kind })).toBeDisabled();
+    }
+    expect(screen.queryByLabelText("Category")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Split across categories" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Amount")).toHaveAccessibleDescription("This transaction belongs to “Buy · 10 × WEQ”: its amount and date change on the trade.");
+    expect(screen.getByLabelText("Date")).toHaveAccessibleDescription("This transaction belongs to “Buy · 10 × WEQ”: its amount and date change on the trade.");
+    // Its own fields stay editable.
+    expect(screen.getByLabelText("Payee")).toBeEnabled();
+    expect(screen.getByLabelText("Memo")).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Cleared against the bank" })).toBeEnabled();
+  });
+
+  it("saves only a cash leg's memo, payee and cleared status", async () => {
+    const updateTransaction = vi.spyOn(transactionsApi, "updateTransaction").mockResolvedValue({} as Transaction);
+    updateTransaction.mockClear();
+    const { onSaved } = renderOnBroker(BUY);
+
+    fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Monthly plan" } });
+    fireEvent.change(screen.getByLabelText("Payee"), { target: { value: "Broker" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Cleared against the bank" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(updateTransaction).toHaveBeenCalledWith("t", "ws-1", "acc-broker", "t-leg", { payee: "Broker", memo: "Monthly plan", status: "cleared" });
+  });
+
+  it("says that a cash leg changes on its trade when the API refuses an edit (409 trade_owned_transaction)", async () => {
+    vi.spyOn(transactionsApi, "updateTransaction").mockRejectedValue(new ApiError("PATCH failed: 409", 409, "trade_owned_transaction", {}));
+    const { onSaved } = renderOnBroker(BUY);
+
+    fireEvent.change(screen.getByLabelText("Memo"), { target: { value: "Monthly plan" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This transaction belongs to a trade: its amount, date and account change on the trade.");
+    expect(onSaved).not.toHaveBeenCalled();
   });
 });

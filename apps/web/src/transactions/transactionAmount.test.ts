@@ -16,6 +16,8 @@ function transaction(status: TransactionStatus): Transaction {
     transferId: null,
     transferAccountId: null,
     externalId: null,
+    tradeId: null,
+    trade: null,
     createdAt: "2026-11-05T10:00:00Z",
     splits: [
       { id: "s1", categoryId: "c1", amountCents: -3_000, memo: null },
