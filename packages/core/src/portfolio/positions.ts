@@ -617,12 +617,33 @@ function taxEffect(trade: PositionTrade): [TaxTotal, Cents] {
   }
 }
 
+/** One instrument's replay across every account, resumable date by date. */
+interface InstrumentReplay {
+  /** Each account's position after the trades replayed so far. */
+  readonly accounts: Map<string, AccountState>;
+  /** Replays the trades not replayed yet that are dated on or before `date`; every one left when absent. */
+  advanceTo(date?: LocalDate): void;
+  /** How far the replay has gone: it changes whenever `advanceTo` replays a trade. */
+  replayed(): number;
+}
+
 /** Replays every account's trades of one instrument, already sorted. */
 function replayInstrument(
   instrumentId: string,
   sorted: readonly PositionTrade[],
   byId: ReadonlyMap<string, PositionTrade>,
 ): Map<string, AccountState> {
+  const replay = instrumentReplay(instrumentId, sorted, byId);
+  replay.advanceTo();
+  return replay.accounts;
+}
+
+/** The replay of one instrument's trades, already sorted, started at nothing held. */
+function instrumentReplay(
+  instrumentId: string,
+  sorted: readonly PositionTrade[],
+  byId: ReadonlyMap<string, PositionTrade>,
+): InstrumentReplay {
   const accounts = new Map<string, AccountState>();
   const accountOf = (trade: PositionTrade): AccountState => {
     let state = accounts.get(trade.accountId);
@@ -645,135 +666,142 @@ function replayInstrument(
     return state;
   };
   const done = new Set<string>();
+  // The next trade to replay: a split's and a transfer's rows share one date, so a stop between
+  // two dates never falls inside them.
+  let next = 0;
 
-  for (let i = 0; i < sorted.length; i++) {
-    const trade = sorted[i] as PositionTrade;
-    if (done.has(trade.id)) continue;
-    try {
+  const advanceTo = (until?: LocalDate): void => {
+    for (; next < sorted.length; next++) {
+      const i = next;
+      const trade = sorted[i] as PositionTrade;
+      if (until !== undefined && trade.date > until) break;
+      if (done.has(trade.id)) continue;
+      try {
 
-      if (trade.type === "split") {
-        // Every split row of this date (they sort first), applied per account. Every account
-        // already holding the instrument is checked, rows or not: a split affects every holding.
-        const byAccount = new Map<string, PositionTrade[]>();
-        for (let j = i; j < sorted.length; j++) {
-          const other = sorted[j] as PositionTrade;
-          if (other.type !== "split" || other.date !== trade.date) break;
-          // One ratio per instrument and date, in every account: from₁ × to₂ = from₂ × to₁
-          // (ratios checked positive by checkTrade).
-          if (BigInt(other.splitFrom ?? 1) * BigInt(trade.splitTo ?? 1) !== BigInt(trade.splitFrom ?? 1) * BigInt(other.splitTo ?? 1)) {
-            throw new ValidationError(
-              "split_ratio_mismatch",
-              `the split rows of instrument ${instrumentId} on ${trade.date} have different ratios`,
-              { accountId: other.accountId, instrumentId, date: trade.date },
-            );
+        if (trade.type === "split") {
+          // Every split row of this date (they sort first), applied per account. Every account
+          // already holding the instrument is checked, rows or not: a split affects every holding.
+          const byAccount = new Map<string, PositionTrade[]>();
+          for (let j = i; j < sorted.length; j++) {
+            const other = sorted[j] as PositionTrade;
+            if (other.type !== "split" || other.date !== trade.date) break;
+            // One ratio per instrument and date, in every account: from₁ × to₂ = from₂ × to₁
+            // (ratios checked positive by checkTrade).
+            if (BigInt(other.splitFrom ?? 1) * BigInt(trade.splitTo ?? 1) !== BigInt(trade.splitFrom ?? 1) * BigInt(other.splitTo ?? 1)) {
+              throw new ValidationError(
+                "split_ratio_mismatch",
+                `the split rows of instrument ${instrumentId} on ${trade.date} have different ratios`,
+                { accountId: other.accountId, instrumentId, date: trade.date },
+              );
+            }
+            const rows = byAccount.get(other.accountId) ?? [];
+            rows.push(other);
+            byAccount.set(other.accountId, rows);
+            done.add(other.id);
           }
-          const rows = byAccount.get(other.accountId) ?? [];
-          rows.push(other);
-          byAccount.set(other.accountId, rows);
-          done.add(other.id);
+          const accountIds = new Set([...accounts.keys(), ...byAccount.keys()]);
+          for (const accountId of [...accountIds].sort(compareIds)) {
+            const rows = byAccount.get(accountId) ?? [];
+            const state = rows[0] === undefined ? (accounts.get(accountId) as AccountState) : accountOf(rows[0]);
+            applySplits(state, trade.date, rows);
+          }
+          continue;
         }
-        const accountIds = new Set([...accounts.keys(), ...byAccount.keys()]);
-        for (const accountId of [...accountIds].sort(compareIds)) {
-          const rows = byAccount.get(accountId) ?? [];
-          const state = rows[0] === undefined ? (accounts.get(accountId) as AccountState) : accountOf(rows[0]);
-          applySplits(state, trade.date, rows);
-        }
-        continue;
-      }
 
-      const state = accountOf(trade);
-      const portfolio = portfolioOf(state, trade.portfolioId);
-      const totals = portfolio.totals;
-      switch (trade.type) {
-        case "buy": {
-          const cost = plus(trade.grossCents, trade.feesCents, "cost");
-          state.cost = plus(state.cost, cost, "costBasisCents");
-          changeQuantity(state, trade.portfolioId, trade.quantity);
-          add(totals, "costInCents", cost);
-          add(totals, "tradeFeesCents", trade.feesCents);
-          add(totals, "transactionTaxCents", trade.transactionTaxCents);
-          add(totals, "accruedInterestPaidCents", trade.accruedInterestCents);
-          // Credited back with the accrued interest paid: a negative withholding.
-          add(totals, "withholdingDomesticCents", -trade.withholdingDomesticCents);
-          break;
-        }
-        case "sell": {
-          requireQuantity(state, trade, trade.quantity);
-          const removed = removeCost(state, trade.quantity);
-          changeQuantity(state, trade.portfolioId, -trade.quantity);
-          const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
-          add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
-          add(totals, "costSoldCents", removed);
-          add(totals, "tradeFeesCents", trade.feesCents);
-          add(totals, "transactionTaxCents", trade.transactionTaxCents);
-          add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
-          add(totals, "gainTaxWithheldCents", trade.gainTaxCents);
-          add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
-          break;
-        }
-        case "dividend":
-          add(totals, "incomeGrossCents", trade.grossCents);
-          add(totals, "incomeFeesCents", trade.feesCents);
-          add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
-          add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
-          break;
-        case "fee":
-          add(totals, "standaloneFeesCents", trade.feesCents);
-          break;
-        case "tax":
-          add(totals, ...taxEffect(trade));
-          break;
-        case "transfer": {
-          if (trade.transferTradeId === null) {
-            add(totals, "transferFeesCents", trade.feesCents);
-            if (trade.quantity < 0) {
-              // Out of the app: its proportional cost leaves, no gain.
-              const moved = -trade.quantity as Quantity;
-              requireQuantity(state, trade, moved);
-              add(totals, "costTransferredOutCents", removeCost(state, moved));
-              changeQuantity(state, trade.portfolioId, trade.quantity);
-            } else {
-              // In from outside the app: the units bring the cost they carry.
-              const cost = trade.costBasisCents ?? 0;
-              state.cost = plus(state.cost, cost, "costBasisCents");
-              add(totals, "costInCents", cost);
-              changeQuantity(state, trade.portfolioId, trade.quantity);
+        const state = accountOf(trade);
+        const portfolio = portfolioOf(state, trade.portfolioId);
+        const totals = portfolio.totals;
+        switch (trade.type) {
+          case "buy": {
+            const cost = plus(trade.grossCents, trade.feesCents, "cost");
+            state.cost = plus(state.cost, cost, "costBasisCents");
+            changeQuantity(state, trade.portfolioId, trade.quantity);
+            add(totals, "costInCents", cost);
+            add(totals, "tradeFeesCents", trade.feesCents);
+            add(totals, "transactionTaxCents", trade.transactionTaxCents);
+            add(totals, "accruedInterestPaidCents", trade.accruedInterestCents);
+            // Credited back with the accrued interest paid: a negative withholding.
+            add(totals, "withholdingDomesticCents", -trade.withholdingDomesticCents);
+            break;
+          }
+          case "sell": {
+            requireQuantity(state, trade, trade.quantity);
+            const removed = removeCost(state, trade.quantity);
+            changeQuantity(state, trade.portfolioId, -trade.quantity);
+            const proceeds = plus(trade.grossCents, -trade.feesCents, "proceeds");
+            add(totals, "realizedCents", plus(proceeds, -removed, "realized"));
+            add(totals, "costSoldCents", removed);
+            add(totals, "tradeFeesCents", trade.feesCents);
+            add(totals, "transactionTaxCents", trade.transactionTaxCents);
+            add(totals, "accruedInterestReceivedCents", trade.accruedInterestCents);
+            add(totals, "gainTaxWithheldCents", trade.gainTaxCents);
+            add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
+            break;
+          }
+          case "dividend":
+            add(totals, "incomeGrossCents", trade.grossCents);
+            add(totals, "incomeFeesCents", trade.feesCents);
+            add(totals, "withholdingForeignCents", trade.withholdingForeignCents);
+            add(totals, "withholdingDomesticCents", trade.withholdingDomesticCents);
+            break;
+          case "fee":
+            add(totals, "standaloneFeesCents", trade.feesCents);
+            break;
+          case "tax":
+            add(totals, ...taxEffect(trade));
+            break;
+          case "transfer": {
+            if (trade.transferTradeId === null) {
+              add(totals, "transferFeesCents", trade.feesCents);
+              if (trade.quantity < 0) {
+                // Out of the app: its proportional cost leaves, no gain.
+                const moved = -trade.quantity as Quantity;
+                requireQuantity(state, trade, moved);
+                add(totals, "costTransferredOutCents", removeCost(state, moved));
+                changeQuantity(state, trade.portfolioId, trade.quantity);
+              } else {
+                // In from outside the app: the units bring the cost they carry.
+                const cost = trade.costBasisCents ?? 0;
+                state.cost = plus(state.cost, cost, "costBasisCents");
+                add(totals, "costInCents", cost);
+                changeQuantity(state, trade.portfolioId, trade.quantity);
+              }
+              break;
+            }
+            const other = checkLegs(trade, byId.get(trade.transferTradeId));
+            checkLegs(other, trade);
+            done.add(other.id);
+            const outgoing = trade.quantity < 0 ? trade : other;
+            const incoming = trade.quantity < 0 ? other : trade;
+            const source = accountOf(outgoing);
+            const target = accountOf(incoming);
+            const sourcePortfolio = requireQuantity(source, outgoing, incoming.quantity);
+            const targetPortfolio = portfolioOf(target, incoming.portfolioId);
+            add(sourcePortfolio.totals, "transferFeesCents", outgoing.feesCents);
+            add(targetPortfolio.totals, "transferFeesCents", incoming.feesCents);
+            if (source !== target) {
+              // Between two accounts: the cost the outgoing leg removes is the cost the incoming one adds.
+              const removed = removeCost(source, incoming.quantity);
+              add(sourcePortfolio.totals, "costTransferredOutCents", removed);
+              target.cost = plus(target.cost, removed, "costBasisCents");
+              add(targetPortfolio.totals, "costInCents", removed);
+            }
+            changeQuantity(source, outgoing.portfolioId, outgoing.quantity);
+            try {
+              changeQuantity(target, incoming.portfolioId, incoming.quantity);
+            } catch (error) {
+              // The leg that adds the units, whichever leg sorts first (#662).
+              throw namingTrade(error, incoming);
             }
             break;
           }
-          const other = checkLegs(trade, byId.get(trade.transferTradeId));
-          checkLegs(other, trade);
-          done.add(other.id);
-          const outgoing = trade.quantity < 0 ? trade : other;
-          const incoming = trade.quantity < 0 ? other : trade;
-          const source = accountOf(outgoing);
-          const target = accountOf(incoming);
-          const sourcePortfolio = requireQuantity(source, outgoing, incoming.quantity);
-          const targetPortfolio = portfolioOf(target, incoming.portfolioId);
-          add(sourcePortfolio.totals, "transferFeesCents", outgoing.feesCents);
-          add(targetPortfolio.totals, "transferFeesCents", incoming.feesCents);
-          if (source !== target) {
-            // Between two accounts: the cost the outgoing leg removes is the cost the incoming one adds.
-            const removed = removeCost(source, incoming.quantity);
-            add(sourcePortfolio.totals, "costTransferredOutCents", removed);
-            target.cost = plus(target.cost, removed, "costBasisCents");
-            add(targetPortfolio.totals, "costInCents", removed);
-          }
-          changeQuantity(source, outgoing.portfolioId, outgoing.quantity);
-          try {
-            changeQuantity(target, incoming.portfolioId, incoming.quantity);
-          } catch (error) {
-            // The leg that adds the units, whichever leg sorts first (#662).
-            throw namingTrade(error, incoming);
-          }
-          break;
         }
+      } catch (error) {
+        throw namingTrade(error, trade);
       }
-    } catch (error) {
-      throw namingTrade(error, trade);
     }
-  }
-  return accounts;
+  };
+  return { accounts, advanceTo, replayed: () => next };
 }
 
 /**
@@ -839,10 +867,85 @@ function averageCostOf(cost: Cents, quantity: Quantity, priceFactor: PriceFactor
 export function computePositions(trades: readonly PositionTrade[], options: PositionOptions = {}): Positions {
   const { asOf } = options;
   if (asOf !== undefined) assertDate(asOf);
+  const prepared = prepareReplay(trades, asOf);
+  const charges = new Map<string, ChargeState>();
+  for (const trade of prepared.charges) addCharge(charges, trade);
+  const states: AccountState[] = [];
+  for (const [instrumentId, sorted] of prepared.instruments) {
+    states.push(...replayInstrument(instrumentId, sorted, prepared.byId).values());
+  }
+  return positionsOf(states, charges);
+}
+
+/**
+ * The positions as of the end of each of `dates`, from one sort and one
+ * replay of the trades: for every date, what `computePositions(trades, {
+ * asOf: date })` returns, at the cost of a single replay (#89). The dates may
+ * come in any order and repeat; the map has one entry per distinct date.
+ * Rows that did not change between two dates are the same objects in both.
+ *
+ * @throws the same ValidationErrors as `computePositions` with `asOf` set to
+ *   the latest date; "invalid_date" for a malformed date.
+ */
+export function positionsAsOfDates(trades: readonly PositionTrade[], dates: readonly LocalDate[]): Map<LocalDate, Positions> {
+  for (const date of dates) assertDate(date);
+  const wanted = [...new Set(dates)].sort();
+  const prepared = prepareReplay(trades, wanted.at(-1));
+  // Each instrument's rows are built again only when its replay has moved since the previous date:
+  // dates in between share them, as they share the charges' rows.
+  const replays = [...prepared.instruments].map(([instrumentId, sorted]) => ({
+    replay: instrumentReplay(instrumentId, sorted, prepared.byId),
+    builtAt: -1,
+    rows: [] as StatePositions[],
+  }));
+  // Array.prototype.sort is stable: the charges of one date keep their input order.
+  const chargeTrades = [...prepared.charges].sort((a, b) => compareIds(a.date, b.date));
+  const charges = new Map<string, ChargeState>();
+  let nextCharge = 0;
+  let chargeRows: AccountCharge[] = [];
+  const result = new Map<LocalDate, Positions>();
+  for (const date of wanted) {
+    for (const entry of replays) {
+      entry.replay.advanceTo(date);
+      if (entry.builtAt !== entry.replay.replayed()) {
+        entry.rows = [...entry.replay.accounts.values()].map(statePositions);
+        entry.builtAt = entry.replay.replayed();
+      }
+    }
+    const chargesBefore = nextCharge;
+    for (; nextCharge < chargeTrades.length; nextCharge++) {
+      const trade = chargeTrades[nextCharge] as PositionTrade;
+      if (trade.date > date) break;
+      addCharge(charges, trade);
+    }
+    if (nextCharge !== chargesBefore) chargeRows = chargesOf(charges);
+    result.set(date, assemble(replays.flatMap((entry) => entry.rows), chargeRows));
+  }
+  return result;
+}
+
+/** The running totals of an account's fees and taxes without an instrument, per portfolio. */
+interface ChargeState {
+  readonly accountId: string;
+  readonly portfolioId: string;
+  readonly currency: CurrencyCode;
+  readonly totals: MutableTotals;
+}
+
+/** What a replay needs, every trade checked: each instrument's trades sorted, and the charges by date. */
+interface PreparedReplay {
+  readonly byId: ReadonlyMap<string, PositionTrade>;
+  /** In the order each instrument first appears in the input. */
+  readonly instruments: ReadonlyMap<string, readonly PositionTrade[]>;
+  /** The trades without an instrument, in input order. */
+  readonly charges: readonly PositionTrade[];
+}
+
+/** Checks every trade and sorts the ones dated on or before `asOf` (every one when absent) for the replay. */
+function prepareReplay(trades: readonly PositionTrade[], asOf: LocalDate | undefined): PreparedReplay {
   const byId = new Map<string, PositionTrade>();
   const instruments = new Map<string, SortableTrade[]>();
-  const charges = new Map<string, { accountId: string; portfolioId: string; currency: CurrencyCode; totals: MutableTotals }>();
-
+  const charges: PositionTrade[] = [];
   for (const trade of trades) {
     checkTrade(trade);
     if (byId.has(trade.id)) throw invalidTrade(trade, "id", "appears twice");
@@ -854,71 +957,88 @@ export function computePositions(trades: readonly PositionTrade[], options: Posi
       createdMs: timestampOf(trade, "createdAt"),
     };
     if (trade.instrumentId === null) {
-      const key = JSON.stringify([trade.accountId, trade.portfolioId]);
-      let charge = charges.get(key);
-      if (charge === undefined) {
-        charge = { accountId: trade.accountId, portfolioId: trade.portfolioId, currency: trade.currency, totals: emptyTotals() };
-        charges.set(key, charge);
-      }
-      if (trade.currency !== charge.currency) throw invalidTrade(trade, "currency", "differs from the account's currency");
-      try {
-        if (trade.type === "fee") add(charge.totals, "standaloneFeesCents", trade.feesCents);
-        else add(charge.totals, ...taxEffect(trade));
-      } catch (error) {
-        throw namingTrade(error, trade);
-      }
+      charges.push(trade);
       continue;
     }
     const group = instruments.get(trade.instrumentId) ?? [];
     group.push(sortable);
     instruments.set(trade.instrumentId, group);
   }
+  const sorted = new Map<string, PositionTrade[]>();
+  for (const [instrumentId, group] of instruments) sorted.set(instrumentId, group.sort(compareReplay).map((s) => s.trade));
+  return { byId, instruments: sorted, charges };
+}
 
-  const states: AccountState[] = [];
-  for (const [instrumentId, group] of instruments) {
-    const sorted = group.sort(compareReplay).map((s) => s.trade);
-    states.push(...replayInstrument(instrumentId, sorted, byId).values());
+/** Adds a fee or a tax recorded without an instrument to its account's and portfolio's totals. */
+function addCharge(charges: Map<string, ChargeState>, trade: PositionTrade): void {
+  const key = JSON.stringify([trade.accountId, trade.portfolioId]);
+  let charge = charges.get(key);
+  if (charge === undefined) {
+    charge = { accountId: trade.accountId, portfolioId: trade.portfolioId, currency: trade.currency, totals: emptyTotals() };
+    charges.set(key, charge);
   }
-  states.sort((a, b) => compareIds(a.accountId, b.accountId) || compareIds(a.instrumentId, b.instrumentId));
+  if (trade.currency !== charge.currency) throw invalidTrade(trade, "currency", "differs from the account's currency");
+  try {
+    if (trade.type === "fee") add(charge.totals, "standaloneFeesCents", trade.feesCents);
+    else add(charge.totals, ...taxEffect(trade));
+  } catch (error) {
+    throw namingTrade(error, trade);
+  }
+}
 
-  const accounts: AccountPosition[] = [];
+/** The positions of the replayed states and charges. */
+function positionsOf(replayed: readonly AccountState[], charges: ReadonlyMap<string, ChargeState>): Positions {
+  return assemble(replayed.map(statePositions), chargesOf(charges));
+}
+
+/** One account's position in one instrument, as returned: the account's row and its portfolios' rows. */
+interface StatePositions {
+  readonly account: AccountPosition;
+  /** Sorted by portfolio. */
+  readonly portfolios: readonly PortfolioPosition[];
+}
+
+/** The rows of one account's position, as new objects: later replays do not change them. */
+function statePositions(state: AccountState): StatePositions {
+  const averageCost = averageCostOf(state.cost, state.quantity, state.priceFactor, state.currency);
+  const portfolioIds = [...state.portfolios.keys()].sort(compareIds);
+  const costs = splitByQuantity(
+    state.cost,
+    portfolioIds.map((id) => [id, (state.portfolios.get(id) as PortfolioState).quantity] as const),
+  );
+  const accountTotals = emptyTotals();
   const portfolios: PortfolioPosition[] = [];
-  for (const state of states) {
-    const averageCost = averageCostOf(state.cost, state.quantity, state.priceFactor, state.currency);
-    const portfolioIds = [...state.portfolios.keys()].sort(compareIds);
-    const costs = splitByQuantity(
-      state.cost,
-      portfolioIds.map((id) => [id, (state.portfolios.get(id) as PortfolioState).quantity] as const),
-    );
-    const accountTotals = emptyTotals();
-    for (const portfolioId of portfolioIds) {
-      const portfolio = state.portfolios.get(portfolioId) as PortfolioState;
-      addAll(accountTotals, portfolio.totals);
-      portfolios.push({
-        portfolioId,
-        accountId: state.accountId,
-        instrumentId: state.instrumentId,
-        currency: state.currency,
-        priceFactor: state.priceFactor,
-        quantity: portfolio.quantity,
-        costBasisCents: costs.get(portfolioId) ?? 0,
-        averageCost: portfolio.quantity === 0 ? null : averageCost,
-        ...pickTotals(portfolio.totals),
-      });
-    }
-    accounts.push({
+  for (const portfolioId of portfolioIds) {
+    const portfolio = state.portfolios.get(portfolioId) as PortfolioState;
+    addAll(accountTotals, portfolio.totals);
+    portfolios.push({
+      portfolioId,
       accountId: state.accountId,
       instrumentId: state.instrumentId,
       currency: state.currency,
       priceFactor: state.priceFactor,
-      quantity: state.quantity,
-      costBasisCents: state.cost,
-      averageCost,
-      ...accountTotals,
+      quantity: portfolio.quantity,
+      costBasisCents: costs.get(portfolioId) ?? 0,
+      averageCost: portfolio.quantity === 0 ? null : averageCost,
+      ...pickTotals(portfolio.totals),
     });
   }
+  const account: AccountPosition = {
+    accountId: state.accountId,
+    instrumentId: state.instrumentId,
+    currency: state.currency,
+    priceFactor: state.priceFactor,
+    quantity: state.quantity,
+    costBasisCents: state.cost,
+    averageCost,
+    ...accountTotals,
+  };
+  return { account, portfolios };
+}
 
-  const orderedCharges = [...charges.values()]
+/** The charges' rows, as new objects, sorted by account, then portfolio. */
+function chargesOf(charges: ReadonlyMap<string, ChargeState>): AccountCharge[] {
+  return [...charges.values()]
     .sort((a, b) => compareIds(a.accountId, b.accountId) || compareIds(a.portfolioId, b.portfolioId))
     .map((charge) => ({
       accountId: charge.accountId,
@@ -929,8 +1049,14 @@ export function computePositions(trades: readonly PositionTrade[], options: Posi
       gainTaxAdjustmentsCents: charge.totals.gainTaxAdjustmentsCents,
       managedResultTaxCents: charge.totals.managedResultTaxCents,
     }));
+}
 
-  return { accounts, portfolios, charges: orderedCharges };
+/** Positions from each account's rows, sorted by account, then instrument. */
+function assemble(entries: readonly StatePositions[], charges: readonly AccountCharge[]): Positions {
+  const sorted = [...entries].sort(
+    (a, b) => compareIds(a.account.accountId, b.account.accountId) || compareIds(a.account.instrumentId, b.account.instrumentId),
+  );
+  return { accounts: sorted.map((entry) => entry.account), portfolios: sorted.flatMap((entry) => entry.portfolios), charges: [...charges] };
 }
 
 /**

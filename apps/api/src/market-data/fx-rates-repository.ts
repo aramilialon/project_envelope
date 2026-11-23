@@ -119,3 +119,23 @@ export async function listFxRates(
   );
   return rows.map((row) => ({ date: row.date, rateE10: Number(row.rate_e10) }));
 }
+
+/**
+ * Every stored rate of the given currencies dated on or before `upTo`, as `@envelope/core`'s
+ * conversions take them (`fxRateTable`): a conversion uses the latest one on or before its date,
+ * however old, so nothing earlier is left out. The euro, which needs no rate, is skipped.
+ */
+export async function loadFxRates(db: DbClient | DbPool, currencies: readonly string[], upTo: LocalDate): Promise<FxRate[]> {
+  const quotes = [...new Set(currencies)].filter((currency) => currency !== FX_BASE_CURRENCY);
+  if (quotes.length === 0) {
+    return [];
+  }
+  const { rows } = await db.query<{ quote: string; date: string; rate_e10: string }>(
+    `SELECT quote_currency AS quote, to_char(rate_date, 'YYYY-MM-DD') AS date, rate_e10
+     FROM fx_rates
+     WHERE base_currency = $1 AND quote_currency = ANY($2::text[]) AND rate_date <= $3::date
+     ORDER BY quote_currency, rate_date`,
+    [FX_BASE_CURRENCY, quotes, upTo],
+  );
+  return rows.map((row) => ({ base: FX_BASE_CURRENCY, quote: row.quote, date: row.date, rateE10: Number(row.rate_e10) }));
+}
