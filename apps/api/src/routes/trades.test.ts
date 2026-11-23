@@ -1544,6 +1544,37 @@ describe("trades routes (#77)", () => {
       assert.deepEqual(switched.json().accountsWithoutTaxRegime, [noRegime]);
     });
 
+    it("re-checks a closed account's trades when the tax country is set back to IT (#667)", async () => {
+      const { ws, holdings, becomeItalian } = await workspaceBeforeIT();
+      await becomeItalian();
+      const broker = await account("brokerage", "EUR", ws, true);
+      const regime = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${ws}/accounts/${broker}/tax-regimes`,
+        headers: await auth(),
+        payload: { validFrom: "2026-01-01", regime: "self_declared" },
+      });
+      assert.equal(regime.statusCode, 201, regime.body);
+      const shares = await instrument("stock");
+      const base = { accountId: broker, portfolioId: holdings, instrumentId: shares, priceE6: price(100), quantityE8: units(1) };
+      await created({ ...base, type: "buy", tradeDate: "2026-01-05" }, ws);
+      const setCountry = async (taxCountry: string | null) =>
+        app.fastify.inject({ method: "PATCH", url: `/workspaces/${ws}`, headers: await auth(), payload: { taxCountry } });
+      assert.equal((await setCountry(null)).statusCode, 200);
+      // Written while the workspace is not IT: gain tax on a stock, which self_declared refuses.
+      const [sale] = await created({ ...base, type: "sell", tradeDate: "2026-02-02", gainTaxCents: 100 }, ws);
+      await superuserPool.query("UPDATE accounts SET closed_at = now() WHERE id = $1", [broker]);
+
+      const refused = await setCountry("IT");
+      assert.equal(refused.statusCode, 400, refused.body);
+      assert.deepEqual(refused.json(), {
+        error: "tax_regime_conflicts_with_trade",
+        details: { tradeId: sale!.id, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime", accountId: broker },
+      });
+      const { rows } = await superuserPool.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [ws]);
+      assert.equal(rows[0]!.tax_country, null, "nothing is written");
+    });
+
     it("makes a trade wait for a change of the tax country, and the change wait for a trade (#667)", async () => {
       const { ws, holdings, becomeItalian } = await workspaceBeforeIT();
       await becomeItalian();
