@@ -626,6 +626,269 @@ describe("computeBudgetMonth", () => {
       assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
     });
 
+    describe("a card's need counts the money a transfer brings into it (rule 4, #803)", () => {
+      /**
+       * Card B holds €100 and owes nothing; on 15 September B pays €500 of card A's debt, A owing
+       * €500 and holding €500. Groceries, with €100 assigned, spends €100 on B and €100 on C.
+       */
+      function example(transfers: boolean) {
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 50000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", date: "2026-09-05", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", date: "2026-09-06", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), ...(transfers ? [{ date: "2026-09-15", amount: 50000 }] : [])] },
+            {
+              paymentCategoryId: "b-payment",
+              transactions: [{ date: "2026-09-05", amount: -10000 }, ...(transfers ? [{ date: "2026-09-15", amount: -50000 }] : [])],
+            },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: transfers
+            ? [{ paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 }]
+            : [],
+        };
+        return computeBudgetMonth(input, "2026-09");
+      }
+
+      it("the €100 covered goes to C: B has nothing to cover, nor has C", () => {
+        const result = example(true);
+        const a = category(result.paymentCategories, "a-payment");
+        const b = category(result.paymentCategories, "b-payment");
+        const c = category(result.paymentCategories, "c-payment");
+        const groceries = category(result.categories, "groceries");
+        assert.equal(groceries.creditOverspending, 10000);
+        assert.equal(a.available, 0);
+        assert.equal(a.owed, 0);
+        // B: €100 held + €500 moved in from A, against €100 of groceries + €500 charged.
+        assert.equal(b.available, 60000);
+        assert.equal(b.owed, 60000);
+        assert.equal(b.uncovered, 0);
+        assert.equal(b.cashOverspending, 0);
+        assert.deepEqual(b.overspendingBy, [{ categoryId: "groceries", amount: 10000 }]);
+        assert.equal(c.available, 10000);
+        assert.equal(c.owed, 10000);
+        assert.equal(c.uncovered, 0);
+        assert.deepEqual(c.overspendingBy, []);
+      });
+
+      it("without the transfer, B already holds what it owes and the €100 still goes to C", () => {
+        const result = example(false);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 10000);
+        assert.equal(category(result.paymentCategories, "b-payment").uncovered, 0);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 10000);
+      });
+
+      it("a transfer that moves only part of its amount lowers the need by that part only", () => {
+        // A holds €300 of its €500: €300 moves, so B (owing €600, holding €100) still needs €200
+        // and the €100 covered goes to B first; C's €100 stays uncovered.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 30000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-15", amount: 50000 }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        const b = category(result.paymentCategories, "b-payment");
+        const c = category(result.paymentCategories, "c-payment");
+        assert.equal(b.available, 50000); // 100 held + 100 covered + 300 moved
+        assert.equal(b.uncovered, 10000);
+        assert.equal(c.available, 0);
+        assert.equal(c.uncovered, 10000);
+        assert.deepEqual(c.overspendingBy, [{ categoryId: "groceries", amount: 10000 }]);
+      });
+
+      it("a net refund on the paid card counts in what it holds as well as in what it owes", () => {
+        // A owes €500 and holds €100; €200 of Fun's spending on A is refunded, so €200 goes back to
+        // Fun: A holds −€100. B pays €500 of A's debt, so A ends €200 in credit, and moves
+        // min(500, −100 − (−200)) = €100. B holds €300 and owes €600: it still needs €200, so the
+        // €100 covered goes to B and C's €100 stays uncovered. (Reading A's held without the
+        // refund would project €300, leave B needing nothing and send the €100 to C.)
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["fun", "groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 10000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 30000 },
+          ],
+          activity: [
+            { categoryId: "fun", month: "2026-09", amount: 20000, paymentCategoryId: "a-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-02", amount: 20000 }, { date: "2026-09-15", amount: 50000 }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        const a = category(result.paymentCategories, "a-payment");
+        const b = category(result.paymentCategories, "b-payment");
+        const c = category(result.paymentCategories, "c-payment");
+        assert.equal(a.owed, -20000);
+        assert.equal(a.available, -20000);
+        assert.equal(a.cashOverspending, 0);
+        assert.equal(b.available, 50000); // 300 held + 100 covered + 100 moved
+        assert.equal(b.uncovered, 10000);
+        assert.equal(c.available, 0);
+        assert.equal(c.uncovered, 10000);
+      });
+
+      /**
+       * B pays `paid` of A's debt on the 15th; A owed `owedBefore` and holds `holds`, B holds
+       * `bHolds`. Groceries, €100 assigned, spends €100 on B and €100 on C. Returns which card the
+       * €100 covered went to.
+       */
+      function coveredGoesTo(owedBefore: number, holds: number, paid: number, bHolds: number): "b" | "c" {
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: holds },
+            { categoryId: "b-payment", month: "2026-09", amount: bHolds },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(owedBefore, "2026-09-01"), { date: "2026-09-15", amount: paid }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -paid }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: paid },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        const b = category(result.paymentCategories, "b-payment");
+        const c = category(result.paymentCategories, "c-payment");
+        assert.equal(b.available + c.available, bHolds + 10000 + Math.min(paid, Math.max(0, holds - (owedBefore - paid))));
+        return c.available === 10000 ? "c" : "b";
+      }
+
+      it("the projection reads what A still owes: A owes €800 and holds €600, B pays €500, €300 moves", () => {
+        // B (holding €200) owes €600: it still needs €100 after the €300, so the €100 goes to B.
+        assert.equal(coveredGoesTo(80000, 60000, 50000, 20000), "b");
+        // Holding €300, B needs nothing after the €300: the €100 goes to C.
+        assert.equal(coveredGoesTo(80000, 60000, 50000, 30000), "c");
+      });
+
+      it("a transfer that moves nothing never adds to a card's need: A owes €800 and holds €300, B pays €200", () => {
+        // A still owes €600, more than it holds: nothing moves. B holds €300 against €300 owed, so it
+        // needs nothing and the €100 goes to C.
+        assert.equal(coveredGoesTo(80000, 30000, 20000, 30000), "c");
+      });
+
+      it("the projection is capped at the transfer: A owes €800 and holds €900, B pays €500, €500 moves", () => {
+        // B owes €600 and holds nothing: it still needs €100 after the €500, so the €100 goes to B.
+        assert.equal(coveredGoesTo(80000, 90000, 50000, 0), "b");
+      });
+
+      it("two transfers from the same card: the second reads what the first left", () => {
+        // A owes €600 and holds €300; B pays €300 of it on the 10th (€300 moves), C the other €300
+        // on the 20th (nothing left to move). C holds €100 and owes €100 of groceries + €300: it
+        // still needs €300, so Groceries' €100 covered goes to C rather than to D.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment", "d-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 30000 },
+            { categoryId: "c-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "d-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(60000, "2026-09-01"), { date: "2026-09-10", amount: 30000 }, { date: "2026-09-20", amount: 30000 }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-10", amount: -30000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-20", amount: -30000 }] },
+            { paymentCategoryId: "d-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-10", id: "t1", amount: 30000 },
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "c-payment", month: "2026-09", date: "2026-09-20", id: "t2", amount: 30000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        assert.equal(category(result.paymentCategories, "b-payment").available, 30000);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 20000);
+        assert.equal(category(result.paymentCategories, "c-payment").uncovered, 20000);
+        assert.equal(category(result.paymentCategories, "d-payment").available, 0);
+        assert.equal(category(result.paymentCategories, "d-payment").uncovered, 10000);
+      });
+
+      it("chained transfers: what C receives from B, after B received it from A, counts in C's need", () => {
+        // A owes €500 and holds €500; B pays it on the 10th, C pays B's €500 on the 20th. Groceries,
+        // €100 assigned, spends €100 on C and €100 on D: C will hold its debt, so the €100 goes to D.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment", "d-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 50000 },
+            { categoryId: "c-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "d-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-09-01"), { date: "2026-09-10", amount: 50000 }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-10", amount: -50000 }, { date: "2026-09-20", amount: 50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-20", amount: -50000 }] },
+            { paymentCategoryId: "d-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "b-payment", chargedPaymentCategoryId: "c-payment", month: "2026-09", date: "2026-09-20", id: "t0", amount: 50000 },
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-10", id: "t9", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        assert.equal(category(result.paymentCategories, "c-payment").available, 60000);
+        assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
+        assert.equal(category(result.paymentCategories, "d-payment").available, 10000);
+        assert.equal(category(result.paymentCategories, "d-payment").uncovered, 0);
+      });
+    });
+
     it("refuses a transfer dated outside its month", () => {
       assert.throws(
         () =>

@@ -420,6 +420,11 @@ function validate(input: BudgetInput, month: Month): void {
   }
 }
 
+/** A month's card-to-card transfers in the order rule 8 applies them: date, then id. */
+function sortedTransfers(transfers: readonly CardTransfer[] | undefined): CardTransfer[] {
+  return [...(transfers ?? [])].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
 interface MonthState {
   readonly categories: CategoryMonth[];
   readonly paymentCategories: CategoryMonth[];
@@ -456,10 +461,7 @@ function computePaymentCategories(
 
   // Rule 8 (#732): in date order, then id; each transfer reads the available the earlier ones left.
   const transferDelta = new Map<string, Cents>();
-  const transfers = [...(data.cardTransfersBy.get(m) ?? [])].sort((a, b) =>
-    a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0,
-  );
-  for (const t of transfers) {
+  for (const t of sortedTransfers(data.cardTransfersBy.get(m))) {
     const held = availableById.get(t.paidPaymentCategoryId) ?? 0;
     // What the paid card still owes at the end of the month, signed; a card whose balance is not
     // given counts as owing nothing, so only what its payment category holds can move.
@@ -542,7 +544,11 @@ function computeMonth(
       return [id, owed - held];
     }),
   );
-  const stillNeeds = (paymentId: string): Cents => Math.max(0, (needBefore.get(paymentId) ?? 0) - (movedToPayment.get(paymentId) ?? 0));
+  // #803: what this month's card-to-card transfers are projected to move into each card, worked
+  // out like rule 8 but from what the payment categories hold before any covered spending moves in.
+  const projectedTransfer = new Map<string, Cents>();
+  const stillNeeds = (paymentId: string): Cents =>
+    Math.max(0, (needBefore.get(paymentId) ?? 0) - (movedToPayment.get(paymentId) ?? 0) - (projectedTransfer.get(paymentId) ?? 0));
 
   // Net credit card activity of each category, card by card, in a stable order. Every net refund
   // goes back to its category before any coverage is shared out, so that a card's need already
@@ -555,6 +561,28 @@ function computeMonth(
     byCardOf.set(id, byCard);
     for (const [paymentId, net] of byCard) {
       if (net > 0) addTo(movedToPayment, paymentId, -net); // Net refund: the money goes back to the category.
+    }
+  }
+
+  // Rule 4 (#803): a card that a card-to-card transfer will bring money into needs that much less.
+  // Each transfer, in date order then id, is projected to move min(T, max(0, held − owed)) from
+  // the paid card, where held is what its payment category holds before any covered spending
+  // (carried, assigned, less payments and net refunds) plus what earlier transfers moved in or out.
+  {
+    const heldPre = new Map<string, Cents>(
+      paymentIds.map((id): [string, Cents] => [
+        id,
+        (carried.get(id) ?? 0) + (data.assignedBy.get(key(id, m)) ?? 0) - (data.paymentsBy.get(key(id, m)) ?? 0) + (movedToPayment.get(id) ?? 0),
+      ]),
+    );
+    for (const t of sortedTransfers(data.cardTransfersBy.get(m))) {
+      const held = heldPre.get(t.paidPaymentCategoryId) ?? 0;
+      const moved = Math.min(t.amount, Math.max(0, held - (data.owedBy.get(t.paidPaymentCategoryId) ?? 0)));
+      heldPre.set(t.paidPaymentCategoryId, held - moved);
+      addTo(heldPre, t.chargedPaymentCategoryId, moved);
+      // Only what comes in counts: a card that passes money on holds more than it owes before it
+      // does, and still at least what it owes after, so it needs nothing either way.
+      addTo(projectedTransfer, t.chargedPaymentCategoryId, moved);
     }
   }
 
