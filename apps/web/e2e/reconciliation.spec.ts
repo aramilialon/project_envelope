@@ -58,7 +58,7 @@ test.describe("reconciliation (#60)", () => {
 
       await page.getByRole("link", { name: "Reconcile" }).click();
       await page.waitForURL(/\/accounts\/.+\/reconcile/);
-      await expect(page.getByRole("heading", { name: "Reconcile with your bank" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Reconcile with your statement" })).toBeVisible();
       await expect(page.getByText("€500.00").first()).toBeVisible();
 
       // Both statement fields stay inside the tally panel, at desktop and phone widths (#592).

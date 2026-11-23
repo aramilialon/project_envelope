@@ -6,8 +6,8 @@ export function authHeaders(accessToken: string, hasBody = false): HeadersInit {
 }
 
 /**
- * A non-ok response from `apiFetch`. `code` and `details` are the API's own stable error code and
- * its values when the body carries them (a 400 from a `ValidationError`, such as `text_too_long`
+ * A non-ok response from `apiFetch`. `code` and `details` are the API's own stable error code (the
+ * body's `code` when it has one, else its `error`) and its values when the body carries them (a 400 from a `ValidationError`, such as `text_too_long`
  * with `{ field, max }`, #507), so a form can say what was wrong in the user's language; both are
  * absent for any other body.
  */
@@ -27,9 +27,12 @@ export class ApiError extends Error {
 
 async function errorBody(response: Response): Promise<{ code: string | undefined; details: Record<string, string | number> }> {
   try {
-    const body = (await response.json()) as { error?: unknown; details?: unknown };
+    const body = (await response.json()) as { error?: unknown; code?: unknown; details?: unknown };
     const details = typeof body.details === "object" && body.details !== null ? (body.details as Record<string, string | number>) : {};
-    return { code: typeof body.error === "string" ? body.error : undefined, details };
+    // A refusal whose `error` is a sentence carries its stable code in `code` (a 409 such as
+    // `trade_owned_transaction`, #657); every other one has the code in `error` itself.
+    const code = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : undefined;
+    return { code, details };
   } catch {
     return { code: undefined, details: {} };
   }

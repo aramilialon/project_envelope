@@ -133,6 +133,7 @@ describe("ImportScreen (#59)", () => {
     const input = document.querySelector("#import-file-in") as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     await screen.findByText("Supermarket");
+    expect(screen.getByText("Still need a category")).toBeInTheDocument();
 
     // The duplicate alone is already enough to import (it needs no category of its own);
     // the new row needs one chosen before it counts too.
@@ -410,6 +411,70 @@ describe("ImportScreen (#59)", () => {
       expect([...transferCategorySelect.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Choose a category", "Groceries"]);
       expect(screen.getByText("Needs a category")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Import 0 transactions" })).toBeDisabled();
+    });
+  });
+
+  describe("into an off-budget account (#710)", () => {
+    async function stageTwoRows() {
+      vi.spyOn(importApi, "stageImport").mockResolvedValue({
+        staged: [
+          { id: "out-1", workspaceId: "ws-1", accountId: "acc-brokerage", occurredAt: "2026-09-10", payee: "Custody fee", memo: null, amountCents: -400, externalId: null, duplicateOf: null, createdAt: "2026-09-10" },
+          { id: "in-1", workspaceId: "ws-1", accountId: "acc-brokerage", occurredAt: "2026-09-11", payee: "Interest", memo: null, amountCents: 120, externalId: null, duplicateOf: null, createdAt: "2026-09-11" },
+        ],
+        duplicateCount: 0,
+      });
+      const input = document.querySelector("#import-file-in") as HTMLInputElement;
+      fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+      await screen.findByText("Custody fee");
+    }
+
+    it("takes every new row as it is, offering no category and no 'Income', only transfers", async () => {
+      renderScreen([CHECKING, BROKERAGE], "acc-brokerage");
+      await screen.findByText(/Brokerage/);
+      await stageTwoRows();
+
+      const options = [...screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }).querySelectorAll("option")].map((o) => o.textContent);
+      expect(options).toEqual(["No category", "Transfer to Checking"]);
+      expect(screen.queryByText("Needs a category")).not.toBeInTheDocument();
+      // Nothing on an off-budget account still needs a category, so the count is not shown (#710).
+      expect(screen.queryByText("Still need a category")).not.toBeInTheDocument();
+      expect(screen.getByText(/This account is off budget, so a new row takes no category/)).toBeInTheDocument();
+
+      const confirm = vi.spyOn(importApi, "confirmStagedTransactions").mockResolvedValue([
+        { stagedTransactionId: "out-1", outcome: "confirmed", transactionId: "t1" },
+        { stagedTransactionId: "in-1", outcome: "confirmed", transactionId: "t2" },
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "Import 2 transactions" }));
+
+      await waitFor(() =>
+        expect(confirm).toHaveBeenCalledWith("t", "ws-1", "acc-brokerage", [
+          { stagedTransactionId: "out-1", kind: "income" },
+          { stagedTransactionId: "in-1", kind: "income" },
+        ]),
+      );
+    });
+
+    it("still asks the on-budget leg's category for a transfer into the budget", async () => {
+      renderScreen([CHECKING, BROKERAGE], "acc-brokerage");
+      await screen.findByText(/Brokerage/);
+      await stageTwoRows();
+
+      fireEvent.change(screen.getByLabelText("Category", { selector: "select[id='import-cat-out-1']" }), { target: { value: "__transfer__acc-checking" } });
+      const transferCategory = document.querySelector("#import-transfer-cat-out-1") as HTMLSelectElement;
+      // Money from the off-budget account into a cash account: "Unassigned" first, as in the form (#599).
+      expect([...transferCategory.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Unassigned", "Groceries"]);
+      expect(screen.queryByText("Needs a category")).not.toBeInTheDocument();
+      expect(screen.queryByText("Still need a category")).not.toBeInTheDocument();
+    });
+
+    it("counts what still needs a category only while a transfer out of the budget lacks one", async () => {
+      renderScreen([CHECKING, BROKERAGE], "acc-brokerage");
+      await screen.findByText(/Brokerage/);
+      await stageTwoRows();
+
+      // Money coming in from Checking leaves the budget, so Checking's leg needs a category (#378).
+      fireEvent.change(screen.getByLabelText("Category", { selector: "select[id='import-cat-in-1']" }), { target: { value: "__transfer__acc-checking" } });
+      expect(screen.getByText("Still need a category")).toBeInTheDocument();
     });
   });
 });
