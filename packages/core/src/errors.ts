@@ -86,6 +86,7 @@ export type ValidationErrorCode =
   | "duplicate_price"
   | "invalid_price_file"
   | "too_many_rows"
+  | "range_too_long"
   | "invalid_locale"
   | "invalid_body"
   | "unknown_field"

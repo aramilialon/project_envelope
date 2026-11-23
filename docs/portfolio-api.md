@@ -1,7 +1,7 @@
 # Portfolio API
 
 How to record a portfolio through the API, and what the API does with it: the schema behind it,
-every endpoint of milestone 0.2.0 with its request and response bodies, its validation codes, and
+every endpoint of milestones 0.2.0 and 0.2.1 with its request and response bodies, its validation codes, and
 how positions and their results are worked out. It is written for three readers:
 
 - **someone recording their own portfolio.** There are no portfolio screens yet, so the API is the
@@ -16,13 +16,16 @@ the [domain guide](domain-guide.md#portfolios-and-rebalancing); the decisions ar
 [ADR 0012](adr/0012-trade-cash-legs.md) (a trade owns its cash leg). Every example below was
 checked against a running server.
 
-What 0.2.0 does **not** do yet: no prices, so no current value, unrealized gain or net result
-(milestone 0.2.1); exchange rates are stored ([Exchange rates](#exchange-rates), milestone 0.2.1)
-but nothing converts with them yet, so a trade's instrument must be in its account's currency; no
-settlement date on a trade; no import of a broker's statement; and no field of a trade is synced
-from devices yet. Private instruments, with no ISIN and no ticker, came in 0.2.1 (#505,
-[Private instruments](#private-instruments)), and so did a workspace's own closing prices, typed or
-imported from a CSV file (#83, [Prices](#prices)); positions do not use them yet.
+Milestone 0.2.1 added private instruments, with no ISIN and no ticker (#505,
+[Private instruments](#private-instruments)), a workspace's own closing prices, typed or imported
+from a CSV file (#83, [Prices](#prices)), the ECB's exchange rates ([Exchange rates](#exchange-rates),
+#85), and a portfolio's month-by-month value, contributions, gain and returns, in the workspace's
+base currency ([Performance](#performance), #89).
+
+What the API does **not** do yet: positions show no current value, unrealized gain or net result
+(the [performance](#performance) values the whole portfolio instead); a trade's instrument must be
+in its account's currency; no settlement date on a trade; no import of a broker's statement; and no
+field of a trade is synced from devices yet.
 
 ## Contents
 
@@ -36,6 +39,7 @@ imported from a CSV file (#83, [Prices](#prices)); positions do not use them yet
 - [Portfolios](#portfolios)
 - [Trades](#trades)
 - [Positions](#positions)
+- [Performance](#performance)
 - [A worked example](#a-worked-example)
 
 ## Before you start
@@ -90,7 +94,7 @@ offset (`"2026-03-12T10:15:00+01:00"`); the API answers in UTC (`"2026-03-12T09:
 | 400 | `{ "error": "<code>", "details": { … } }` | a rule of the domain, a trade body the route cannot read, or a body with a field the request does not take (`unknown_field`, below): the codes below, each with its `details` |
 | 400 | `{ "error": "invalid portfolio: …" }` | a body the account, portfolio or instrument routes cannot read. English text, no code (the trade routes answer with codes, #594) |
 | 409 | `{ "error": "<text>", "code": "<code>" }`, sometimes with `details` | a conflict: a name or an id already taken, a locked trade |
-| 403, 404 | `{ "error": "<text>" }` | not allowed, not found (the price routes answer a code instead: `instrument_not_found`, `price_not_found`) |
+| 403, 404 | `{ "error": "<text>" }` | not allowed, not found |
 
 **Bodies are strict.** Every write below takes only the fields its section lists: any other key, a
 misspelt one (`taxcountry`) or one the request cannot change (`id`, `workspaceId`, an account's
@@ -1089,10 +1093,106 @@ tax statement. An adjustment is kept with its sign: a €100.00 refund (`grossCe
 −€30.00) raises them. With €247.26 withheld on a sale and a €100.00 refund later:
 `gainTaxWithheldCents` 24726, `gainTaxAdjustmentsCents` 10000, `taxesOnGainsCents` 14726.
 
-The **net result** (realized + unrealized + income − costs − taxes on gains) needs prices, and
-comes with them in milestone 0.2.1. For an account whose securities all came in through buys, the
+The **net result** (realized + unrealized + income − costs − taxes on gains) of a position needs
+its price, and is not on the positions yet; the [performance](#performance) gives the portfolio's
+gain month by month. For an account whose securities all came in through buys, the
 figures already add up: realized + income − costs − taxes on gains = (cash balance + cost) − money
 transferred in.
+
+## Performance
+
+| Request | Who | Answer |
+| --- | --- | --- |
+| `GET /workspaces/:workspaceId/portfolios/:portfolioId/performance?from=YYYY-MM&to=YYYY-MM` | any member | the portfolio's figures for each month from `from` to `to`, both included, and over the whole range; an archived portfolio included |
+
+A portfolio's value, money put in, income, gain and returns, month by month, in the workspace's
+base currency. They are computed from the trades, the stored [prices](#prices) and the stored
+[exchange rates](#exchange-rates) on every request, never stored and never cached; a request never
+fetches a price or a rate. The rules are the domain guide's
+([Flows, valuation and returns](domain-guide.md#flows-valuation-and-returns)); every figure is after
+the costs and taxes the trades record.
+
+```json
+{
+  "baseCurrency": "EUR",
+  "from": "2026-09",
+  "to": "2026-10",
+  "months": [
+    {
+      "month": "2026-09",
+      "valuationDate": "2026-09-30",
+      "valueCents": 102000,
+      "netContributionsCents": 100500,
+      "incomeCents": 0,
+      "gainCents": 1500,
+      "twrE6": 14925,
+      "mwrE6": 14925,
+      "twrUnknownReason": null,
+      "mwrUnknownReason": null,
+      "oldestPriceDate": "2026-09-30",
+      "oldestRateDate": null,
+      "missing": []
+    },
+    { "month": "2026-10", "…": "…" }
+  ],
+  "totals": {
+    "startDate": "2026-08-31",
+    "endDate": "2026-10-31",
+    "startValueCents": 0,
+    "endValueCents": 206000,
+    "netContributionsCents": 200500,
+    "incomeCents": 0,
+    "gainCents": 5500,
+    "twrE6": 35023,
+    "twrAnnualized": false,
+    "mwrE6": 36416,
+    "mwrAnnualized": false,
+    "twrUnknownReason": null,
+    "mwrUnknownReason": null,
+    "missing": []
+  }
+}
+```
+
+A month:
+
+| Field | Meaning |
+| --- | --- |
+| `valuationDate` | the date the month is valued at: its last day, or today in the workspace's time zone for the current month |
+| `valueCents` | the value of the securities the portfolio holds at the end of `valuationDate`: each position's quantity × its latest price on or before that date × price factor, rounded once in the instrument's currency, then the amounts of each currency added up and converted once at that date's rate. The cash of the trades belongs to the brokerage account and is not part of it. A position sold out needs no price |
+| `netContributionsCents` | money put into the portfolio (+) or taken out (−) in the month, dividends and coupons apart: a buy counts everything it cost (gross, fees, transaction tax, accrued interest, less domestic withholding credited), a sale its net proceeds, a fee or a tax its amount, a transfer of securities their market value on its date (never their cost) plus its fees. The amounts of one date and one currency are added up, contributions and income apart, then converted once at that date's rate |
+| `incomeCents` | the net cash of the month's dividends and coupons, as a positive amount, converted the same way |
+| `gainCents` | `valueCents` − the previous month's value − `netContributionsCents` + `incomeCents`, exact to the cent |
+| `twrE6` | the month's time-weighted return, in millionths (`14925` is 1.4925%): how the holdings did, whatever money was added or taken out, cut at the end of every day with a trade |
+| `mwrE6` | the month's money-weighted return, in millionths: how the household's own money did, given when it went in and out |
+| `twrUnknownReason`, `mwrUnknownReason` | why `twrE6` or `mwrE6` is null, and null when it is known: `missing_value` when a value or a flow it needs is unknown (see `missing`); `no_capital` when there is nothing to measure (the portfolio was worth nothing at the end of every day the period is valued on: its start, each day with a flow, each month end and its end, as in a month with only a fee or a dividend after everything was sold; or a stretch ends with more taken out than it held); `no_solution` (money-weighted only) when no rate from just above −100% to +1000% balances the flows |
+| `oldestPriceDate`, `oldestRateDate` | the oldest price and the oldest exchange rate `valueCents` used: prices and rates have no maximum age, so a screen can show how old they are. Null when none was needed, or when the value is unknown |
+| `missing` | what an unknown figure lacks, each once: `{ "instrumentId", "reason": "no_price", "date" }` for a security held (or transferred) with no price on or before the date, `{ "instrumentId", "reason": "no_rate", "currency", "date" }` for an amount whose currency (or the base currency) has no rate on or before it. `date` is the earliest date, among those the figure needed (the start of the month, each trade date, the valuation date), that lacks it: a price or a rate dated on or before it fills the gap. `instrumentId` is null for a fee or tax recorded without an instrument |
+
+**Unknown is null, never 0.** A held position with no price, or a currency with no rate, makes
+the value null, never a sum of the rest, and every figure that needs it null too (the gain, the
+returns, the next month's gain); `missing` says what to add. A return is also null when there is
+nothing to measure: a month in which the portfolio held nothing, or one that ends with more taken
+out than it held. A month before the first trade is worth 0, with returns null.
+
+**The totals** run from the end of the month before `from` (`startDate`, `startValueCents`) to
+the end of the last month (`endDate`, `endValueCents`): the contributions, income and gain over
+the whole range, from the start value, the end value and every flow in between; equal to the sum
+of the months' figures whenever every month's figure is known. The two returns over the whole
+range are each computed in one go from the same values and flows, never by linking the rounded
+monthly figures; `twrUnknownReason` and `mwrUnknownReason` say why one is null, as for a month. A range that reaches a year
+(`startDate` to `endDate`) gives yearly returns (`twrAnnualized`, `mwrAnnualized` true); a shorter
+one gives the return over the range itself. Both flags are null when their return is.
+
+A return is displayed by rounding `…E6` to 0.01 percentage points, half to even. Prices in the
+workspace's own and shared rows follow the [precedence](#prices): on the same date, the
+workspace's own price wins.
+
+| Error | When |
+| --- | --- |
+| 404 `{ "error": "portfolio not found" }` | another workspace's portfolio, an unknown or a malformed id, the same body as every other portfolio route |
+| 400 `invalid_month` | `{ "field", "value" }`: `from` or `to` missing (`value` null), not a `YYYY-MM` month or given twice; `to` before `from` (`field` is `to`, as on `GET /fx-rates` and the prices list); `to` after the current month in the workspace's time zone (with `"max": "<current month>"`) |
+| 400 `range_too_long` | `{ "months", "max": 120 }`: the range covers more than 120 months |
 
 ## A worked example
 
