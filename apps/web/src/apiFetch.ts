@@ -46,11 +46,19 @@ async function errorBody(response: Response): Promise<{ code: string | undefined
  * does. An endpoint whose own meaning for a particular status (a 404 meaning "none set yet", a
  * 409 meaning "already reconciled, unlock first") is not a real error inspects `response.status`
  * on a plain `fetch` call instead, since this throws before it would get the chance.
+ *
+ * `headers` are sent besides the bearer token, for instance a create's `Idempotency-Key` (#559).
  */
-export async function apiFetch(accessToken: string, method: string, path: string, body?: unknown): Promise<Response> {
+export async function apiFetch(
+  accessToken: string,
+  method: string,
+  path: string,
+  body?: unknown,
+  headers?: Readonly<Record<string, string>>,
+): Promise<Response> {
   const response = await fetch(`${API_URL}${path}`, {
     method,
-    headers: authHeaders(accessToken, body !== undefined),
+    headers: { ...(authHeaders(accessToken, body !== undefined) as Record<string, string>), ...headers },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) {

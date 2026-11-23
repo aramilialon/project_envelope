@@ -15,6 +15,7 @@ import type { WorkspaceRole } from "../auth/workspace-membership.ts";
 import { loadConfig } from "../config.ts";
 import { DEFAULT_MIGRATIONS_DIR, runMigrations } from "../db/migrate.ts";
 import { createPool, type DbPool } from "../db/pool.ts";
+import type { QueueDriver } from "../queue/index.ts";
 import { appConnectionString, ensureAppRoleLogin } from "./app-role.ts";
 import { setUpKeycloakTestRealm, type KeycloakTestRealm } from "./keycloak.ts";
 import { HIGH_RATE_LIMITS_ENV } from "./rate-limits.ts";
@@ -53,6 +54,8 @@ export interface SetupIntegrationTestOptions {
   readonly workspaceName?: string;
   /** Called with the app before its first request, the last moment Fastify still accepts new routes (a test-only route, #512). */
   readonly beforeReady?: (app: App) => void;
+  /** A queue for the app's write paths to enqueue on (a fake that counts, #559); none by default. */
+  readonly queue?: QueueDriver;
 }
 
 export async function setupIntegrationTest(options: SetupIntegrationTestOptions = {}): Promise<IntegrationTestContext> {
@@ -71,6 +74,7 @@ export async function setupIntegrationTest(options: SetupIntegrationTestOptions 
       ...HIGH_RATE_LIMITS_ENV,
       ...options.configOverrides,
     }),
+    options.queue,
   );
 
   const workspaceId = randomUUID();

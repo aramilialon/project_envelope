@@ -99,13 +99,29 @@ export async function listTransactionsForAccount(
   return body.transactions;
 }
 
+/**
+ * The `Idempotency-Key` header of a create (#559, ADR 0020), when the caller has one: a request
+ * sent again with the same key and body is recorded once, and answered with the first reply.
+ */
+function idempotencyHeaders(idempotencyKey: string | undefined): Record<string, string> | undefined {
+  return idempotencyKey === undefined ? undefined : { "Idempotency-Key": idempotencyKey };
+}
+
+/** `idempotencyKey`: one per submit attempt (#559), made by the form with `crypto.randomUUID()`. */
 export async function createTransaction(
   accessToken: string,
   workspaceId: string,
   accountId: string,
   input: CreateTransactionInput,
+  idempotencyKey?: string,
 ): Promise<Transaction> {
-  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`, input);
+  const response = await apiFetch(
+    accessToken,
+    "POST",
+    `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+    input,
+    idempotencyHeaders(idempotencyKey),
+  );
   return (await response.json()) as Transaction;
 }
 
@@ -139,7 +155,8 @@ export async function createTransfer(
   accessToken: string,
   workspaceId: string,
   input: CreateTransferInput,
+  idempotencyKey?: string,
 ): Promise<Transfer> {
-  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transfers`, input);
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transfers`, input, idempotencyHeaders(idempotencyKey));
   return (await response.json()) as Transfer;
 }

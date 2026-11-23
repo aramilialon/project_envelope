@@ -5,6 +5,7 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { invalidField, sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
+import { IDEMPOTENT_ROUTE, sendAndRemember, withIdempotencyKey } from "../idempotency/route.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createTransaction,
@@ -109,7 +110,11 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   // Creating or listing names the account in its path, which must belong to the workspace (#512);
   // editing or deleting looks the transaction itself up in the workspace, and answers 404 when it
   // is not on the account the path names (#655).
-  app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace] }, async (request, reply) => {
+  // An `Idempotency-Key` (#559, ADR 0020) is claimed after the path account check and before the
+  // body is validated: a retry of a stored success gets the same reply.
+  const idempotent = { config: IDEMPOTENT_ROUTE };
+
+  app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace], ...idempotent }, withIdempotencyKey(async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const splits = parseSplits(body);
@@ -150,14 +155,14 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         },
         queue,
       );
-      await reply.code(201).send(transaction);
+      await sendAndRemember(request, reply, 201, transaction);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;
       }
       throw error;
     }
-  });
+  }));
 
   app.get(base, { preHandler: [preHandler, requireAccountOfWorkspace] }, async (request) => {
     const { accountId } = request.params as { accountId: string };
@@ -255,7 +260,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     await reply.code(204).send();
   });
 
-  app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler, ...idempotent }, withIdempotencyKey(async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const sourceAccountId = typeof body.sourceAccountId === "string" ? body.sourceAccountId : "";
     const destinationAccountId = typeof body.destinationAccountId === "string" ? body.destinationAccountId : "";
@@ -299,12 +304,12 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         },
         queue,
       );
-      await reply.code(201).send(transfer);
+      await sendAndRemember(request, reply, 201, transfer);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;
       }
       throw error;
     }
-  });
+  }));
 }

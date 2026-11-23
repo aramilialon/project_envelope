@@ -137,7 +137,7 @@ export default function QuickEntryOverlay({ workspaceId, onClose, onSaved }: Pro
         occurredAt: todayIsoIn(timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
         ...(payee.trim() ? { payee: payee.trim() } : {}),
         splits: [{ categoryId, amountCents: -cents }],
-      });
+      }, crypto.randomUUID()); // One Idempotency-Key per submit attempt (#559).
       const category = categories.find((c) => c.categoryId === categoryId);
       const account = onBudgetAccounts.find((a) => a.id === selectedAccountId);
       setSaved({

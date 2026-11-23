@@ -1,6 +1,7 @@
 import { buildApp } from "./app.ts";
 import { loadConfig, loadMarketDataConfig, loadPushConfig, loadQueueConfig } from "./config.ts";
 import { createPool } from "./db/pool.ts";
+import { createIdempotencyKeysSweepHandler, IDEMPOTENCY_KEYS_SWEEP_CRON } from "./idempotency/sweep-job.ts";
 import { createEcbFileFetcher, createEcbProvider } from "./market-data/ecb-provider.ts";
 import { registerFxRatesJob } from "./market-data/fx-rates-job.ts";
 import { latestFxRateDate } from "./market-data/fx-rates-repository.ts";
@@ -8,7 +9,12 @@ import { createPriceProvider } from "./market-data/registry.ts";
 import { createBudgetRecomputeHandler } from "./notifications/budget-recompute-job.ts";
 import { createPushDrivers } from "./notifications/index.ts";
 import { createQueueDriver } from "./queue/index.ts";
-import { BUDGET_RECOMPUTE_JOB, FX_RATES_FETCH_JOB, SCHEDULED_TRANSACTIONS_FIRE_JOB } from "./queue/job-types.ts";
+import {
+  BUDGET_RECOMPUTE_JOB,
+  FX_RATES_FETCH_JOB,
+  IDEMPOTENCY_KEYS_SWEEP_JOB,
+  SCHEDULED_TRANSACTIONS_FIRE_JOB,
+} from "./queue/job-types.ts";
 import { createScheduledTransactionsFireHandler } from "./scheduled-transactions/fire-job.ts";
 
 async function main(): Promise<void> {
@@ -33,6 +39,14 @@ async function main(): Promise<void> {
   await queue.work(SCHEDULED_TRANSACTIONS_FIRE_JOB, createScheduledTransactionsFireHandler(queue));
 
   const app = buildApp(config, queue, pushConfig.vapidPublicKey);
+
+  // Hourly (#559, ADR 0020): an idempotency key and its stored reply are kept 24 hours, and gone
+  // within the following hour.
+  await queue.schedule(IDEMPOTENCY_KEYS_SWEEP_JOB, IDEMPOTENCY_KEYS_SWEEP_CRON);
+  await queue.work(
+    IDEMPOTENCY_KEYS_SWEEP_JOB,
+    createIdempotencyKeysSweepHandler(queuePool, app.fastify.log.child({ job: IDEMPOTENCY_KEYS_SWEEP_JOB })),
+  );
 
   // The exchange rates job fetches only when MARKET_DATA_FETCH_ENABLED is on, its default; its
   // startup run is skipped when the stored rates are already from today or yesterday (UTC).
