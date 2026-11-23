@@ -31,7 +31,7 @@
 | [0005](adr/0005-plain-sql-and-node-postgres.md) | Plain SQL migrations and node-postgres |
 | [0006](adr/0006-row-level-security.md) | Row-Level Security with session variables, enforced against a dedicated role |
 | [0007](adr/0007-per-milestone-smoke-tests.md) | Each backend milestone gets a smoke test against the real process |
-| [0008](adr/0008-assignment-ledger.md) | Monthly assignments as an append-only ledger, not mutable totals |
+| [0008](adr/0008-assignment-ledger.md) | Monthly assignments as an append-only ledger, not mutable totals (amended by 0020) |
 | [0009](adr/0009-i18n-library.md) | FormatJS for the web app's i18n library |
 | [0010](adr/0010-system-job-workspace-enumeration.md) | A third RLS session variable for periodic jobs that must enumerate every workspace |
 | [0011](adr/0011-quantities-and-prices-as-scaled-integers.md) | Quantities and prices as scaled integers |
@@ -43,6 +43,7 @@
 | [0017](adr/0017-api-rate-limiting.md) | API rate limits in process, per client address and per verified user |
 | [0018](adr/0018-closed-accounts-enforced-in-the-database.md) | A closed account takes no writes, enforced in the database |
 | [0019](adr/0019-market-data-prices-rates-and-returns.md) | Market data: shared and workspace prices, exchange rates through the euro, returns computed on read |
+| [0020](adr/0020-idempotent-creates.md) | Idempotent creates: an Idempotency-Key per workspace and client batch ids |
 
 ## Rule
 

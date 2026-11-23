@@ -40,6 +40,28 @@ describe("upsertUserFromClaims", () => {
     assert.equal(rows.length, 1);
   });
 
+  it("does not wait for a transaction that holds the user's row by a foreign key, when nothing changed (#559)", async () => {
+    const subject = randomUUID();
+    const email = `${randomUUID()}@example.com`;
+    const user = await upsertUserFromClaims(pool, { keycloakSubject: subject, email });
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      // What a foreign key check on users takes for an in-flight write (an idempotency key, an assignment).
+      await holder.query("SELECT 1 FROM users WHERE id = $1 FOR KEY SHARE", [user.id]);
+      const again = upsertUserFromClaims(pool, { keycloakSubject: subject, email });
+      const outcome = await Promise.race([
+        again.then((record) => record.id),
+        new Promise<string>((resolve) => setTimeout(() => resolve("waited"), 2_000)),
+      ]);
+      assert.equal(outcome, user.id);
+    } finally {
+      await holder.query("ROLLBACK");
+      holder.release();
+      await pool.query("DELETE FROM users WHERE id = $1", [user.id]);
+    }
+  });
+
   it("updates the stored email when the claim changes, without changing the id", async () => {
     const before_ = await upsertUserFromClaims(pool, { keycloakSubject, email: "old@example.com" });
     const after_ = await upsertUserFromClaims(pool, { keycloakSubject, email: "new@example.com" });

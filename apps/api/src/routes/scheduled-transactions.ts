@@ -4,6 +4,7 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { sendIfTextTooLong, sendIfValidationError } from "../errors.ts";
+import { IDEMPOTENT_ROUTE, sendAndRemember, withIdempotencyKey } from "../idempotency/route.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import {
   createScheduledTransaction,
@@ -174,22 +175,28 @@ export function registerScheduledTransactionsRoutes(app: FastifyInstance, pool: 
     await reply.code(204).send();
   });
 
-  app.post(`${base}/:scheduledTransactionId/record`, { preHandler: writePreHandler }, async (request, reply) => {
-    const { scheduledTransactionId } = request.params as { scheduledTransactionId: string };
-    try {
-      const result = await recordScheduledTransaction(request.db!, request.workspace!.id, scheduledTransactionId, queue);
-      if (!result) {
-        await reply.code(404).send({ error: "scheduled transaction not found" });
-        return;
+  // An `Idempotency-Key` (#559): a retry gets the transaction the first request recorded, instead
+  // of recording the next occurrence.
+  app.post(
+    `${base}/:scheduledTransactionId/record`,
+    { preHandler: writePreHandler, config: IDEMPOTENT_ROUTE },
+    withIdempotencyKey(async (request, reply) => {
+      const { scheduledTransactionId } = request.params as { scheduledTransactionId: string };
+      try {
+        const result = await recordScheduledTransaction(request.db!, request.workspace!.id, scheduledTransactionId, queue);
+        if (!result) {
+          await reply.code(404).send({ error: "scheduled transaction not found" });
+          return;
+        }
+        await sendAndRemember(request, reply, 201, result);
+      } catch (error) {
+        if (await sendIfValidationError(reply, error)) {
+          return;
+        }
+        throw error;
       }
-      await reply.code(201).send(result);
-    } catch (error) {
-      if (await sendIfValidationError(reply, error)) {
-        return;
-      }
-      throw error;
-    }
-  });
+    }),
+  );
 
   app.post(`${base}/:scheduledTransactionId/skip`, { preHandler: writePreHandler }, async (request, reply) => {
     const { scheduledTransactionId } = request.params as { scheduledTransactionId: string };
