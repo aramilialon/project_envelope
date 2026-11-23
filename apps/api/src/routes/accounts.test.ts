@@ -464,6 +464,14 @@ describe("accounts routes", () => {
       assert.equal(badDate.statusCode, 400);
       assert.equal(badDate.json().error, "invalid_date");
 
+      // Before the stored first period, which it would turn into a change not on 1 January: the
+      // error names the requested date, not the stored one (#714).
+      for (const validFrom of ["2023-06-01", "2023-01-01"]) {
+        const beforeFirst = await addRegime(accountId, { validFrom, regime: "administered" });
+        assert.equal(beforeFirst.statusCode, 400);
+        assert.deepEqual(beforeFirst.json(), { error: "tax_regime_change_not_year_start", details: { validFrom } });
+      }
+
       const listed = await history(accountId);
       assert.deepEqual(listed.json().taxRegimes, [
         { validFrom: "2024-03-15", regime: "self_declared" },
