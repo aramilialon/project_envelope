@@ -72,14 +72,30 @@ export interface Transfer {
   readonly destination: Transaction;
 }
 
+/** The largest page the API returns (#560): the fewest requests for a whole account. */
+const TRANSACTION_PAGE_SIZE = 500;
+
+/**
+ * Every transaction of the account, oldest first. The API returns them one page at a time (#560);
+ * this follows `nextCursor` to the last page, because the register and the account balances add
+ * up the whole account on the client.
+ */
 export async function listTransactionsForAccount(
   accessToken: string,
   workspaceId: string,
   accountId: string,
 ): Promise<Transaction[]> {
-  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`);
-  const body = (await response.json()) as { transactions: Transaction[] };
-  return body.transactions;
+  const path = `/workspaces/${workspaceId}/accounts/${accountId}/transactions?limit=${TRANSACTION_PAGE_SIZE}`;
+  const transactions: Transaction[] = [];
+  let cursor: string | null = null;
+  do {
+    const url: string = cursor === null ? path : `${path}&cursor=${encodeURIComponent(cursor)}`;
+    const response = await apiFetch(accessToken, "GET", url);
+    const body = (await response.json()) as { transactions: Transaction[]; nextCursor?: string | null };
+    transactions.push(...body.transactions);
+    cursor = body.nextCursor ?? null;
+  } while (cursor !== null);
+  return transactions;
 }
 
 /**

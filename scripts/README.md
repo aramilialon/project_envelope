@@ -61,7 +61,8 @@ read as if its debt arrived today, in the middle of the current month's own stor
 After seeding, it verifies `@envelope/core`'s own invariant (unassigned money + every category's
 available + reserved + assigned to future months + credit overspending = the on-budget cash
 accounts' own balance, cards excluded) the same way `apps/web` itself could: from the budget
-month endpoint and each cash account's own transaction list, never a direct query. A broken
+month endpoint and each cash account's own transaction list (every page of it, following
+`nextCursor`, #560), never a direct query. A broken
 invariant fails the script loudly.
 
 Checking has no "starting balance" field of its own the way a credit card does (`POST

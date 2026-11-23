@@ -90,7 +90,8 @@ export type ValidationErrorCode =
   | "invalid_body"
   | "unknown_field"
   | "invalid_field"
-  | "amount_needs_splits";
+  | "amount_needs_splits"
+  | "invalid_cursor";
 
 /**
  * A value in a `ValidationError`'s details. `null` stands for something the
