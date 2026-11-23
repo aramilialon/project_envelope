@@ -406,7 +406,7 @@ describe("budget routes", () => {
       assert.ok(!events.some((e) => e.amountCents === 6_000), "the off-budget (destination) leg must not show");
     });
 
-    it("a transfer to a credit card only shows the cash leg workspace-wide", async () => {
+    it("a card payment shows at neither end workspace-wide (#659), but shows (signed) filtered to either account", async () => {
       const card = await superuserPool.query<{ id: string }>(
         "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Visa', 'credit_card', 'EUR') RETURNING id",
         [workspaceId],
@@ -425,8 +425,20 @@ describe("budget routes", () => {
         headers: auth(),
       });
       const events = response.json().events as Array<{ amountCents: number }>;
-      assert.ok(events.some((e) => e.amountCents === -7_000), "the cash (source) leg must still show");
+      assert.ok(!events.some((e) => e.amountCents === -7_000), "the cash (source) leg must not show: the purchase already counted");
       assert.ok(!events.some((e) => e.amountCents === 7_000), "the card's own leg must not show");
+
+      for (const [id, expected] of [
+        [accountId, -7_000],
+        [cardId, 7_000],
+      ] as const) {
+        const perAccount = await app.fastify.inject({
+          method: "GET",
+          url: `/workspaces/${workspaceId}/budget-months/2026-10/events?accountId=${id}`,
+          headers: auth(),
+        });
+        assert.ok((perAccount.json().events as Array<{ amountCents: number }>).some((e) => e.amountCents === expected));
+      }
     });
 
     it("a credit card's own 'Starting balance' transaction produces no event, with or without accountId", async () => {
