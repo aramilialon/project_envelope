@@ -39,6 +39,9 @@ const camt = (entries: readonly string[], accountCcy?: string) =>
 
 const amounts = (rows: readonly { amountCents: number }[]) => rows.map((row) => row.amountCents);
 
+const tooManyDecimals = (decimals: number, currency: string) => (error: unknown) =>
+  isValidationError(error, "too_many_decimals") && error.details.decimals === decimals && error.details.currency === currency;
+
 const mismatch = (fileCurrency: string, accountCurrency: string) => (error: unknown) =>
   isValidationError(error, "currency_mismatch") &&
   error.details.fileCurrency === fileCurrency &&
@@ -47,9 +50,11 @@ const mismatch = (fileCurrency: string, accountCurrency: string) => (error: unkn
 describe("imported amounts in the account currency's minor units (#671)", () => {
   it("CSV", () => {
     const content = "2026-09-15,Sale,-1000\n2026-09-16,Fee,1.500\n";
-    assert.deepEqual(amounts(parseCsv(content, CSV_MAPPING, { currency: "JPY" })), [-1000, 2]);
     assert.deepEqual(amounts(parseCsv(content, CSV_MAPPING, { currency: "EUR" })), [-100_000, 150]);
     assert.deepEqual(amounts(parseCsv(content, CSV_MAPPING, { currency: "KWD" })), [-1_000_000, 1500]);
+    // "1.500" is not a yen amount: read with the wrong separator, or from an account in another currency.
+    assert.throws(() => parseCsv(content, CSV_MAPPING, { currency: "JPY" }), tooManyDecimals(0, "JPY"));
+    assert.deepEqual(amounts(parseCsv("2026-09-15,Sale,-1000\n2026-09-16,Fee,2.00\n", CSV_MAPPING, { currency: "JPY" })), [-1000, 2]);
   });
 
   it("CSV with separate outflow and inflow columns", () => {
@@ -64,28 +69,45 @@ describe("imported amounts in the account currency's minor units (#671)", () => 
     };
     const content = "2026-09-15,Sale,1.250,\n2026-09-16,Refund,,3\n";
     assert.deepEqual(amounts(parseCsv(content, split, { currency: "KWD" })), [-1250, 3000]);
-    assert.deepEqual(amounts(parseCsv(content, split, { currency: "JPY" })), [-1, 3]);
+    assert.deepEqual(amounts(parseCsv(content, split, { currency: "EUR" })), [-125, 300]);
+    assert.throws(() => parseCsv(content, split, { currency: "JPY" }), tooManyDecimals(0, "JPY"));
+  });
+
+  it("CSV: a zero outflow is 0, never -0", () => {
+    const split: CsvMapping = {
+      hasHeaderRow: false,
+      dateColumn: 0,
+      dateFormat: "YYYY-MM-DD",
+      descriptionColumn: 1,
+      outflowColumn: 2,
+      inflowColumn: 3,
+      decimalSeparator: ".",
+    };
+    const rows = parseCsv("2026-09-15,Fee waived,0.00,\n2026-09-16,Fee waived,-0,\n", split, { currency: "EUR" });
+    for (const row of rows) assert.ok(Object.is(row.amountCents, 0));
   });
 
   it("QIF", () => {
     const content = "!Type:Bank\nD21/09/2026\nPA\nT-1.000,50\n^\nD22/09/2026\nPB\nT2,25\n^\n";
-    assert.deepEqual(amounts(parseQif(content, {}, { currency: "JPY" })), [-1001, 2]);
     assert.deepEqual(amounts(parseQif(content, {}, { currency: "EUR" })), [-100_050, 225]);
     assert.deepEqual(amounts(parseQif(content, {}, { currency: "KWD" })), [-1_000_500, 2250]);
+    assert.throws(() => parseQif(content, {}, { currency: "JPY" }), tooManyDecimals(0, "JPY"));
   });
 
   it("OFX", () => {
-    const content = ofx(["-1500.00", "+250", "0.125"]);
-    assert.deepEqual(amounts(parseOfx(content, { currency: "JPY" })), [-1500, 250, 0]);
-    assert.deepEqual(amounts(parseOfx(content, { currency: "EUR" })), [-150_000, 25_000, 13]);
-    assert.deepEqual(amounts(parseOfx(content, { currency: "KWD" })), [-1_500_000, 250_000, 125]);
+    const content = ofx(["-1500.00", "+250", "0.120"]);
+    assert.deepEqual(amounts(parseOfx(content, { currency: "EUR" })), [-150_000, 25_000, 12]);
+    assert.deepEqual(amounts(parseOfx(content, { currency: "KWD" })), [-1_500_000, 250_000, 120]);
+    assert.throws(() => parseOfx(content, { currency: "JPY" }), tooManyDecimals(0, "JPY"));
+    assert.deepEqual(amounts(parseOfx(ofx(["-1500.00", "+250"]), { currency: "JPY" })), [-1500, 250]);
   });
 
   it("CAMT.053", () => {
-    const content = camt([camtEntry("1500"), camtEntry("1.500"), camtEntry("0.005")]);
-    assert.deepEqual(amounts(parseCamt053(content, { currency: "JPY" })), [-1500, -2, 0]);
-    assert.deepEqual(amounts(parseCamt053(content, { currency: "EUR" })), [-150_000, -150, -1]);
-    assert.deepEqual(amounts(parseCamt053(content, { currency: "KWD" })), [-1_500_000, -1500, -5]);
+    const content = camt([camtEntry("1500"), camtEntry("1.500"), camtEntry("0.050")]);
+    assert.deepEqual(amounts(parseCamt053(content, { currency: "EUR" })), [-150_000, -150, -5]);
+    assert.deepEqual(amounts(parseCamt053(content, { currency: "KWD" })), [-1_500_000, -1500, -50]);
+    assert.throws(() => parseCamt053(content, { currency: "JPY" }), tooManyDecimals(0, "JPY"));
+    assert.deepEqual(amounts(parseCamt053(camt([camtEntry("1500"), camtEntry("2.000")]), { currency: "JPY" })), [-1500, -2]);
   });
 
   it("CAMT.053 still refuses a signed amount: the sign is the credit/debit indicator", () => {
@@ -106,6 +128,44 @@ describe("a file stating another currency than the account's (#672)", () => {
   it("OFX: refuses the whole file before reading any amount", () => {
     // A malformed amount would be invalid_amount_format: the currency is checked first.
     assert.throws(() => parseOfx(ofx(["oops"], "USD"), { currency: "EUR" }), mismatch("USD", "EUR"));
+  });
+
+  it("OFX: refuses a transaction whose own CURRENCY is another one, and reads one in the account's", () => {
+    const withTransaction = (inner: string) =>
+      "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>EUR<BANKTRANLIST>" +
+      "<STMTTRN><DTPOSTED>20260920<TRNAMT>-10.00<FITID>A</STMTTRN>" +
+      `<STMTTRN><DTPOSTED>20260921<TRNAMT>-20.00<FITID>B${inner}</STMTTRN>` +
+      "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+    // The whole file is refused, the transaction before it included: nothing is staged.
+    assert.throws(
+      () => parseOfx(withTransaction("<CURRENCY><CURRATE>1.08<CURSYM>USD</CURRENCY>"), { currency: "EUR" }),
+      mismatch("USD", "EUR"),
+    );
+    // OFX 2.x closes every tag.
+    assert.throws(
+      () => parseOfx(withTransaction("<CURRENCY><CURRATE>1.08</CURRATE><CURSYM>usd</CURSYM></CURRENCY>"), { currency: "EUR" }),
+      mismatch("USD", "EUR"),
+    );
+    // Its own currency stated as the account's: read as it is, CURRATE never applied.
+    assert.deepEqual(
+      amounts(parseOfx(withTransaction("<CURRENCY><CURRATE>1.08<CURSYM>EUR</CURRENCY>"), { currency: "EUR" })),
+      [-1000, -2000],
+    );
+  });
+
+  it("OFX: ignores ORIGCURRENCY, the currency the bank converted from: the amount is in CURDEF's", () => {
+    const content =
+      "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>EUR<BANKTRANLIST>" +
+      "<STMTTRN><DTPOSTED>20260920<TRNAMT>-20.00<FITID>B<ORIGCURRENCY><CURRATE>1.08<CURSYM>USD</ORIGCURRENCY></STMTTRN>" +
+      "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+    assert.deepEqual(amounts(parseOfx(content, { currency: "EUR" })), [-2000]);
+  });
+
+  it("OFX: refuses a CURDEF that is not a currency code without echoing it (security)", () => {
+    const unknown = (error: unknown) =>
+      isValidationError(error, "currency_mismatch") && error.details.fileCurrency === undefined && error.details.accountCurrency === "EUR";
+    assert.throws(() => parseOfx(ofx(["-10.00"], "Z".repeat(100_000)), { currency: "EUR" }), unknown);
+    assert.throws(() => parseOfx(ofx(["-10.00"], "12$"), { currency: "EUR" }), unknown);
   });
 
   it("OFX: refuses a file of several statements when any one of them is in another currency", () => {

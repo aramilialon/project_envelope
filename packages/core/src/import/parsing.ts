@@ -10,33 +10,52 @@
 import { ValidationError } from "../errors.ts";
 import { assertAmount, currencyDecimals, MAX_AMOUNT_CENTS, type Cents, type CurrencyCode } from "../money.ts";
 
+/** The most integer digits an amount can have in any currency: `MAX_AMOUNT_CENTS` in a currency without decimals. */
+const MAX_INTEGER_DIGITS = String(MAX_AMOUNT_CENTS).length;
+
 /**
  * A plain decimal number ("-1234.5", "1500", "0.125") in the minor units of
  * `currency`, exactly, without floating point (ADR 0002, #671): "1000" is
  * 100000 cents in EUR, 1000 yen in JPY and 1000000 fils in KWD.
  *
- * Decimals beyond the currency's own are rounded half away from zero, to the
- * minor unit, the rule for any conversion to an amount (ADR 0011): "12.345"
- * in EUR is 1235 cents, "-12.345" is -1235, "12.344" is 1234, and "1000.5" in
- * JPY is 1001 yen. Trailing zeros are never a rounding: "1500.00" in JPY is
- * 1500 yen. Never returns -0.
+ * An imported amount is a fact about the bank's own record, so it is never
+ * rounded: decimals beyond the currency's own must be zeros ("1500.00" in JPY
+ * is 1500 yen, "42.5000" in EUR is 4250 cents), and any other is refused,
+ * since the amount was misread (a wrong decimal separator, or a file from an
+ * account in another currency). Never returns -0.
  *
  * Returns null for text that is not `-?digits(.digits)?`.
  *
- * @throws ValidationError "amount_too_large" (details: label, max, value) beyond
- *   `MAX_AMOUNT_CENTS`, however many digits the text has.
+ * @throws ValidationError "too_many_decimals" (details: decimals, currency) for
+ *   a non-zero digit beyond the currency's decimals; "amount_too_large"
+ *   (details: label, max, and value when the text is short enough to be read)
+ *   beyond `MAX_AMOUNT_CENTS`, however many digits the text has. Neither echoes
+ *   the text, which can be as long as the file.
  */
 export function scaleDecimalAmount(text: string, currency: CurrencyCode): Cents | null {
   const match = /^(-)?(\d+)(?:\.(\d+))?$/.exec(text);
   if (match === null) return null;
-  const [, minus, integerDigits = "0", fractionDigits = ""] = match;
+  const [, minus, digits = "0", fractionDigits = ""] = match;
+  // Bound the digits before BigInt: a file's amount can be a million digits long, and reading
+  // or echoing it whole would block the process (and fill the reply) for nothing.
+  const integerDigits = digits.replace(/^0+/, "");
+  if (integerDigits.length > MAX_INTEGER_DIGITS) {
+    throw new ValidationError("amount_too_large", `amount is beyond ${MAX_AMOUNT_CENTS} minor units`, {
+      label: "amount",
+      max: MAX_AMOUNT_CENTS,
+    });
+  }
   const decimals = currencyDecimals(currency);
+  if (/[1-9]/.test(fractionDigits.slice(decimals))) {
+    throw new ValidationError("too_many_decimals", `an amount in ${currency} has at most ${decimals} decimals`, {
+      decimals,
+      currency,
+    });
+  }
   const kept = fractionDigits.slice(0, decimals).padEnd(decimals, "0");
-  const firstDropped = fractionDigits[decimals];
-  const roundsUp = firstDropped !== undefined && firstDropped >= "5";
-  const magnitude = BigInt(integerDigits + kept) + (roundsUp ? 1n : 0n);
+  const magnitude = BigInt(integerDigits + kept);
   if (magnitude > BigInt(MAX_AMOUNT_CENTS)) {
-    // Too many digits to be exact is too large too: the cap is far inside the safe range.
+    // At most MAX_INTEGER_DIGITS plus the currency's decimals: short enough to echo.
     const value = minus === undefined ? magnitude : -magnitude;
     throw new ValidationError("amount_too_large", `amount is beyond ${MAX_AMOUNT_CENTS} minor units: ${value}`, {
       label: "amount",
@@ -55,8 +74,8 @@ export function scaleDecimalAmount(text: string, currency: CurrencyCode): Cents 
  * character (when present) as a thousands group separator, in the minor
  * units of `currency` (`scaleDecimalAmount`).
  *
- * @throws ValidationError with code "invalid_amount_format", or "amount_too_large" beyond
- *   `MAX_AMOUNT_CENTS` (ADR 0002).
+ * @throws ValidationError with code "invalid_amount_format", "too_many_decimals", or
+ *   "amount_too_large" beyond `MAX_AMOUNT_CENTS` (ADR 0002).
  */
 export function parseDecimalAmount(
   text: string,
@@ -81,13 +100,20 @@ export function parseDecimalAmount(
  * account's currency. A file that states none (CSV, QIF, or an OFX or
  * CAMT.053 file without one) is read in the account's currency.
  *
- * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency).
+ * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency). The
+ *   file's value is echoed only when it has the shape of a currency code (three letters);
+ *   anything else is refused with `accountCurrency` alone, since it can be as long as the file.
  */
 export function assertFileCurrency(fileCurrency: string | undefined, accountCurrency: CurrencyCode): void {
   if (fileCurrency === undefined) return;
   // An ISO 4217 code: OFX 1.x is not case-sensitive, and surrounding spaces are not part of it.
   const stated = fileCurrency.trim().toUpperCase();
   if (stated === "" || stated === accountCurrency) return;
+  if (!/^[A-Z]{3}$/.test(stated)) {
+    throw new ValidationError("currency_mismatch", `the file states no recognizable currency, the account is in ${accountCurrency}`, {
+      accountCurrency,
+    });
+  }
   throw new ValidationError("currency_mismatch", `the file is in ${stated}, the account in ${accountCurrency}`, {
     fileCurrency: stated,
     accountCurrency,

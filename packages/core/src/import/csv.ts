@@ -126,7 +126,9 @@ export function parseCsv(content: string, mapping: CsvMapping, options: ImportOp
       if (inflowText) {
         amountCents = parseCsvAmount(inflowText, mapping.decimalSeparator, options.currency);
       } else if (outflowText) {
-        amountCents = -Math.abs(parseCsvAmount(outflowText, mapping.decimalSeparator, options.currency));
+        const outflow = parseCsvAmount(outflowText, mapping.decimalSeparator, options.currency);
+        // A zero outflow ("0.00") is 0, never -0, whatever sign the file gave it.
+        amountCents = outflow === 0 ? 0 : -Math.abs(outflow);
       } else {
         amountCents = 0;
       }

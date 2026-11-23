@@ -56,14 +56,27 @@ function statedCurrencies(content: string): string[] {
 }
 
 /**
+ * The currency a `<STMTTRN>` states for its own amount, in `<CURRENCY><CURSYM>`, when it overrides
+ * the statement's `<CURDEF>`. `<ORIGCURRENCY>` is not read: it names the currency the bank converted
+ * from, while the amount itself stays in `<CURDEF>`'s.
+ */
+function transactionCurrency(block: string): string | undefined {
+  // `<CURRENCY>` is an aggregate, closed in both OFX versions; "<ORIGCURRENCY>" never matches "<CURRENCY>".
+  const [currency] = findTagBlocks(block, "CURRENCY", { limit: 1 });
+  return currency === undefined ? undefined : (extractTag(currency, "CURSYM") ?? "");
+}
+
+/**
  * Amounts are read in the minor units of `options.currency`, the account's (#671). A file whose
- * statement states another currency in `<CURDEF>` is refused whole, before any of its amounts is
- * read (#672); a file with no `<CURDEF>` is read in the account's currency.
+ * statement states another currency in `<CURDEF>`, or with a transaction stating another one in
+ * `<CURRENCY><CURSYM>`, is refused whole, before any of its amounts is read (#672); the file's
+ * `<CURRATE>` is never applied, since the account's register holds what the bank booked in its own
+ * currency. A file with no `<CURDEF>` is read in the account's currency.
  *
  * A `<STMTTRN>` with no closing tag after it ends the file: it and anything after it are ignored.
  *
  * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency) for a
- *   `<CURDEF>` other than the account's currency; "invalid_ofx_transaction" for a `<STMTTRN>`
+ *   `<CURDEF>` or transaction `<CURSYM>` other than the account's currency; "invalid_ofx_transaction" for a `<STMTTRN>`
  *   missing DTPOSTED or TRNAMT; "invalid_date"/"invalid_amount_format"/"amount_too_large" for a
  *   malformed date or amount.
  */
@@ -72,6 +85,7 @@ export function parseOfx(content: string, options: ImportOptions): ImportRow[] {
 
   // A linear scan, not a lazy regular expression: see tag-blocks.ts (#675).
   const blocks = findTagBlocks(content, "STMTTRN");
+  for (const block of blocks) assertFileCurrency(transactionCurrency(block), options.currency);
 
   return blocks.map((block) => {
     const dtposted = extractTag(block, "DTPOSTED");
