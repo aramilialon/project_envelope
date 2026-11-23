@@ -457,8 +457,21 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     '26/09/2026;26/09/2026;TRANSFER FROM LUCA BIANCHI DINNER REFUND;30,00;3.321,18'
   ].join('\n');
 
+  // A CSV whose amounts have three decimals: read with a comma separator in a euro account, it is refused (#671).
+  var SAMPLE_3DEC = 'Date;Description;Amount\n' + [
+    '01/09/2026;POS PAYMENT FUEL STATION;-61,350',
+    '03/09/2026;POS PAYMENT SUPERMARKET;-42,125',
+    '04/09/2026;POS PAYMENT PHARMACY;-8,900'
+  ].join('\n');
+
+  // What the app answers when it refuses a file: the same sentences as the import screen (#671, #672).
+  var STAGE_ERRORS = {
+    currency: 'A file can be imported only into an account in the same currency: this file\'s currency is US Dollar (USD), and this account\'s is Euro (EUR).',
+    decimals: 'An amount in Euro (EUR) can have at most 2 decimal places: this file has an amount with more, so it was not imported. The decimal separator chosen may not be the file\'s, or the file may be from an account in another currency.'
+  };
+
   var ROLES = [['', 'Ignore'], ['date', 'Date'], ['desc', 'Description'], ['amount', 'Amount'], ['out', 'Outflow'], ['in', 'Inflow'], ['memo', 'Memo']];
-  var imp = { step: 1, name: '', rows: [], header: true, roles: [], datefmt: 'dmy', dec: 'comma', remember: true, review: [], result: null, dragover: false };
+  var imp = { step: 1, name: '', rows: [], header: true, roles: [], datefmt: 'dmy', dec: 'comma', remember: true, review: [], result: null, dragover: false, stageError: null };
 
   function splitLine(line, sep) {
     var out = [], cur = '', q = false;
@@ -475,6 +488,7 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var lines = text.replace(/\r/g, '').split('\n').filter(function (l) { return l.trim(); });
     var sep = (lines[0].split(';').length >= lines[0].split(',').length) ? ';' : ',';
     imp.name = name; imp.rows = lines.map(function (l) { return splitLine(l, sep); });
+    imp.stageError = null;
     // Guess the columns from the header names.
     var head = imp.rows[0].map(function (h) { return h.toLowerCase(); });
     var used = {};
@@ -555,6 +569,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<input type="file" id="file-in" class="file-in" accept=".csv,.txt,.ofx,.qif,.xml">' +
         '<div class="or">or</div>' +
         '<div class="row-btns"><button type="button" class="btn primary" data-sample="1">Use the sample file (september-transactions.csv)</button>' +
+        '<button type="button" class="btn" data-sample="usd">Use a file in US dollars</button>' +
+        '<button type="button" class="btn" data-sample="3dec">Use a file with three-decimal amounts</button>' +
         '<span class="hint">In this mockup only CSV files are read; OFX, QIF and CAMT.053 need no column mapping.</span></div>';
     } else if (imp.step === 2) {
       var errs = mappingErrors();
@@ -607,6 +623,8 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
         '<p class="hint" style="margin:0">' + (res.bankBalance === res.appBalance ? 'The statement\'s closing balance matches the account.' : 'The statement\'s closing balance differs from the account by ' + f(res.bankBalance - res.appBalance) + ': check with reconciliation.') + '</p>' +
         '<div class="row-btns"><button type="button" class="btn primary" data-torec="1">Reconcile now</button><button type="button" class="btn" data-go="1">Import another file</button></div></div>';
     }
+    // A refused file: one red line above the step, where the import screen shows it, until the file or the separator changes.
+    if (imp.stageError) h = '<div class="hint bad" role="alert">' + esc(STAGE_ERRORS[imp.stageError]) + '</div>' + h;
     el('stage').innerHTML = h;
   }
   function doImport() {
@@ -690,9 +708,14 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
     var d = b.dataset;
     if (b.id === 'tab-imp') return show('imp');
     if (b.id === 'tab-rec') { renderRec(); return show('rec'); }
+    if (d.sample === 'usd') { imp.step = 1; imp.stageError = 'currency'; return renderImport(); }
+    if (d.sample === '3dec') return load('fuel-card.csv', SAMPLE_3DEC);
     if (d.sample) return load('september-transactions.csv', SAMPLE);
     if (d.go) {
       var n = Number(d.go);
+      // The three-decimal file read with a comma: "-42,125" is not a euro amount, so the app refuses it at this step.
+      if (n === 3 && imp.name === 'fuel-card.csv' && imp.dec === 'comma') { imp.stageError = 'decimals'; return renderImport(); }
+      imp.stageError = null;
       if (n === 3) buildReview();
       if (n === 4) doImport();
       if (n === 1) { imp.rows = []; imp.result = null; }
@@ -724,7 +747,11 @@ h1,h2,h3,h4,.big{font-family:var(--display);font-stretch:92%;letter-spacing:-.3p
       reader.readAsText(file);
       return;
     }
-    if (d.imp) { imp[d.imp] = t.type === 'checkbox' ? t.checked : t.value; return renderImport(); }
+    if (d.imp) {
+      imp[d.imp] = t.type === 'checkbox' ? t.checked : t.value;
+      if (d.imp === 'dec') imp.stageError = null;
+      return renderImport();
+    }
     if (d.role !== undefined) { imp.roles[Number(d.role)] = t.value; return renderImport(); }
     if (d.inc !== undefined) { imp.review[Number(d.inc)].include = t.checked; return renderImport(); }
     if (d.ct !== undefined) { var r = imp.review[Number(d.ct)]; r.cat = t.value; r.status = t.value ? 'new' : 'need'; return renderImport(); }

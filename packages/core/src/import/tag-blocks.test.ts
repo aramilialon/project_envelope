@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { assertScalesLinearly } from "../testing/linear-time.ts";
 import { mulberry32 } from "../testing/random.ts";
-import { findTagBlocks } from "./tag-blocks.ts";
+import { findTagBlocks, findTagElements } from "./tag-blocks.ts";
 
 // The lazy regular expressions findTagBlocks replaced (#675): it must find exactly what they found.
 function regexBlocks(content: string, tag: string, attributes: boolean): string[] {
@@ -79,5 +79,19 @@ describe("findTagBlocks", () => {
       (content) => assert.deepEqual(findTagBlocks(content, "a", { attributes: true }), []),
       200_000,
     );
+  });
+});
+
+describe("findTagElements", () => {
+  it("gives each element's opening-tag attributes with its body, as findTagBlocks finds them", () => {
+    const content = `<Amt Ccy="EUR">1.00</Amt><Amt>2.00</Amt><AmtDtls>x</AmtDtls><Amt\n Ccy='USD'>3.00</Amt>`;
+    assert.deepEqual(findTagElements(content, "Amt", { attributes: true }), [
+      { attributes: ' Ccy="EUR"', body: "1.00" },
+      { attributes: "", body: "2.00" },
+      { attributes: "\n Ccy='USD'", body: "3.00" },
+    ]);
+    assert.deepEqual(findTagElements(content, "Amt", { attributes: true, limit: 1 }), [{ attributes: ' Ccy="EUR"', body: "1.00" }]);
+    // Without attributes only the bare opening tag counts, so no element has any.
+    assert.deepEqual(findTagElements(content, "Amt"), [{ attributes: "", body: "2.00" }]);
   });
 });

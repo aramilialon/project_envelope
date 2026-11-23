@@ -257,4 +257,24 @@ describe("smoke: 0.1.4 Import, against the real process", () => {
     assert.equal(second.duplicateCount, 0, "an unrelated statement must not be flagged as a duplicate");
     assert.ok(second.staged.every((row) => row.duplicateOf === null));
   });
+
+  it("an OFX file is read in the account's currency, and refused when it states another (#671, #672)", async () => {
+    const yen = await api<{ id: string }>("POST", "/accounts", { name: "Yen broker", type: "brokerage", currency: "JPY", onBudget: false });
+    const ofx = (curdef: string) =>
+      `<OFX><STMTRS><CURDEF>${curdef}<STMTTRN><DTPOSTED>20261103<TRNAMT>-1500<FITID>JPY-SMOKE</STMTTRN></STMTRS></OFX>`;
+
+    const staged = await api<{ staged: readonly { amountCents: number }[] }>("POST", `/accounts/${yen.id}/import`, {
+      content: ofx("JPY"),
+      format: "ofx",
+    });
+    assert.deepEqual(staged.staged.map((row) => row.amountCents), [-1500], "¥1,500 is 1500 minor units, not 150000");
+
+    const refused = await fetch(`${server.baseUrl}/workspaces/${workspaceId}/accounts/${yen.id}/import`, {
+      method: "POST",
+      headers: auth(),
+      body: JSON.stringify({ content: ofx("USD"), format: "ofx" }),
+    });
+    assert.equal(refused.status, 400);
+    assert.deepEqual(await refused.json(), { error: "currency_mismatch", details: { fileCurrency: "USD", accountCurrency: "JPY" } });
+  });
 });

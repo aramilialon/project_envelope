@@ -8,6 +8,7 @@ import { parseCsv, type CsvMapping } from "./csv.ts";
 import { parseOfx } from "./ofx.ts";
 import { parseQif } from "./qif.ts";
 
+const EUR = { currency: "EUR" } as const;
 // Every import format applies the cap on a single amount (#651, ADR 0002): the cap itself is
 // read, one cent more refused with "amount_too_large" and the cap in `details.max`. The figures
 // are derived from `MAX_AMOUNT_CENTS`, so they follow it.
@@ -39,22 +40,22 @@ const qif = (amount: string) => `!Type:Bank\nD21/09/2026\nPA\nT-10,00\n^\nD22/09
 
 describe("imported amounts and the cap (#651)", () => {
   it("CSV", () => {
-    assert.equal(parseCsv(`2026-09-15,Sale,${AT_CAP}\n`, CSV_MAPPING)[0]?.amountCents, MAX_AMOUNT_CENTS);
-    assert.throws(() => parseCsv(`2026-09-15,Sale,${OVER_CAP}\n`, CSV_MAPPING), tooLarge);
+    assert.equal(parseCsv(`2026-09-15,Sale,${AT_CAP}\n`, CSV_MAPPING, EUR)[0]?.amountCents, MAX_AMOUNT_CENTS);
+    assert.throws(() => parseCsv(`2026-09-15,Sale,${OVER_CAP}\n`, CSV_MAPPING, EUR), tooLarge);
   });
 
   it("OFX", () => {
-    assert.equal(parseOfx(ofx(`-${AT_CAP}`))[0]?.amountCents, -MAX_AMOUNT_CENTS);
-    assert.throws(() => parseOfx(ofx(`-${OVER_CAP}`)), tooLarge);
+    assert.equal(parseOfx(ofx(`-${AT_CAP}`), EUR)[0]?.amountCents, -MAX_AMOUNT_CENTS);
+    assert.throws(() => parseOfx(ofx(`-${OVER_CAP}`), EUR), tooLarge);
   });
 
   it("CAMT.053", () => {
-    assert.equal(parseCamt053(camt(AT_CAP))[0]?.amountCents, MAX_AMOUNT_CENTS);
-    assert.throws(() => parseCamt053(camt(OVER_CAP)), tooLarge);
+    assert.equal(parseCamt053(camt(AT_CAP), EUR)[0]?.amountCents, MAX_AMOUNT_CENTS);
+    assert.throws(() => parseCamt053(camt(OVER_CAP), EUR), tooLarge);
   });
 
   it("QIF", () => {
-    assert.equal(parseQif(qif(itIT(MAX_AMOUNT_CENTS)))[1]?.amountCents, MAX_AMOUNT_CENTS);
-    assert.throws(() => parseQif(qif(itIT(MAX_AMOUNT_CENTS + 1))), tooLarge);
+    assert.equal(parseQif(qif(itIT(MAX_AMOUNT_CENTS)), {}, EUR)[1]?.amountCents, MAX_AMOUNT_CENTS);
+    assert.throws(() => parseQif(qif(itIT(MAX_AMOUNT_CENTS + 1)), {}, EUR), tooLarge);
   });
 });

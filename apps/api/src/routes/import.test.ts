@@ -229,6 +229,154 @@ describe("import routes", () => {
     assert.equal(result.staged[0].externalId, "CAMT-ROUTE-1");
   });
 
+  it("reads each format's amounts in the account currency's own minor units (#671)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const yen = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Yen broker', 'brokerage', 'JPY', false) RETURNING id",
+      [workspaceId],
+    );
+    const dinar = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Dinar savings', 'savings', 'KWD', false) RETURNING id",
+      [workspaceId],
+    );
+    const stage = async (id: string, payload: Record<string, unknown>) => {
+      const response = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${id}/import`,
+        headers: auth,
+        payload,
+      });
+      assert.equal(response.statusCode, 201, response.body);
+      return response.json();
+    };
+
+    const csv = await stage(yen.rows[0]!.id, { content: "Date,Description,Amount\n2026-11-02,Fee,-1000\n", mapping: MAPPING });
+    assert.deepEqual(csv.staged.map((row: { amountCents: number }) => row.amountCents), [-1000]);
+
+    const ofx = await stage(yen.rows[0]!.id, {
+      format: "ofx",
+      content: "<OFX><STMTRS><CURDEF>JPY<STMTTRN><DTPOSTED>20261103<TRNAMT>25000.00<FITID>JPY-1</STMTTRN></STMTRS></OFX>",
+      // A balance is read in the same minor units: ¥24,000 after a ¥1,000 fee staged above is not yet in the account.
+      closingBalanceCents: 24_000,
+    });
+    assert.deepEqual(ofx.staged.map((row: { amountCents: number }) => row.amountCents), [25_000]);
+    assert.deepEqual(ofx.closingBalance, { statementCents: 24_000, projectedCents: 25_000, differenceCents: -1000 });
+
+    const qif = await stage(dinar.rows[0]!.id, { format: "qif", content: "!Type:Bank\nD21/10/2026\nPBakery\nT-1,50\n^\n" });
+    assert.deepEqual(qif.staged.map((row: { amountCents: number }) => row.amountCents), [-1500]);
+
+    const camt = await stage(dinar.rows[0]!.id, {
+      format: "camt053",
+      content: '<Ntry><Amt Ccy="KWD">12.345</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-10</Dt></BookgDt></Ntry>',
+    });
+    assert.deepEqual(camt.staged.map((row: { amountCents: number }) => row.amountCents), [12_345]);
+  });
+
+  it("refuses an OFX or CAMT.053 file in another currency than the account's, staging nothing (#672)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const account = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Euro checking', 'checking', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    const id = account.rows[0]!.id;
+    const files = [
+      {
+        format: "ofx",
+        content: "<OFX><STMTRS><CURDEF>USD<STMTTRN><DTPOSTED>20261103<TRNAMT>-15.00<FITID>USD-1</STMTTRN></STMTRS></OFX>",
+      },
+      {
+        format: "camt053",
+        content: '<Ntry><Amt Ccy="USD">15.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-10</Dt></BookgDt></Ntry>',
+      },
+    ];
+    for (const payload of files) {
+      const refused = await app.fastify.inject({
+        method: "POST",
+        url: `/workspaces/${workspaceId}/accounts/${id}/import`,
+        headers: auth,
+        payload,
+      });
+      assert.equal(refused.statusCode, 400, payload.format);
+      assert.deepEqual(refused.json(), { error: "currency_mismatch", details: { fileCurrency: "USD", accountCurrency: "EUR" } });
+    }
+
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${id}/staged-transactions`,
+      headers: auth,
+    });
+    assert.deepEqual(listed.json().staged, []);
+
+    // The same file stating the account's own currency is staged as usual.
+    const accepted = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${id}/import`,
+      headers: auth,
+      payload: { format: "ofx", content: files[0]!.content.replace("<CURDEF>USD", "<CURDEF>EUR") },
+    });
+    assert.equal(accepted.statusCode, 201);
+    assert.deepEqual(accepted.json().staged.map((row: { amountCents: number }) => row.amountCents), [-1500]);
+  });
+
+  it("refuses a CURDEF that is not a currency code without echoing it (#672)", async () => {
+    const account = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency) VALUES ($1, 'Euro bills', 'checking', 'EUR') RETURNING id",
+      [workspaceId],
+    );
+    const refused = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${account.rows[0]!.id}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        format: "ofx",
+        content: `<OFX><STMTRS><CURDEF>${"Z".repeat(100_000)}<STMTTRN><DTPOSTED>20261103<TRNAMT>-15.00<FITID>Z-1</STMTTRN></STMTRS></OFX>`,
+      },
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.deepEqual(refused.json(), { error: "currency_mismatch", details: { accountCurrency: "EUR" } });
+  });
+
+  it("refuses an amount with non-zero decimals beyond the account currency's, staging nothing (#671)", async () => {
+    const auth = { authorization: `Bearer ${token}` };
+    const yen = await superuserPool.query<{ id: string }>(
+      "INSERT INTO accounts (workspace_id, name, type, currency, on_budget) VALUES ($1, 'Yen wallet', 'cash', 'JPY', false) RETURNING id",
+      [workspaceId],
+    );
+    const id = yen.rows[0]!.id;
+    const refused = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${id}/import`,
+      headers: auth,
+      payload: { content: "Date,Description,Amount\n2026-11-02,Fee,-1000\n2026-11-03,Tea,1.250\n", mapping: MAPPING },
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.deepEqual(refused.json(), { error: "too_many_decimals", details: { decimals: 0, currency: "JPY" } });
+    const listed = await app.fastify.inject({
+      method: "GET",
+      url: `/workspaces/${workspaceId}/accounts/${id}/staged-transactions`,
+      headers: auth,
+    });
+    assert.deepEqual(listed.json().staged, []);
+  });
+
+  it("refuses a near-megabyte amount at once, with a small reply (#671)", async () => {
+    const started = performance.now();
+    const refused = await app.fastify.inject({
+      method: "POST",
+      url: `/workspaces/${workspaceId}/accounts/${accountId}/import`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        format: "ofx",
+        content: `<OFX><STMTRS><STMTTRN><DTPOSTED>20261103<TRNAMT>${"9".repeat(1_000_000)}<FITID>BIG-1</STMTTRN></STMTRS></OFX>`,
+      },
+    });
+    assert.equal(refused.statusCode, 400);
+    assert.equal(refused.json().error, "amount_too_large");
+    assert.ok(refused.body.length < 200, refused.body.slice(0, 200));
+    // Generous on purpose (a slow CI runner): reading the digits with BigInt took over a second.
+    assert.ok(performance.now() - started < 1_000);
+  });
+
   it("rejects an import with no mapping given and none saved", async () => {
     const response = await app.fastify.inject({
       method: "POST",

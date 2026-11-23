@@ -5,6 +5,7 @@ import { isValidationError } from "../errors.ts";
 import { assertScalesLinearly } from "../testing/linear-time.ts";
 import { parseCamt053 } from "./camt053.ts";
 
+const EUR = { currency: "EUR" } as const;
 // Shaped like a real camt.053.001.02 statement: a salary credit and a card debit, each with
 // their counterparty and remittance info under the entry's first transaction detail.
 const REALISTIC_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
@@ -48,7 +49,7 @@ const REALISTIC_FIXTURE = `<?xml version="1.0" encoding="UTF-8"?>
 
 describe("parseCamt053", () => {
   it("parses a realistic statement's entries", () => {
-    const rows = parseCamt053(REALISTIC_FIXTURE);
+    const rows = parseCamt053(REALISTIC_FIXTURE, EUR);
     assert.deepEqual(rows, [
       {
         date: "2026-09-02",
@@ -71,13 +72,13 @@ describe("parseCamt053", () => {
     const content =
       "<Ntry><Amt>10.00</Amt><CdtDbtInd>CRDT</CdtDbtInd>" +
       "<BookgDt><DtTm>2026-09-20T14:30:00</DtTm></BookgDt></Ntry>";
-    const rows = parseCamt053(content);
+    const rows = parseCamt053(content, EUR);
     assert.equal(rows[0]?.date, "2026-09-20");
   });
 
   it("falls back to ValDt when BookgDt is absent", () => {
     const content = "<Ntry><Amt>10.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><ValDt><Dt>2026-09-21</Dt></ValDt></Ntry>";
-    const rows = parseCamt053(content);
+    const rows = parseCamt053(content, EUR);
     assert.equal(rows[0]?.date, "2026-09-21");
   });
 
@@ -85,7 +86,7 @@ describe("parseCamt053", () => {
     const content =
       "<Ntry><Amt>5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-09-22</Dt></BookgDt>" +
       "<AddtlNtryInf>Bank fee</AddtlNtryInf></Ntry>";
-    const rows = parseCamt053(content);
+    const rows = parseCamt053(content, EUR);
     assert.equal(rows[0]?.payee, "");
     assert.equal(rows[0]?.memo, "Bank fee");
   });
@@ -94,7 +95,7 @@ describe("parseCamt053", () => {
     const content =
       "<Ntry><Amt>5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-09-23</Dt></BookgDt>" +
       "<NtryRef>NOTPROVIDED</NtryRef></Ntry>";
-    const rows = parseCamt053(content);
+    const rows = parseCamt053(content, EUR);
     assert.equal(rows[0]?.externalId, undefined);
   });
 
@@ -102,14 +103,14 @@ describe("parseCamt053", () => {
     const content =
       "<Ntry><Amt>5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-09-24</Dt></BookgDt>" +
       "<NtryRef>REF-24</NtryRef></Ntry>";
-    const rows = parseCamt053(content);
+    const rows = parseCamt053(content, EUR);
     assert.equal(rows[0]?.externalId, "REF-24");
   });
 
   it("rejects an entry missing both BookgDt and ValDt", () => {
     const content = "<Ntry><Amt>5.00</Amt><CdtDbtInd>DBIT</CdtDbtInd></Ntry>";
     assert.throws(
-      () => parseCamt053(content),
+      () => parseCamt053(content, EUR),
       (error: unknown) => isValidationError(error, "invalid_camt053_entry"),
     );
   });
@@ -117,7 +118,7 @@ describe("parseCamt053", () => {
   it("rejects an entry missing a valid CdtDbtInd", () => {
     const content = "<Ntry><Amt>5.00</Amt><BookgDt><Dt>2026-09-25</Dt></BookgDt></Ntry>";
     assert.throws(
-      () => parseCamt053(content),
+      () => parseCamt053(content, EUR),
       (error: unknown) => isValidationError(error, "invalid_camt053_entry"),
     );
   });
@@ -125,21 +126,21 @@ describe("parseCamt053", () => {
   it("rejects a malformed amount", () => {
     const content = "<Ntry><Amt>-not-a-number</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-09-26</Dt></BookgDt></Ntry>";
     assert.throws(
-      () => parseCamt053(content),
+      () => parseCamt053(content, EUR),
       (error: unknown) => isValidationError(error, "invalid_amount_format"),
     );
   });
 
   it("returns an empty array for a statement with no entries", () => {
-    assert.deepEqual(parseCamt053("<Document><BkToCstmrStmt><Stmt></Stmt></BkToCstmrStmt></Document>"), []);
+    assert.deepEqual(parseCamt053("<Document><BkToCstmrStmt><Stmt></Stmt></BkToCstmrStmt></Document>", EUR), []);
   });
 });
 
 describe("parseCamt053 on a hostile file (#675)", () => {
   it("parses in linear time a file of opening tags that never close", () => {
-    assertScalesLinearly((size) => "<Ntry>".repeat(size), parseCamt053, 200_000);
+    assertScalesLinearly((size) => "<Ntry>".repeat(size), (content) => parseCamt053(content, EUR), 200_000);
     assertScalesLinearly((size) => `<Ntry>${"<Amt>".repeat(size)}</Ntry>`, (content) => {
-      assert.throws(() => parseCamt053(content));
+      assert.throws(() => parseCamt053(content, EUR));
     }, 200_000);
   });
 
@@ -147,6 +148,6 @@ describe("parseCamt053 on a hostile file (#675)", () => {
     // The search ends at the first "<Ntry x" after one native scan for ">", well under a
     // millisecond on any of these inputs: too little to time, so this only fails if the time starts
     // to grow (the replaced expression scanned to the end of the file from every "<Ntry x").
-    assertScalesLinearly((size) => "<Ntry x".repeat(size), (content) => assert.deepEqual(parseCamt053(content), []), 200_000);
+    assertScalesLinearly((size) => "<Ntry x".repeat(size), (content) => assert.deepEqual(parseCamt053(content, EUR), []), 200_000);
   });
 });

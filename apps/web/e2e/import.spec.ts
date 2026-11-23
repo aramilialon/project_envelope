@@ -83,4 +83,48 @@ test.describe("import (#59)", () => {
       await user.teardown();
     }
   });
+
+  test("explains a file refused for its currency or its decimals (#671, #672)", async ({ page }) => {
+    const user = await createTestUser();
+    let workspace: Awaited<ReturnType<typeof createWorkspaceWithMembership>> | undefined;
+    try {
+      await signIn(page, user);
+      await expect(page.getByText("You do not belong to any workspace yet.")).toBeVisible();
+      const userId = await findUserIdBySubject(user.subject);
+      if (!userId) {
+        throw new Error("expected a local user row for this subject after sign-in");
+      }
+      workspace = await createWorkspaceWithMembership(userId, "Famiglia");
+      await page.goto(`/${workspace.id}/accounts`);
+      await page.getByRole("button", { name: "+ Add account" }).click();
+      await page.getByLabel("Name").fill("Checking");
+      await page.getByRole("button", { name: "Add account", exact: true }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      await page.getByRole("button", { name: "Checking" }).click();
+      await page.waitForURL(/\/accounts\/.+/);
+      await page.getByRole("link", { name: "Import" }).click();
+      await page.waitForURL(/\/accounts\/.+\/import/);
+
+      // A dollar statement into a euro account: refused at step 1, naming both currencies.
+      const ofx = "<OFX><STMTRS><CURDEF>USD<STMTTRN><DTPOSTED>20260917<TRNAMT>-15.00<FITID>USD-1</STMTTRN></STMTRS></OFX>";
+      await page.locator("#import-file-in").setInputFiles({ name: "dollars.ofx", mimeType: "application/x-ofx", buffer: Buffer.from(ofx) });
+      await expect(page.getByRole("alert")).toHaveText(
+        "A file can be imported only into an account in the same currency: this file's currency is US Dollar (USD), and this account's is Euro (EUR).",
+      );
+
+      // Three decimals in a euro amount: refused at the columns step, until the separator changes.
+      const csv = "Date,Description,Amount\n2026-09-17,Fuel station,-42.505\n";
+      await page.locator("#import-file-in").setInputFiles({ name: "fuel.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
+      await expect(page.getByText("Columns look good.")).toBeVisible();
+      await page.getByRole("button", { name: "Continue" }).click();
+      await expect(page.getByRole("alert")).toHaveText(
+        "An amount in Euro (EUR) can have at most 2 decimal places: this file has an amount with more, so it was not imported. The decimal separator chosen may not be the file's, or the file may be from an account in another currency.",
+      );
+      await page.getByLabel("Decimal separator").selectOption(",");
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } finally {
+      await workspace?.teardown();
+      await user.teardown();
+    }
+  });
 });

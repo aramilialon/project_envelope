@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { isValidationError } from "../errors.ts";
 import { parseCsv, type CsvMapping } from "./csv.ts";
 
+const EUR = { currency: "EUR" } as const;
 describe("parseCsv", () => {
   it("parses a single amount column, ISO dates, a header row and a dot decimal separator", () => {
     const mapping: CsvMapping = {
@@ -16,7 +17,7 @@ describe("parseCsv", () => {
     };
     const content = "Date,Description,Amount\n2026-09-15,Grocery store,-42.50\n2026-09-16,Salary,1000.00\n";
 
-    const rows = parseCsv(content, mapping);
+    const rows = parseCsv(content, mapping, EUR);
     assert.deepEqual(rows, [
       { date: "2026-09-15", payee: "Grocery store", amountCents: -4250 },
       { date: "2026-09-16", payee: "Salary", amountCents: 100000 },
@@ -37,7 +38,7 @@ describe("parseCsv", () => {
     // comma is also this CSV's own column delimiter.
     const content = '15/09/2026,Grocery store,"42,50",\n16/09/2026,Salary,,"1000,00"\n';
 
-    const rows = parseCsv(content, mapping);
+    const rows = parseCsv(content, mapping, EUR);
     assert.deepEqual(rows, [
       { date: "2026-09-15", payee: "Grocery store", amountCents: -4250 },
       { date: "2026-09-16", payee: "Salary", amountCents: 100000 },
@@ -53,7 +54,7 @@ describe("parseCsv", () => {
       amountColumn: 2,
       decimalSeparator: ".",
     };
-    const rows = parseCsv("09/05/2026,Coffee,-3.50\n", mapping);
+    const rows = parseCsv("09/05/2026,Coffee,-3.50\n", mapping, EUR);
     assert.equal(rows[0]?.date, "2026-09-05");
   });
 
@@ -67,7 +68,7 @@ describe("parseCsv", () => {
       memoColumn: 3,
       decimalSeparator: ".",
     };
-    const rows = parseCsv("2026-09-15,Grocery store,-42.50,split with a friend\n2026-09-16,Salary,1000.00,\n", mapping);
+    const rows = parseCsv("2026-09-15,Grocery store,-42.50,split with a friend\n2026-09-16,Salary,1000.00,\n", mapping, EUR);
     assert.equal(rows[0]?.memo, "split with a friend");
     assert.equal(rows[1]?.memo, undefined);
   });
@@ -81,7 +82,7 @@ describe("parseCsv", () => {
       amountColumn: 2,
       decimalSeparator: ".",
     };
-    const rows = parseCsv('2026-09-15,"Grocery store, downtown",-42.50\n', mapping);
+    const rows = parseCsv('2026-09-15,"Grocery store, downtown",-42.50\n', mapping, EUR);
     assert.equal(rows[0]?.payee, "Grocery store, downtown");
   });
 
@@ -95,7 +96,7 @@ describe("parseCsv", () => {
       decimalSeparator: ".",
     };
     assert.throws(
-      () => parseCsv("not-a-date,Grocery store,-42.50\n", mapping),
+      () => parseCsv("not-a-date,Grocery store,-42.50\n", mapping, EUR),
       (error: unknown) => isValidationError(error, "invalid_date"),
     );
   });
@@ -110,7 +111,7 @@ describe("parseCsv", () => {
       decimalSeparator: ".",
     };
     assert.throws(
-      () => parseCsv("2026-09-15,Grocery store,not-a-number\n", mapping),
+      () => parseCsv("2026-09-15,Grocery store,not-a-number\n", mapping, EUR),
       (error: unknown) => isValidationError(error, "invalid_amount_format"),
     );
   });
@@ -124,7 +125,7 @@ describe("parseCsv", () => {
       amountColumn: 2,
       decimalSeparator: ".",
     };
-    const rows = parseCsv("2026-09-15,Grocery store,-42.50\n\n2026-09-16,Salary,1000.00\n", mapping);
+    const rows = parseCsv("2026-09-15,Grocery store,-42.50\n\n2026-09-16,Salary,1000.00\n", mapping, EUR);
     assert.equal(rows.length, 2);
   });
 });

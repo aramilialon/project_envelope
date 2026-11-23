@@ -10,6 +10,7 @@
 export type ValidationErrorCode =
   | "invalid_amount"
   | "invalid_amount_format"
+  | "too_many_decimals"
   | "amount_too_large"
   | "amount_total_overflow"
   | "invalid_goal_amount"

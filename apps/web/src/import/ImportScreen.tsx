@@ -30,6 +30,7 @@ import { shortDate } from "../format.ts";
 import { useWorkspaces } from "../workspaces/useWorkspaces.ts";
 import { todayIsoIn } from "../workspaceDate.ts";
 import { amountTooLargeMessage, isAmountTooLarge } from "../amountTooLarge.ts";
+import { currencyMismatchMessage, isCurrencyMismatch, isTooManyDecimals, tooManyDecimalsMessage } from "../importFileErrors.ts";
 import "./ImportScreen.css";
 
 const DATE_FORMATS: readonly CsvDateFormat[] = ["YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY"];
@@ -213,9 +214,13 @@ export default function ImportScreen() {
           tooManyRequestsMessage(intl, caught) ??
             (isAmountTooLarge(caught)
               ? amountTooLargeMessage(intl, currency)
-              : isAccountClosed(caught)
-              ? accountClosedOnStageMessage()
-              : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
+              : isTooManyDecimals(caught)
+                ? tooManyDecimalsMessage(intl, caught, currency, "file")
+                : isCurrencyMismatch(caught)
+                  ? currencyMismatchMessage(intl, caught, currency)
+                  : isAccountClosed(caught)
+                    ? accountClosedOnStageMessage()
+                    : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
         );
       } finally {
         setSubmitting(false);
@@ -278,7 +283,9 @@ export default function ImportScreen() {
         tooManyRequestsMessage(intl, caught) ??
           (isAmountTooLarge(caught)
             ? amountTooLargeMessage(intl, currency)
-            : isAccountClosed(caught)
+            : isTooManyDecimals(caught)
+              ? tooManyDecimalsMessage(intl, caught, currency, "separator")
+              : isAccountClosed(caught)
               ? accountClosedOnStageMessage()
               : intl.formatMessage({ id: "import.error.stage", defaultMessage: "We could not read this file." })),
       );
@@ -462,7 +469,15 @@ export default function ImportScreen() {
               </div>
               <div className="field">
                 <label htmlFor="import-dec">{intl.formatMessage({ id: "import.columns.decimalSeparator", defaultMessage: "Decimal separator" })}</label>
-                <select id="import-dec" value={decimalSeparator} onChange={(event) => setDecimalSeparator(event.target.value as DecimalSeparator)}>
+                <select
+                  id="import-dec"
+                  value={decimalSeparator}
+                  onChange={(event) => {
+                    setDecimalSeparator(event.target.value as DecimalSeparator);
+                    // An error about the amounts was about the separator chosen before: it no longer holds.
+                    setError(null);
+                  }}
+                >
                   <option value=".">{intl.formatMessage({ id: "import.columns.decimalSeparator.dot", defaultMessage: "dot (1,234.56)" })}</option>
                   <option value=",">{intl.formatMessage({ id: "import.columns.decimalSeparator.comma", defaultMessage: "comma (1.234,56)" })}</option>
                 </select>

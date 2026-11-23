@@ -5,6 +5,7 @@ import { isValidationError } from "../errors.ts";
 import { assertScalesLinearly } from "../testing/linear-time.ts";
 import { parseOfx } from "./ofx.ts";
 
+const EUR = { currency: "EUR" } as const;
 // A generic OFX 1.02 (SGML) bank statement download, shaped like a real one:
 // most tags are never closed, ending only at the next tag or line break.
 const SGML_FIXTURE = `OFXHEADER:100
@@ -73,7 +74,7 @@ NEWFILEUID:NONE
 
 describe("parseOfx", () => {
   it("parses a real bank statement download's transactions", () => {
-    const rows = parseOfx(SGML_FIXTURE);
+    const rows = parseOfx(SGML_FIXTURE, EUR);
     assert.deepEqual(rows, [
       {
         date: "2026-09-15",
@@ -92,7 +93,7 @@ describe("parseOfx", () => {
       "<STMTTRN><TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20260920000000</DTPOSTED>" +
       "<TRNAMT>-10.00</TRNAMT><FITID>abc</FITID><NAME>Coffee</NAME></STMTTRN>" +
       "</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
-    const rows = parseOfx(content);
+    const rows = parseOfx(content, EUR);
     assert.equal(rows.length, 1);
     assert.equal(rows[0]?.date, "2026-09-20");
     assert.equal(rows[0]?.amountCents, -1000);
@@ -102,7 +103,7 @@ describe("parseOfx", () => {
   it("rejects a transaction missing DTPOSTED or TRNAMT", () => {
     const content = "<OFX><STMTTRN><FITID>1</FITID><NAME>Bad row</NAME></STMTTRN></OFX>";
     assert.throws(
-      () => parseOfx(content),
+      () => parseOfx(content, EUR),
       (error: unknown) => isValidationError(error, "invalid_ofx_transaction"),
     );
   });
@@ -110,27 +111,27 @@ describe("parseOfx", () => {
   it("rejects a malformed DTPOSTED", () => {
     const content = "<OFX><STMTTRN><DTPOSTED>not-a-date</DTPOSTED><TRNAMT>-1.00</TRNAMT></STMTTRN></OFX>";
     assert.throws(
-      () => parseOfx(content),
+      () => parseOfx(content, EUR),
       (error: unknown) => isValidationError(error, "invalid_date"),
     );
   });
 
   it("returns an empty array for a file with no transactions", () => {
-    assert.deepEqual(parseOfx("<OFX></OFX>"), []);
+    assert.deepEqual(parseOfx("<OFX></OFX>", EUR), []);
   });
 });
 
 describe("parseOfx on a hostile file (#675)", () => {
   it("parses in linear time a file of opening tags that never close", () => {
-    assertScalesLinearly((size) => "<STMTTRN>".repeat(size), parseOfx, 200_000);
-    assertScalesLinearly((size) => "<STMTTRN>x".repeat(size), parseOfx, 200_000);
-    assert.deepEqual(parseOfx("<STMTTRN>".repeat(200_000)), []);
+    assertScalesLinearly((size) => "<STMTTRN>".repeat(size), (content) => parseOfx(content, EUR), 200_000);
+    assertScalesLinearly((size) => "<STMTTRN>x".repeat(size), (content) => parseOfx(content, EUR), 200_000);
+    assert.deepEqual(parseOfx("<STMTTRN>".repeat(200_000), EUR), []);
   });
 
   it("ignores a last transaction that never closes, as before", () => {
     const content = `<STMTTRN><DTPOSTED>20260901<TRNAMT>-1.00</STMTTRN><STMTTRN><DTPOSTED>20260902<TRNAMT>-2.00`;
     assert.deepEqual(
-      parseOfx(content).map((row) => row.amountCents),
+      parseOfx(content, EUR).map((row) => row.amountCents),
       [-100],
     );
   });
