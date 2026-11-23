@@ -480,10 +480,13 @@ until the net worth converts them (#125; rules in "Converting between currencies
   currencies is refused (`currency_mismatch`). Such a move is entered as an outflow from one account
   and an inflow into the other, each in its own currency.
 - **An imported file is read in its account's currency.** "1000" in a yen broker's file is
-  ¥1,000 and in a Kuwaiti dinar account 1.000 dinars: each amount is scaled by the account
-  currency's own number of decimals (#671). A file that states another currency (an OFX or
+  ¥1,000 and in a Kuwaiti dinar account 1,000.000 dinars: each amount is scaled by the account
+  currency's own number of decimals (#671). Decimals beyond the currency's must be zeros; any other
+  is refused (`too_many_decimals`), since the amount was misread, and is never rounded: an imported
+  amount is a fact about the bank's own record. A file that states another currency (an OFX or
   CAMT.053 statement in dollars imported into a euro account) is refused whole
-  (`currency_mismatch`, #672) rather than read as if its dollars were euros.
+  (`currency_mismatch`, #672) rather than read as if its dollars were euros. Examples in "Import,
+  duplicates and reconciliation" below.
 - **Every balance is shown in its account's own currency.**
 - **The net worth adds up today's balances** (see "Balances as of today" below): a transaction
   dated after today is in no account's balance yet, so it is not in the net worth either.
@@ -581,6 +584,36 @@ within three days of each other; each existing transaction can only absorb one r
 row is held in a staging area until it has a category, or is recognized as income or a transfer —
 `packages/core` has no "uncategorized" state for a real transaction, so there is nothing to import
 it as until one of those is true.
+
+Every amount in a file is read in the account's currency, exactly (#671):
+
+| Text in the file | Account currency | Read as |
+| --- | --- | --- |
+| `1000` | JPY | ¥1,000 (1000 minor units) |
+| `1000` | EUR | €1,000.00 (100000) |
+| `1000` | KWD | KWD 1,000.000 (1000000) |
+| `1500.00` | JPY | ¥1,500: trailing zeros are not decimals |
+| `1.250` | KWD | KWD 1.250 (1250) |
+| `12.340` | EUR | €12.34 (1234) |
+| `1.250` | JPY | refused, `too_many_decimals` (`decimals` 0, `currency` JPY) |
+| `12.345` | EUR | refused, `too_many_decimals` (`decimals` 2, `currency` EUR) |
+
+A refused amount refuses the whole file, and nothing of it is staged: a wrong decimal separator
+chosen for a CSV file, or a file from an account in another currency, would otherwise put a
+different amount into the account than the bank's.
+
+The formats that state a currency are checked against the account's before any amount is read
+(#672); CSV and QIF state none and are read in the account's currency:
+
+- **OFX**: every statement's `<CURDEF>`, and a transaction's own `<CURRENCY><CURSYM>` where it
+  overrides it, must be the account's currency. `<ORIGCURRENCY>` names the currency the bank
+  converted from, while the amount stays in the statement's, so it is not read; a file's
+  `<CURRATE>` is never applied, since the account holds what the bank booked in its own currency.
+- **CAMT.053**: the statement account's `<Ccy>` and each entry's `<Amt Ccy>` must be the account's
+  currency; the amounts under an entry's transaction details, which may be the original amount in
+  another currency, are not read.
+- A stated currency that is not three letters is refused all the same (`currency_mismatch`), with
+  only the account's currency in `details`: the file's value is not named back.
 
 Reconciliation compares what the budget already believes (the last reconciled balance, plus every
 cleared transaction up to the statement's date that the user still has ticked) against the
