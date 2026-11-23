@@ -122,7 +122,8 @@ function extractRemittanceInfo(txDtls: string | undefined): string | undefined {
  * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency) for a
  * stated currency other than the account's; "invalid_camt053_entry" for an entry missing a
  * required date, amount or credit/debit indicator; "invalid_amount_format"/"invalid_date"/
- * "amount_too_large" for a malformed one.
+ * "amount_too_large" for a malformed one; "too_many_decimals" (details: decimals, currency) for an
+ * amount with a non-zero decimal beyond the account currency's (#671).
  */
 export function parseCamt053(content: string, options: ImportOptions): ImportRow[] {
   const entries = extractAllBlocks(content, "Ntry");

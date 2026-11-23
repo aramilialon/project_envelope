@@ -76,9 +76,10 @@ function transactionCurrency(block: string): string | undefined {
  * A `<STMTTRN>` with no closing tag after it ends the file: it and anything after it are ignored.
  *
  * @throws ValidationError "currency_mismatch" (details: fileCurrency, accountCurrency) for a
- *   `<CURDEF>` or transaction `<CURSYM>` other than the account's currency; "invalid_ofx_transaction" for a `<STMTTRN>`
- *   missing DTPOSTED or TRNAMT; "invalid_date"/"invalid_amount_format"/"amount_too_large" for a
- *   malformed date or amount.
+ *   `<CURDEF>` or transaction `<CURSYM>` other than the account's currency;
+ *   "invalid_ofx_transaction" for a `<STMTTRN>` missing DTPOSTED or TRNAMT; "invalid_date"/"invalid_amount_format"/"amount_too_large" for a
+ *   malformed date or amount; "too_many_decimals" (details: decimals, currency) for an amount with a
+ *   non-zero decimal beyond the account currency's (#671).
  */
 export function parseOfx(content: string, options: ImportOptions): ImportRow[] {
   for (const currency of statedCurrencies(content)) assertFileCurrency(currency, options.currency);

@@ -105,7 +105,9 @@ function field(columns: readonly string[], index: number): string {
  * Amounts are read in the minor units of `options.currency`, the account's (#671). A CSV file
  * states no currency, so it is never refused for one (#672).
  *
- * @throws ValidationError for a malformed date, amount, or a row with too few columns.
+ * @throws ValidationError for a malformed date, amount, or a row with too few columns;
+ *   "too_many_decimals" (details: decimals, currency) for an amount with a non-zero decimal beyond
+ *   the account currency's, which a wrong decimal separator usually causes (#671).
  */
 export function parseCsv(content: string, mapping: CsvMapping, options: ImportOptions): CsvRow[] {
   const lines = content.split(/\r\n|\r|\n/).filter((line) => line.trim().length > 0);

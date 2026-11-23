@@ -125,7 +125,8 @@ function parseQifAmount(text: string, decimalSeparator: QifDecimalSeparator, cur
  *
  * @throws ValidationError "ambiguous_date_format"/"ambiguous_decimal_separator" when the file's own data
  * gives no evidence and no hint was given; "invalid_qif_transaction" for a block missing D or T;
- * "invalid_date"/"invalid_amount_format" for a malformed one.
+ * "invalid_date"/"invalid_amount_format" for a malformed one; "too_many_decimals" (details:
+ * decimals, currency) for an amount with a non-zero decimal beyond the account currency's (#671).
  */
 export function parseQif(content: string, hints: QifHints, options: ImportOptions): ImportRow[] {
   const blocks = splitBlocks(content);
