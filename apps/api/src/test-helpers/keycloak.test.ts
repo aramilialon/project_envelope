@@ -16,6 +16,7 @@ import {
   RUN_REALM_ENV,
   setUpKeycloakTestRealm,
   sweepLeftoverTestRealms,
+  testRealmExists,
   testRealmName,
 } from "./keycloak.ts";
 
@@ -138,9 +139,12 @@ describe("Keycloak test realms, against a real Keycloak (#639)", () => {
     const live = await createTestRealm(adminPassword, testRealmName());
     created.push(gone.realm, old.realm, live.realm);
 
+    // Another run's global setup sweeps the same Keycloak and may delete `gone` and `old` first
+    // (#811), so the test checks what is left after the sweep, not which call deleted what.
     const deleted = await sweepLeftoverTestRealms(adminPassword);
-    assert.ok(deleted.includes(gone.realm), "the realm of a process that is gone");
-    assert.ok(deleted.includes(old.realm), "another host's realm older than the limit");
+    assert.equal(await testRealmExists(adminPassword, gone.realm), false, "the realm of a process that is gone");
+    assert.equal(await testRealmExists(adminPassword, old.realm), false, "another host's realm older than the limit");
+    assert.equal(await testRealmExists(adminPassword, live.realm), true, "the realm of this live process");
     assert.ok(!deleted.includes(live.realm), "the realm of this live process");
   });
 });
