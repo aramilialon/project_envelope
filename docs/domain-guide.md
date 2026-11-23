@@ -470,6 +470,11 @@ until the net worth converts them (#125; rules in "Converting between currencies
   €1,000 on one side and $1,000 on the other, so a transfer between accounts in different
   currencies is refused (`currency_mismatch`). Such a move is entered as an outflow from one account
   and an inflow into the other, each in its own currency.
+- **An imported file is read in its account's currency.** "1000" in a yen broker's file is
+  ¥1,000 and in a Kuwaiti dinar account 1.000 dinars: each amount is scaled by the account
+  currency's own number of decimals (#671). A file that states another currency (an OFX or
+  CAMT.053 statement in dollars imported into a euro account) is refused whole
+  (`currency_mismatch`, #672) rather than read as if its dollars were euros.
 - **Every balance is shown in its account's own currency.**
 - **The net worth adds up today's balances** (see "Balances as of today" below): a transaction
   dated after today is in no account's balance yet, so it is not in the net worth either.
