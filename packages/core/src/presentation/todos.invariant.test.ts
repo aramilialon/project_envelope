@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { computeBudgetMonth, type Assignment, type BudgetInput, type BudgetMonth, type CategoryMonth } from "../budget/budget-month.ts";
+import { cardTransferFlows, computeBudgetMonth, type Assignment, type BudgetInput, type BudgetMonth, type CategoryMonth } from "../budget/budget-month.ts";
 import { owing } from "../testing/card-balance.ts";
 import { mulberry32 } from "../testing/random.ts";
 import { amountNeededToCover, computeTodos, type TodoItem } from "./todos.ts";
@@ -296,6 +296,59 @@ describe("card debt is asked once, on the card's payment category (#728)", () =>
       // The exact figure is checked on cards asked beyond their to cover too, not only on the others.
       assert.ok(askedBeyondChecked > 5, `only ${askedBeyondChecked} cards were asked beyond their to cover`);
       assert.ok(askedBeyondWithTransfer < 50, `${askedBeyondWithTransfer} runs asked a card's spending beyond its to cover, with a transfer`);
+    });
+
+    it("a card's projected transfer inflow (rule 4, #803) never exceeds what the transfers actually bring in", () => {
+      const random = mulberry32(803);
+      let projectedRuns = 0;
+      let broughtMoreRuns = 0;
+      for (let run = 0; run < 500; run++) {
+        const input = randomMonth(random);
+        const transfers = input.cardTransfers ?? [];
+        if (transfers.length === 0) continue;
+        const month = computeBudgetMonth(input, MONTH);
+        const context = `run ${run}: ${JSON.stringify(transfers)}`;
+        // What each payment category holds before covered spending moves in (one month, nothing
+        // carried: assigned, less payments and net refunds), and after (plus the covered spending,
+        // each card's spending less what is named on it as not covered).
+        const heldPre = new Map<string, number>();
+        const heldPost = new Map<string, number>();
+        const owed = new Map<string, number>();
+        for (const card of month.paymentCategories) {
+          const id = card.categoryId;
+          const assigned = input.assignments.filter((a) => a.categoryId === id).reduce((sum, a) => sum + a.amount, 0);
+          const paid = (input.cardPayments ?? []).filter((p) => p.paymentCategoryId === id).reduce((sum, p) => sum + p.amount, 0);
+          let refunds = 0;
+          let outflow = 0;
+          for (const categoryId of input.categoryIds) {
+            const net = input.activity.filter((a) => a.categoryId === categoryId && a.paymentCategoryId === id).reduce((sum, a) => sum + a.amount, 0);
+            if (net > 0) refunds += net;
+            else outflow -= net;
+          }
+          const uncovered = (card.overspendingBy ?? []).reduce((sum, p) => sum + p.amount, 0);
+          heldPre.set(id, assigned - paid - refunds);
+          heldPost.set(id, assigned - paid - refunds + outflow - uncovered);
+          owed.set(id, card.owed ?? 0);
+        }
+        const projected = cardTransferFlows(transfers, heldPre, owed);
+        const actual = cardTransferFlows(transfers, heldPost, owed);
+        const paidCards = new Set(transfers.map((t) => t.paidPaymentCategoryId));
+        for (const card of month.paymentCategories) {
+          const id = card.categoryId;
+          // The reconstruction is right: rule 8 on what is held after coverage gives the month's figures.
+          assert.equal(card.available, (heldPost.get(id) ?? 0) + (actual.deltaBy.get(id) ?? 0), `${context}, card ${id}`);
+          const projectedIn = projected.inflowBy.get(id) ?? 0;
+          const actualIn = actual.inflowBy.get(id) ?? 0;
+          assert.ok(projectedIn <= actualIn, `${context}, card ${id}: projected ${projectedIn} > brought in ${actualIn}`);
+          // A card that passes nothing on: its whole transfer change is what it received.
+          if (!paidCards.has(id)) assert.ok(projectedIn <= Math.max(0, actual.deltaBy.get(id) ?? 0), `${context}, card ${id}`);
+          if (projectedIn > 0) projectedRuns++;
+          if (actualIn > projectedIn) broughtMoreRuns++;
+        }
+      }
+      // Not vacuous: many cards had a projected inflow, and some received more than projected.
+      assert.ok(projectedRuns > 50, `only ${projectedRuns} cards had a projected inflow`);
+      assert.ok(broughtMoreRuns > 5, `only ${broughtMoreRuns} cards received more than projected`);
     });
 
     it("covering the categories' whole overspend first, then following the list, settles every card too", () => {

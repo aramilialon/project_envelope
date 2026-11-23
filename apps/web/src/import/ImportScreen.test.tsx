@@ -206,6 +206,58 @@ describe("ImportScreen (#59)", () => {
     ).toBeInTheDocument();
   });
 
+  it("names both currencies when the API refuses a file in another currency, at step 1 (#672)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(
+      new ApiError("400", 400, "currency_mismatch", { fileCurrency: "USD", accountCurrency: "EUR" }),
+    );
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement.ofx")] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "A file can be imported only into an account in the same currency: this file's currency is US Dollar (USD), and this account's is Euro (EUR).",
+    );
+
+    // A stated currency that is not a code: the API names the account's alone.
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(new ApiError("400", 400, "currency_mismatch", { accountCurrency: "EUR" }));
+    fireEvent.change(input, { target: { files: [new File(["<OFX></OFX>"], "statement2.ofx")] } });
+    expect(
+      await screen.findByText(
+        "A file can be imported only into an account in the same currency: this file states a currency we don't recognize, and this account's is Euro (EUR).",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("refuses a self-describing file's amount with too many decimals at step 1, naming the file's currency as a cause (#671)", async () => {
+    renderScreen([{ ...CHECKING, currency: "JPY" }]);
+    await screen.findByText(/Checking/);
+    const input = document.querySelector("#import-file-in") as HTMLInputElement;
+
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(new ApiError("400", 400, "too_many_decimals", { decimals: 0, currency: "JPY" }));
+    fireEvent.change(input, { target: { files: [new File(["!Type:Bank"], "statement.qif")] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "An amount in Japanese Yen (JPY) can't have decimal places: this file has an amount with more, so it was not imported. The file may be from an account in another currency.",
+    );
+  });
+
+  it("refuses a CSV amount with too many decimals at step 2, and clears the error when the separator changes (#671)", async () => {
+    renderScreen();
+    await screen.findByText(/Checking/);
+    const content = "Date,Description,Amount\n2026-09-01,Supermarket,-42.505\n";
+    fireEvent.change(document.querySelector("#import-file-in") as HTMLInputElement, { target: { files: [csvFile("statement.csv", content)] } });
+    await screen.findByText("statement.csv");
+
+    vi.spyOn(importApi, "stageImport").mockRejectedValueOnce(new ApiError("400", 400, "too_many_decimals", { decimals: 2, currency: "EUR" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "An amount in Euro (EUR) can have at most 2 decimal places: this file has an amount with more, so it was not imported. The decimal separator chosen may not be the file's, or the file may be from an account in another currency.",
+    );
+
+    fireEvent.change(screen.getByLabelText("Decimal separator"), { target: { value: "," } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("sends a closing balance above the cap on a single amount: a balance is not capped (#651)", async () => {
     renderScreen();
     await screen.findByText(/Checking/);

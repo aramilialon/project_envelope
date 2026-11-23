@@ -17,10 +17,10 @@
  */
 
 import { ValidationError } from "../errors.ts";
-import type { Cents } from "../money.ts";
+import type { Cents, CurrencyCode } from "../money.ts";
 import { assertDate, type LocalDate } from "../month.ts";
 import { parseDecimalAmount, swapDayMonth } from "./parsing.ts";
-import type { ImportRow } from "./row.ts";
+import type { ImportOptions, ImportRow } from "./row.ts";
 
 export type QifDateFormat = "DD/MM/YYYY" | "MM/DD/YYYY";
 export type QifDecimalSeparator = "." | ",";
@@ -115,16 +115,20 @@ function detectDecimalSeparator(amounts: readonly string[], hint: QifDecimalSepa
   );
 }
 
-function parseQifAmount(text: string, decimalSeparator: QifDecimalSeparator): Cents {
-  return parseDecimalAmount(text, decimalSeparator, "not a valid QIF amount");
+function parseQifAmount(text: string, decimalSeparator: QifDecimalSeparator, currency: CurrencyCode): Cents {
+  return parseDecimalAmount(text, decimalSeparator, currency, "not a valid QIF amount");
 }
 
 /**
+ * Amounts are read in the minor units of `options.currency`, the account's (#671). A QIF file
+ * states no currency, so it is never refused for one (#672).
+ *
  * @throws ValidationError "ambiguous_date_format"/"ambiguous_decimal_separator" when the file's own data
  * gives no evidence and no hint was given; "invalid_qif_transaction" for a block missing D or T;
- * "invalid_date"/"invalid_amount_format" for a malformed one.
+ * "invalid_date"/"invalid_amount_format" for a malformed one; "too_many_decimals" (details:
+ * decimals, currency) for an amount with a non-zero decimal beyond the account currency's (#671).
  */
-export function parseQif(content: string, hints: QifHints = {}): ImportRow[] {
+export function parseQif(content: string, hints: QifHints, options: ImportOptions): ImportRow[] {
   const blocks = splitBlocks(content);
   if (blocks.length === 0) {
     return [];
@@ -144,7 +148,7 @@ export function parseQif(content: string, hints: QifHints = {}): ImportRow[] {
       throw new ValidationError("invalid_qif_transaction", "a QIF transaction is missing D or T", {});
     }
     const date = parseQifDate(block.date, dateFormat);
-    const amountCents = parseQifAmount(block.amount, decimalSeparator);
+    const amountCents = parseQifAmount(block.amount, decimalSeparator, options.currency);
     const payee = block.payee ?? "";
     return { date, payee, ...(block.memo ? { memo: block.memo } : {}), amountCents };
   });

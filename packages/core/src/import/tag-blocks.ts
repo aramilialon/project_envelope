@@ -48,13 +48,28 @@ function indexOfTag(content: string, needle: string, from: number): number {
   return -1;
 }
 
+/** One `<tag …>…</tag>` element: the attribute text of its opening tag and its inner content. */
+export interface TagElement {
+  /** What stands between the tag name and ">" in the opening tag (`  Ccy="EUR"`), empty when nothing does. */
+  readonly attributes: string;
+  readonly body: string;
+}
+
 /** The inner content of each `<tag>…</tag>` block, in file order. */
 export function findTagBlocks(content: string, tag: string, options: TagBlockOptions = {}): string[] {
+  return findTagElements(content, tag, options).map((element) => element.body);
+}
+
+/**
+ * Each `<tag>…</tag>` element, in file order, with the attribute text of its opening tag: the
+ * same elements `findTagBlocks` finds, in the same linear time.
+ */
+export function findTagElements(content: string, tag: string, options: TagBlockOptions = {}): TagElement[] {
   const name = tag.toLowerCase();
   const open = options.attributes ? `<${name}` : `<${name}>`;
   const close = `</${name}>`;
   const limit = options.limit ?? Number.POSITIVE_INFINITY;
-  const blocks: string[] = [];
+  const blocks: TagElement[] = [];
 
   let position = 0;
   while (blocks.length < limit) {
@@ -62,6 +77,7 @@ export function findTagBlocks(content: string, tag: string, options: TagBlockOpt
     if (start === -1) break;
 
     let bodyStart = start + open.length;
+    let attributes = "";
     if (options.attributes) {
       const next = content[bodyStart];
       if (next === ">") {
@@ -70,6 +86,7 @@ export function findTagBlocks(content: string, tag: string, options: TagBlockOpt
         const tagEnd = content.indexOf(">", bodyStart);
         // No ">" anywhere after this point: no later opening tag can be complete either.
         if (tagEnd === -1) break;
+        attributes = content.slice(bodyStart, tagEnd);
         bodyStart = tagEnd + 1;
       } else {
         // A longer tag name sharing this prefix (`<DtTm` when looking for `<Dt`).
@@ -81,7 +98,7 @@ export function findTagBlocks(content: string, tag: string, options: TagBlockOpt
     const end = indexOfTag(content, close, bodyStart);
     // No closing tag after this opening tag: none after any later one either.
     if (end === -1) break;
-    blocks.push(content.slice(bodyStart, end));
+    blocks.push({ attributes, body: content.slice(bodyStart, end) });
     position = end + close.length;
   }
 
