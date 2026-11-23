@@ -41,15 +41,38 @@ import "./ReconciliationScreen.css";
  */
 export default function ReconciliationScreen() {
   const intl = useIntl();
-  const auth = useAuth();
-  const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
+  const { workspaceId } = useParams<{ workspaceId: string }>();
   const workspaces = useWorkspaces();
   const currentWorkspace = workspaces.status === "ok" ? workspaces.workspaces.find((w) => w.id === workspaceId) : undefined;
-  const timeZone = currentWorkspace?.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // The "As of" date starts on today in the *workspace's* own time zone (#814), so nothing is
+  // fetched or drawn until that zone is known, as `BudgetScreen.tsx` does for its month (#381): a
+  // first guess in the browser's zone, kept in state, stayed a day behind for the whole visit
+  // whenever the two disagreed near midnight, and left today's transactions out of the tally.
+  // Only when the workspace list itself fails, or does not contain this workspace, is the
+  // browser's zone the best guess left, rather than staying on "Loading" forever.
+  const timeZone =
+    currentWorkspace?.timeZone ?? (workspaces.status === "loading" ? undefined : Intl.DateTimeFormat().resolvedOptions().timeZone);
+  if (timeZone === undefined) {
+    return <p role="status">{intl.formatMessage({ id: "reconcile.loading", defaultMessage: "Loading this account…" })}</p>;
+  }
+  return <ReconciliationForm timeZone={timeZone} initialDate={todayIsoIn(timeZone)} />;
+}
+
+interface ReconciliationFormProps {
+  readonly timeZone: string;
+  /** Today in the workspace's own time zone, read once on mount: a date the user picks afterwards is their own. */
+  readonly initialDate: string;
+}
+
+function ReconciliationForm({ timeZone, initialDate }: ReconciliationFormProps) {
+  const intl = useIntl();
+  const auth = useAuth();
+  const { workspaceId, accountId } = useParams<{ workspaceId: string; accountId: string }>();
   // A short date shows its year when it is not the workspace's current one (#702).
   const currentYear = Number(todayIsoIn(timeZone).slice(0, 4));
 
-  const [date, setDate] = useState(() => todayIsoIn(timeZone));
+  const [date, setDate] = useState(initialDate);
   const [statementStr, setStatementStr] = useState("");
   const [offIds, setOffIds] = useState<ReadonlySet<string>>(new Set());
   const [markingId, setMarkingId] = useState<string | null>(null);
