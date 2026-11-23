@@ -928,6 +928,36 @@ describe("trades routes (#77)", () => {
     );
   });
 
+  it("names each cash leg's trade on every page of the register, paged by cursor (#560, #657)", async () => {
+    const etf = await instrument();
+    const broker = await account();
+    const growth = await portfolio();
+    const base = { accountId: broker, portfolioId: growth };
+    const [buy] = await created({ ...base, type: "buy", instrumentId: etf, tradeDate: "2026-01-10", quantityE8: units(2.5), priceE6: price(100) });
+    const [dividend] = await created({ ...base, type: "dividend", instrumentId: etf, tradeDate: "2026-01-11", grossCents: 900 });
+    const [custody] = await created({ ...base, type: "fee", instrumentId: null, tradeDate: "2026-01-12", feesCents: 300 });
+
+    // One row per page, newest first: the joins add no row and change no order.
+    const seen: [string | null, string | null, string | null][] = [];
+    let cursor: string | null = null;
+    do {
+      const query: string = `?limit=1&order=desc${cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`}`;
+      const response = await app.fastify.inject({ method: "GET", url: `/workspaces/${workspaceId}/accounts/${broker}/transactions${query}`, headers: await auth() });
+      assert.equal(response.statusCode, 200, response.body);
+      const body = response.json<{ transactions: { tradeId: string | null; trade: { type: string; instrumentId: string | null } | null }[]; nextCursor: string | null }>();
+      assert.equal(body.transactions.length, 1);
+      const [row] = body.transactions;
+      seen.push([row!.tradeId, row!.trade?.type ?? null, row!.trade?.instrumentId ?? null]);
+      cursor = body.nextCursor;
+      assert.ok(seen.length <= 3, "the pages never end");
+    } while (cursor !== null);
+    assert.deepEqual(seen, [
+      [custody!.id, "fee", null],
+      [dividend!.id, "dividend", etf],
+      [buy!.id, "buy", etf],
+    ]);
+  });
+
   it("refuses a synced change to a cash leg's account, date or amount, but applies its memo", async () => {
     const broker = await account();
     const [fee] = await created({ type: "fee", accountId: broker, portfolioId: await portfolio(), tradeDate: "2026-01-10", feesCents: 700 });

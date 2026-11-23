@@ -633,7 +633,8 @@ const KEY_TEXT = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`;
  * skipped or repeated, and a row added after the cursor's place shows on a later page. The row
  * comparison against the cursor's own microsecond text, cast back to `timestamptz`, compares
  * exactly what the order sorts on; `transactions_account_order_idx` (migration 0040) serves it.
- * Reads `limit + 1` rows to know whether another page follows without a second query.
+ * Reads `limit + 1` rows to know whether another page follows without a second query. The trade
+ * joins (#657) match at most one row each, so they change neither the rows nor their order.
  */
 export async function listTransactionPage(
   db: DbPool | DbClient,
@@ -655,6 +656,7 @@ export async function listTransactionPage(
        to_char(t.created_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS created_at_key
      FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1 AND t.account_id = $2 ${afterClause}
      ORDER BY t.occurred_at ${direction}, t.created_at ${direction}, t.id ${direction}
      LIMIT $3`,
