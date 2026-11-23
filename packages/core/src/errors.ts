@@ -85,11 +85,13 @@ export type ValidationErrorCode =
   | "duplicate_price"
   | "invalid_price_file"
   | "too_many_rows"
+  | "range_too_long"
   | "invalid_locale"
   | "invalid_body"
   | "unknown_field"
   | "invalid_field"
-  | "amount_needs_splits";
+  | "amount_needs_splits"
+  | "invalid_cursor";
 
 /**
  * A value in a `ValidationError`'s details. `null` stands for something the

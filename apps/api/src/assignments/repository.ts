@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { assertAmount, assertMonth, ValidationError } from "@envelope/core";
 
 import type { DbClient, DbPool } from "../db/pool.ts";
+import { IdConflictError } from "../errors.ts";
+import { withClaimLockTimeout } from "../idempotency/repository.ts";
 
 export interface AssignmentEntryInput {
   /** "YYYY-MM". */
@@ -30,6 +32,11 @@ export interface CreateAssignmentBatchInput {
   readonly workspaceId: string;
   readonly author: string;
   readonly entries: readonly AssignmentEntryInput[];
+  /**
+   * A batch id the client chose (#559, ADR 0020), already claimed with `claimAssignmentBatch`.
+   * Without one, the server makes one and claims it here.
+   */
+  readonly batchId?: string;
 }
 
 export interface AssignmentEntryRow {
@@ -104,25 +111,88 @@ export async function createAssignmentBatch(
     return [];
   }
 
-  const batchId = randomUUID();
-  const columnsPerRow = 7;
+  const batchId = input.batchId ?? (await insertServerBatch(db, input.workspaceId));
+  const columnsPerRow = 8;
   const values: unknown[] = [];
   const placeholders = input.entries.map((entry, index) => {
-    values.push(batchId, input.workspaceId, entry.month, entry.sourceCategoryId, entry.destinationCategoryId, entry.amountCents, input.author);
+    values.push(batchId, input.workspaceId, entry.month, entry.sourceCategoryId, entry.destinationCategoryId, entry.amountCents, input.author, index);
     const base = index * columnsPerRow;
-    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7})`;
+    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
   });
 
   // A single multi-row INSERT ... RETURNING always returns its rows in the same order as
   // the VALUES list that produced them, so `rows[i]` is `input.entries[i]`'s own ledger row.
   const { rows } = await db.query<AssignmentEntryRow>(
     `INSERT INTO assignment_ledger
-       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author)
+       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, batch_position)
      VALUES ${placeholders.join(", ")}
      RETURNING ${ENTRY_COLUMNS}`,
     values,
   );
   return rows.map(toEntryRecord);
+}
+
+/** Registers a batch id the server made (migration 0039): every ledger row references its batch. */
+async function insertServerBatch(db: DbPool | DbClient, workspaceId: string): Promise<string> {
+  const batchId = randomUUID();
+  await db.query("INSERT INTO assignment_batches (workspace_id, id) VALUES ($1, $2)", [workspaceId, batchId]);
+  return batchId;
+}
+
+export type AssignmentBatchClaim =
+  | { readonly kind: "claimed" }
+  | { readonly kind: "replay"; readonly entries: AssignmentEntryRecord[] };
+
+/**
+ * Claims a batch id the client chose (#559, ADR 0020). Lock order: a request claims its
+ * `Idempotency-Key` first, then this batch, and only then takes any other lock (#704's
+ * category-month locks, then transactions `FOR UPDATE` in id order, #554); see
+ * idempotency/repository.ts. `requestHash` is the fingerprint of what the batch is for
+ * (`valueFingerprint` of the entries, or of the quick assign request, with the author).
+ *
+ * - `claimed`: the id is new in this workspace; the caller writes the batch's rows under it.
+ * - `replay`: the same request already wrote this batch: its rows, in the request's order;
+ *   nothing is appended.
+ *
+ * A request in flight with the same batch id makes this wait until it commits or rolls back.
+ *
+ * @throws IdConflictError (`details: { field: "batchId", batchId }`) when the id is already used
+ *   for another request, by a batch whose id the server made, or by one from before migration 0039.
+ * @throws RequestInProgressError when the wait is longer than the claim's lock timeout.
+ */
+export async function claimAssignmentBatch(
+  db: DbClient,
+  workspaceId: string,
+  batchId: string,
+  requestHash: Buffer,
+): Promise<AssignmentBatchClaim> {
+  return withClaimLockTimeout(db, async () => {
+    const inserted = await db.query(
+      `INSERT INTO assignment_batches (workspace_id, id, request_hash) VALUES ($1, $2, $3)
+       ON CONFLICT (workspace_id, id) DO NOTHING
+       RETURNING id`,
+      [workspaceId, batchId, requestHash],
+    );
+    if (inserted.rows.length > 0) {
+      return { kind: "claimed" } as const;
+    }
+    // READ COMMITTED: this statement sees the batch the INSERT above waited for, once committed.
+    const { rows } = await db.query<{ request_hash: Buffer | null }>(
+      "SELECT request_hash FROM assignment_batches WHERE workspace_id = $1 AND id = $2",
+      [workspaceId, batchId],
+    );
+    const stored = rows[0]?.request_hash;
+    if (!stored || !stored.equals(requestHash)) {
+      throw new IdConflictError("batchId", { batchId });
+    }
+    const { rows: entries } = await db.query<AssignmentEntryRow>(
+      `SELECT ${ENTRY_COLUMNS} FROM assignment_ledger
+       WHERE workspace_id = $1 AND batch_id = $2
+       ORDER BY batch_position, created_at, id`,
+      [workspaceId, batchId],
+    );
+    return { kind: "replay", entries: entries.map(toEntryRecord) } as const;
+  });
 }
 
 /**
@@ -152,13 +222,13 @@ export async function reverseRows(
     return [];
   }
 
-  const batchId = randomUUID();
-  const columnsPerRow = 8;
+  const batchId = await insertServerBatch(db, workspaceId);
+  const columnsPerRow = 9;
   const values: unknown[] = [];
   const placeholders = rows.map((row, index) => {
-    values.push(batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id);
+    values.push(batchId, workspaceId, row.month, row.destination_category_id, row.source_category_id, row.amount_cents, author, row.id, index);
     const base = index * columnsPerRow;
-    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`;
+    return `($${base + 1}, $${base + 2}, ($${base + 3} || '-01')::date, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9})`;
   });
 
   // ON CONFLICT (reverses) DO NOTHING keeps the same race safety the old per-row try/catch
@@ -166,7 +236,7 @@ export async function reverseRows(
   // the batch still reverses, and RETURNING reports only the rows actually inserted.
   const { rows: inserted } = await db.query<AssignmentEntryRow>(
     `INSERT INTO assignment_ledger
-       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses)
+       (batch_id, workspace_id, month, source_category_id, destination_category_id, amount_cents, author, reverses, batch_position)
      VALUES ${placeholders.join(", ")}
      ON CONFLICT (reverses) DO NOTHING
      RETURNING ${ENTRY_COLUMNS}`,

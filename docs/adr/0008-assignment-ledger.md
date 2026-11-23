@@ -1,6 +1,6 @@
 # 0008 — Monthly assignments as an append-only ledger, not mutable totals
 
-- **Status:** accepted
+- **Status:** accepted; amended by [ADR 0020](0020-idempotent-creates.md) (a register of batch ids, client batch ids)
 - **Date:** 2026-09-26
 
 ## Context

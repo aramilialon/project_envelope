@@ -5,12 +5,16 @@ import { createWorkspaceMembershipPreHandler, withWriteAccess } from "../auth/wo
 import { listCategories } from "../categories/repository.ts";
 import type { DbPool } from "../db/pool.ts";
 import { invalidField, sendIfTextTooLong, sendIfValidationError, strictBody, type TextFieldCheck } from "../errors.ts";
+import { IDEMPOTENT_ROUTE, sendAndRemember, withIdempotencyKey } from "../idempotency/route.ts";
 import type { QueueDriver } from "../queue/index.ts";
+import { decodeTransactionCursor, encodeTransactionCursor, type TransactionOrder } from "../transactions/cursor.ts";
 import {
   createTransaction,
   createTransfer,
   deleteTransaction,
-  listTransactionsForAccount,
+  DEFAULT_TRANSACTION_PAGE_SIZE,
+  listTransactionPage,
+  MAX_TRANSACTION_PAGE_SIZE,
   UnknownCategoryError,
   updateTransaction,
   type SplitInput,
@@ -101,6 +105,39 @@ function findUnknownCategoryId(categoryIds: ReadonlySet<string>, splits: readonl
   return splits.map((s) => s.categoryId).find((id): id is string => id !== null && !categoryIds.has(id));
 }
 
+/**
+ * A page size (#560): a whole number from 1 to `MAX_TRANSACTION_PAGE_SIZE`, written in digits;
+ * `DEFAULT_TRANSACTION_PAGE_SIZE` when left out.
+ *
+ * @throws ValidationError `invalid_field` with `details.field` "limit" for anything else (0, 501,
+ *   "-1", "1.5", "ten", an empty or a repeated parameter).
+ */
+function parseLimit(value: unknown): number {
+  if (value === undefined) {
+    return DEFAULT_TRANSACTION_PAGE_SIZE;
+  }
+  const limit = typeof value === "string" && /^\d{1,4}$/.test(value) ? Number(value) : Number.NaN;
+  if (!(limit >= 1 && limit <= MAX_TRANSACTION_PAGE_SIZE)) {
+    throw invalidField("limit");
+  }
+  return limit;
+}
+
+/**
+ * `asc` (the default) or `desc` (#560).
+ *
+ * @throws ValidationError `invalid_field` with `details.field` "order" for anything else.
+ */
+function parseOrder(value: unknown): TransactionOrder {
+  if (value === undefined) {
+    return "asc";
+  }
+  if (value !== "asc" && value !== "desc") {
+    throw invalidField("order");
+  }
+  return value;
+}
+
 export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, queue?: QueueDriver): void {
   const preHandler = createWorkspaceMembershipPreHandler(pool);
   const writePreHandler = withWriteAccess(preHandler);
@@ -109,7 +146,11 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
   // Creating or listing names the account in its path, which must belong to the workspace (#512);
   // editing or deleting looks the transaction itself up in the workspace, and answers 404 when it
   // is not on the account the path names (#655).
-  app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace] }, async (request, reply) => {
+  // An `Idempotency-Key` (#559, ADR 0020) is claimed after the path account check and before the
+  // body is validated: a retry of a stored success gets the same reply.
+  const idempotent = { config: IDEMPOTENT_ROUTE };
+
+  app.post(base, { preHandler: [...writePreHandler, requireAccountOfWorkspace], ...idempotent }, withIdempotencyKey(async (request, reply) => {
     const { accountId } = request.params as { accountId: string };
     const body = (request.body ?? {}) as Record<string, unknown>;
     const splits = parseSplits(body);
@@ -150,19 +191,34 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         },
         queue,
       );
-      await reply.code(201).send(transaction);
+      await sendAndRemember(request, reply, 201, transaction);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;
       }
       throw error;
     }
-  });
+  }));
 
+  // One page of the account's transactions (#560), in register order: `limit` (1 to 500, 100 when
+  // left out), `order` (`asc`, the default, or `desc`) and the `cursor` the previous page gave as
+  // `nextCursor`, which is null on the last page.
   app.get(base, { preHandler: [preHandler, requireAccountOfWorkspace] }, async (request) => {
     const { accountId } = request.params as { accountId: string };
-    const transactions = await listTransactionsForAccount(request.db!, request.workspace!.id, accountId);
-    return { transactions };
+    const query = (request.query ?? {}) as Record<string, unknown>;
+    const limit = parseLimit(query.limit);
+    const order = parseOrder(query.order);
+    const scope = { workspaceId: request.workspace!.id, accountId: accountId.toLowerCase(), order };
+    const after = query.cursor === undefined ? undefined : decodeTransactionCursor(query.cursor, scope);
+    const page = await listTransactionPage(request.db!, scope.workspaceId, scope.accountId, {
+      limit,
+      order,
+      ...(after ? { after } : {}),
+    });
+    return {
+      transactions: page.transactions,
+      nextCursor: page.nextKey ? encodeTransactionCursor(scope, page.nextKey) : null,
+    };
   });
 
   // A strict body (#655): a field the edit would otherwise drop without a word (an unknown or
@@ -255,7 +311,7 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
     await reply.code(204).send();
   });
 
-  app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler }, async (request, reply) => {
+  app.post("/workspaces/:workspaceId/transfers", { preHandler: writePreHandler, ...idempotent }, withIdempotencyKey(async (request, reply) => {
     const body = (request.body ?? {}) as Record<string, unknown>;
     const sourceAccountId = typeof body.sourceAccountId === "string" ? body.sourceAccountId : "";
     const destinationAccountId = typeof body.destinationAccountId === "string" ? body.destinationAccountId : "";
@@ -299,12 +355,12 @@ export function registerTransactionsRoutes(app: FastifyInstance, pool: DbPool, q
         },
         queue,
       );
-      await reply.code(201).send(transfer);
+      await sendAndRemember(request, reply, 201, transfer);
     } catch (error) {
       if (await sendIfValidationError(reply, error)) {
         return;
       }
       throw error;
     }
-  });
+  }));
 }

@@ -26,20 +26,35 @@
  * - **Money-weighted return** (`moneyWeightedReturn`, XIRR): the rate that
  *   brings the household's own flows to zero (the opposite of the
  *   portfolio's, the start value paid in on the start date and the end value
- *   received on the end date), each flow timed by `yearFraction` from the
- *   first one, found by bisection. The bounds apply to the figure shown:
- *   the yearly rate for a period of a year or more, the period's own rate
- *   for a shorter one, from just above −100% to +1000%. With several sign
- *   changes there can be several rates; the figure is the one bisection
- *   finds from those bounds, deterministically. Nothing ever received back
- *   is exactly −100%. When the end value is 0 the period ends at the last
- *   money received, since XIRR assumes money stays invested at its rate.
+ *   received on the end date), each flow timed by `yearFraction`. The
+ *   bounds apply to the figure shown: the yearly rate for a period of a year
+ *   or more, the period's own rate for a shorter one, from just above −100%
+ *   to +1000%. With several sign changes there can be
+ *   several rates; the figure is the one nearest 0, found by scanning
+ *   outward from 0 on both sides (see `nearestRoot`). Its clock starts at O,
+ *   the start date when something is held then, otherwise the first day
+ *   ending with a value above 0: money paid or received before O (a fee
+ *   while nothing was held) is carried forward to it. Nothing received
+ *   after O is exactly −100%. The period ends at the last money received,
+ *   since XIRR assumes money stays invested at its rate: a payment after it
+ *   (a fee after the final sale) is discounted back to it. A period of no
+ *   length (O is the end date, a first buy on the end date itself) is the
+ *   end value ÷ the net money put in over the period − 1, idle flows
+ *   included.
+ *
+ * **Nothing held.** Both returns first check that the period held capital:
+ * a value above 0 at the end of at least one day it is valued on (its
+ * start, every day with a flow, every month end the caller adds, its end).
+ * When none is, both are unknown: `missing_value` if one of those values is
+ * unknown, otherwise `no_capital`. A period worth nothing at the end of
+ * every such day has no return, only a gain (domain expert, #89).
  *
  * A period that reaches its first anniversary (`yearFraction` ≥ 1) gives a
  * yearly figure (`annualized: true`); a shorter one gives the return over
- * the period itself. For the TWR the period starts on the start date when
- * the start value is above 0, otherwise on the first valuation above 0; for
- * the MWR on the household's first flow.
+ * the period itself. The TWR's clock runs only while something is held:
+ * from the start date, or the first day ending with a value above 0, to the
+ * next day the value is back to 0, stretch by stretch, the stretches'
+ * `yearFraction`s added up. The MWR's runs from O to the last money received.
  *
  * Computed in double precision from integer minor units, in a fixed order,
  * and rounded once to millionths (`returnE6`, half away from zero): 26694 is
@@ -71,9 +86,9 @@ export interface Valuation {
 /**
  * Why a return cannot be computed:
  * - "missing_value": a value or a flow it needs is unknown;
- * - "no_capital": there was never money in the portfolio, or a sub-period
- *   ends with more taken out than it holds (V_b − F_b < 0), or a value
- *   appears from no money at all;
+ * - "no_capital": nothing held at the end of any day the period is valued
+ *   on (start, flow dates, month ends, end), or a sub-period ends with more
+ *   taken out than it holds, or a value appears from no money at all;
  * - "no_solution": no rate from just above −100% to +1000% (of the figure shown) balances the
  *   flows (money-weighted only).
  */
@@ -93,9 +108,15 @@ export type RateOutcome =
   | { readonly status: "known"; readonly rate: number; readonly annualized: boolean }
   | { readonly status: "unknown"; readonly reason: UnknownReturnReason };
 
-/** The bisection bounds of the money-weighted return, on the figure shown: just above −100% to +1000%. */
+/** The bounds of the money-weighted return, on the figure shown: just above −100% to +1000%. */
 const MWR_LOW = -1 + 1e-12;
 const MWR_HIGH = 10;
+/**
+ * The scan for the root nearest 0 steps in ln(1 + rate), so it approaches
+ * −100% geometrically: the first step, and the factor each step grows by.
+ */
+const SCAN_FIRST_STEP = 1e-4;
+const SCAN_GROWTH = 1.1;
 
 /**
  * Years from `from` to `to` by calendar anniversaries: the whole
@@ -168,11 +189,12 @@ export function timeWeightedRate(input: TimeWeightedInput): RateOutcome {
     if (!valuationDates.has(date)) invalidDate(date, "every date with a flow needs a valuation");
   }
 
+  const held = heldCheck([input.start, ...input.valuations]);
+  if (held !== null) return held;
   if (input.start.valueCents === null || input.valuations.some((valuation) => valuation.valueCents === null)) return unknown("missing_value");
   if ([...daily.values()].some((amount) => amount === null)) return unknown("missing_value");
 
   let growth = 1;
-  let invested = false;
   let valueBefore: Cents = input.start.valueCents;
   for (const valuation of input.valuations) {
     const valueAfter = valuation.valueCents as Cents;
@@ -190,13 +212,11 @@ export function timeWeightedRate(input: TimeWeightedInput): RateOutcome {
     } else {
       return unknown("no_capital");
     }
-    if (valueBefore > 0 || valueAfter > 0) invested = true;
     growth *= factor;
     valueBefore = valueAfter;
   }
-  if (!invested) return unknown("no_capital");
 
-  const years = yearFraction(firstHeldDate(input.start, input.valuations), end.date);
+  const years = heldYears(input.start, input.valuations);
   if (years >= 1) return known(Math.pow(growth, 1 / years) - 1, true);
   return known(growth - 1, false);
 }
@@ -206,6 +226,13 @@ export interface MoneyWeightedInput {
   readonly start: Valuation;
   /** The value at the end of the period, received on its date. */
   readonly end: Valuation;
+  /**
+   * The values at the end of every date with a flow, plus any other date
+   * valued (each month end), after `start` and up to `end`, in date order: the
+   * same cuts as the TWR's. They decide whether the period held capital; one
+   * on the end date must equal `end`.
+   */
+  readonly valuations: readonly Valuation[];
   /** The flows after `start` up to `end`, in any order; several on one date add up. */
   readonly flows: readonly ExternalFlow[];
 }
@@ -217,9 +244,11 @@ export interface MoneyWeightedInput {
  * flow and T the period's, both in years.
  *
  * @throws ValidationError "invalid_date" (details: value) for a malformed
- *   date, an end not after the start, or a flow outside the period;
- *   "invalid_amount" (details: label, value) for an amount that is not a safe
- *   integer or a negative value.
+ *   date, an end not after the start, valuations not strictly after `start`,
+ *   in increasing date order and up to `end`, or a flow outside the period or
+ *   on a date with no valuation (other than the end date); "invalid_amount"
+ *   (details: label, value) for an amount that is not a safe integer, a
+ *   negative value, or a valuation on the end date that differs from `end`.
  */
 export function moneyWeightedReturn(input: MoneyWeightedInput): ReturnOutcome {
   return rounded(moneyWeightedRate(input));
@@ -230,12 +259,47 @@ export function moneyWeightedRate(input: MoneyWeightedInput): RateOutcome {
   checkValuation(input.start);
   checkValuation(input.end);
   if (input.end.date <= input.start.date) invalidDate(input.end.date, "the end must follow the start");
+  let previous = input.start.date;
+  for (const valuation of input.valuations) {
+    checkValuation(valuation);
+    if (valuation.date <= previous) invalidDate(valuation.date, "valuations must follow the start in increasing date order");
+    if (valuation.date > input.end.date) invalidDate(valuation.date, "a valuation falls after the end");
+    if (valuation.date === input.end.date && valuation.valueCents !== input.end.valueCents) {
+      throw new ValidationError("invalid_amount", "a valuation on the end date must equal the end value", {
+        label: "value",
+        value: String(valuation.valueCents),
+      });
+    }
+    previous = valuation.date;
+  }
+  const valuationDates = new Set([...input.valuations.map((valuation) => valuation.date), input.end.date]);
   const daily = flowsByDate(input.flows, input.start.date, input.end.date);
+  for (const date of daily.keys()) {
+    if (!valuationDates.has(date)) invalidDate(date, "every date with a flow needs a valuation");
+  }
 
+  // 1. Nothing held at the end of any day the period is valued on: no return.
+  const held = heldCheck([input.start, ...input.valuations, input.end]);
+  if (held !== null) return held;
   if (input.start.valueCents === null || input.end.valueCents === null) return unknown("missing_value");
   if ([...daily.values()].some((amount) => amount === null)) return unknown("missing_value");
+  const endValue = input.end.valueCents;
 
-  // The household's side: what it pays in is negative, what it gets back positive.
+  // 2. The clock starts at O: the start date when something is held then, else the first day ending with a value above 0.
+  const cuts = [...input.valuations.filter((valuation) => valuation.date < input.end.date), input.end];
+  const firstHeld = cuts.find((valuation) => valuation.valueCents !== null && valuation.valueCents > 0) as Valuation;
+  const origin = input.start.valueCents > 0 ? input.start.date : firstHeld.date;
+  if (cuts.some((valuation) => valuation.date < origin && valuation.valueCents === null)) return unknown("missing_value");
+
+  // 3. A period of no length (O is the end date): the end value ÷ the net money put in − 1, idle flows included.
+  if (origin === input.end.date) {
+    let net = 0;
+    for (const amount of daily.values()) net += amount as Cents;
+    if (net <= 0) return unknown("no_capital");
+    return known(endValue / net - 1, false);
+  }
+
+  // The household's side, netted by date: what it pays in is negative, what it gets back positive.
   const household = new Map<LocalDate, Cents>();
   const add = (date: LocalDate, amount: Cents): void => {
     const total = (household.get(date) ?? 0) + amount;
@@ -244,37 +308,101 @@ export function moneyWeightedRate(input: MoneyWeightedInput): RateOutcome {
   };
   if (input.start.valueCents !== 0) add(input.start.date, -input.start.valueCents);
   for (const [date, amount] of daily) add(date, -(amount as Cents));
-  add(input.end.date, input.end.valueCents);
+  add(input.end.date, endValue);
+  const cashFlows = [...household].filter(([, amount]) => amount !== 0).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
 
-  const cashFlows = [...household].filter(([, amount]) => amount !== 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-  const first = cashFlows[0];
-  const last = cashFlows.at(-1);
-  if (first === undefined || last === undefined || !cashFlows.some(([, amount]) => amount < 0)) return unknown("no_capital");
-  const origin = first[0];
-  // Nothing ever received back: a total loss, outside any bounds.
-  if (!cashFlows.some(([, amount]) => amount > 0)) return known(-1, yearFraction(origin, input.end.date) >= 1);
+  // 4. Nothing received after the clock starts: a total loss, outside any bounds.
+  const lastReceived = cashFlows.findLast(([date, amount]) => amount > 0 && date > origin);
+  if (lastReceived === undefined) return known(-1, yearFraction(origin, input.end.date) >= 1);
 
-  // The period ends on the end date, or at the last money received when the end value is 0.
-  const period = yearFraction(origin, last[0]);
+  // 5. The period runs from O to the last money received L: earlier flows are carried forward to O,
+  // later payments discounted back to L.
+  const last = lastReceived[0];
+  const period = yearFraction(origin, last);
   const annualized = period >= 1;
   // Each flow's exponent in the unit of the figure shown: years, or fractions of the period.
   const unit = annualized ? 1 : period;
-  // Future values at the period's end, so every exponent is ≥ 0 and nothing overflows near −100%.
-  const timed = cashFlows.map(([date, amount]) => ({ exponent: (period - yearFraction(origin, date)) / unit, amount }));
-  const rate = bisect((r) => timed.reduce((total, flow) => total + flow.amount * Math.pow(1 + r, flow.exponent), 0));
+  const timed = cashFlows.map(([date, amount]) => {
+    let exponent: number;
+    if (date < origin) exponent = (period + yearFraction(date, origin)) / unit;
+    else if (date <= last) exponent = (period - yearFraction(origin, date)) / unit;
+    else exponent = -yearFraction(last, date) / unit;
+    return { exponent, amount };
+  });
+  // 6. The root nearest 0.
+  const rate = nearestRoot((r) => timed.reduce((total, flow) => total + flow.amount * Math.pow(1 + r, flow.exponent), 0));
   if (rate === null) return unknown("no_solution");
   return known(rate, annualized);
 }
 
-/** A root of `f` between `MWR_LOW` and `MWR_HIGH` (the one bisection finds from them), or null if `f` does not change sign there. */
-function bisect(f: (rate: number) => number): number | null {
-  let low = MWR_LOW;
-  let high = MWR_HIGH;
-  let fLow = f(low);
-  const fHigh = f(high);
-  if (fLow === 0) return low;
-  if (fHigh === 0) return high;
-  if (Math.sign(fLow) === Math.sign(fHigh) || Number.isNaN(fLow) || Number.isNaN(fHigh)) return null;
+/** One side of the scan for the root nearest 0: `sign` −1 below 0, +1 above. */
+interface ScanSide {
+  readonly sign: -1 | 1;
+  previous: { rate: number; value: number };
+  done: boolean;
+  root: number | null;
+}
+
+/**
+ * The root of `f` nearest 0 between `MWR_LOW` and `MWR_HIGH`, or null if `f`
+ * does not change sign there. It steps outward from 0 on both sides, in
+ * ln(1 + rate) with steps growing by `SCAN_GROWTH`, until a step brackets a
+ * change of sign, and bisects that step for a root r1; it then keeps
+ * scanning the other side out to |r1| and returns the nearer root, the one
+ * above 0 on a tie. Two rates closer together than one scan step may be
+ * missed; the figure is then unknown. The scan stops on a side where `f` is
+ * NaN: near −100% a later payment's negative exponent overflows.
+ */
+function nearestRoot(f: (rate: number) => number): number | null {
+  const atZero = f(0);
+  if (atZero === 0) return 0;
+  if (Number.isNaN(atZero)) return null;
+  const bound = { [-1]: Math.log1p(MWR_LOW), [1]: Math.log1p(MWR_HIGH) } as const;
+  const sides: ScanSide[] = [-1, 1].map((sign) => ({ sign: sign as -1 | 1, previous: { rate: 0, value: atZero }, done: false, root: null }));
+  const [below, above] = sides as [ScanSide, ScanSide];
+
+  /** One step of `side` at `distance` in ln(1 + rate), never beyond `limit` in rate. */
+  const step = (side: ScanSide, distance: number, limit: number): void => {
+    const log = side.sign * distance;
+    let rate = Math.abs(log) >= Math.abs(bound[side.sign]) ? (side.sign < 0 ? MWR_LOW : MWR_HIGH) : Math.expm1(log);
+    if (Math.abs(rate) >= limit) rate = side.sign * limit;
+    const atBound = rate === MWR_LOW || rate === MWR_HIGH || Math.abs(rate) === limit;
+    const value = f(rate);
+    if (Number.isNaN(value)) {
+      side.done = true;
+      return;
+    }
+    if (value === 0) {
+      side.root = rate;
+    } else if (Math.sign(value) !== Math.sign(side.previous.value)) {
+      side.root = side.sign < 0 ? bisect(f, rate, side.previous.rate, value) : bisect(f, side.previous.rate, rate, side.previous.value);
+    } else {
+      side.previous = { rate, value };
+    }
+    if (side.root !== null || atBound) side.done = true;
+  };
+
+  let distance = SCAN_FIRST_STEP;
+  for (; !(below.done && above.done) && below.root === null && above.root === null; distance *= SCAN_GROWTH) {
+    for (const side of sides) if (!side.done) step(side, distance, Infinity);
+  }
+  const found = sides.find((side) => side.root !== null);
+  if (found === undefined) return null;
+  // Keep scanning the other side out to the distance of the root found.
+  const other = found === below ? above : below;
+  const limit = Math.abs(found.root as number);
+  // Already scanned past the root found, with no change of sign: nothing nearer there.
+  if (Math.abs(other.previous.rate) >= limit) other.done = true;
+  for (; !other.done; distance *= SCAN_GROWTH) step(other, distance, limit);
+  if (other.root === null) return found.root;
+  const [first, second] = [found.root as number, other.root];
+  if (Math.abs(first) !== Math.abs(second)) return Math.abs(first) < Math.abs(second) ? first : second;
+  // A tie needs two roots exactly as far from 0 in double precision: practically unreachable, kept for determinism.
+  return Math.max(first, second);
+}
+
+/** A root of `f` between `low` and `high`, where `f` changes sign (`fLow` is `f(low)`). */
+function bisect(f: (rate: number) => number, low: number, high: number, fLow: number): number {
   for (let step = 0; step < 200; step += 1) {
     const middle = (low + high) / 2;
     if (middle === low || middle === high) break;
@@ -288,6 +416,16 @@ function bisect(f: (rate: number) => number): number | null {
     }
   }
   return (low + high) / 2;
+}
+
+/**
+ * The test both returns run first: null when the period held capital (a
+ * known value above 0 among `values`, the start, every cut and the end);
+ * otherwise `missing_value` when one of them is unknown, else `no_capital`.
+ */
+function heldCheck(values: readonly Valuation[]): RateOutcome | null {
+  if (values.some((valuation) => valuation.valueCents !== null && valuation.valueCents > 0)) return null;
+  return unknown(values.some((valuation) => valuation.valueCents === null) ? "missing_value" : "no_capital");
 }
 
 /**
@@ -312,10 +450,27 @@ function flowsByDate(flows: readonly ExternalFlow[], start: LocalDate, end: Loca
   return daily;
 }
 
-/** Where the TWR's clock starts: the start when it holds something, else the first valuation above 0. */
-function firstHeldDate(start: Valuation, valuations: readonly Valuation[]): LocalDate {
-  if (start.valueCents !== null && start.valueCents > 0) return start.date;
-  return valuations.find((valuation) => valuation.valueCents !== null && valuation.valueCents > 0)?.date ?? start.date;
+/**
+ * The TWR's clock in years: the stretches while something is held, each from
+ * the start (when it holds something) or the first day ending with a value
+ * above 0 to the next day the value is back to 0 (or the period's end),
+ * their `yearFraction`s added up. Every value is known here.
+ */
+function heldYears(start: Valuation, valuations: readonly Valuation[]): number {
+  let years = 0;
+  let stretchStart: LocalDate | null = null;
+  for (const valuation of [start, ...valuations]) {
+    const value = valuation.valueCents as Cents;
+    if (value > 0 && stretchStart === null) {
+      stretchStart = valuation.date;
+    } else if (value === 0 && stretchStart !== null) {
+      years += yearFraction(stretchStart, valuation.date);
+      stretchStart = null;
+    }
+  }
+  const end = valuations.at(-1) ?? start;
+  if (stretchStart !== null) years += yearFraction(stretchStart, end.date);
+  return years;
 }
 
 function checkValuation(valuation: Valuation): void {

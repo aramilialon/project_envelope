@@ -9,6 +9,7 @@ import {
   applyTradeChanges,
   computePositions,
   derivedResults,
+  positionsAsOfDates,
   summarizeByAccount,
   summarizeByPortfolio,
   validatePositionHistory,
@@ -1431,5 +1432,66 @@ describe("a position's quantity beyond the safe range (#662)", () => {
       () => computePositions([own]),
       (error) => isValidationError(error, "invalid_quantity") && error.details.tradeId === undefined && error.details.label === "quantity",
     );
+  });
+});
+
+describe("positionsAsOfDates: one replay for every date (#89)", () => {
+  /** A date `day` days after 31 December 2025. */
+  const dayOf = (day: number) => new Date(Date.UTC(2026, 0, day)).toISOString().slice(0, 10);
+  /** The previous day's 23:00 UTC: the first instant of `date` in a UTC+1 time zone, as an untimed trade stores it. */
+  const untimedAt = (date: string) => `${new Date(Date.parse(`${date}T00:00:00Z`) - 3_600_000).toISOString().slice(0, 19)}Z`;
+
+  it("matches computePositions with asOf, date by date, on 300 seeded histories", () => {
+    const random = mulberry32(89);
+    const seen = { splits: 0, crossAccount: 0, crossPortfolio: 0, sells: 0, untimedOnValuation: 0 };
+    for (let run = 0; run < 300; run++) {
+      const generated = generateHistory(random).trades;
+      const tradeDates = [...new Set(generated.map((t) => t.date))];
+      // Every trade of some dates has no time: the first instant of its date, the day before in UTC.
+      const untimed = new Set(tradeDates.filter(() => random() < 0.3));
+      const trades = generated.map((t) => (untimed.has(t.date) ? { ...t, occurredAt: untimedAt(t.date) } : t));
+      // Each untimed date, some other trade dates, some dates without a trade (before the first
+      // trade, between trades, after the last one), unsorted and with repeats.
+      const dates = [...untimed, ...tradeDates.filter(() => random() < 0.3), dayOf(0)];
+      for (let n = 0; n < 8; n++) dates.push(dayOf(Math.floor(random() * 320)));
+      dates.push(dates[0] as string);
+
+      const byId = new Map(trades.map((t) => [t.id, t]));
+      const legOf = (t: PositionTrade) => (t.transferTradeId === null ? undefined : byId.get(t.transferTradeId));
+      if (trades.some((t) => t.type === "split")) seen.splits += 1;
+      if (trades.some((t) => t.type === "sell")) seen.sells += 1;
+      if (trades.some((t) => legOf(t) !== undefined && legOf(t)?.accountId !== t.accountId)) seen.crossAccount += 1;
+      if (trades.some((t) => legOf(t)?.accountId === t.accountId && legOf(t)?.portfolioId !== t.portfolioId)) seen.crossPortfolio += 1;
+      if (untimed.size > 0) seen.untimedOnValuation += 1;
+
+      const result = positionsAsOfDates(shuffle(trades, random), dates);
+      assert.equal(result.size, new Set(dates).size, `run ${run}: one entry per date`);
+      for (const date of new Set(dates)) {
+        assert.deepEqual(result.get(date), computePositions(trades, { asOf: date }), `run ${run}, ${date}`);
+      }
+    }
+    // The generator reached every case the comparison is meant to cover.
+    for (const [kind, count] of Object.entries(seen)) assert.ok(count > 20, `${kind}: ${count}`);
+  });
+
+  it("gives an empty map for no date, and positions with no rows before the first trade", () => {
+    assert.deepEqual(positionsAsOfDates([buy("2026-12-01", "A", 1, 10, 0)], []), new Map());
+    const result = positionsAsOfDates([buy("2026-12-01", "A", 1, 10, 0)], ["2026-11-30"]);
+    assert.deepEqual(result.get("2026-11-30"), { accounts: [], portfolios: [], charges: [] });
+  });
+
+  it("replays nothing after the latest date, as computePositions with that date", () => {
+    // A sale of more than is held, dated after every date asked for.
+    const trades = [buy("2026-01-10", "A", 1, 10, 0), sell("2026-03-01", "A", 5, 10, 0)];
+    const result = positionsAsOfDates(trades, ["2026-01-31", "2026-02-28"]);
+    assert.equal(account(result.get("2026-02-28") as Positions).quantity, units(1));
+    assert.throws(() => positionsAsOfDates(trades, ["2026-01-31", "2026-03-01"]), (error: unknown) => {
+      assert.ok(isValidationError(error, "insufficient_quantity"));
+      return true;
+    });
+  });
+
+  it("refuses a malformed date", () => {
+    assert.throws(() => positionsAsOfDates([], ["2026-02-30"]), (error: unknown) => isValidationError(error, "invalid_date"));
   });
 });

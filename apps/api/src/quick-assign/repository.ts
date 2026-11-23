@@ -112,6 +112,8 @@ export async function runQuickAssign(
   month: string,
   scope: QuickAssignScope,
   mode: QuickAssignMode,
+  /** A batch id the client chose, already claimed with `claimAssignmentBatch` (#559). */
+  batchId?: string,
 ): Promise<AssignmentEntryRecord[]> {
   const categories = await listCategories(db, workspaceId);
   const groups = await listCategoryGroups(db, workspaceId);
@@ -141,5 +143,5 @@ export async function runQuickAssign(
   if (entries.length === 0) {
     return [];
   }
-  return createAssignmentBatch(db, { workspaceId, author, entries });
+  return createAssignmentBatch(db, { workspaceId, author, entries, ...(batchId !== undefined ? { batchId } : {}) });
 }

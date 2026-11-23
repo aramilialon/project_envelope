@@ -1,4 +1,4 @@
-import { assertAmount, assertDate, monthOf, ValidationError } from "@envelope/core";
+import { assertAmount, assertDate, countsOnWorkspaceTimeline, isStartingBalanceSplit, monthOf, ValidationError } from "@envelope/core";
 
 import { checkAccountsOpen } from "../accounts/open-accounts.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
@@ -6,6 +6,7 @@ import type { DbClient, DbPool } from "../db/pool.ts";
 import { isUuid } from "../ids.ts";
 import type { QueueDriver } from "../queue/index.ts";
 import { BUDGET_RECOMPUTE_JOB, type BudgetRecomputeJobData } from "../queue/job-types.ts";
+import type { TransactionKey, TransactionOrder } from "./cursor.ts";
 import { buildMultiRowValues, groupSplitsByParent, validateSplitTotals, type SplitRowLike } from "./splits.ts";
 
 /**
@@ -530,11 +531,83 @@ export async function listTransactionsForAccount(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
      WHERE t.workspace_id = $1 AND t.account_id = $2
-     ORDER BY t.occurred_at, t.created_at`,
+     ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId, accountId],
   );
   const splitsByTransaction = await loadSplits(db, rows.map((r) => r.id));
   return rows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? []));
+}
+
+/** The largest page `listTransactionPage` returns, and what it returns when not told (#560). */
+export const MAX_TRANSACTION_PAGE_SIZE = 500;
+export const DEFAULT_TRANSACTION_PAGE_SIZE = 100;
+
+export interface TransactionPageInput {
+  /** 1 to `MAX_TRANSACTION_PAGE_SIZE`; the route checks it. */
+  readonly limit: number;
+  readonly order: TransactionOrder;
+  /** The last row of the previous page (`decodeTransactionCursor`), none for the first page. */
+  readonly after?: TransactionKey;
+}
+
+export interface TransactionPage {
+  readonly transactions: TransactionRecord[];
+  /** The last row returned, when more rows follow it; `undefined` on the last page. */
+  readonly nextKey: TransactionKey | undefined;
+}
+
+interface TransactionPageRow extends TransactionRow {
+  readonly occurred_at_key: string;
+  readonly created_at_key: string;
+}
+
+/** An instant as the cursor keeps it: UTC, with microseconds, whatever the session's time zone (cursor.ts). */
+const KEY_TEXT = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`;
+
+/**
+ * One page of an account's transactions (#560), in register order (occurred_at, created_at, id),
+ * ascending or descending, starting after the row `after` names. Keyset paging, not an offset: a
+ * row added or deleted between two requests moves no other row across a page boundary, so none is
+ * skipped or repeated, and a row added after the cursor's place shows on a later page. The row
+ * comparison against the cursor's own microsecond text, cast back to `timestamptz`, compares
+ * exactly what the order sorts on; `transactions_account_order_idx` (migration 0040) serves it.
+ * Reads `limit + 1` rows to know whether another page follows without a second query.
+ */
+export async function listTransactionPage(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  input: TransactionPageInput,
+): Promise<TransactionPage> {
+  const direction = input.order === "desc" ? "DESC" : "ASC";
+  const comparison = input.order === "desc" ? "<" : ">";
+  const params: unknown[] = [workspaceId, accountId, input.limit + 1];
+  let afterClause = "";
+  if (input.after) {
+    params.push(input.after.occurredAt, input.after.createdAt, input.after.id);
+    afterClause = `AND (t.occurred_at, t.created_at, t.id) ${comparison} ($4::timestamptz, $5::timestamptz, $6::uuid)`;
+  }
+  const { rows } = await db.query<TransactionPageRow>(
+    `SELECT ${TRANSACTION_COLUMNS},
+       to_char(t.occurred_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS occurred_at_key,
+       to_char(t.created_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS created_at_key
+     FROM transactions t
+     JOIN workspaces w ON w.id = t.workspace_id
+     WHERE t.workspace_id = $1 AND t.account_id = $2 ${afterClause}
+     ORDER BY t.occurred_at ${direction}, t.created_at ${direction}, t.id ${direction}
+     LIMIT $3`,
+    params,
+  );
+  const pageRows = rows.slice(0, input.limit);
+  const last = pageRows.at(-1);
+  const nextKey = rows.length > input.limit && last
+    ? { occurredAt: last.occurred_at_key, createdAt: last.created_at_key, id: last.id }
+    : undefined;
+  const splitsByTransaction = await loadSplits(db, pageRows.map((r) => r.id));
+  return {
+    transactions: pageRows.map((row) => toTransactionRecord(row, splitsByTransaction.get(row.id) ?? [])),
+    nextKey,
+  };
 }
 
 /** Every transaction of the workspace, across every account — what the budget month endpoint (#16) aggregates. */
@@ -543,7 +616,7 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
      WHERE t.workspace_id = $1
-     ORDER BY t.occurred_at, t.created_at`,
+     ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId],
   );
   const splitsByTransaction = await loadSplits(db, rows.map((r) => r.id));
@@ -567,51 +640,25 @@ interface TransactionEventRow {
   readonly status: TransactionStatus;
   readonly transfer_id: string | null;
   readonly payment_category_id: string | null;
+  readonly on_budget: boolean;
+  readonly partner_on_budget: boolean | null;
   readonly split_count: string;
 }
 
 /**
- * A credit card's own "Starting balance" transaction (`accounts/repository.ts`'s
- * `createStartingBalanceTransaction`) is the one and only split of a non-transfer transaction,
- * categorized to that same card's own payment category — the one combination no ordinary
- * transaction produces (spending uses a regular category; a card payment is a transfer with no
- * category at all; a cash account's own income has no payment category to match in the first
- * place, `paymentCategoryId` is `null` for it). Shared by `budget/repository.ts` (excluded from
- * `aggregateTransactions` — `packages/core`'s own docs: it feeds only `owedAsOf`, never
- * `Activity`) and this module's own `listTransactionEventsForMonth` (excluded from the budget
- * month's timeline and "To do" list, #326: it is not something that "happened" in the budget
- * sense, just the card's own balance as of account creation) — one rule, not two copies of it.
- */
-export function isStartingBalanceSplit(input: {
-  readonly transferId: string | null;
-  readonly splitCount: number;
-  readonly categoryId: string | null;
-  readonly paymentCategoryId: string | null;
-}): boolean {
-  return input.transferId === null && input.splitCount === 1 && input.paymentCategoryId !== null && input.categoryId === input.paymentCategoryId;
-}
-
-/**
- * Every split of every transaction dated in `month` (the budget month's own timeline, #325), on
- * an on-budget account, unless `accountId` narrows it to one specific account (the account
- * register's own timeline, `#337`) — any account, on-budget or not, since that screen is about
- * one account's own activity, not the budget's. `budget_date`'s own month, not `occurred_at`'s (a
- * transaction anchored near midnight can fall in a different calendar month once converted to the
- * workspace's own time zone).
+ * Every split of every transaction dated in `month` (the budget month's own timeline, #325), or,
+ * with `accountId`, every split of that one account (the account register's own timeline, `#337`,
+ * any account, on-budget or not, since that screen is about one account's own activity, not the
+ * budget's). `budget_date`'s own month, not `occurred_at`'s (a transaction anchored near midnight
+ * can fall in a different calendar month once converted to the workspace's own time zone).
  *
- * A transfer's two legs (`transfer_id`) are two ordinary rows, each with its own single
- * null-category split already signed from that leg's own account (negative leaving the source,
- * positive arriving at the destination) — so filtered to one `accountId`, a transfer already
- * shows up correctly with no special-casing at all.
- *
- * Un-filtered (every account), a transfer between two on-budget cash accounts is invisible on
- * purpose: money only moved from one pot to another, nothing a category or the month's own cash
- * total needs to know about (`@envelope/core`'s own invariant does not move either). A transfer
- * touching an off-budget account or a credit card is not neutral that way — paying a card down,
- * or moving money out of the tracked budget entirely, is a real event — so the on-budget leg of
- * that transfer still shows (the off-budget leg is dropped by the plain `on_budget = true` filter
- * already; the card's own leg is dropped by the same transfer check, symmetrically, since from
- * the card's own side its partner is the on-budget cash account).
+ * Which legs the workspace-wide timeline counts is `@envelope/core`'s `countsOnWorkspaceTimeline`
+ * (#659): the net movement of every on-budget account, credit cards included, so a transfer whose
+ * two ends are both on budget (a card payment, cash to cash, card to card) counts at neither end,
+ * and one with an off-budget account counts once, at its on-budget end. The query already leaves
+ * out off-budget accounts' legs, so as not to load rows only to drop them; the predicate stays the
+ * rule, and checks `onBudget` again. Filtered to one
+ * `accountId`, a transfer's leg is an ordinary signed row of that account and always shows.
  *
  * A credit card's own "Starting balance" split (`isStartingBalanceSplit`) never becomes an event
  * either way (`#326`): it is not something that happened in the budget sense, just the card's own
@@ -632,6 +679,7 @@ export async function listTransactionEventsForMonth(
     `SELECT
        to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS date,
        s.amount_cents, t.payee, s.category_id, t.status, t.transfer_id, a.payment_category_id,
+       a.on_budget, partner_account.on_budget AS partner_on_budget,
        (SELECT COUNT(*) FROM splits s2 WHERE s2.transaction_id = t.id) AS split_count
      FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
@@ -641,25 +689,27 @@ export async function listTransactionEventsForMonth(
      LEFT JOIN accounts partner_account ON partner_account.id = partner.account_id
      WHERE t.workspace_id = $1
        AND to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM') = $2
-       ${
-         accountId === undefined
-           ? `AND a.on_budget = true
-              AND NOT (t.transfer_id IS NOT NULL AND partner_account.on_budget = true AND partner_account.type <> 'credit_card')`
-           : "AND t.account_id = $3"
-       }
-     ORDER BY t.occurred_at, t.created_at`,
+       ${accountId === undefined ? "AND a.on_budget = true" : "AND t.account_id = $3"}
+     ORDER BY t.occurred_at, t.created_at, t.id, s.id`,
     params,
   );
   return rows
-    .filter(
-      (row) =>
-        !isStartingBalanceSplit({
-          transferId: row.transfer_id,
-          splitCount: Number(row.split_count),
-          categoryId: row.category_id,
-          paymentCategoryId: row.payment_category_id,
-        }),
-    )
+    .filter((row) => {
+      const startingBalance = isStartingBalanceSplit({
+        transferId: row.transfer_id,
+        splitCount: Number(row.split_count),
+        categoryId: row.category_id,
+        paymentCategoryId: row.payment_category_id,
+      });
+      if (accountId !== undefined) {
+        return !startingBalance;
+      }
+      return countsOnWorkspaceTimeline({
+        onBudget: row.on_budget,
+        transferPartnerOnBudget: row.transfer_id === null ? null : row.partner_on_budget,
+        startingBalance,
+      });
+    })
     .map((row) => ({
       date: row.date,
       amountCents: Number(row.amount_cents),

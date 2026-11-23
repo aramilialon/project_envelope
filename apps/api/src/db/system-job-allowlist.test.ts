@@ -27,6 +27,9 @@ const ALLOWED = [
   "apps/api/src/scheduled-transactions/fire-job.ts",
   // Writes shared exchange rates, for its own statements only, and resets the flag (#85).
   "apps/api/src/market-data/fx-rates-repository.ts",
+  // Lists every workspace and clears the flag, then deletes each one's expired idempotency keys in
+  // a transaction of its own (#559).
+  "apps/api/src/idempotency/sweep-job.ts",
 ];
 
 /**

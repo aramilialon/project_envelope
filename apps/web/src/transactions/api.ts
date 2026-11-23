@@ -72,23 +72,55 @@ export interface Transfer {
   readonly destination: Transaction;
 }
 
+/** The largest page the API returns (#560): the fewest requests for a whole account. */
+const TRANSACTION_PAGE_SIZE = 500;
+
+/**
+ * Every transaction of the account, oldest first. The API returns them one page at a time (#560);
+ * this follows `nextCursor` to the last page, because the register and the account balances add
+ * up the whole account on the client.
+ */
 export async function listTransactionsForAccount(
   accessToken: string,
   workspaceId: string,
   accountId: string,
 ): Promise<Transaction[]> {
-  const response = await apiFetch(accessToken, "GET", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`);
-  const body = (await response.json()) as { transactions: Transaction[] };
-  return body.transactions;
+  const path = `/workspaces/${workspaceId}/accounts/${accountId}/transactions?limit=${TRANSACTION_PAGE_SIZE}`;
+  const transactions: Transaction[] = [];
+  let cursor: string | null = null;
+  do {
+    const url: string = cursor === null ? path : `${path}&cursor=${encodeURIComponent(cursor)}`;
+    const response = await apiFetch(accessToken, "GET", url);
+    const body = (await response.json()) as { transactions: Transaction[]; nextCursor?: string | null };
+    transactions.push(...body.transactions);
+    cursor = body.nextCursor ?? null;
+  } while (cursor !== null);
+  return transactions;
 }
 
+/**
+ * The `Idempotency-Key` header of a create (#559, ADR 0020), when the caller has one: a request
+ * sent again with the same key and body is recorded once, and answered with the first reply.
+ */
+function idempotencyHeaders(idempotencyKey: string | undefined): Record<string, string> | undefined {
+  return idempotencyKey === undefined ? undefined : { "Idempotency-Key": idempotencyKey };
+}
+
+/** `idempotencyKey`: one per submit attempt (#559), made by the form with `crypto.randomUUID()`. */
 export async function createTransaction(
   accessToken: string,
   workspaceId: string,
   accountId: string,
   input: CreateTransactionInput,
+  idempotencyKey?: string,
 ): Promise<Transaction> {
-  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/accounts/${accountId}/transactions`, input);
+  const response = await apiFetch(
+    accessToken,
+    "POST",
+    `/workspaces/${workspaceId}/accounts/${accountId}/transactions`,
+    input,
+    idempotencyHeaders(idempotencyKey),
+  );
   return (await response.json()) as Transaction;
 }
 
@@ -122,7 +154,8 @@ export async function createTransfer(
   accessToken: string,
   workspaceId: string,
   input: CreateTransferInput,
+  idempotencyKey?: string,
 ): Promise<Transfer> {
-  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transfers`, input);
+  const response = await apiFetch(accessToken, "POST", `/workspaces/${workspaceId}/transfers`, input, idempotencyHeaders(idempotencyKey));
   return (await response.json()) as Transfer;
 }

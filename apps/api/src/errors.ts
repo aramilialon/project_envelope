@@ -120,6 +120,38 @@ export class AccountClosedError extends Error {
   }
 }
 
+/**
+ * An id the client chose is already used in this workspace for a different request (#559, ADR
+ * 0020): an `Idempotency-Key` sent again with another body, route, account or member, or a
+ * `batchId` sent again with other entries. The global handler answers 409 `id_conflict` with
+ * `details.field` naming the header or the field, and any other `details` given (the batch id the
+ * client sent, never anything stored).
+ */
+export class IdConflictError extends Error {
+  readonly details: Readonly<Record<string, string>>;
+
+  constructor(field: string, extra: Readonly<Record<string, string>> = {}) {
+    super(`${field} is already used for a different request`);
+    this.name = "IdConflictError";
+    this.details = { field, ...extra };
+  }
+}
+
+/**
+ * The same key or batch id is still being used by another request in flight, which has held it
+ * longer than the claim waits (`CLAIM_LOCK_TIMEOUT`, idempotency/repository.ts). The global handler
+ * answers 409 `request_in_progress` with `Retry-After`: retrying later gets the first request's
+ * reply.
+ */
+export class RequestInProgressError extends Error {
+  readonly retryAfterSeconds = 1;
+
+  constructor() {
+    super("another request with the same key is still in progress");
+    this.name = "RequestInProgressError";
+  }
+}
+
 const FOREIGN_KEY_VIOLATION = "23503";
 const INVALID_TEXT_REPRESENTATION = "22P02";
 const INSUFFICIENT_PRIVILEGE = "42501";
@@ -212,6 +244,14 @@ export function toErrorReply(error: unknown): ErrorReply {
     return { statusCode: 409, body: { error: "account_closed" } };
   }
 
+  if (error instanceof IdConflictError) {
+    return { statusCode: 409, body: { error: "id_conflict", details: error.details } };
+  }
+
+  if (error instanceof RequestInProgressError) {
+    return { statusCode: 409, body: { error: "request_in_progress", details: { retryAfterSeconds: error.retryAfterSeconds } } };
+  }
+
   const sqlState = sqlStateOf(error);
   if (sqlState !== undefined) {
     // A write to a closed account (#729, ADR 0018): refused by the database for every write path,
@@ -285,6 +325,9 @@ export function registerErrorHandler(app: FastifyInstance): void {
       } else {
         request.log.info(summary, "request failed with a client error");
       }
+    }
+    if (error instanceof RequestInProgressError) {
+      void reply.header("Retry-After", String(error.retryAfterSeconds));
     }
     await reply.code(statusCode).send(body);
   });

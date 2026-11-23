@@ -38,6 +38,8 @@ const EXPECTED_TABLES = [
   "scheduled_transaction_splits",
   "trades",
   "prices",
+  "idempotency_keys",
+  "assignment_batches",
 ];
 
 /**
@@ -131,6 +133,58 @@ describe("apps/api/migrations, applied to a real database", () => {
     assert.deepEqual(triggers.map((row) => row.tgname).sort(), Object.values(guardedByTrigger).sort());
   });
 
+  it("keys idempotency keys and assignment batches by workspace first, with no other unique index (#559)", async () => {
+    // A unique index shared across workspaces would turn a 409 into a leak (lesson #505): the
+    // only unique index on each table is its primary key, (workspace_id, key) or (workspace_id, id).
+    const { rows } = await pool.query<{ table: string; index: string; definition: string; primary: boolean }>(
+      `SELECT c.relname AS table, i.relname AS index, pg_get_indexdef(x.indexrelid) AS definition, x.indisprimary AS primary
+       FROM pg_index x
+       JOIN pg_class c ON c.oid = x.indrelid
+       JOIN pg_class i ON i.oid = x.indexrelid
+       WHERE c.relname IN ('idempotency_keys', 'assignment_batches') AND x.indisunique
+       ORDER BY c.relname`,
+    );
+    assert.deepEqual(
+      rows.map((row) => ({ table: row.table, primary: row.primary, columns: /\((.*)\)$/.exec(row.definition)?.[1] })),
+      [
+        { table: "assignment_batches", primary: true, columns: "workspace_id, id" },
+        { table: "idempotency_keys", primary: true, columns: "workspace_id, key" },
+      ],
+    );
+  });
+
+  it("refuses to commit an idempotency key without its reply (#559)", async () => {
+    const workspaceId = randomUUID();
+    await pool.query("INSERT INTO workspaces (id, name, base_currency, time_zone) VALUES ($1, 'Keys', 'EUR', 'UTC')", [workspaceId]);
+    const user = await pool.query<{ id: string }>("INSERT INTO users (keycloak_subject, email) VALUES ($1, $2) RETURNING id", [
+      randomUUID(),
+      `${randomUUID()}@example.com`,
+    ]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("SET LOCAL ROLE envelope_app");
+      await client.query("SELECT set_config('app.workspace_id', $1, true)", [workspaceId]);
+      await client.query(
+        "INSERT INTO idempotency_keys (workspace_id, key, user_id, operation, request_hash) VALUES ($1, $2, $3, 'test', $4)",
+        [workspaceId, randomUUID(), user.rows[0]!.id, Buffer.alloc(32)],
+      );
+      await assert.rejects(
+        () => client.query("COMMIT"),
+        (error: { code?: string; constraint?: string }) => {
+          assert.equal(error.code, "23000");
+          assert.equal(error.constraint, "idempotency_keys_reply_stored");
+          return true;
+        },
+      );
+    } finally {
+      client.release();
+    }
+    const { rows } = await pool.query("SELECT 1 FROM idempotency_keys WHERE workspace_id = $1", [workspaceId]);
+    assert.deepEqual(rows, []);
+    await pool.query("DELETE FROM workspaces WHERE id = $1", [workspaceId]);
+  });
+
   describe("row-level security, as the envelope_app role", () => {
     let workspaceA: string;
     let workspaceB: string;
@@ -214,6 +268,8 @@ describe("apps/api/migrations, applied to a real database", () => {
       readonly reconciliationId: string;
       readonly ledgerEntryId: string;
       readonly scheduledTransactionId: string;
+      /** A batch of this workspace that every ledger row below references (migration 0039). */
+      readonly batchId: string;
     }
 
     let userId: string;
@@ -252,10 +308,11 @@ describe("apps/api/migrations, applied to a real database", () => {
         "INSERT INTO reconciliations (workspace_id, account_id, reconciled_at, statement_balance_cents) VALUES ($1, $2, '2026-09-30', 0)",
         [workspaceId, accountId],
       );
+      const batchId = await insertId("INSERT INTO assignment_batches (workspace_id, id) VALUES ($1, $2)", [workspaceId, randomUUID()]);
       const ledgerEntryId = await insertId(
         `INSERT INTO assignment_ledger (batch_id, workspace_id, month, destination_category_id, amount_cents, author)
          VALUES ($1, $2, '2026-09-01', $3, 1000, $4)`,
-        [randomUUID(), workspaceId, categoryId, userId],
+        [batchId, workspaceId, categoryId, userId],
       );
       const scheduledTransactionId = await insertId(
         `INSERT INTO scheduled_transactions (workspace_id, account_id, next_due_date, recur_every, recur_unit)
@@ -271,6 +328,7 @@ describe("apps/api/migrations, applied to a real database", () => {
         reconciliationId,
         ledgerEntryId,
         scheduledTransactionId,
+        batchId,
       };
     }
 
@@ -355,7 +413,7 @@ describe("apps/api/migrations, applied to a real database", () => {
         insert: (t) => [
           `INSERT INTO assignment_ledger (batch_id, workspace_id, month, source_category_id, amount_cents, author)
            VALUES ($1, $2, '2026-09-01', $3, 100, $4)`,
-          [randomUUID(), workspaceA.workspaceId, t.categoryId, userId],
+          [workspaceA.batchId, workspaceA.workspaceId, t.categoryId, userId],
         ],
       },
       {
@@ -363,7 +421,7 @@ describe("apps/api/migrations, applied to a real database", () => {
         insert: (t) => [
           `INSERT INTO assignment_ledger (batch_id, workspace_id, month, destination_category_id, amount_cents, author)
            VALUES ($1, $2, '2026-09-01', $3, 100, $4)`,
-          [randomUUID(), workspaceA.workspaceId, t.categoryId, userId],
+          [workspaceA.batchId, workspaceA.workspaceId, t.categoryId, userId],
         ],
       },
       {
@@ -371,7 +429,16 @@ describe("apps/api/migrations, applied to a real database", () => {
         insert: (t) => [
           `INSERT INTO assignment_ledger (batch_id, workspace_id, month, source_category_id, amount_cents, author, reverses)
            VALUES ($1, $2, '2026-09-01', $3, 1000, $4, $5)`,
-          [randomUUID(), workspaceA.workspaceId, workspaceA.categoryId, userId, t.ledgerEntryId],
+          [workspaceA.batchId, workspaceA.workspaceId, workspaceA.categoryId, userId, t.ledgerEntryId],
+        ],
+      },
+      {
+        // Migration 0039 (#559): a ledger row's batch is one of its own workspace's.
+        constraint: "assignment_ledger_batch_id_fkey",
+        insert: (t) => [
+          `INSERT INTO assignment_ledger (batch_id, workspace_id, month, destination_category_id, amount_cents, author)
+           VALUES ($1, $2, '2026-09-01', $3, 100, $4)`,
+          [t.batchId, workspaceA.workspaceId, workspaceA.categoryId, userId],
         ],
       },
       {
@@ -1256,10 +1323,12 @@ describe("apps/api/migrations, applied to a real database", () => {
         [workspaceId, group.rows[0]!.id],
       );
       categoryId = category.rows[0]!.id;
+      const batchId = randomUUID();
+      await pool.query("INSERT INTO assignment_batches (workspace_id, id) VALUES ($1, $2)", [workspaceId, batchId]);
       const { rows } = await pool.query<{ id: string }>(
         `INSERT INTO assignment_ledger (batch_id, workspace_id, month, destination_category_id, amount_cents, author)
          VALUES ($1, $2, '2026-09-01', $3, 1000, $4) RETURNING id`,
-        [randomUUID(), workspaceId, categoryId, userId],
+        [batchId, workspaceId, categoryId, userId],
       );
       entryId = rows[0]!.id;
     });
