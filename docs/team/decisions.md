@@ -70,6 +70,10 @@ The agent team takes decisions without asking the maintainer, on the recommendat
 - **#729** (2026-11-21, architect): an import confirmation that touches a closed account is refused as a whole.
 - **#728** (2026-11-21, translator): the Italian message for a card's spending against its budget (`budget.bar.spentWithCardOf`) puts its arguments in a different order from the English.
 - **#705** (2026-11-21, domain-expert): closing a credit card requires its payment category to be settled, whether it is above or below zero; a closed card's payment category takes no assignments and leaves the current and later months, and stays in past months so their figures do not change.
+- **#667** (2026-11-23, architect): the tax-country change takes the workspace row `FOR NO KEY UPDATE`, not `FOR UPDATE`, so foreign-key checks into `workspaces` (`FOR KEY SHARE`) never wait on it; trade writes take it `FOR SHARE`.
+- **#667** (2026-11-23, architect + domain-expert): the return-to-IT re-check includes closed accounts and names the account; a closed account's regime history and withholding-agent flag will take no writes (own issue, migration 0042), so the way out is reopening (#705); rejected: skipping closed accounts, and editing a closed account's history.
+- **#667** (2026-11-23, architect): `tax_regime_conflicts_with_trade` from the tax-country change also carries `accountId`; the per-account paths keep `{tradeId, tradeDate, code}`.
+- **#712** (2026-11-23, architect; domain-expert approved the delete): migration 0041 deletes stored 1:1 splits with no audit entries, as 0038 did; the ratio check lives in `checkTradeFigures`; `ValidationErrorDetail` accepts `readonly string[]`.
 
 ### 0.2.1
 

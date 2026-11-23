@@ -145,7 +145,8 @@ function optionalText(value: string | null | undefined, field: InstrumentTextFie
  * @throws ValidationError `invalid_instrument_field` (a missing name, or a name or asset class too
  *   long), `missing_instrument_identifier` (neither an ISIN nor a ticker), `missing_exchange` (a
  *   ticker with no exchange), `invalid_isin`, `invalid_ticker`, `invalid_exchange`,
- *   `invalid_instrument_type`, `invalid_currency` or `invalid_price_factor` (details
+ *   `invalid_instrument_type` (details `{ type, allowed }`, `allowed` every type in `INSTRUMENT_TYPES`,
+ *   #712), `invalid_currency` or `invalid_price_factor` (details
  *   `{ label: "priceFactorE6", value }`, the same shape as `assertPriceFactor`'s).
  */
 export function normalizeInstrument(input: InstrumentInput): NormalizedInstrument {
@@ -228,7 +229,10 @@ function normalizeName(value: string): string {
 function normalizeType(value: string): InstrumentType {
   const type = value.trim();
   if (!isInstrumentType(type)) {
-    throw new ValidationError("invalid_instrument_type", `"${value}" is not an instrument type`, { type: value });
+    throw new ValidationError("invalid_instrument_type", `"${value}" is not an instrument type`, {
+      type: value,
+      allowed: INSTRUMENT_TYPES,
+    });
   }
   return type;
 }

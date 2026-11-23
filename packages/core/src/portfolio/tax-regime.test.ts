@@ -76,6 +76,49 @@ describe("validateTaxRegimeHistory", () => {
     );
   });
 
+  describe("with the entries a request adds to a stored history (#714)", () => {
+    const stored: readonly TaxRegimeEntry[] = [
+      { validFrom: "2024-03-15", regime: "administered" },
+      { validFrom: "2027-01-01", regime: "self_declared" },
+    ];
+    const names = (requested: TaxRegimeEntry, validFrom: string) => () =>
+      assert.throws(
+        () => validateTaxRegimeHistory([...stored, requested], [requested]),
+        (error) => isValidationError(error, "tax_regime_change_not_year_start") && error.details.validFrom === validFrom,
+      );
+
+    it("names the requested date when the new entry comes first and makes the stored first one a change", () => {
+      names({ validFrom: "2023-06-01", regime: "self_declared" }, "2023-06-01")();
+      // On 1 January too: the stored first entry is what breaks the rule, the request what moved it.
+      names({ validFrom: "2023-01-01", regime: "self_declared" }, "2023-01-01")();
+      // A whole history replaced at once names the entry that breaks the rule, as before.
+      assert.throws(
+        () => validateTaxRegimeHistory([...stored, { validFrom: "2023-06-01", regime: "self_declared" }]),
+        (error) => isValidationError(error, "tax_regime_change_not_year_start") && error.details.validFrom === "2024-03-15",
+      );
+    });
+
+    it("names the requested date in the middle and last", () => {
+      names({ validFrom: "2025-07-01", regime: "managed" }, "2025-07-01")();
+      names({ validFrom: "2028-07-01", regime: "managed" }, "2028-07-01")();
+    });
+
+    it("accepts a new first entry before a stored first one that starts on 1 January", () => {
+      const yearStart: readonly TaxRegimeEntry[] = [{ validFrom: "2024-01-01", regime: "administered" }];
+      const requested: TaxRegimeEntry = { validFrom: "2023-06-01", regime: "self_declared" };
+      validateTaxRegimeHistory([...yearStart, requested], [requested]);
+      validateTaxRegimeHistory([...stored, { validFrom: "2026-01-01", regime: "managed" }], [{ validFrom: "2026-01-01", regime: "managed" }]);
+    });
+
+    it("names the requested date through validateTaxRegimeChange", () => {
+      const requested: TaxRegimeEntry = { validFrom: "2023-06-01", regime: "self_declared" };
+      assert.throws(
+        () => validateTaxRegimeChange({ taxCountry: "IT", domesticWithholdingAgent: true, history: [...stored, requested], requested: [requested] }),
+        (error) => isValidationError(error, "tax_regime_change_not_year_start") && error.details.validFrom === "2023-06-01",
+      );
+    });
+  });
+
   it("rejects two entries on the same date", () => {
     assert.throws(
       () =>

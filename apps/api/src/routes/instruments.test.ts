@@ -238,6 +238,15 @@ describe("instruments routes (#76)", () => {
     }
   });
 
+  it("lists the instrument types it accepts when it refuses one (#712)", async () => {
+    const response = await post(tokenA, { isin: randomIsin(), name: `${namePrefix} ETF type`, type: "etf", currency: "USD" });
+    assert.equal(response.statusCode, 400);
+    assert.deepEqual(response.json(), {
+      error: "invalid_instrument_type",
+      details: { type: "etf", allowed: ["stock", "fund", "etc_etn", "government_bond", "bond", "certificate", "cash", "other"] },
+    });
+  });
+
   it("rejects the same ISIN on the same exchange, but accepts it on another exchange", async () => {
     const isin = randomIsin();
     const base = { isin, name: `${namePrefix} Listed twice`, type: "fund", currency: "EUR" };

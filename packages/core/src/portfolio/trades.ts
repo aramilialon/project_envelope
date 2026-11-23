@@ -128,13 +128,14 @@ export interface TradeFigures {
  * | sell | quantity > 0, price ≥ 0 (0 closes a worthless position) |
  * | dividend | gross not 0 (a negative gross is left to `checkTradeEntry`) |
  * | transfer | quantity > 0, the units moved |
- * | split | `splitFrom` and `splitTo` positive integers |
+ * | split | `splitFrom` and `splitTo` positive integers, not equal (a 1:1 split changes nothing, #712) |
  *
  * @throws ValidationError
  *   - "invalid_quantity" (details: label, value) for a quantity that is not a safe integer;
  *   - "invalid_trade" (details: field) for a buy's or a sale's quantity of 0 or less (`quantity`),
  *     a transfer's (`quantityE8`), a buy's price of 0 (`priceE6`), a dividend's gross of 0
- *     (`grossCents`), a split's ratio that is not two positive integers (`splitFrom`, `splitTo`);
+ *     (`grossCents`), a split's ratio that is not two positive integers (`splitFrom`, `splitTo`) or
+ *     whose two figures are equal (`splitTo`, #712);
  *   - "invalid_price" (details: label, value) for a buy's or a sale's price that is negative or
  *     not a safe integer.
  */
@@ -168,6 +169,9 @@ export function checkTradeFigures(trade: TradeFigures): void {
         if (value === null || !Number.isSafeInteger(value) || value <= 0) {
           throw new ValidationError("invalid_trade", "a split needs a ratio of two positive integers", { field });
         }
+      }
+      if (trade.splitFrom === trade.splitTo) {
+        throw new ValidationError("invalid_trade", "a split of 1:1 changes nothing", { field: "splitTo" });
       }
       return;
     case "fee":

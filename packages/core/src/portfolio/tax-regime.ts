@@ -31,11 +31,18 @@ export function isTaxRegime(value: unknown): value is TaxRegime {
 /**
  * Checks a whole regime history, in any order.
  *
+ * `requested` names the entries the request itself adds, when it adds them to a stored history
+ * (#714): the stored entries were valid together, so an entry other than the earliest that does not
+ * start on 1 January and was not requested only breaks the rule because a requested entry now
+ * starts before it, and the error names the earliest such requested entry instead, the date the
+ * request asked for. Left out, every entry counts as requested (a whole history replaced at once).
+ *
  * @throws ValidationError "invalid_date" for a date that is not a real "YYYY-MM-DD" date;
  * "tax_regime_duplicate_date" if two entries start on the same day;
- * "tax_regime_change_not_year_start" if an entry other than the earliest does not start on 1 January.
+ * "tax_regime_change_not_year_start" (details.validFrom) if an entry other than the earliest does
+ * not start on 1 January.
  */
-export function validateTaxRegimeHistory(history: readonly TaxRegimeEntry[]): void {
+export function validateTaxRegimeHistory(history: readonly TaxRegimeEntry[], requested?: readonly TaxRegimeEntry[]): void {
   for (const entry of history) {
     assertDate(entry.validFrom);
   }
@@ -48,13 +55,27 @@ export function validateTaxRegimeHistory(history: readonly TaxRegimeEntry[]): vo
       });
     }
     if (!entry.validFrom.endsWith("-01-01")) {
+      const named =
+        requested === undefined || requested.some((candidate) => candidate.validFrom === entry.validFrom)
+          ? entry
+          : (earliestBefore(requested, entry.validFrom) ?? entry);
       throw new ValidationError(
         "tax_regime_change_not_year_start",
-        `a tax regime change must start on 1 January, not ${entry.validFrom}`,
-        { validFrom: entry.validFrom },
+        named === entry
+          ? `a tax regime change must start on 1 January, not ${entry.validFrom}`
+          : `a tax regime starting on ${named.validFrom} makes the one of ${entry.validFrom} a change, which must start on 1 January`,
+        { validFrom: named.validFrom },
       );
     }
   }
+}
+
+/**
+ * The earliest of `requested` that starts before `date`; undefined only when the stored entries
+ * already broke the rule among themselves, which the database's own check rules out.
+ */
+function earliestBefore(requested: readonly TaxRegimeEntry[], date: LocalDate): TaxRegimeEntry | undefined {
+  return sortByValidFrom(requested.filter((entry) => entry.validFrom < date))[0];
 }
 
 /**
@@ -164,6 +185,11 @@ export interface TaxRegimeChange {
   readonly domesticWithholdingAgent: boolean | null;
   /** The whole history once the change is applied. */
   readonly history: readonly TaxRegimeEntry[];
+  /**
+   * The entries the request adds to the stored history, when it adds rather than replaces (#714):
+   * a `tax_regime_change_not_year_start` then names one of them (`validateTaxRegimeHistory`).
+   */
+  readonly requested?: readonly TaxRegimeEntry[] | undefined;
 }
 
 /**
@@ -186,7 +212,7 @@ export function validateTaxRegimeChange(change: TaxRegimeChange): void {
       taxCountry: TAX_REGIME_COUNTRY,
     });
   }
-  validateTaxRegimeHistory(change.history);
+  validateTaxRegimeHistory(change.history, change.requested);
   assertWithholdingAgentFor(
     change.history.map((entry) => entry.regime),
     change.domesticWithholdingAgent,

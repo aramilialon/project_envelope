@@ -98,9 +98,10 @@ export type ValidationErrorCode =
 /**
  * A value in a `ValidationError`'s details. `null` stands for something the
  * error names but that has no value yet: the API's `tradeId` of a trade the
- * request itself is recording (#662).
+ * request itself is recording (#662). A list of strings names the values a
+ * field accepts (`invalid_instrument_type`'s `allowed`, #712).
  */
-export type ValidationErrorDetail = string | number | null;
+export type ValidationErrorDetail = string | number | null | readonly string[];
 
 export class ValidationError extends Error {
   readonly code: ValidationErrorCode;

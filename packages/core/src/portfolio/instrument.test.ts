@@ -193,6 +193,23 @@ describe("normalizeInstrument", () => {
     }
   });
 
+  it("lists the instrument types it accepts when it rejects one (#712)", () => {
+    for (const make of [
+      () => normalizeInstrument({ isin: "US0378331005", name: "X", type: "etf", currency: "USD" }),
+      () => normalizePrivateInstrument({ name: "House", type: "property", currency: "EUR" }),
+    ]) {
+      assert.throws(make, (error) => {
+        assert.ok(isValidationError(error, "invalid_instrument_type"));
+        assert.deepEqual(error.details, {
+          type: error.details.type,
+          allowed: ["stock", "fund", "etc_etn", "government_bond", "bond", "certificate", "cash", "other"],
+        });
+        assert.deepEqual(error.details.allowed, [...INSTRUMENT_TYPES]);
+        return true;
+      });
+    }
+  });
+
   it("rejects a price factor that is not a number, with the same details shape as assertPriceFactor", () => {
     for (const priceFactorE6 of ["10000", true, {}]) {
       assert.throws(
