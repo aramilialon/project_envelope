@@ -13,7 +13,7 @@ import { assertAmount, assertCents, assertDate, ValidationError } from "@envelop
 import { recordAuditLog } from "../audit-log/repository.ts";
 import type { DbClient, DbPool } from "../db/pool.ts";
 import { isUuid } from "../ids.ts";
-import { createTransaction, getTransaction, listTransactionsForAccount, type TransactionRecord } from "../transactions/repository.ts";
+import { createTransaction, getTransaction, listTransactionsForAccount, type TransactionRecord, type TransactionTrade } from "../transactions/repository.ts";
 
 export interface ReconciliationRecord {
   readonly id: string;
@@ -58,6 +58,9 @@ export interface CandidateTransaction {
   readonly occurredAt: string;
   readonly payee: string | null;
   readonly amountCents: number;
+  /** The trade this candidate is the cash leg of, and what it is (#657), or null: lets the screen name the row after its trade. */
+  readonly tradeId: string | null;
+  readonly trade: TransactionTrade | null;
 }
 
 export interface ReconciliationCandidates {
@@ -76,6 +79,8 @@ function toCandidate(transaction: TransactionRecord): CandidateTransaction {
     occurredAt: transaction.budgetDate,
     payee: transaction.payee,
     amountCents: transactionAmountCents(transaction),
+    tradeId: transaction.tradeId,
+    trade: transaction.trade,
   };
 }
 

@@ -4,7 +4,7 @@ import type { CandidateTransaction } from "./api.ts";
 import { computeTally, findSuggestion } from "./reconciliationTally.ts";
 
 function tx(id: string, occurredAt: string, amountCents: number): CandidateTransaction {
-  return { id, occurredAt, payee: `payee-${id}`, amountCents };
+  return { id, occurredAt, payee: `payee-${id}`, amountCents, tradeId: null, trade: null };
 }
 
 describe("computeTally", () => {

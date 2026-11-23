@@ -1,11 +1,15 @@
 /** The reconciliation endpoints (#32, #60): `apps/api/src/reconciliation/repository.ts`'s own shapes, mirrored. */
 import { apiFetch } from "../apiFetch.ts";
+import type { TransactionTrade } from "../transactions/api.ts";
 
 export interface CandidateTransaction {
   readonly id: string;
   readonly occurredAt: string;
   readonly payee: string | null;
   readonly amountCents: number;
+  /** The trade this candidate is the cash leg of, and what it is (#657), or null. */
+  readonly tradeId: string | null;
+  readonly trade: TransactionTrade | null;
 }
 
 export interface ReconciliationCandidates {

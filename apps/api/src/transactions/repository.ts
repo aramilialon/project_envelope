@@ -1,4 +1,4 @@
-import { assertAmount, assertDate, countsOnWorkspaceTimeline, isStartingBalanceSplit, monthOf, ValidationError } from "@envelope/core";
+import { assertAmount, assertDate, countsOnWorkspaceTimeline, isStartingBalanceSplit, monthOf, ValidationError, type TradeType } from "@envelope/core";
 
 import { checkAccountsOpen } from "../accounts/open-accounts.ts";
 import { recordAuditLog } from "../audit-log/repository.ts";
@@ -79,8 +79,24 @@ export interface TransactionRecord {
    * deleted through this module (`trade_owned`); its payee, memo and status stay its own.
    */
   readonly tradeId: string | null;
+  /**
+   * What a client needs to show a cash leg as its trade (#657): the trade's type, quantity and
+   * instrument, read with the transaction; null when `tradeId` is null. Read, never written.
+   */
+  readonly trade: TransactionTrade | null;
   readonly createdAt: string;
   readonly splits: readonly SplitRecord[];
+}
+
+/** The trade behind a cash leg (#657), as a register or a reconciliation shows it. */
+export interface TransactionTrade {
+  readonly type: TradeType;
+  /** The trade's quantity in units × 10^8 (ADR 0011); 0 for a type that has none (a dividend, a fee, a tax). */
+  readonly quantityE8: number;
+  /** Null for an account-wide fee or tax. */
+  readonly instrumentId: string | null;
+  readonly instrumentName: string | null;
+  readonly instrumentTicker: string | null;
 }
 
 export interface CreateTransactionInput {
@@ -119,7 +135,15 @@ const TRANSACTION_COLUMNS = `
   to_char(t.occurred_at AT TIME ZONE w.time_zone, 'YYYY-MM-DD') AS budget_date,
   t.payee, t.memo, t.status, t.transfer_id, t.external_id, t.trade_id, t.created_at,
   (SELECT partner.account_id FROM transactions partner
-    WHERE partner.id = t.transfer_id AND partner.workspace_id = t.workspace_id) AS transfer_account_id
+    WHERE partner.id = t.transfer_id AND partner.workspace_id = t.workspace_id) AS transfer_account_id,
+  tr.type AS trade_type, tr.quantity_e8 AS trade_quantity_e8, tr.instrument_id AS trade_instrument_id,
+  i.name AS trade_instrument_name, i.ticker AS trade_instrument_ticker
+`;
+
+/** The trade behind a cash leg and its instrument (#657), joined after `transactions t`. */
+const TRADE_JOINS = `
+  LEFT JOIN trades tr ON tr.id = t.trade_id AND tr.workspace_id = t.workspace_id
+  LEFT JOIN instruments i ON i.id = tr.instrument_id AND (i.workspace_id IS NULL OR i.workspace_id = t.workspace_id)
 `;
 
 interface TransactionRow {
@@ -136,6 +160,12 @@ interface TransactionRow {
   readonly transfer_account_id: string | null;
   readonly external_id: string | null;
   readonly trade_id: string | null;
+  readonly trade_type: TradeType | null;
+  /** `bigint`, which node-postgres reads as a string. */
+  readonly trade_quantity_e8: string | null;
+  readonly trade_instrument_id: string | null;
+  readonly trade_instrument_name: string | null;
+  readonly trade_instrument_ticker: string | null;
   readonly created_at: Date;
 }
 
@@ -178,6 +208,35 @@ export async function assertNotCardIncome(
   const account = rows[0];
   if (account?.type === "credit_card" && account.on_budget) {
     throw new ValidationError("card_income_not_supported", "income on an on-budget credit card is not supported yet", { accountId });
+  }
+}
+
+/**
+ * Refuses a category on a split of a transaction, not a transfer leg, on an off-budget account
+ * (#710). Money there is outside the budget, so `packages/core` ignores such a category: stored,
+ * it would only say something the budget never counts. Transfer legs follow their own rule
+ * (`createTransfer`, `classifyTransferLeg`): the on-budget leg carries the category, the
+ * off-budget leg never does. Checked before the splits' own shape, so a split that only fails
+ * because of its category is answered with this code. A malformed or unknown account is left to
+ * the caller's own check.
+ *
+ * @throws ValidationError with code "category_not_allowed" and `details.field` "categoryId".
+ */
+export async function assertNoCategoryOffBudget(
+  db: DbPool | DbClient,
+  workspaceId: string,
+  accountId: string,
+  splits: readonly { readonly categoryId: string | null }[],
+): Promise<void> {
+  if (!splits.some((split) => split.categoryId !== null) || !isUuid(accountId)) {
+    return;
+  }
+  const { rows } = await db.query<{ on_budget: boolean }>("SELECT on_budget FROM accounts WHERE id = $1 AND workspace_id = $2", [
+    accountId,
+    workspaceId,
+  ]);
+  if (rows[0]?.on_budget === false) {
+    throw new ValidationError("category_not_allowed", "a transaction on an off-budget account has no category", { field: "categoryId" });
   }
 }
 
@@ -239,6 +298,7 @@ export async function createTransaction(
   input: CreateTransactionInput,
   queue?: QueueDriver,
 ): Promise<TransactionRecord> {
+  await assertNoCategoryOffBudget(db, input.workspaceId, input.accountId, input.splits);
   validateSplits(input.splits, input.amountCents);
   await assertNotCardIncome(db, input.workspaceId, input.accountId, input.splits);
 
@@ -511,6 +571,7 @@ export async function getTransaction(
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.id = $1 AND t.workspace_id = $2`,
     [transactionId, workspaceId],
   );
@@ -530,6 +591,7 @@ export async function listTransactionsForAccount(
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1 AND t.account_id = $2
      ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId, accountId],
@@ -571,7 +633,8 @@ const KEY_TEXT = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`;
  * skipped or repeated, and a row added after the cursor's place shows on a later page. The row
  * comparison against the cursor's own microsecond text, cast back to `timestamptz`, compares
  * exactly what the order sorts on; `transactions_account_order_idx` (migration 0040) serves it.
- * Reads `limit + 1` rows to know whether another page follows without a second query.
+ * Reads `limit + 1` rows to know whether another page follows without a second query. The trade
+ * joins (#657) match at most one row each, so they change neither the rows nor their order.
  */
 export async function listTransactionPage(
   db: DbPool | DbClient,
@@ -593,6 +656,7 @@ export async function listTransactionPage(
        to_char(t.created_at AT TIME ZONE 'UTC', ${KEY_TEXT}) AS created_at_key
      FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1 AND t.account_id = $2 ${afterClause}
      ORDER BY t.occurred_at ${direction}, t.created_at ${direction}, t.id ${direction}
      LIMIT $3`,
@@ -615,6 +679,7 @@ export async function listTransactionsForWorkspace(db: DbPool | DbClient, worksp
   const { rows } = await db.query<TransactionRow>(
     `SELECT ${TRANSACTION_COLUMNS} FROM transactions t
      JOIN workspaces w ON w.id = t.workspace_id
+     ${TRADE_JOINS}
      WHERE t.workspace_id = $1
      ORDER BY t.occurred_at, t.created_at, t.id`,
     [workspaceId],
@@ -805,6 +870,10 @@ async function classifyTransferLeg(
  * leg) leaves the other leg alone. The payee, memo and status the request gives stay the edited
  * leg's own.
  *
+ * New splits of a transaction that is not a transfer leg, on an off-budget account, carry no
+ * category (`category_not_allowed`, #710), checked after the reconciled and trade-owned refusals
+ * and before the unknown-category one. An amount alone rewrites the stored split as it is.
+ *
  * A leg's category follows `createTransfer` (#552, #598; `classifyTransferLeg`), so no stored leg
  * can make every budget-month read of the workspace fail:
  * - the on-budget leg of a transfer to an off-budget account keeps the category sent, and a new
@@ -885,6 +954,11 @@ export async function updateTransaction(
     throw new ValidationError("amount_needs_splits", "a transaction with several splits takes a new amount only with its splits", {
       splitCount: existing.splits.length,
     });
+  }
+  if (patch.splits !== undefined && existing.transferId === null) {
+    // New splits on an off-budget account carry no category (#710). Only the splits sent: an
+    // amount alone keeps the stored split as it is.
+    await assertNoCategoryOffBudget(db, workspaceId, existing.accountId, patch.splits);
   }
   if (patch.splits !== undefined) {
     // After the path-account and closed-account checks (#655), so an unknown category never hides
@@ -1172,6 +1246,16 @@ function toTransactionRecord(row: TransactionRow, splits: readonly SplitRecord[]
     transferAccountId: row.transfer_account_id,
     externalId: row.external_id,
     tradeId: row.trade_id,
+    trade:
+      row.trade_id === null || row.trade_type === null
+        ? null
+        : {
+            type: row.trade_type,
+            quantityE8: Number(row.trade_quantity_e8 ?? 0),
+            instrumentId: row.trade_instrument_id,
+            instrumentName: row.trade_instrument_name,
+            instrumentTicker: row.trade_instrument_ticker,
+          },
     createdAt: row.created_at.toISOString(),
     splits,
   };
