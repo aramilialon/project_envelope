@@ -80,6 +80,14 @@ describe("scaleDecimalAmount (#671)", () => {
     assert.throws(() => scaleDecimalAmount("-123456789012345678901234567890", "JPY"), tooLarge);
   });
 
+  it("refuses 14 integer digits at once, without echoing them", () => {
+    assert.throws(
+      () => scaleDecimalAmount("10000000000000", "JPY"),
+      (error: unknown) =>
+        isValidationError(error, "amount_too_large") && error.details.max === MAX_AMOUNT_CENTS && !("value" in error.details),
+    );
+  });
+
   it("refuses a million-digit amount quickly, with details that stay small (security)", () => {
     const text = "9".repeat(1_000_000);
     const started = performance.now();

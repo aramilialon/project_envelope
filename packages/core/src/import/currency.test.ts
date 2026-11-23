@@ -110,6 +110,11 @@ describe("imported amounts in the account currency's minor units (#671)", () => 
     assert.deepEqual(amounts(parseCamt053(camt([camtEntry("1500"), camtEntry("2.000")]), { currency: "JPY" })), [-1500, -2]);
   });
 
+  it("CAMT.053: a debit of zero is 0, never -0", () => {
+    const [row] = parseCamt053(camt([camtEntry("0.00")]), { currency: "EUR" });
+    assert.ok(Object.is(row?.amountCents, 0));
+  });
+
   it("CAMT.053 still refuses a signed amount: the sign is the credit/debit indicator", () => {
     assert.throws(
       () => parseCamt053(camt([camtEntry("-10.00")]), { currency: "EUR" }),
@@ -186,6 +191,13 @@ describe("a file stating another currency than the account's (#672)", () => {
     assert.throws(() => parseCamt053(content, { currency: "EUR" }), mismatch("USD", "EUR"));
     const singleQuoted = "<Ntry><Amt Ccy='GBP'>1.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-09-26</Dt></BookgDt></Ntry>";
     assert.throws(() => parseCamt053(singleQuoted, { currency: "EUR" }), mismatch("GBP", "EUR"));
+  });
+
+  it("CAMT.053: refuses a file whose second statement's account is in another currency", () => {
+    const statement = (ccy: string) =>
+      `<Stmt><Acct><Id><IBAN>XX00</IBAN></Id><Ccy>${ccy}</Ccy></Acct>${camtEntry("1.00")}</Stmt>`;
+    const content = `<Document><BkToCstmrStmt>${statement("EUR")}${statement("USD")}</BkToCstmrStmt></Document>`;
+    assert.throws(() => parseCamt053(content, { currency: "EUR" }), mismatch("USD", "EUR"));
   });
 
   it("CAMT.053: refuses a statement whose account is in another currency", () => {
