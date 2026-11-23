@@ -818,6 +818,113 @@ describe("computeBudgetMonth", () => {
         assert.equal(coveredGoesTo(80000, 90000, 50000, 0), "b");
       });
 
+      it("the projection counts what the paid card carried over from last month", () => {
+        // A has owed €500 since 1 August and had €500 assigned in August, carried into September.
+        // B (holding €100) pays those €500 on 15 September: €500 moves, B needs nothing, and
+        // Groceries' €100 covered goes to C.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          income: [{ month: "2026-08", amount: 100000 }],
+          assignments: [
+            { categoryId: "a-payment", month: "2026-08", amount: 50000 },
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "a-payment", transactions: [...owing(50000, "2026-08-01"), { date: "2026-09-15", amount: 50000 }] },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        assert.equal(category(result.paymentCategories, "a-payment").carriedOver, 50000);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 60000);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 10000);
+        assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
+      });
+
+      it("the projection counts what was paid to the paid card from cash this month", () => {
+        // A owes €800 and has €600 assigned; €300 is paid to A from checking on the 10th, so A holds
+        // €300. B (holding €100) pays €500 of A on the 15th: A then owes nothing and €300 moves. B
+        // owes €600 and still needs €200, so Groceries' €100 covered goes to B and C's €100 stays
+        // uncovered.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 60000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardPayments: [{ paymentCategoryId: "a-payment", month: "2026-09", amount: 30000 }],
+          cardBalances: [
+            {
+              paymentCategoryId: "a-payment",
+              transactions: [...owing(80000, "2026-09-01"), { date: "2026-09-10", amount: 30000 }, { date: "2026-09-15", amount: 50000 }],
+            },
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 50000); // 100 held + 100 covered + 300 moved
+        assert.equal(category(result.paymentCategories, "b-payment").uncovered, 10000);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 0);
+        assert.equal(category(result.paymentCategories, "c-payment").uncovered, 10000);
+      });
+
+      it("a paid card whose balance is not given owes nothing, in the projection as in rule 8", () => {
+        // A's balance is not given and it holds €500: rule 8 moves all €500 to B, and the
+        // projection counts the same €500, so B (holding €100, owing €600) needs nothing and
+        // Groceries' €100 covered goes to C.
+        const input: BudgetInput = {
+          ...EMPTY,
+          categoryIds: ["groceries"],
+          paymentCategoryIds: ["a-payment", "b-payment", "c-payment"],
+          assignments: [
+            { categoryId: "groceries", month: "2026-09", amount: 10000 },
+            { categoryId: "a-payment", month: "2026-09", amount: 50000 },
+            { categoryId: "b-payment", month: "2026-09", amount: 10000 },
+          ],
+          activity: [
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "b-payment" },
+            { categoryId: "groceries", month: "2026-09", amount: -10000, paymentCategoryId: "c-payment" },
+          ],
+          cardBalances: [
+            { paymentCategoryId: "b-payment", transactions: [{ date: "2026-09-05", amount: -10000 }, { date: "2026-09-15", amount: -50000 }] },
+            { paymentCategoryId: "c-payment", transactions: [{ date: "2026-09-06", amount: -10000 }] },
+          ],
+          cardTransfers: [
+            { paidPaymentCategoryId: "a-payment", chargedPaymentCategoryId: "b-payment", month: "2026-09", date: "2026-09-15", id: "t1", amount: 50000 },
+          ],
+        };
+        const result = computeBudgetMonth(input, "2026-09");
+        assert.equal(category(result.paymentCategories, "a-payment").available, 0);
+        assert.equal(category(result.paymentCategories, "a-payment").owed, undefined);
+        assert.equal(category(result.paymentCategories, "b-payment").available, 60000);
+        assert.equal(category(result.paymentCategories, "b-payment").uncovered, 0);
+        assert.equal(category(result.paymentCategories, "c-payment").available, 10000);
+        assert.equal(category(result.paymentCategories, "c-payment").uncovered, 0);
+      });
+
       it("two transfers from the same card: the second reads what the first left", () => {
         // A owes €600 and holds €300; B pays €300 of it on the 10th (€300 moves), C the other €300
         // on the 20th (nothing left to move). C holds €100 and owes €100 of groceries + €300: it
