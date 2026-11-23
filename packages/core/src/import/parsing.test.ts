@@ -67,7 +67,7 @@ describe("scaleDecimalAmount (#671)", () => {
     // Far beyond the safe range of a double: still refused as too large, never read inexactly.
     assert.throws(
       () => scaleDecimalAmount("-123456789012345678901234567890", "JPY"),
-      (error: unknown) => tooLarge(error) && error.details.value === "-123456789012345678901234567890",
+      (error: unknown) => isValidationError(error, "amount_too_large") && error.details.value === "-123456789012345678901234567890",
     );
   });
 });
