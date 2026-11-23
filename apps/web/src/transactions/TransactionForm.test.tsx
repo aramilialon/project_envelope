@@ -1229,7 +1229,7 @@ describe("TransactionForm: off-budget accounts (#710) and trade cash legs (#657)
       payee: "Custody fee",
       status: "pending",
       splits: [{ categoryId: null, amountCents: -400 }],
-    });
+    }, IDEMPOTENCY_KEY);
   });
 
   it("sends a row stored with a category before #710 back without it, even when only its memo changes", async () => {
