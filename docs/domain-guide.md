@@ -370,6 +370,25 @@ credit and not cash overspending, and B holds the €600 it now owes. Before #73
 other way, from the card that was charged to the card that was paid, capped at what the charged
 card held: in the second row B was asked €500 instead of €200.
 
+**A transfer coming in counts in a card's need** (#803). When a category covers only part of its
+spending on several cards, the covered part goes first to the cards that still need money (#731). A
+card that a transfer is paying money into needs that much less: each of the month's transfers is
+projected with the rule above, in date order then by id, from what the paid card's payment category
+holds before any covered spending moves in (carried over, assigned, less payments and net refunds).
+The projection never counts more than the transfer actually brings in. Covered spending that reaches
+the paid card later can make it bring more; that extra stays set aside for the charged card.
+
+*Example.* Card B holds €100 and owes nothing. B pays €500 of card A's debt; A owed €500 and holds
+€500. Groceries, with €100 assigned, spends €100 on B and €100 on card C.
+
+- €500 is projected to move from A to B, so B (owing €600, holding €100) needs nothing more; C,
+  owing €100 and holding nothing, needs €100.
+- The €100 Groceries covers goes to C. B ends holding €600 against €600 owed, C €100 against €100:
+  neither card has anything to cover. Groceries' €100 of card overspending is named on B, whose
+  €100 set aside from before covers it.
+- Before #803, B's need ignored the transfer (€500), so the €100 went to B: B ended holding €700
+  against €600, and C was left with €100 to cover.
+
 ### Scheduled transactions reserve money ahead of time
 
 A scheduled transaction (rent, a subscription, a salary) reserves money in its category before it
