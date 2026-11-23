@@ -10,6 +10,7 @@ import { type App } from "../app.ts";
 import { type DbPool } from "../db/pool.ts";
 import { type KeycloakTestRealm } from "../test-helpers/keycloak.ts";
 import { setupIntegrationTest, teardownIntegrationTest } from "../test-helpers/integration-setup.ts";
+import { setWorkspaceTaxCountry } from "../workspaces/repository.ts";
 
 /** Units as quantityE8: units(1.5) is 150000000. */
 const units = (value: number): number => Math.round(value * 1e8);
@@ -1526,7 +1527,7 @@ describe("trades routes (#77)", () => {
       assert.equal(refused.statusCode, 400, refused.body);
       assert.deepEqual(refused.json(), {
         error: "tax_regime_conflicts_with_trade",
-        details: { tradeId: earlier!.id, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime" },
+        details: { tradeId: earlier!.id, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime", accountId: brokers[1] },
       });
       const { rows } = await superuserPool.query<{ tax_country: string | null }>("SELECT tax_country FROM workspaces WHERE id = $1", [ws]);
       assert.equal(rows[0]!.tax_country, null, "nothing is written");
@@ -1536,6 +1537,7 @@ describe("trades routes (#77)", () => {
       const second = await setCountry("IT");
       assert.equal(second.statusCode, 400, second.body);
       assert.equal(second.json().details.tradeId, later!.id);
+      assert.equal(second.json().details.accountId, brokers[0], "the account the trade is on");
       assert.equal((await patchTradeIn(ws, later!.id, { gainTaxCents: 0 })).statusCode, 200);
       const switched = await setCountry("IT");
       assert.equal(switched.statusCode, 200, switched.body);
@@ -1613,9 +1615,43 @@ describe("trades routes (#77)", () => {
         }
         const refused = await pending;
         assert.equal(refused.statusCode, 400, refused.body);
-        assert.deepEqual(refused.json().details, { tradeId: inserted, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime" });
+        assert.deepEqual(refused.json().details, { tradeId: inserted, tradeDate: "2026-02-02", code: "tax_kind_not_allowed_in_regime", accountId: broker });
       } finally {
         writer.release();
+      }
+    });
+
+    it("lets a regime be added while a change of the tax country holds the workspace's row (#667)", async () => {
+      const { ws, becomeItalian } = await workspaceBeforeIT();
+      await becomeItalian();
+      const broker = await account("brokerage", "EUR", ws, true);
+      // A change of the tax country in progress, by the API's own function: the period's insert
+      // checks its foreign key into `workspaces` (FOR KEY SHARE), which FOR NO KEY UPDATE lets
+      // through and FOR UPDATE would block until the change commits.
+      const holder = await superuserPool.connect();
+      try {
+        await holder.query("BEGIN");
+        assert.ok(await setWorkspaceTaxCountry(holder, ws, "IT"));
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          const regime = await Promise.race([
+            app.fastify.inject({
+              method: "POST",
+              url: `/workspaces/${ws}/accounts/${broker}/tax-regimes`,
+              headers: await auth(),
+              payload: { validFrom: "2026-01-01", regime: "administered" },
+            }),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error("the regime waited for the workspace's row")), 5_000);
+            }),
+          ]);
+          assert.equal(regime.statusCode, 201, regime.body);
+        } finally {
+          clearTimeout(timer);
+          await holder.query("ROLLBACK");
+        }
+      } finally {
+        holder.release();
       }
     });
 

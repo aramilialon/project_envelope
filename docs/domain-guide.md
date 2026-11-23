@@ -1222,8 +1222,10 @@ first, then the regime is recorded. Setting the withholding-agent flag later, on
 already has a regime, is checked against its trades the same way. A workspace that leaves `IT` and
 comes back has its trades checked again on its return: trades recorded meanwhile were checked
 against no regime, so every trade of each account with a regime history is checked by every rule
-above, and the return is refused, naming the earliest trade that breaks one, until it is edited
-(#667). The worked examples below follow the tests in
+above, and the return is refused, naming the earliest trade that breaks one and its account, until it
+is edited (#667). Closed accounts are checked too, and a closed account takes no writes: while one
+holds a trade that breaks its regime, the return to `IT` is refused, naming that account, and
+reopening the account comes with #705. The worked examples below follow the tests in
 `packages/core` and `apps/api`; not every figure is itself a test case (the €260.00 managed
 result tax, for one, is not).
 

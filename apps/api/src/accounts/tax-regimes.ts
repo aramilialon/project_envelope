@@ -160,8 +160,8 @@ export async function setWithholdingAgent(
  * (trades/repository.ts, `checkRows`, FOR SHARE). The accounts are locked FOR NO KEY UPDATE in id
  * order, the order `checkRegimes` locks them FOR SHARE, so no regime change runs meanwhile.
  *
- * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code)
- *   for the first trade, by date then id across every account, that breaks a rule.
+ * @throws ValidationError "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code,
+ *   accountId) for the first trade, by date then id across every account, that breaks a rule.
  */
 export async function checkTradesAgainstRegimes(db: DbPool | DbClient, workspaceId: string): Promise<void> {
   const { rows } = await db.query<{ id: string; domestic_withholding_agent: boolean | null }>(
@@ -181,7 +181,9 @@ export async function checkTradesAgainstRegimes(db: DbPool | DbClient, workspace
       });
     } catch (error) {
       if (!(error instanceof ValidationError)) throw error;
-      if (first === undefined || comesBefore(error, first)) first = error;
+      // The per-account paths name the account in the request; this one names it in the error.
+      const named = new ValidationError(error.code, error.message, { ...error.details, accountId: account.id });
+      if (first === undefined || comesBefore(named, first)) first = named;
     }
   }
   if (first !== undefined) throw first;

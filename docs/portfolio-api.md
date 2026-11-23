@@ -203,7 +203,7 @@ for their regimes right away.
 | --- | --- |
 | 400 `invalid_tax_country` | `{ "taxCountry": "XX" }`: not two upper-case letters, or not an officially assigned ISO 3166-1 code (`ZZ`, `EU`, `UN`, `UK`) |
 | 400 `unknown_field` | `{ "field": "taxcountry" }`: any key but `taxCountry`, the workspace's `timeZone` and `baseCurrency` included (#713) |
-| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code" }`: setting `IT` back would leave that trade breaking its account's regime, the earliest by date then id across the workspace's accounts (#667) |
+| 400 `tax_regime_conflicts_with_trade` | `{ "tradeId", "tradeDate", "code", "accountId" }`: setting `IT` back would leave that trade, on that account, breaking the account's regime, the earliest by date then id across the workspace's accounts, closed ones included; while the account is closed the return to `IT` stays refused, and reopening it comes with #705 (#667) |
 
 Only `IT` changes anything today: in an `IT` workspace every brokerage account records its tax
 regime and whether its broker is an Italian withholding agent, and trades are checked against
@@ -219,8 +219,11 @@ from none), every trade of each brokerage account that has a regime history is c
 history and the account's withholding-agent flag by every trade rule, as an account's first regime
 checks them ([below](#brokerage-accounts-and-their-tax-regime)). If one breaks, the change is
 refused with `tax_regime_conflicts_with_trade`, naming the earliest such trade (by date, then id,
-across every account) and the code it would fail with, and nothing is written: edit or delete the
-trade while the workspace is not `IT`, then set it again. A closed account's trades are checked too.
+across every account), the account it is on and the code it would fail with, and nothing is
+written: edit or delete the trade while the workspace is not `IT`, then set it again. A closed
+account's trades are checked too, and a closed account takes no writes: while it holds a trade
+that breaks its regime, the return to `IT` is refused, naming that account, and reopening the
+account comes with #705.
 An account with no regime history is left to its first regime, which checks every trade. Setting
 `IT` on a workspace that already is `IT` checks nothing. The change holds the workspace, and each of
 those accounts, locked while it checks: a trade being recorded or edited waits for it, then is

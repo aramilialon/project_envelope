@@ -105,7 +105,7 @@ export interface TaxCountryChange extends WorkspaceSettings {
  * first trade that breaks a rule. Setting `IT` on a workspace that is already `IT` checks nothing.
  *
  * @throws ValidationError "invalid_tax_country" for a code that is not an assigned ISO 3166-1 alpha-2 code (#711);
- *   "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code) (#667).
+ *   "tax_regime_conflicts_with_trade" (details: tradeId, tradeDate, code, accountId) (#667).
  */
 export async function setWorkspaceTaxCountry(
   db: DbPool | DbClient,
