@@ -41,11 +41,16 @@
  *    category spent on more than one card and covers only part of it (#731),
  *    the covered part goes first to the cards that still need money — whose
  *    real balance at the end of the month is above what their payment category
- *    holds so far (carried over, assigned, less payments, plus what earlier
- *    categories moved in), each up to that need and to its own spending — then
- *    to the others, each up to its own spending; cards in id order, categories
- *    in `categoryIds` order. The part of each card's spending left uncovered is
- *    that category's credit overspending on that card (`overspendingBy`).
+ *    holds so far (carried over, assigned, less payments and net refunds, plus
+ *    what earlier categories moved in, plus what this month's card-to-card
+ *    transfers are projected to bring in, #803) — each up to that need and to
+ *    its own spending — then to the others, each up to its own spending; cards
+ *    in id order, categories in `categoryIds` order. A transfer's projection is
+ *    rule 8's formula read before any covered spending moves in: in date order,
+ *    then id, min(T, max(0, held(A) − owed(A))), with held(A) carried over +
+ *    assigned − payments − net refunds ± what earlier transfers moved. The part
+ *    of each card's spending left uncovered is that category's credit
+ *    overspending on that card (`overspendingBy`).
  * 5. A card payment (a transfer from a cash account to the card) is spending
  *    of the payment category.
  * 6. A category still negative at the end of a month starts the next month at
