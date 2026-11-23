@@ -899,14 +899,19 @@ A trade that moves money owns exactly one transaction on its own account, its **
   statement, usually two business days after the trade (settlement); a statement dated before
   then does not show it yet.
 - It appears in `GET …/accounts/:accountId/transactions` like any transaction, with `tradeId`
-  set. Its payee, memo and status are its own and are edited there. Its amount, account and date
+  set and `trade`, a summary of its trade: `type`, `quantityE8`, and `instrumentId`,
+  `instrumentName` and `instrumentTicker` (all null for an account-wide fee or tax), so a client
+  can name the row after its trade without reading the trades and instruments (#657). Its payee, memo and status are its own and are edited there. Its amount, account and date
   belong to the trade: `PATCH` with `splits`, `amountCents` or an `occurredAt` other than the
   leg's own date, or `DELETE`, answers 409 `trade_owned_transaction`. `accountId` is not a field
   of that `PATCH` for any transaction: it answers 400 `unknown_field`. The `PATCH` takes
   `occurredAt` as a date only (`YYYY-MM-DD`), while creating a transaction also takes a date with
   a time; a date with a time in a `PATCH` answers 400 `invalid_date`.
 - A brokerage account's balance is the transfers into and out of it plus its cash legs. Since the
-  account is off budget, a trade never changes the budget. The money reached the broker through a
+  account is off budget, a trade never changes the budget. A transaction recorded by hand on it
+  (not a transfer) takes no category either: a split with a `categoryId` answers 400
+  `category_not_allowed` with `details.field` `categoryId`, on create, on an edit with `splits`
+  and on an import row (#710). The money reached the broker through a
   transfer from an on-budget account, which asked for a category
   ([domain guide](domain-guide.md#the-cash-a-trade-moves)).
 - Money taken back out of the broker goes through `POST /workspaces/:workspaceId/transfers` too.

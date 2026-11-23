@@ -58,7 +58,7 @@ export function localMidnight(date: string): string {
   throw new Error(`no midnight found for ${date} in ${WALK_TIME_ZONE}`);
 }
 
-function addDays(date: string, days: number): string {
+export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 

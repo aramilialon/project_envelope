@@ -25,6 +25,7 @@ export type ValidationErrorCode =
   | "split_mismatch"
   | "unsupported_transaction"
   | "card_income_not_supported"
+  | "category_not_allowed"
   | "invalid_ofx_transaction"
   | "invalid_qif_transaction"
   | "invalid_camt053_entry"
