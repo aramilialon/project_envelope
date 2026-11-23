@@ -184,7 +184,7 @@ describe("a price has no lower date limit (#83)", () => {
     return {
       values: valuations.map((valuation) => valuation.valueCents),
       twr: timeWeightedReturn({ start: startValue, valuations, flows }),
-      mwr: moneyWeightedReturn({ start: startValue, end: valuations[valuations.length - 1]!, flows }),
+      mwr: moneyWeightedReturn({ start: startValue, end: valuations[valuations.length - 1]!, valuations, flows }),
     };
   }
 

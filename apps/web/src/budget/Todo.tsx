@@ -9,6 +9,8 @@ interface Props {
   readonly categoryNameById: ReadonlyMap<string, string>;
   readonly money: (cents: number) => string;
   readonly locale: string;
+  /** The workspace's current year, so a date in another year shows it (#702, #814); the browser's own when absent. */
+  readonly currentYear?: number | undefined;
   /** Shows only the first `limit` items plus "+N more" (the phone layout, `#331`: "the first three things to do, with how many more"). Every item still shows on the desktop, without this prop. */
   readonly limit?: number;
   /**
@@ -40,6 +42,7 @@ function sentenceFor(
   item: TodoItem,
   categoryNameById: ReadonlyMap<string, string>,
   locale: string,
+  currentYear: number | undefined,
   intl: ReturnType<typeof useIntl>,
   money: (cents: number) => string,
 ): Sentence {
@@ -81,7 +84,7 @@ function sentenceFor(
         title: intl.formatMessage({ id: "budget.todo.scheduledOverdue.title", defaultMessage: "Record {payee}" }, { payee: item.payee }),
         sub: intl.formatMessage(
           { id: "budget.todo.scheduledOverdue.sub", defaultMessage: "scheduled for {date}, not yet in the account" },
-          { date: shortDate(item.date, locale) },
+          { date: shortDate(item.date, locale, currentYear) },
         ),
       };
     case "reservationShortfall":
@@ -135,7 +138,7 @@ function sentenceFor(
  * item opens its own destination when `onItemClick` is given (`#411`) — the caller passes it on
  * both the phone and the desktop layout now.
  */
-export default function Todo({ items, categoryNameById, money, locale, limit, onItemClick }: Props) {
+export default function Todo({ items, categoryNameById, money, locale, currentYear, limit, onItemClick }: Props) {
   const intl = useIntl();
   const shown = limit === undefined ? items : items.slice(0, limit);
   const hiddenCount = items.length - shown.length;
@@ -153,7 +156,7 @@ export default function Todo({ items, categoryNameById, money, locale, limit, on
       ) : (
         <>
           {shown.map((item) => {
-            const { title, sub } = sentenceFor(item, categoryNameById, locale, intl, money);
+            const { title, sub } = sentenceFor(item, categoryNameById, locale, currentYear, intl, money);
             const key = item.kind === "scheduledOverdue" ? `scheduledOverdue:${item.scheduledTransactionId}` : item.kind === "overassigned" ? "overassigned" : item.kind === "targetsNeeded" ? `targetsNeeded:${item.categoryIds.join(",")}` : `${item.kind}:${item.categoryId}`;
             const clickable = onItemClick && item.kind !== "overassigned";
             const content = (
