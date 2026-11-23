@@ -210,7 +210,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
       if (ISO_DATE.test(date) && !incomeReceived(date, today)) {
         return intl.formatMessage(
           { id: "transactions.form.inflowHint.unassignedLater", defaultMessage: "The money comes into “Unassigned” on {date}." },
-          { date: shortDate(date, intl.locale) },
+          { date: shortDate(date, intl.locale, Number(today.slice(0, 4))) },
         );
       }
       if (!budgetMonth) {
@@ -231,7 +231,7 @@ export default function TransactionForm({ workspaceId, accountId, accounts, cate
     if (chosen && ISO_DATE.test(date) && !incomeReceived(date, today)) {
       return intl.formatMessage(
         { id: "transactions.form.inflowHint.categoryLater", defaultMessage: "The money comes into {category} on {date}." },
-        { category: chosen.name, date: shortDate(date, intl.locale) },
+        { category: chosen.name, date: shortDate(date, intl.locale, Number(today.slice(0, 4))) },
       );
     }
     const category = budgetMonth?.categories.find((c) => c.categoryId === categoryId);

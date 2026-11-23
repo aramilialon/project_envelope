@@ -3,7 +3,7 @@ import { currencyDecimals } from "@envelope/core";
 /**
  * "9 Oct" — a short date, shared across the account register, its own "To do" lists, import and
  * reconciliation; "3 Mar 2028" when the date falls in another year than `currentYear` (#702).
- * `currentYear` defaults to the browser's own; the register passes the workspace's.
+ * `currentYear` defaults to the browser's own; every screen passes the workspace's (#814).
  */
 export function shortDate(iso: string, locale: string, currentYear: number = new Date().getFullYear()): string {
   const [y, m, d] = iso.split("-").map(Number) as [number, number, number];

@@ -753,6 +753,21 @@ describe("TransactionForm: money coming in from an off-budget account (#599)", (
     expect(await screen.findByText("The money comes into the budget: “Unassigned” goes from €200.00 to €5,200.00.")).toBeInTheDocument();
   });
 
+  it("names the year of a later date by the workspace's today, not the browser's (#814)", async () => {
+    vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
+    // The workspace is already in 2027 while the browser's clock still reads 2026.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
+    try {
+      renderForm({ accounts: [CHECKING, BROKER], today: "2027-01-01" });
+      chooseIncomingFromBroker();
+      fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2027-01-15" } });
+      expect(screen.getByText("The money comes into “Unassigned” on Jan 15.")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says the day money dated after today comes in at once, while the budget month loads and if it fails", async () => {
     const getBudgetMonth = vi.spyOn(budgetApi, "getBudgetMonth").mockReturnValue(new Promise(() => {}));
     renderForm({ accounts: [CHECKING, BROKER] });
