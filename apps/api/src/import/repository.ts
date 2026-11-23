@@ -17,6 +17,7 @@ import {
   type CsvMapping,
   type ExistingTransaction,
   type ImportedTransaction,
+  type ImportOptions,
   type ImportRow,
   type QifHints,
 } from "@envelope/core";
@@ -187,6 +188,24 @@ async function stageParsedRows(
   };
 }
 
+/**
+ * What the parsers need to know about the account a file goes into: its currency, so amounts are
+ * read in its own minor units (#671) and a file stating another currency is refused with
+ * `currency_mismatch` (#672).
+ *
+ * @throws Error if the account is not one of this workspace's: the routes check that first (#512).
+ */
+async function importOptions(db: DbPool | DbClient, workspaceId: string, accountId: string): Promise<ImportOptions> {
+  const { rows } = await db.query<{ currency: string }>("SELECT currency FROM accounts WHERE id = $1 AND workspace_id = $2", [
+    accountId,
+    workspaceId,
+  ]);
+  const currency = rows[0]?.currency;
+  if (currency === undefined) throw new Error(`account ${accountId} is not in workspace ${workspaceId}`);
+  return { currency };
+}
+
+/** CSV states no currency: its amounts are read in the account's (#671, #672). */
 export async function stageCsvImport(
   db: DbPool | DbClient,
   workspaceId: string,
@@ -195,10 +214,14 @@ export async function stageCsvImport(
   mapping: CsvMapping,
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
-  return stageParsedRows(db, workspaceId, accountId, parseCsv(csvContent, mapping), closingBalanceCents);
+  const options = await importOptions(db, workspaceId, accountId);
+  return stageParsedRows(db, workspaceId, accountId, parseCsv(csvContent, mapping, options), closingBalanceCents);
 }
 
-/** OFX is self-describing (design.md): no column mapping, unlike CSV. */
+/**
+ * OFX is self-describing (design.md): no column mapping, unlike CSV. A file whose `<CURDEF>` is not
+ * the account's currency is refused with `currency_mismatch` (#672).
+ */
 export async function stageOfxImport(
   db: DbPool | DbClient,
   workspaceId: string,
@@ -206,7 +229,8 @@ export async function stageOfxImport(
   ofxContent: string,
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
-  return stageParsedRows(db, workspaceId, accountId, parseOfx(ofxContent), closingBalanceCents);
+  const options = await importOptions(db, workspaceId, accountId);
+  return stageParsedRows(db, workspaceId, accountId, parseOfx(ofxContent, options), closingBalanceCents);
 }
 
 /**
@@ -223,10 +247,14 @@ export async function stageQifImport(
   hints: QifHints = {},
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
-  return stageParsedRows(db, workspaceId, accountId, parseQif(qifContent, hints), closingBalanceCents);
+  const options = await importOptions(db, workspaceId, accountId);
+  return stageParsedRows(db, workspaceId, accountId, parseQif(qifContent, hints, options), closingBalanceCents);
 }
 
-/** CAMT.053 is self-describing too, and has no date/decimal ambiguity to resolve, unlike QIF (#31). */
+/**
+ * CAMT.053 is self-describing too, and has no date/decimal ambiguity to resolve, unlike QIF (#31).
+ * A file stating a currency other than the account's is refused with `currency_mismatch` (#672).
+ */
 export async function stageCamt053Import(
   db: DbPool | DbClient,
   workspaceId: string,
@@ -234,7 +262,8 @@ export async function stageCamt053Import(
   camt053Content: string,
   closingBalanceCents?: number,
 ): Promise<StageImportResult> {
-  return stageParsedRows(db, workspaceId, accountId, parseCamt053(camt053Content), closingBalanceCents);
+  const options = await importOptions(db, workspaceId, accountId);
+  return stageParsedRows(db, workspaceId, accountId, parseCamt053(camt053Content, options), closingBalanceCents);
 }
 
 /** Sweeps rows past the 7-day expiry (design.md) before listing what remains — no queue dependency, since the queue module (0.1.6) does not exist yet. */
