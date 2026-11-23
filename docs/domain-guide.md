@@ -326,6 +326,21 @@ added owing €500 with a €45.67 purchase dated the same day reads €500.00 o
 balance, then €545.67 after the purchase — never €45.67 for the purchase, as if the card owed
 nothing yet.
 
+**The budget month's timeline.** The day-by-day line is the net movement of every on-budget account,
+credit cards included. A card purchase counts on the day it is made. A transfer between two
+on-budget accounts counts at neither end: a card payment, cash to cash, or card to card. A transfer
+with an off-budget account counts once, at its on-budget end. A card's starting balance never
+counts; a cash account's starting balance is income to assign and does count. Over a month the line
+moves by the change in on-budget cash less the change in card debt.
+
+*Example.* Income of €3,000.00 into checking on the 2nd, €41.00 of groceries on the Visa card on the
+5th, and the Visa paid €41.00 from checking on the 10th. The line reads €3,000.00, then €2,959.00,
+then €2,959.00 (not €2,918.00). Then €500.00 moves checking → savings: the line does not move.
+€123.45 of debt moves Visa → Mastercard: the line does not move. €600.00 goes checking → broker: the
+line drops to €2,359.00. €250.00 comes back broker → checking: the line rises to €2,609.00. The
+register timeline of one account still shows every leg of that account, but never a card's starting
+balance.
+
 **Paying down one card from another** (#732). When card B pays €T of card A's debt, B is charged
 €T (the transfer's outflow leg, B now owes more) and A is paid €T (its inflow leg, A owes less).
 Money set aside follows the debt: from A's payment category to B's moves what A holds beyond what it

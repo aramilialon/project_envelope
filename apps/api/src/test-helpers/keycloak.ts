@@ -159,6 +159,18 @@ export async function deleteTestRealm(adminPassword: string, realm: string): Pro
   });
 }
 
+/** Whether a realm exists: `GET /admin/realms/<realm>` answers 200, or 404 once it is gone. */
+export async function testRealmExists(adminPassword: string, realm: string): Promise<boolean> {
+  const response = await adminRequest(await getAdminToken(adminPassword), "GET", `/admin/realms/${encodeURIComponent(realm)}`, undefined, {
+    acceptNotFound: true,
+  });
+  if (response.status === 404) {
+    return false;
+  }
+  await response.body?.cancel();
+  return true;
+}
+
 /** The run's realm the global setup handed down through `RUN_REALM_ENV`, or `undefined` for a file run on its own. */
 export function readRunRealm(env: NodeJS.ProcessEnv = process.env): TestRealmCredentials | undefined {
   const value = env[RUN_REALM_ENV];

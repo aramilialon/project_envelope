@@ -1468,10 +1468,14 @@ button{cursor:pointer}
   }
   function rowLines(x) { return spentLine(x) + subLines(x); }
 
+  // The net movement of every on-budget account, cards included (#659): a card purchase counts on
+  // its day, so a payment category's own rows (card payments from checking, a starting balance)
+  // move nothing — paying a card is a transfer between two on-budget accounts.
   function events(byId) {
     var ev = [];
     GROUPS.forEach(function (g) {
       g.cats.forEach(function (c) {
+        if (c.payment) return;
         (c.txs || []).concat((state.rec[c.id] || []).map(function (r) { return r.tx; })).forEach(function (t) {
           if (t[4] === 'start') return;
           ev.push({ d: Number(String(t[0]).split(' ')[1]), amount: -t[3], label: t[1], kind: 'out' });

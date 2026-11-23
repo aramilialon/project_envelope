@@ -81,6 +81,21 @@ describe("Todo (#326)", () => {
     expect(screen.getByText(/Sep 22/)).toBeInTheDocument();
   });
 
+  it("names the year of an overdue date by the workspace's current year (#814)", () => {
+    const items: TodoItem[] = [
+      { kind: "scheduledOverdue", scheduledTransactionId: "s1", categoryId: "groceries", payee: "Vet clinic", date: "2026-12-31", amountCents: 4_500 },
+    ];
+    // The browser's clock still reads 2026, so its own year would hide the year.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
+    try {
+      renderWithIntl(<Todo items={items} categoryNameById={categoryNameById} money={money} locale="en" currentYear={2027} />);
+      expect(screen.getByText(/Dec 31, 2026/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("names a single target by its own category, and counts several", () => {
     const one: TodoItem[] = [{ kind: "targetsNeeded", categoryIds: ["vacation"], amountCents: 1_000 }];
     const { rerender } = render(
